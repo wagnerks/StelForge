@@ -1,0 +1,47 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "CMakePredefinedTargets", "CMakePredefinedTargets", "{655BF65B-A6A8-32DB-81F5-D6EFC2E38065}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "HiddenTargets", "HiddenTargets", "{5064CF85-9839-3986-B0B5-95FB1D9CA55E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ALL_BUILD", "ALL_BUILD.vcxproj", "{48B783F4-C40C-3B8B-80A9-5E2452B99671}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7} = {C3150723-5867-3CDD-A11E-A77F0CA1ECF7}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "imgui", "imgui.vcxproj", "{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}"
+	ProjectSection(ProjectDependencies) = postProject
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+		MinSizeRel|x64 = MinSizeRel|x64
+		RelWithDebInfo|x64 = RelWithDebInfo|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{48B783F4-C40C-3B8B-80A9-5E2452B99671}.Debug|x64.ActiveCfg = Debug|x64
+		{48B783F4-C40C-3B8B-80A9-5E2452B99671}.Release|x64.ActiveCfg = Release|x64
+		{48B783F4-C40C-3B8B-80A9-5E2452B99671}.MinSizeRel|x64.ActiveCfg = MinSizeRel|x64
+		{48B783F4-C40C-3B8B-80A9-5E2452B99671}.RelWithDebInfo|x64.ActiveCfg = RelWithDebInfo|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.Debug|x64.ActiveCfg = Debug|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.Debug|x64.Build.0 = Debug|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.Release|x64.ActiveCfg = Release|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.Release|x64.Build.0 = Release|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.MinSizeRel|x64.ActiveCfg = MinSizeRel|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.MinSizeRel|x64.Build.0 = MinSizeRel|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.RelWithDebInfo|x64.ActiveCfg = RelWithDebInfo|x64
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7}.RelWithDebInfo|x64.Build.0 = RelWithDebInfo|x64
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{48B783F4-C40C-3B8B-80A9-5E2452B99671} = {655BF65B-A6A8-32DB-81F5-D6EFC2E38065}
+		{C3150723-5867-3CDD-A11E-A77F0CA1ECF7} = {5064CF85-9839-3986-B0B5-95FB1D9CA55E}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {575755AF-9383-34B7-9F2B-DF6DA723D40D}
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal
