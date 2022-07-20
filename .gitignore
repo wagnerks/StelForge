@@ -1,0 +1,6 @@
+*.exe
+.vs
+/*.dll
+*.pdb
+out
+bin/imgui.ini
