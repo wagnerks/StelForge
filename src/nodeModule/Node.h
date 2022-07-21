@@ -4,7 +4,7 @@
 
 #include "componentsModule/ComponentHolder.h"
 
-namespace GameEngine::CoreModule {
+namespace GameEngine::NodeModule {
 
 	class Node : public ComponentsModule::ComponentHolder {
 	public:

@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <fwd.hpp>
 
-#include "Mesh.h"
+#include "modelModule/Mesh.h"
 #include "shader.h"
 
 
@@ -11,6 +11,6 @@ public:
 	void draw(const glm::mat4& ProjectView);
 	~SceneFloor();
 private:
-	GameEngine::Render::Mesh* mesh = nullptr;
+	GameEngine::ModelModule::Mesh* mesh = nullptr;
 	GameEngine::Render::Shader* sceneFloorShader = nullptr;
 };

@@ -1,6 +1,6 @@
 ﻿#include "Node.h"
 
-using namespace GameEngine::CoreModule;
+using namespace GameEngine::NodeModule;
 
 Node::Node(std::string_view id) : id(id) {}
 Node::~Node() {}

@@ -4,12 +4,13 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
-#include "logger.h"
-#include "texture.h"
+#include "core/texture.h"
+#include "logsModule/logger.h"
 
-using namespace GameEngine::Render;
 
-void Model::Draw(Shader* shader) {
+using namespace GameEngine::ModelModule;
+
+void Model::Draw(Render::Shader* shader) {
     for(auto& mesh : meshes) {
 		mesh.Draw(shader);
 	}
@@ -20,7 +21,7 @@ void Model::loadModel(const std::string& path) {
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-		Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
+		LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
 		return;
 	}
 
@@ -106,7 +107,7 @@ std::vector<MeshTexture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureT
 		if (!skip) {
 			// if texture hasn't been loaded already, load it
 			MeshTexture texture;
-			texture.id = Texture::loadTexture(directory + "/" + std::string(str.C_Str()));
+			texture.id = Render::Texture::loadTexture(directory + "/" + std::string(str.C_Str()));
 			texture.type = typeName;
 			texture.path = str.C_Str();
 			textures.push_back(texture);

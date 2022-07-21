@@ -4,7 +4,7 @@
 
 using namespace GameEngine::Debug;
 
-void ComponentsDebug::transformComponentDebug(std::string_view id, ComponentsModule::TransformComponent* transformComp) {
+void ComponentsDebug::transformComponentDebug(std::string_view id, TransformComponent* transformComp) {
 	if (!transformComp) {
 		return;
 	}

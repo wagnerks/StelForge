@@ -7,7 +7,7 @@
 
 #include "Core.h"
 #include "InputHandler.h"
-#include "logger.h"
+#include "logsModule/logger.h"
 
 using namespace GameEngine;
 
@@ -20,7 +20,7 @@ Engine* Engine::getInstance() {
 }
 
 void Engine::terminate() {
-	Logger::LOG_INFO("Engine::Terminating");
+	LogsModule::Logger::LOG_INFO("Engine::Terminating");
 
 	delete instance;
 	instance = nullptr;

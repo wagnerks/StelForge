@@ -4,7 +4,7 @@
 
 #include "Mesh.h"
 
-using namespace GameEngine::Render;
+using namespace GameEngine::ModelModule;
 
 Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 	Mesh* res = nullptr;

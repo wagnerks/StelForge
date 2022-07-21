@@ -5,14 +5,14 @@
 #include "Mesh.h"
 #include "componentsModule/ComponentHolder.h"
 
-namespace GameEngine::Render {
+namespace GameEngine::ModelModule {
 	class Model : public ComponentsModule::ComponentHolder {
 	public:
 		Model(const char* path) {
 			loadModel(path);
 		}
 
-		void Draw(Shader* shader);
+		void Draw(Render::Shader* shader);
 	private:
 		//model data
 		std::vector<MeshTexture> textures_loaded;

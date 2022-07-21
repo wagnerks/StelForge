@@ -4,13 +4,7 @@
 #include "matrix.hpp"
 
 #include "Component.h"
-
-
-namespace GameEngine {
-	namespace CoreModule {
-		class Node;
-	}
-}
+#include "nodeModule/Node.h"
 
 namespace GameEngine::ComponentsModule {
 
@@ -43,10 +37,10 @@ namespace GameEngine::ComponentsModule {
 
 		void reloadTransform();
 		
-		void setOwnerNode(GameEngine::CoreModule::Node* node);
+		void setOwnerNode(NodeModule::Node* node);
 		void markDirty();
 	private:
-		GameEngine::CoreModule::Node* ownerNode = nullptr;
+		NodeModule::Node* ownerNode = nullptr;
 
 		bool dirty = true;
 		glm::mat4 transform = glm::mat4(1.0f);

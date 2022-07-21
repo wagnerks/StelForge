@@ -3,13 +3,13 @@
 #include <vec2.hpp>
 #include <vec3.hpp>
 #include <vector>
+
+#include "core/shader.h"
 #include "glad/glad.h"
 
 
 
-namespace GameEngine::Render {
-	class Shader;
-
+namespace GameEngine::ModelModule {
 	struct Vertex {
 		glm::vec3 Position;
 		glm::vec3 Normal;
@@ -31,7 +31,7 @@ namespace GameEngine::Render {
 
 		Mesh(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, std::vector<MeshTexture>& textures);
 
-		void Draw(Shader* shader);
+		void Draw(Render::Shader* shader);
 	private:
 		//  render data
 		unsigned int VAO = 0, VBO = 0, EBO = 0;

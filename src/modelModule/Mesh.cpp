@@ -1,15 +1,14 @@
 ﻿#include "Mesh.h"
+#include "core/shader.h"
 
-#include "shader.h"
-
-using namespace GameEngine::Render;
+using namespace GameEngine::ModelModule;
 
 Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices, std::vector<MeshTexture>& textures) :
 	vertices(std::move(vertices)), indices(std::move(indices)), textures(std::move(textures)) {
 	setupMesh();
 }
 
-void Mesh::Draw(Shader* shader) {
+void Mesh::Draw(Render::Shader* shader) {
 	unsigned int diffuseNr = 1;
     unsigned int specularNr = 1;
 	for (unsigned int i = 0; i < textures.size(); i++) {

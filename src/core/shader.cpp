@@ -7,8 +7,8 @@
 #include <sstream>
 #include <gtc/type_ptr.hpp>
 
-#include "logger.h"
 #include "ShaderController.h"
+#include "logsModule/logger.h"
 
 using namespace GameEngine;
 using namespace GameEngine::Render;
@@ -51,7 +51,7 @@ bool Shader::checkCompileErrors(unsigned int shader, std::string_view type) {
 		if (!success) {
 			glGetShaderInfoLog(shader, 1024, NULL, infoLog);
 
-			Logger::LOG_ERROR("SHADER_COMPILATION_ERROR of type: %s\n%s\n-- --------------------------------------------------- --", type.data(), infoLog);
+			LogsModule::Logger::LOG_ERROR("SHADER_COMPILATION_ERROR of type: %s\n%s\n-- --------------------------------------------------- --", type.data(), infoLog);
 		}
 	}
 	else {
@@ -59,7 +59,7 @@ bool Shader::checkCompileErrors(unsigned int shader, std::string_view type) {
 		if (!success) {
 			glGetProgramInfoLog(shader, 1024, NULL, infoLog);
 
-			Logger::LOG_ERROR("PROGRAM_LINKING_ERROR of type: %s\n%s\n-- --------------------------------------------------- --", type.data(), infoLog);
+			LogsModule::Logger::LOG_ERROR("PROGRAM_LINKING_ERROR of type: %s\n%s\n-- --------------------------------------------------- --", type.data(), infoLog);
 		}
 	}
 
@@ -126,7 +126,7 @@ std::pair<std::string, std::string> Shader::loadShaderCode(const char* vertexPat
 		fragmentCode = fShaderStream.str();
 	}
 	catch (std::ifstream::failure& e) {
-		Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s, \nvertex: %s \nfragment: %s", e.what(), vertexPath, fragmentPath);
+		LogsModule::Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s, \nvertex: %s \nfragment: %s", e.what(), vertexPath, fragmentPath);
 		return {};
 	}
 

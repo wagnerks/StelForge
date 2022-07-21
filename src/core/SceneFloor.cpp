@@ -3,14 +3,15 @@
 #include "Renderer.h"
 #include "ShaderController.h"
 #include "glm.hpp"
-#include "Mesh.h"
+
+#include "modelModule/Model.h"
 
 SceneFloor::SceneFloor() : sceneFloorShader(SHADER_CONTROLLER->loadShader("shaders/floorGrid.vs", "shaders/floorGrid.fs")){
 	sceneFloorShader->use();
 	constexpr float size = 100.f;
 	sceneFloorShader->setVec2("coordShift", {size, size});
 
-    std::vector<GameEngine::Render::Vertex> verticesVec{
+    std::vector<GameEngine::ModelModule::Vertex> verticesVec{
 		{{-size, 0.0f, -size},{0.f,1.f,0.f},{}},//near left
 		{{ size, 0.0f, -size},{0.f,1.f,0.f},{}},//near right
 		{{-size, 0.0f,  size},{0.f,1.f,0.f},{}},//far left
@@ -21,9 +22,9 @@ SceneFloor::SceneFloor() : sceneFloorShader(SHADER_CONTROLLER->loadShader("shade
 		0, 1, 2,
     	1, 2, 3
     };
-    std::vector<GameEngine::Render::MeshTexture> tex;
+    std::vector<GameEngine::ModelModule::MeshTexture> tex;
 
-    mesh = new GameEngine::Render::Mesh(verticesVec, indices, tex);
+    mesh = new GameEngine::ModelModule::Mesh(verticesVec, indices, tex);
 }
 
 void SceneFloor::draw(const glm::mat4& ProjectView) {

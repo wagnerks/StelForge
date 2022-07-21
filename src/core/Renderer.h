@@ -3,14 +3,9 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include "Model.h"
 #include "SceneFloor.h"
-
-namespace GameEngine {
-	namespace CoreModule {
-		class Node;
-	}
-}
+#include "debugModule/ComponentsDebug.h"
+#include "modelModule/Model.h"
 
 namespace GameEngine::Render {
 	class Renderer {
@@ -20,9 +15,9 @@ namespace GameEngine::Render {
 		void init();
 		void terminate() const;
 	private:
-		CoreModule::Node* sceneNode = nullptr;
-		Model* modelObj = nullptr;
-		Model* modelObj2 = nullptr;
+		NodeModule::Node* sceneNode = nullptr;
+		ModelModule::Model* modelObj = nullptr;
+		ModelModule::Model* modelObj2 = nullptr;
 		SceneFloor floor;
 	public:
 		static GLFWwindow* initGLFW();

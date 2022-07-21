@@ -2,7 +2,7 @@
 
 #include <ext/matrix_transform.hpp>
 #include "mat4x4.hpp"
-#include "core/Node.h"
+#include "nodeModule/Node.h"
 
 
 using namespace GameEngine::ComponentsModule;
@@ -122,7 +122,7 @@ glm::mat4 TransformComponent::getLocalTransform() {
     return glm::translate(glm::mat4(1.0f), pos) * rotationMatrix * glm::scale(glm::mat4(1.0f), scale);
 }
 
-void TransformComponent::setOwnerNode(GameEngine::CoreModule::Node* node) {
+void TransformComponent::setOwnerNode(NodeModule::Node* node) {
 	ownerNode = node;
 }
 

@@ -9,13 +9,11 @@
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 
-#include "MeshFactory.h"
 #include "Engine.h"
-#include "logger.h"
-#include "Node.h"
 #include "ShaderController.h"
 #include "componentsModule/TransformComponent.h"
 #include "debugModule/ComponentsDebug.h"
+#include "logsModule/logger.h"
 
 
 constexpr int glfw_context_ver_maj = 3;
@@ -109,10 +107,10 @@ void Renderer::postDraw() {
 }
 
 void Renderer::init() {
-	sceneNode = new Node("scene");
+	sceneNode = new NodeModule::Node("scene");
 	
-	auto childNode = new Node("light");
-	auto childNode2 = new Node("child2");
+	auto childNode = new NodeModule::Node("light");
+	auto childNode2 = new NodeModule::Node("child2");
 
 
 	sceneNode->addElement(childNode2);
@@ -120,10 +118,10 @@ void Renderer::init() {
 	sceneNode->addElement(childNode);
 
 
-	modelObj = new Model("model/scene.gltf");
+	modelObj = new ModelModule::Model("model/scene.gltf");
 	modelObj->getComponent<TransformComponent>()->setScale({0.003f,0.003f,0.003f});
 
-	modelObj2 = new Model("testModel/scene.gltf");
+	modelObj2 = new ModelModule::Model("testModel/scene.gltf");
 }
 
 void Renderer::terminate() const {
@@ -149,7 +147,7 @@ GLFWwindow* Renderer::initGLFW() {
 
 	auto window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", nullptr, nullptr);
 	if (window == nullptr) {
-		Logger::LOG_ERROR("Failed to create GLFW window");
+		LogsModule::Logger::LOG_ERROR("Failed to create GLFW window");
 		glfwTerminate();
 		return nullptr;
 	}
@@ -158,7 +156,7 @@ GLFWwindow* Renderer::initGLFW() {
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
 	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
-		Logger::LOG_ERROR("Failed to initialize GLAD");
+		LogsModule::Logger::LOG_ERROR("Failed to initialize GLAD");
 		glfwTerminate();
 		glfwDestroyWindow(window);
 		return nullptr;
@@ -180,6 +178,6 @@ GLFWwindow* Renderer::initGLFW() {
 	glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
-	Logger::LOG_INFO("GLFW initialized");
+	LogsModule::Logger::LOG_INFO("GLFW initialized");
 	return window;
 }
