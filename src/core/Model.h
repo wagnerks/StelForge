@@ -2,8 +2,8 @@
 #include <vector>
 #include <assimp/scene.h>
 
-#include "ComponentHolder.h"
 #include "Mesh.h"
+#include "componentsModule/ComponentHolder.h"
 
 namespace GameEngine::Render {
 	class Model : public ComponentsModule::ComponentHolder {

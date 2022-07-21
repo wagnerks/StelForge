@@ -12,19 +12,23 @@ namespace GameEngine::Render {
 		~ShaderController();
 		void init();
 		Shader* loadShader(const std::string& vertexPath, const std::string& fragmentPath);
+		void recompileShader(Shader* shader);
 		static ShaderController* getInstance();
 		static void terminate();
 
 		void initDefaultShader();
 		void useShader(unsigned int ID);
 		void useDefaultShader();
-		void deleteShader(unsigned int ID);
+		void deleteShaderGL(unsigned int ID);
 
 		Shader* defaultShader = nullptr;
-		void removeShader(const std::string& hash);
-		const std::unordered_map<std::string, Shader*>& getShaders();
+		void removeShader(Shader* shader);
+		const std::unordered_map<size_t, Shader*>& getShaders();
+		const std::unordered_map<size_t, std::pair<std::string, std::string>>& getShaderPaths();
 	private:
-		std::unordered_map<std::string, Shader*> shaders;
+		std::unordered_map<size_t, Shader*> shaders;
+		std::unordered_map<size_t, std::pair<std::string, std::string>> shaderPaths;
+		std::hash<std::string> hasher;
 
 		GLuint currentShader = 0;
 

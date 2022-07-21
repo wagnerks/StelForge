@@ -10,10 +10,6 @@ using namespace GameEngine::Render;
 ShaderController::ShaderController() = default;
 
 ShaderController::~ShaderController() {
-	for (const auto& shader : shaders | std::views::values) {
-		delete shader;
-	}
-
 	shaders.clear();
 }
 
@@ -22,15 +18,20 @@ void ShaderController::init() {
 }
 
 Shader* ShaderController::loadShader(const std::string& vertexPath, const std::string& fragmentPath) {
-	auto it = shaders.find(vertexPath + fragmentPath);
+	size_t hash = hasher(vertexPath +  fragmentPath);
+	const auto it = shaders.find(hash);
 	if (it != shaders.end()) {
 		return it->second;
 	}
+	auto shader = new Shader(vertexPath.c_str(), fragmentPath.c_str(), hash);
+	shaderPaths[hash] = {vertexPath, fragmentPath};
+	return shaders.emplace(hash, shader).first->second;
+}
 
-	auto shader = new Shader(vertexPath.c_str(), fragmentPath.c_str());
-	shaders[vertexPath + fragmentPath] = shader;
-
-	return shader;
+void ShaderController::recompileShader(Shader* shader) {
+	deleteShaderGL(shader->getID());
+	const auto code = Shader::loadShaderCode(shaderPaths[shader->hash].first.c_str(), shaderPaths[shader->hash].second.c_str());
+	shader->compileShader(code.first.c_str(), code.second.c_str());
 }
 
 ShaderController* ShaderController::getInstance() {
@@ -63,7 +64,7 @@ void ShaderController::useDefaultShader() {
 	useShader(defaultShader->getID());
 }
 
-void ShaderController::deleteShader(unsigned ID) {
+void ShaderController::deleteShaderGL(unsigned ID) {
 	if (currentShader == ID) {
 		glUseProgram(0);
 		currentShader = 0;
@@ -71,10 +72,18 @@ void ShaderController::deleteShader(unsigned ID) {
 	glDeleteProgram(ID);
 }
 
-void ShaderController::removeShader(const std::string& hash) {
-	shaders.erase(hash);
+void ShaderController::removeShader(Shader* shader) {
+	if (!shader) {
+		return;
+	}
+
+	shaders.erase(shader->hash);
 }
 
-const std::unordered_map<std::string, Shader*>& ShaderController::getShaders() {
+const std::unordered_map<size_t, Shader*>& ShaderController::getShaders() {
 	return shaders;
+}
+
+const std::unordered_map<size_t, std::pair<std::string, std::string>>& ShaderController::getShaderPaths() {
+	return shaderPaths;
 }

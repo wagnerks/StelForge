@@ -14,32 +14,9 @@ using namespace GameEngine;
 using namespace GameEngine::Render;
 
 
-Shader::Shader(const char* vertexPath, const char* fragmentPath) : path(vertexPath + std::string(fragmentPath)) {
-	std::ifstream vShaderFile;
-	std::ifstream fShaderFile;
-	
-	vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-	fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-	try {
-		vShaderFile.open(vertexPath);
-		fShaderFile.open(fragmentPath);
-		std::stringstream vShaderStream, fShaderStream;
-
-		vShaderStream << vShaderFile.rdbuf();
-		fShaderStream << fShaderFile.rdbuf();
-
-		vShaderFile.close();
-		fShaderFile.close();
-
-		vertexCode = vShaderStream.str();
-		fragmentCode = fShaderStream.str();
-	}
-	catch (std::ifstream::failure& e) {
-		Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s", e.what());
-		return;
-	}
-
-	compileShader();
+Shader::Shader(const char* vertexPath, const char* fragmentPath, size_t hash) : hash(hash) {
+	const auto code = loadShaderCode(vertexPath, fragmentPath);
+	compileShader(code.first.c_str(), code.second.c_str());
 }
 
 unsigned Shader::getID() const {
@@ -95,18 +72,11 @@ int Shader::getUniformLocation(const char* name) {
 		return found->second;
 	}
 
-	const auto loc = glGetUniformLocation(ID, name);
-	cachedUniforms[name] = loc;
-
-	return loc;
+	return cachedUniforms.insert({name, glGetUniformLocation(ID, name)}).first->second;
 }
 
-bool Shader::compileShader() {
-	ShaderController::getInstance()->deleteShader(getID());
+bool Shader::compileShader(const char* vShaderCode, const char* fShaderCode) {
 	cachedUniforms.clear();
-
-	const auto vShaderCode = vertexCode.c_str();
-	const auto fShaderCode = fragmentCode.c_str();
 
 	const auto vertex = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertex, 1, &vShaderCode, nullptr);
@@ -130,4 +100,35 @@ bool Shader::compileShader() {
 	glDeleteShader(fragment);
 
 	return success;
+}
+
+std::pair<std::string, std::string> Shader::loadShaderCode(const char* vertexPath, const char* fragmentPath) {
+	std::ifstream vShaderFile;
+	std::ifstream fShaderFile;
+
+	std::string vertexCode;
+	std::string fragmentCode;
+
+	vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+	fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+	try {
+		vShaderFile.open(vertexPath);
+		fShaderFile.open(fragmentPath);
+		std::stringstream vShaderStream, fShaderStream;
+
+		vShaderStream << vShaderFile.rdbuf();
+		fShaderStream << fShaderFile.rdbuf();
+
+		vShaderFile.close();
+		fShaderFile.close();
+
+		vertexCode = vShaderStream.str();
+		fragmentCode = fShaderStream.str();
+	}
+	catch (std::ifstream::failure& e) {
+		Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s, \nvertex: %s \nfragment: %s", e.what(), vertexPath, fragmentPath);
+		return {};
+	}
+
+	return {vertexCode, fragmentCode};
 }

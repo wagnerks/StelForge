@@ -2,7 +2,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ComponentHolder.h"
+#include "componentsModule/ComponentHolder.h"
 
 namespace GameEngine::CoreModule {
 

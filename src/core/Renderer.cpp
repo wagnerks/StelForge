@@ -14,6 +14,7 @@
 #include "logger.h"
 #include "Node.h"
 #include "ShaderController.h"
+#include "componentsModule/TransformComponent.h"
 #include "debugModule/ComponentsDebug.h"
 
 
@@ -37,10 +38,10 @@ void Renderer::draw() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); 
 
 
-	Debug::ComponentsDebug::transformComponentDebug(sceneNode->getId(), sceneNode->getComponent<ComponentsModule::TransformComponent>());
+	Debug::ComponentsDebug::transformComponentDebug(sceneNode->getId(), sceneNode->getComponent<TransformComponent>());
 
 	for (auto node : sceneNode->getAllNodes()) {
-		Debug::ComponentsDebug::transformComponentDebug(node->getId(), node->getComponent<ComponentsModule::TransformComponent>());
+		Debug::ComponentsDebug::transformComponentDebug(node->getId(), node->getComponent<TransformComponent>());
 	}
 
 	// create transformations
@@ -56,8 +57,8 @@ void Renderer::draw() {
 	floor.draw(projection * view);
 
 
-	auto modelTransform = modelObj->getComponent<ComponentsModule::TransformComponent>();
-	auto model2Transform = modelObj2->getComponent<ComponentsModule::TransformComponent>();
+	auto modelTransform = modelObj->getComponent<TransformComponent>();
+	auto model2Transform = modelObj2->getComponent<TransformComponent>();
 	
 	Debug::ComponentsDebug::transformComponentDebug("model", modelTransform);
 	Debug::ComponentsDebug::transformComponentDebug("model2", model2Transform);
@@ -70,7 +71,7 @@ void Renderer::draw() {
 	SHADER_CONTROLLER->defaultShader->setMat4("view", view);
 	SHADER_CONTROLLER->defaultShader->setMat4("projection", projection);
 
-	SHADER_CONTROLLER->defaultShader->setVec3("lightPos", sceneNode->getElement("light")->getComponent<ComponentsModule::TransformComponent>()->getPos());
+	SHADER_CONTROLLER->defaultShader->setVec3("lightPos", sceneNode->getElement("light")->getComponent<TransformComponent>()->getPos());
 	SHADER_CONTROLLER->defaultShader->setVec3("viewPos", Engine::getInstance()->getCamera().Position);
 	SHADER_CONTROLLER->defaultShader->setVec3("objectColor", {1.0f, 0.5f, 0.31f });
 	SHADER_CONTROLLER->defaultShader->setVec3("lightColor", {1.0f, 1.0f, 1.0f});
@@ -120,7 +121,7 @@ void Renderer::init() {
 
 
 	modelObj = new Model("model/scene.gltf");
-	modelObj->getComponent<ComponentsModule::TransformComponent>()->setScale({0.003f,0.003f,0.003f});
+	modelObj->getComponent<TransformComponent>()->setScale({0.003f,0.003f,0.003f});
 
 	modelObj2 = new Model("testModel/scene.gltf");
 }
