@@ -1,20 +1,13 @@
 ﻿#pragma once
 
 #include "Camera.h"
+#include "Core.h"
 #include "InputHandler.h"
-#include "Renderer.h"
+
 #include "debugModule/DebugMenu.h"
 
 
 namespace GameEngine {
-	namespace Render {
-		class Renderer;
-	}
-
-	namespace CoreModule {
-		class Core;
-	}
-
 	class Engine {
 	public:
 		static Engine* getInstance();
@@ -47,7 +40,7 @@ namespace GameEngine {
 		bool alive = true;
 
 		CoreModule::Core* core = nullptr;
-		Render::Renderer* render = nullptr;
+		RenderModule::Renderer* render = nullptr;
 
 		GLFWwindow* window = nullptr;
 

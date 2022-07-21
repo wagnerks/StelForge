@@ -2,8 +2,6 @@
 #include <fwd.hpp>
 
 #include "modelModule/Mesh.h"
-#include "shader.h"
-
 
 class SceneFloor {
 public:
@@ -12,5 +10,5 @@ public:
 	~SceneFloor();
 private:
 	GameEngine::ModelModule::Mesh* mesh = nullptr;
-	GameEngine::Render::Shader* sceneFloorShader = nullptr;
+	GameEngine::ShaderModule::Shader* sceneFloorShader = nullptr;
 };

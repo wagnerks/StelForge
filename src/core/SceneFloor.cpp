@@ -1,10 +1,9 @@
 ﻿#include "SceneFloor.h"
 
-#include "Renderer.h"
-#include "ShaderController.h"
 #include "glm.hpp"
 
 #include "modelModule/Model.h"
+#include "shaderModule/ShaderController.h"
 
 SceneFloor::SceneFloor() : sceneFloorShader(SHADER_CONTROLLER->loadShader("shaders/floorGrid.vs", "shaders/floorGrid.fs")){
 	sceneFloorShader->use();

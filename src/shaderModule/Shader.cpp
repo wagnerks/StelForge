@@ -1,4 +1,4 @@
-﻿#include "shader.h"
+﻿#include "Shader.h"
 
 #include <filesystem>
 #include <glad/glad.h>
@@ -11,7 +11,7 @@
 #include "logsModule/logger.h"
 
 using namespace GameEngine;
-using namespace GameEngine::Render;
+using namespace GameEngine::ShaderModule;
 
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath, size_t hash) : hash(hash) {

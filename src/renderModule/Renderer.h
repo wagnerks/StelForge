@@ -3,11 +3,11 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include "SceneFloor.h"
+#include "core/SceneFloor.h"
 #include "debugModule/ComponentsDebug.h"
 #include "modelModule/Model.h"
 
-namespace GameEngine::Render {
+namespace GameEngine::RenderModule {
 	class Renderer {
 	public:
 		void draw();

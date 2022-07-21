@@ -1,5 +1,5 @@
 ﻿#include "Mesh.h"
-#include "core/shader.h"
+
 
 using namespace GameEngine::ModelModule;
 
@@ -8,7 +8,7 @@ Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices, std::v
 	setupMesh();
 }
 
-void Mesh::Draw(Render::Shader* shader) {
+void Mesh::Draw(ShaderModule::Shader* shader) {
 	unsigned int diffuseNr = 1;
     unsigned int specularNr = 1;
 	for (unsigned int i = 0; i < textures.size(); i++) {

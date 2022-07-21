@@ -12,7 +12,7 @@ namespace GameEngine::ModelModule {
 			loadModel(path);
 		}
 
-		void Draw(Render::Shader* shader);
+		void Draw(ShaderModule::Shader* shader);
 	private:
 		//model data
 		std::vector<MeshTexture> textures_loaded;

@@ -3,17 +3,15 @@
 #include <deque>
 #include <iostream>
 
-#include "shader.h"
-
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 
-#include "Engine.h"
-#include "ShaderController.h"
 #include "componentsModule/TransformComponent.h"
+#include "core/Engine.h"
 #include "debugModule/ComponentsDebug.h"
 #include "logsModule/logger.h"
+#include "shaderModule/ShaderController.h"
 
 
 constexpr int glfw_context_ver_maj = 3;
@@ -23,7 +21,7 @@ int SCR_WIDTH = 1920;
 int SCR_HEIGHT = 1080;
 
 using namespace GameEngine;
-using namespace GameEngine::Render;
+using namespace GameEngine::RenderModule;
 using namespace GameEngine::CoreModule;
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height) {

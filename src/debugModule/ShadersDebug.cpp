@@ -3,9 +3,8 @@
 #include <string>
 
 #include "imgui.h"
-#include "core/shader.h"
-#include "core/ShaderController.h"
-#include "misc/cpp/imgui_stdlib.h"
+
+#include "shaderModule/ShaderController.h"
 
 using namespace GameEngine::Debug;
 

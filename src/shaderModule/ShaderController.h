@@ -1,11 +1,11 @@
 ﻿#pragma once
 
-#include "Renderer.h"
-#include "shader.h"
+#include "renderModule/Renderer.h"
+#include "Shader.h"
 
-#define SHADER_CONTROLLER GameEngine::Render::ShaderController::getInstance()
+#define SHADER_CONTROLLER GameEngine::ShaderModule::ShaderController::getInstance()
 
-namespace GameEngine::Render {
+namespace GameEngine::ShaderModule {
 	class ShaderController {
 	public:
 		ShaderController();

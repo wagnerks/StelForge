@@ -1,6 +1,5 @@
 ﻿#include "Engine.h"
 
-#include "Renderer.h"
 #include "debugModule/imguiDecorator.h"
 #include <chrono>
 #include <thread>
@@ -27,7 +26,7 @@ void Engine::terminate() {
 }
 
 void Engine::init() {
-	window = Render::Renderer::initGLFW();
+	window = RenderModule::Renderer::initGLFW();
 	if (!window) {
 		alive = false;
 		return;
@@ -35,7 +34,7 @@ void Engine::init() {
 
 	core = new CoreModule::Core();
 	core->init();
-	render = new Render::Renderer();
+	render = new RenderModule::Renderer();
 	
 	render->init();
 

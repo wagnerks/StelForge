@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "Renderer.h"
+#include "renderModule/Renderer.h"
 
 namespace GameEngine::CoreModule {
 	class InputHandler {

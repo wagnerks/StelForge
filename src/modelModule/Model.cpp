@@ -10,7 +10,7 @@
 
 using namespace GameEngine::ModelModule;
 
-void Model::Draw(Render::Shader* shader) {
+void Model::Draw(ShaderModule::Shader* shader) {
     for(auto& mesh : meshes) {
 		mesh.Draw(shader);
 	}

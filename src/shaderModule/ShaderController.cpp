@@ -2,10 +2,10 @@
 
 #include <ranges>
 
-#include "shader.h"
+#include "Shader.h"
 
 using namespace GameEngine;
-using namespace GameEngine::Render;
+using namespace GameEngine::ShaderModule;
 
 ShaderController::ShaderController() = default;
 

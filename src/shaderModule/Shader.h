@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 
-namespace GameEngine::Render {
+namespace GameEngine::ShaderModule {
 	class Shader {
 		friend class ShaderController;
 	public:
