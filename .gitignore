@@ -2,5 +2,5 @@
 .vs
 /*.dll
 *.pdb
-out
+build
 bin/imgui.ini
