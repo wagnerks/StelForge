@@ -2,6 +2,8 @@
 
 #include <REND.h>
 
+using namespace GameEngine::LogsModule;
+
 void Logger::logMessage(const eLogLevel level, const char* msg) {
 	switch (level) {
 	case eLogLevel::WARNING:

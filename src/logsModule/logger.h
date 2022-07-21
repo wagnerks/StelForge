@@ -1,0 +1,47 @@
+﻿#pragma once
+
+namespace GameEngine::LogsModule {
+	enum class eLogLevel {
+		INFO,
+		WARNING,
+		ERROR_
+	};
+
+	class Logger {
+		inline static char msgBuf[2048];
+
+		template <typename... Args>
+		static const char* format_internal(const char* msg,const Args&... args) {
+			sprintf_s(msgBuf, 2048, msg, args...);
+			return msgBuf;
+		}
+
+		template <typename... Args>
+		static void log(eLogLevel level, const char* msg,const Args&... args) {
+			constexpr size_t count = sizeof...(args);
+			if (count > 0) {
+				msg = format_internal(msg, args...);
+			}
+			
+			logMessage(level, msg);
+		}
+
+		static void logMessage(eLogLevel level, const char* msg);
+
+	public:
+		template <typename... Args>
+		static void LOG_INFO(const char* msg,const Args&... args) {
+			log(eLogLevel::INFO, msg, args...);
+		}
+
+		template <typename... Args>
+		static void LOG_ERROR(const char* msg,const Args&... args) {
+			log(eLogLevel::ERROR_, msg, args...);
+		}
+
+		template <typename... Args>
+		static void LOG_WARNING(const char* msg,const Args&... args) {
+			log(eLogLevel::WARNING, msg, args...);
+		}
+	};
+}

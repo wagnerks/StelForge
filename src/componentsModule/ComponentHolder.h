@@ -18,10 +18,13 @@ namespace GameEngine::ComponentsModule {
 	    }
 
 	    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Component, T>>>
-	    T* getComponent() {
+	    T* getComponent(bool add = true) {
 	        auto it = components.find(std::type_index(typeid(T)));
 	        if (it == components.end()) {
-	        	return addComponent<T>();
+				if (add) {
+					return addComponent<T>();
+				}
+	        	return nullptr;
 			}
 	        return static_cast<T*>(it->second);
 	    }

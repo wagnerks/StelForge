@@ -1,8 +1,8 @@
 ﻿#include "texture.h"
 
-#include "logger.h"
 #include "stb_image.h"
 #include "glad/glad.h"
+#include "logsModule/logger.h"
 
 using namespace GameEngine;
 using namespace GameEngine::Render;
@@ -79,7 +79,7 @@ unsigned char* Texture::load(const std::string& path) {
 	//glGenerateMipmap(GL_TEXTURE_2D);
 	
 	if (!data) {
-		Logger::LOG_WARNING("Can't load texture %s", path.c_str());
+		LogsModule::Logger::LOG_WARNING("Can't load texture %s", path.c_str());
 	}
 	
 	return data;
