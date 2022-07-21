@@ -15,31 +15,17 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 	}
 
 	ImGui::Begin("shaders", &opened);
+	auto paths = SHADER_CONTROLLER->getShaderPaths();
+	for (auto& [hash, shader] : SHADER_CONTROLLER->getShaders()) {
 
-	for (auto& [path, shader] : SHADER_CONTROLLER->getShaders()) {
-		auto shaderIdString = std::to_string(shader->getID()) + path;
+		auto shaderIdString = std::to_string(shader->getID());
 		if (ImGui::TreeNode(shaderIdString.c_str())) {
-			auto vertexId = shaderIdString + ": Vertex##" + shaderIdString;
-			auto fragmentId = shaderIdString + ": Fragment##" + shaderIdString;
-			auto btnId = "compile##" + std::to_string(shader->getID());
-
-			ImGui::Begin(vertexId.c_str());
-			ImGui::InputTextMultiline(vertexId.c_str(), &shader->vertexCode, ImGui::GetWindowSize());
+			ImGui::Text("vertexPath: %s", paths[hash].first.c_str());
+			ImGui::Text("vertexPath: %s", paths[hash].second.c_str());
+			auto btnId = "reCompile##" + std::to_string(shader->getID());
 			if(ImGui::Button(btnId.c_str())) {
-				shader->compileShader();
+				SHADER_CONTROLLER->recompileShader(shader);
 			}
-			ImGui::End();
-
-			ImGui::Begin(fragmentId.c_str());
-			ImGui::InputTextMultiline(fragmentId.c_str(), &shader->fragmentCode, ImGui::GetWindowSize());
-			if(ImGui::Button(btnId.c_str())) {
-				shader->compileShader();
-			}
-			ImGui::End();
-
-			
-			
-
 			ImGui::TreePop();
 		}
 	}

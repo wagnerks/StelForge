@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <string>
 
-#include "core/TransformComponent.h"
+#include "componentsModule/TransformComponent.h"
 
 
 namespace GameEngine {

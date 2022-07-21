@@ -1,7 +1,6 @@
 ﻿#include "ComponentsDebug.h"
 
 #include "imgui.h"
-#include "core/TransformComponent.h"
 
 using namespace GameEngine::Debug;
 
