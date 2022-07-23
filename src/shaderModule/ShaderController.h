@@ -11,8 +11,9 @@ namespace GameEngine::ShaderModule {
 		ShaderController();
 		~ShaderController();
 		void init();
-		Shader* loadShader(const std::string& vertexPath, const std::string& fragmentPath);
-		void recompileShader(Shader* shader);
+		ShaderBase* loadVertexFragmentShader(const std::string& vertexPath, const std::string& fragmentPath);
+		ShaderBase* loadGeometryShader(const std::string& vertexPath, const std::string& fragmentPath, const std::string& geometryPath);
+		void recompileShader(ShaderBase* shader);
 		static ShaderController* getInstance();
 		static void terminate();
 
@@ -21,13 +22,11 @@ namespace GameEngine::ShaderModule {
 		void useDefaultShader();
 		void deleteShaderGL(unsigned int ID);
 
-		Shader* defaultShader = nullptr;
-		void removeShader(Shader* shader);
-		const std::unordered_map<size_t, Shader*>& getShaders();
-		const std::unordered_map<size_t, std::pair<std::string, std::string>>& getShaderPaths();
+		ShaderBase* defaultShader = nullptr;
+		void removeShader(ShaderBase* shader);
+		const std::unordered_map<size_t, ShaderBase*>& getShaders();
 	private:
-		std::unordered_map<size_t, Shader*> shaders;
-		std::unordered_map<size_t, std::pair<std::string, std::string>> shaderPaths;
+		std::unordered_map<size_t, ShaderBase*> shaders;
 		std::hash<std::string> hasher;
 
 		GLuint currentShader = 0;

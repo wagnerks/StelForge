@@ -2,6 +2,7 @@
 
 #include <ranges>
 
+#include "GeometryShader.h"
 #include "Shader.h"
 
 using namespace GameEngine;
@@ -17,21 +18,31 @@ void ShaderController::init() {
 	initDefaultShader();
 }
 
-Shader* ShaderController::loadShader(const std::string& vertexPath, const std::string& fragmentPath) {
+ShaderBase* ShaderController::loadVertexFragmentShader(const std::string& vertexPath, const std::string& fragmentPath) {
 	size_t hash = hasher(vertexPath +  fragmentPath);
 	const auto it = shaders.find(hash);
 	if (it != shaders.end()) {
 		return it->second;
 	}
 	auto shader = new Shader(vertexPath.c_str(), fragmentPath.c_str(), hash);
-	shaderPaths[hash] = {vertexPath, fragmentPath};
+	shader->compile();
 	return shaders.emplace(hash, shader).first->second;
 }
 
-void ShaderController::recompileShader(Shader* shader) {
+ShaderBase* ShaderController::loadGeometryShader(const std::string& vertexPath, const std::string& fragmentPath, const std::string& geometryPath) {
+	size_t hash = hasher(geometryPath);
+	const auto it = shaders.find(hash);
+	if (it != shaders.end()) {
+		return it->second;
+	}
+	auto shader = new GeometryShader(vertexPath.c_str(), fragmentPath.c_str(), geometryPath.c_str(), hash);
+	shader->compile();
+	return shaders.emplace(hash, shader).first->second;
+}
+
+void ShaderController::recompileShader(ShaderBase* shader) {
 	deleteShaderGL(shader->getID());
-	const auto code = Shader::loadShaderCode(shaderPaths[shader->hash].first.c_str(), shaderPaths[shader->hash].second.c_str());
-	shader->compileShader(code.first.c_str(), code.second.c_str());
+	shader->compile();
 }
 
 ShaderController* ShaderController::getInstance() {
@@ -48,7 +59,7 @@ void ShaderController::terminate() {
 }
 
 void ShaderController::initDefaultShader() {
-	defaultShader = loadShader("shaders/main.vs", "shaders/main.fs");
+	defaultShader = loadVertexFragmentShader("shaders/main.vs", "shaders/main.fs");
 	useDefaultShader();
 }
 
@@ -72,7 +83,7 @@ void ShaderController::deleteShaderGL(unsigned ID) {
 	glDeleteProgram(ID);
 }
 
-void ShaderController::removeShader(Shader* shader) {
+void ShaderController::removeShader(ShaderBase* shader) {
 	if (!shader) {
 		return;
 	}
@@ -80,10 +91,6 @@ void ShaderController::removeShader(Shader* shader) {
 	shaders.erase(shader->hash);
 }
 
-const std::unordered_map<size_t, Shader*>& ShaderController::getShaders() {
+const std::unordered_map<size_t, ShaderBase*>& ShaderController::getShaders() {
 	return shaders;
-}
-
-const std::unordered_map<size_t, std::pair<std::string, std::string>>& ShaderController::getShaderPaths() {
-	return shaderPaths;
 }

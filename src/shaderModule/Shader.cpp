@@ -14,48 +14,53 @@ using namespace GameEngine;
 using namespace GameEngine::ShaderModule;
 
 
-Shader::Shader(const char* vertexPath, const char* fragmentPath, size_t hash) : hash(hash) {
-	const auto code = loadShaderCode(vertexPath, fragmentPath);
-	compileShader(code.first.c_str(), code.second.c_str());
+Shader::Shader(const char* vertexPath, const char* fragmentPath, size_t hash) : ShaderBase(hash), vertexPath(vertexPath), fragmentPath(fragmentPath) {
 }
 
-unsigned Shader::getID() const {
+unsigned ShaderBase::getID() const {
 	return ID;
 }
 
-void Shader::use() const {
+void ShaderBase::use() const {
 	ShaderController::getInstance()->useShader(getID());
 }
 
-void Shader::setInt(const char* name, int val) {
+void ShaderBase::setInt(const char* name, int val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
 	glUniform1i(getUniformLocation(name), val);
 }
 
-void Shader::setMat4(const char* name, const glm::mat4& val) {
+void ShaderBase::setMat4(const char* name, const glm::mat4& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
 	glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(val));
 }
 
-void Shader::setVec2(const char* name, const glm::vec2& val) {
+void ShaderBase::setVec2(const char* name, const glm::vec2& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
 	glUniform2fv(getUniformLocation(name), 1, glm::value_ptr(val));
 }
 
-void Shader::setVec3(const char* name, const glm::vec3& val) {
+void ShaderBase::setVec3(const char* name, const glm::vec3& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
 	glUniform3fv(getUniformLocation(name), 1, glm::value_ptr(val));
 }
 
-bool Shader::checkCompileErrors(unsigned int shader, std::string_view type) {
+void ShaderBase::setFloat(const char* name, float val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniform1f(getUniformLocation(name), val);
+}
+
+bool ShaderBase::checkCompileErrors(unsigned int shader, std::string_view type) {
 	int success;
 	char infoLog[1024];
 	if (type != "PROGRAM") {
@@ -78,7 +83,7 @@ bool Shader::checkCompileErrors(unsigned int shader, std::string_view type) {
 	return success;
 }
 
-int Shader::getUniformLocation(const char* name) {
+int ShaderBase::getUniformLocation(const char* name) {
 	const auto found = cachedUniforms.find(name);
 	if (found != cachedUniforms.end()) {
 		return found->second;
@@ -87,60 +92,60 @@ int Shader::getUniformLocation(const char* name) {
 	return cachedUniforms.insert({name, glGetUniformLocation(ID, name)}).first->second;
 }
 
-bool Shader::compileShader(const char* vShaderCode, const char* fShaderCode) {
+bool Shader::compile() {
 	cachedUniforms.clear();
-
-	const auto vertex = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertex, 1, &vShaderCode, nullptr);
-	glCompileShader(vertex);
-
-	auto success = checkCompileErrors(vertex, "VERTEX");
-
-	const auto fragment = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragment, 1, &fShaderCode, nullptr);
-	glCompileShader(fragment);
-	success = success || checkCompileErrors(fragment, "FRAGMENT");
-
 	ID = glCreateProgram();
-	glAttachShader(ID, vertex);
-	glAttachShader(ID, fragment);
+
+	auto success = compileShader(loadShaderCode(vertexPath.c_str()).c_str(), GL_VERTEX_SHADER);
+	success = compileShader(loadShaderCode(fragmentPath.c_str()).c_str(), GL_FRAGMENT_SHADER) || success;
+	return success;
+}
+
+std::string_view Shader::getVertexPath() {
+	return vertexPath;
+}
+
+std::string_view Shader::getFragmentPath() {
+	return fragmentPath;
+}
+
+bool ShaderBase::compileShader(const char* shaderCode, unsigned type) {
+	const auto shader = glCreateShader(type);
+	glShaderSource(shader, 1, &shaderCode, nullptr);
+	glCompileShader(shader);
+
+	auto success = checkCompileErrors(shader, "VERTEX");
+
+	glAttachShader(ID, shader);
 
 	glLinkProgram(ID);
-	success = success || checkCompileErrors(ID, "PROGRAM");
+	success = checkCompileErrors(ID, "PROGRAM") && success;
 
-	glDeleteShader(vertex);
-	glDeleteShader(fragment);
+	glDeleteShader(shader);
 
 	return success;
 }
 
-std::pair<std::string, std::string> Shader::loadShaderCode(const char* vertexPath, const char* fragmentPath) {
-	std::ifstream vShaderFile;
-	std::ifstream fShaderFile;
+std::string ShaderBase::loadShaderCode(const char* path) {
+	std::ifstream shaderFile;
 
-	std::string vertexCode;
-	std::string fragmentCode;
+	std::string shaderCode;
 
-	vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-	fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+	shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 	try {
-		vShaderFile.open(vertexPath);
-		fShaderFile.open(fragmentPath);
-		std::stringstream vShaderStream, fShaderStream;
+		shaderFile.open(path);
+		std::stringstream shaderStream;
 
-		vShaderStream << vShaderFile.rdbuf();
-		fShaderStream << fShaderFile.rdbuf();
+		shaderStream << shaderFile.rdbuf();
 
-		vShaderFile.close();
-		fShaderFile.close();
+		shaderFile.close();
 
-		vertexCode = vShaderStream.str();
-		fragmentCode = fShaderStream.str();
+		shaderCode = shaderStream.str();
 	}
 	catch (std::ifstream::failure& e) {
-		LogsModule::Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s, \nvertex: %s \nfragment: %s", e.what(), vertexPath, fragmentPath);
+		LogsModule::Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s, \npath: %s", e.what(), path);
 		return {};
 	}
 
-	return {vertexCode, fragmentCode};
+	return shaderCode;
 }
