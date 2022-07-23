@@ -36,6 +36,6 @@ namespace GameEngine::ShaderModule {
 		bool checkCompileErrors(unsigned int shader, std::string_view type);
 		int getUniformLocation(const char* name);
 		
-		std::unordered_map<const char*, int> cachedUniforms;
+		std::unordered_map<std::string, int> cachedUniforms;
 	};
 }

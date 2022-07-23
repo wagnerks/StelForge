@@ -28,18 +28,30 @@ void Shader::use() const {
 }
 
 void Shader::setInt(const char* name, int val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
 	glUniform1i(getUniformLocation(name), val);
 }
 
 void Shader::setMat4(const char* name, const glm::mat4& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
 	glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(val));
 }
 
 void Shader::setVec2(const char* name, const glm::vec2& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
 	glUniform2fv(getUniformLocation(name), 1, glm::value_ptr(val));
 }
 
 void Shader::setVec3(const char* name, const glm::vec3& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
 	glUniform3fv(getUniformLocation(name), 1, glm::value_ptr(val));
 }
 
