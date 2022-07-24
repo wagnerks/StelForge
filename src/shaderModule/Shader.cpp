@@ -60,6 +60,13 @@ void ShaderBase::setFloat(const char* name, float val) {
 	glUniform1f(getUniformLocation(name), val);
 }
 
+void ShaderBase::setUniformBlockIdx(const char* name, unsigned val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniformBlockBinding(getUniformLocation(name), val, 0);
+}
+
 bool ShaderBase::checkCompileErrors(unsigned int shader, std::string_view type) {
 	int success;
 	char infoLog[1024];

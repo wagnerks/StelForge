@@ -19,6 +19,7 @@ namespace GameEngine::ShaderModule {
 		void setVec2(const char* name, const glm::vec2& val);
 		void setVec3(const char* name, const glm::vec3& val);
 		void setFloat(const char* name, float val);
+		void setUniformBlockIdx(const char* name, unsigned val);
 
 		ShaderBase(const ShaderBase& other) = delete;
 		ShaderBase(ShaderBase&& other) noexcept = delete;
