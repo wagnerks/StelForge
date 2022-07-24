@@ -119,8 +119,8 @@ void Utils::renderCube() {
 }
 
 void Utils::renderXYZ(float length) {
-	static unsigned cubeVAO = 0;
-	if (cubeVAO == 0) {
+	static unsigned linesVAO = 0;
+	if (linesVAO == 0) {
 		float vertices[] = {
 			0.f,0.f,0.f,
 			0.f,0.f,length,
@@ -134,16 +134,16 @@ void Utils::renderXYZ(float length) {
 
 		// setup plane VAO
 		unsigned cubeVBO;
-		glGenVertexArrays(1, &cubeVAO);
+		glGenVertexArrays(1, &linesVAO);
 		glGenBuffers(1, &cubeVBO);
-		glBindVertexArray(cubeVAO);
+		glBindVertexArray(linesVAO);
 		glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
 
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 	}
-	glBindVertexArray(cubeVAO);
+	glBindVertexArray(linesVAO);
 	glDrawArrays(GL_LINES, 0, 6);
 	RenderModule::Renderer::drawCallsCount++;
 	RenderModule::Renderer::drawVerticesCount += 6;
