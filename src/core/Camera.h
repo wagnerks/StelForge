@@ -56,7 +56,7 @@ public:
 	// processes input received from a mouse scroll-wheel event. Only requires input on the vertical wheel-axis
 	void ProcessMouseScroll(float yoffset);
 
-	glm::mat4 getProjectionsMatrix();
+	const glm::mat4& getProjectionsMatrix() const;
 
 	bool processMouse = false;
 	~Camera(){};

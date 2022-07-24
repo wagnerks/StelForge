@@ -9,6 +9,9 @@ Camera::Camera(glm::vec3 position, glm::vec3 up, float yaw, float pitch): Front(
 	Yaw = yaw;
 	Pitch = pitch;
 	updateCameraVectors();
+
+	auto eng = GameEngine::Engine::getInstance();
+	projection = glm::perspective(glm::radians(Zoom), static_cast<float>(eng->getRenderer()->SCR_WIDTH) / static_cast<float>(eng->getRenderer()->SCR_HEIGHT), 0.1f, 100.0f);
 }
 
 Camera::Camera(float posX, float posY, float posZ, float upX, float upY, float upZ, float yaw, float pitch):
@@ -18,6 +21,10 @@ Camera::Camera(float posX, float posY, float posZ, float upX, float upY, float u
 	Yaw = yaw;
 	Pitch = pitch;
 	updateCameraVectors();
+
+	auto eng = GameEngine::Engine::getInstance();
+	projection = glm::perspective(glm::radians(Zoom), static_cast<float>(eng->getRenderer()->SCR_WIDTH) / static_cast<float>(eng->getRenderer()->SCR_HEIGHT), 0.1f, 100.0f);
+
 }
 
 glm::mat4 Camera::GetViewMatrix() {
@@ -67,9 +74,6 @@ void Camera::ProcessMouseScroll(float yoffset) {
 	if (Zoom > 45.0f)
 		Zoom = 45.0f;
 }
-glm::mat4 Camera::getProjectionsMatrix() {
-	auto eng = GameEngine::Engine::getInstance();
-	projection = glm::perspective(glm::radians(Zoom), static_cast<float>(eng->getRenderer()->SCR_WIDTH) / static_cast<float>(eng->getRenderer()->SCR_HEIGHT), 0.1f, 100.0f);
-
+const glm::mat4& Camera::getProjectionsMatrix() const {
 	return projection;
 }
