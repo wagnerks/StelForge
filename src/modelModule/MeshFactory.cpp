@@ -15,12 +15,13 @@ Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 	switch(type) {
 	case eDrawObjectType::CUBE:
 		vertices = {
-			{{-0.5f, -0.5f, -0.5f}, {}, {0.0f, 0.0f}},
-			{{0.5f, -0.5f, -0.5f}, {}, {1.0f, 0.0f}},
-			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}},
-			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}},
-			{{-0.5f, 0.5f, -0.5f}, {}, {0.0f, 1.0f}},
-			{{-0.5f, -0.5f, -0.5f}, {}, {0.0f, 0.0f}},
+			//back
+			{{-0.5f, -0.5f, -0.5f}, {}, {0.0f, 0.0f}}, //left btm
+			{{-0.5f, 0.5f, -0.5f}, {}, {0.0f, 1.0f}}, //left top
+			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}}, //right top
+			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}}, // right top
+			{{0.5f, -0.5f, -0.5f}, {}, {1.0f, 0.0f}}, //right btm
+			{{-0.5f, -0.5f, -0.5f}, {}, {0.0f, 0.0f}}, //left btm
 
 			{{-0.5f, -0.5f, 0.5f}, {}, {0.0f, 0.0f}},
 			{{0.5f, -0.5f, 0.5f}, {}, {1.0f, 0.0f}},
@@ -29,6 +30,7 @@ Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 			{{-0.5f, 0.5f, 0.5f}, {}, {0.0f, 1.0f}},
 			{{-0.5f, -0.5f, 0.5f}, {}, {0.0f, 0.0f}},
 
+			
 			{{-0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}},
 			{{-0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}},
 			{{-0.5f, -0.5f, -0.5f}, {}, {0.0f, 1.0f}},
@@ -36,12 +38,15 @@ Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 			{{-0.5f, -0.5f, 0.5f}, {}, {0.0f, 0.0f}},
 			{{-0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}},
 
-			{{0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}},
+			//right
 			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}},
-			{{0.5f, -0.5f, -0.5f}, {}, {0.0f, 1.0f}},
-			{{0.5f, -0.5f, -0.5f}, {}, {0.0f, 1.0f}},
-			{{0.5f, -0.5f, 0.5f}, {}, {0.0f, 0.0f}},
 			{{0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}},
+			{{0.5f, -0.5f, -0.5f}, {}, {0.0f, 1.0f}},
+			{{0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}},
+			{{0.5f, -0.5f, 0.5f}, {}, {0.0f, 0.0f}},
+			{{0.5f, -0.5f, -0.5f}, {}, {0.0f, 1.0f}},
+			
+			
 
 			{{-0.5f, -0.5f, -0.5f}, {}, {0.0f, 1.0f}},
 			{{0.5f, -0.5f, -0.5f}, {}, {1.0f, 1.0f}},
@@ -50,12 +55,14 @@ Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 			{{-0.5f, -0.5f, 0.5f}, {}, {0.0f, 0.0f}},
 			{{-0.5f, -0.5f, -0.5f}, {}, {0.0f, 1.0f}},
 
-			{{-0.5f, 0.5f, -0.5f}, {}, {0.0f, 1.0f}},
-			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}},
-			{{0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}},
-			{{0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}},
-			{{-0.5f, 0.5f, 0.5f}, {}, {0.0f, 0.0f}},
-			{{-0.5f, 0.5f, -0.5f}, {}, {0.0f, 1.0f}}
+			//top
+			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}}, //far right
+			{{-0.5f, 0.5f, -0.5f}, {}, {0.0f, 1.0f}},//far left
+			{{-0.5f, 0.5f, 0.5f}, {}, {0.0f, 0.0f}}, //near left
+			{{0.5f, 0.5f, -0.5f}, {}, {1.0f, 1.0f}}, //far right
+			{{-0.5f, 0.5f, 0.5f}, {}, {0.0f, 0.0f}},//near left
+			{{0.5f, 0.5f, 0.5f}, {}, {1.0f, 0.0f}}, //near right
+
 		};
 		break;
 	case eDrawObjectType::TRIANGLE:
@@ -71,15 +78,15 @@ Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 		break;
 	case eDrawObjectType::SQUARE:
 		vertices = {
-			{{ 0.5f,  0.5f, 0.0f},{}, {1.0f, 1.0f}}, // top right
-			{{ 0.5f, -0.5f, 0.0f},{}, {1.0f, 0.0f}},  // bottom right
-			{{-0.5f, -0.5f, 0.0f},{}, {0.0f, 0.0f}}, // bottom left
-			{{-0.5f,  0.5f, 0.0f},{}, {0.0f, 1.0f}}  // top left
+			{{ 0.5f,  0.5f, 0.0f},{0.f,0.f,1.f}, {1.0f, 1.0f}}, // top right
+			{{ 0.5f, -0.5f, 0.0f},{0.f,0.f,1.f}, {1.0f, 0.0f}},  // bottom right
+			{{-0.5f, -0.5f, 0.0f},{0.f,0.f,1.f}, {0.0f, 0.0f}}, // bottom left
+			{{-0.5f,  0.5f, 0.0f},{0.f,0.f,1.f}, {0.0f, 1.0f}}  // top left
 		};
 
 		indices = {
-		    0, 1, 3,   // first triangle
-		    1, 2, 3    // second triangle
+		    0,1,2,
+			0,2,3
 		};
 
 		break;
