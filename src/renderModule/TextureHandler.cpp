@@ -4,6 +4,7 @@
 #include <string>
 
 #include "glad/glad.h"
+#include "logsModule/logger.h"
 
 using namespace GameEngine::RenderModule;
 
@@ -36,7 +37,11 @@ unsigned TextureLoader::loadTexture(const std::string& path, bool flip) {
 		int texWidth, texHeight, nrChannels;
 
 		auto data = stbi_load(path.data(), &texWidth, &texHeight, &nrChannels, 4);
-
+		if (!data) {
+			LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
+			stbi_image_free(data);
+			return 0;
+		}
 		glGenTextures(1, &texID);
 
 		TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texID);
@@ -94,6 +99,12 @@ unsigned TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
 		int width, height, nrChannels;
 		for(unsigned int i = 0; i < faces.size(); i++) {
 		    auto data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+			if (!data) {
+				LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
+				stbi_image_free(data);
+				glDeleteTextures(1, &textureID);
+				return 0;
+			}
 		    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 			stbi_image_free(data);
 		}
