@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "nodeModule/Node.h"
+#include "renderModule/SceneGridFloor.h"
 #include "renderModule/Skybox.h"
 
 namespace GameModule::CoreModule {
@@ -8,9 +9,11 @@ namespace GameModule::CoreModule {
 		void init();
 		void updateScene(float dt);
 		void drawScene();
+		~Scene();
 	private:
 		GameEngine::NodeModule::Node* rootNode = nullptr;
 		GameEngine::RenderModule::Skybox* skybox = nullptr;
+		GameEngine::RenderModule::SceneGridFloor* gridFloor = nullptr;
 	};
 }
 
