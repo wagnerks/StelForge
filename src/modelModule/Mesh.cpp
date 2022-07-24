@@ -1,5 +1,8 @@
 ﻿#include "Mesh.h"
 
+#include "renderModule/Renderer.h"
+#include "renderModule/TextureHandler.h"
+
 
 using namespace GameEngine::ModelModule;
 
@@ -8,7 +11,7 @@ Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices, std::v
 	setupMesh();
 }
 
-void Mesh::Draw(ShaderModule::Shader* shader) {
+void Mesh::Draw(ShaderModule::ShaderBase* shader) {
 	unsigned int diffuseNr = 1;
     unsigned int specularNr = 1;
 	for (unsigned int i = 0; i < textures.size(); i++) {
@@ -22,21 +25,26 @@ void Mesh::Draw(ShaderModule::Shader* shader) {
 			number = std::to_string(specularNr++);
 
 		shader->setInt((name + number).c_str(), i);
-		glBindTexture(GL_TEXTURE_2D, textures[i].id);
-	}
-    glActiveTexture(GL_TEXTURE0);
 
+		RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures[i].id);
+	}
+	glActiveTexture(GL_TEXTURE0);
 
     glBindVertexArray(VAO);
 	if (!indices.empty()) {
-		 glDrawElements(type, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
+		glDrawElements(type, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
+
+		RenderModule::Renderer::drawCallsCount++;
+		RenderModule::Renderer::drawVerticesCount += indices.size();
 	}
 	else {
 		glDrawArrays(type, 0, static_cast<int>(vertices.size()));
-	}
-    glBindVertexArray(0);
 
-    glActiveTexture(GL_TEXTURE0);
+		RenderModule::Renderer::drawCallsCount++;
+		RenderModule::Renderer::drawVerticesCount += vertices.size();
+	}
+
+    glBindVertexArray(0);
 }
 
 void  Mesh::setupMesh() {

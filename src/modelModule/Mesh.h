@@ -18,7 +18,6 @@ namespace GameEngine::ModelModule {
 	struct MeshTexture {
 		unsigned int id = 0;
 		std::string type;
-		std::string path;
 	};
 
 	class Mesh {
@@ -29,8 +28,8 @@ namespace GameEngine::ModelModule {
 		std::vector<MeshTexture> textures;
 
 		Mesh(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, std::vector<MeshTexture>& textures);
-
-		void Draw(ShaderModule::Shader* shader);
+		unsigned int getVAO() const { return VAO;}
+		void Draw(ShaderModule::ShaderBase* shader);
 	private:
 		//  render data
 		unsigned int VAO = 0, VBO = 0, EBO = 0;
