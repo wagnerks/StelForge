@@ -46,5 +46,5 @@ void MeshComponent::draw() {
 	
 	
 
-	mesh->Draw(shader);
+	mesh->draw(shader);
 }

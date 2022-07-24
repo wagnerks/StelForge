@@ -28,7 +28,7 @@ void ModelComponent::draw() {
 	shader->setMat4("view",  view);
 	shader->setVec3("cameraPos", Engine::getInstance()->getCamera()->Position);
 	shader->setFloat("time", glfwGetTime());  
-	model->Draw(shader);
+	model->draw(shader);
 }
 
 void ModelComponent::setModel(ModelModule::Model* aModel) {
