@@ -20,8 +20,8 @@ Mesh::~Mesh() {
 		glDeleteBuffers(1, &VBO);
 	}
 
-	if (IBO != -1) {
-		glDeleteBuffers(1, &IBO);
+	if (EBO != -1) {
+		glDeleteBuffers(1, &EBO);
 	}
 }
 
@@ -64,7 +64,7 @@ void Mesh::draw(ShaderModule::ShaderBase* shader) {
 void  Mesh::setupMesh() {
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
-    glGenBuffers(1, &IBO);
+    glGenBuffers(1, &EBO);
   
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -72,7 +72,7 @@ void  Mesh::setupMesh() {
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizei>(vertices.size() * sizeof(Vertex)), vertices.data(), GL_STATIC_DRAW);  
 
 	if (!indices.empty()) {
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizei>(indices.size() * sizeof(unsigned int)), indices.data(), GL_STATIC_DRAW);
 	}
 
