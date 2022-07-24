@@ -4,6 +4,7 @@
 
 #include "Mesh.h"
 #include "componentsModule/ComponentHolder.h"
+#include "renderModule/TextureHandler.h"
 
 namespace GameEngine::ModelModule {
 	class Model : public ComponentsModule::ComponentHolder {
@@ -12,16 +13,16 @@ namespace GameEngine::ModelModule {
 			loadModel(path);
 		}
 
-		void Draw(ShaderModule::Shader* shader);
+		void Draw(ShaderModule::ShaderBase* shader);
+		const std::vector<Mesh>& getMeshes();
 	private:
 		//model data
-		std::vector<MeshTexture> textures_loaded;
 		std::vector<Mesh> meshes;
 		std::string directory;
 
 		void loadModel(const std::string& path);
-		void processNode(aiNode* node, const aiScene* scene);
-		Mesh processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent);
-		std::vector<MeshTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName);
+		void processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader);
+		Mesh processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader);
+		std::vector<MeshTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader);
 	};
 }

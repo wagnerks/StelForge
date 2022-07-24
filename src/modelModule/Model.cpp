@@ -6,17 +6,23 @@
 
 #include "core/texture.h"
 #include "logsModule/logger.h"
+#include "renderModule/TextureHandler.h"
 
 
 using namespace GameEngine::ModelModule;
 
-void Model::Draw(ShaderModule::Shader* shader) {
+void Model::Draw(ShaderModule::ShaderBase* shader) {
     for(auto& mesh : meshes) {
 		mesh.Draw(shader);
 	}
 }
 
+const std::vector<Mesh>& Model::getMeshes() {
+	return meshes;
+}
+
 void Model::loadModel(const std::string& path) {
+	RenderModule::TextureLoader loader;
 	Assimp::Importer import;
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
 
@@ -27,10 +33,10 @@ void Model::loadModel(const std::string& path) {
 
 	directory = path.substr(0, path.find_last_of('/'));
 
-	processNode(scene->mRootNode, scene);
+	processNode(scene->mRootNode, scene, &loader);
 }
 
-void Model::processNode(aiNode* node, const aiScene* scene) {
+void Model::processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader) {
 	auto parent = node->mParent;
 	while (parent) {
 		node->mTransformation *= parent->mTransformation;
@@ -39,15 +45,15 @@ void Model::processNode(aiNode* node, const aiScene* scene) {
 	
 	for (unsigned int i = 0; i < node->mNumMeshes; i++) {
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		meshes.push_back(processMesh(mesh, scene, node));
+		meshes.push_back(processMesh(mesh, scene, node, loader));
 	}
 		
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
-		processNode(node->mChildren[i], scene);
+		processNode(node->mChildren[i], scene, loader);
 	}
 }
 
-Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent) {
+Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader) {
 	std::vector<Vertex> vertices;
 	std::vector<unsigned int> indices;
 	std::vector<MeshTexture> textures;
@@ -83,35 +89,25 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent) {
 
 	// process material
 	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-	std::vector<MeshTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse");
+	std::vector<MeshTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader);
 	textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-	std::vector<MeshTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular");
+	std::vector<MeshTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader);
 	textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
 
 	return {vertices, indices, textures};
 }
 
-std::vector<MeshTexture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName) {
+std::vector<MeshTexture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader) {
 	std::vector<MeshTexture> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
-		bool skip = false;
-		for (unsigned int j = 0; j < textures_loaded.size(); j++) {
-			if (std::strcmp(textures_loaded[j].path.data(), str.C_Str()) == 0) {
-				textures.push_back(textures_loaded[j]);
-				skip = true;
-				break;
-			}
-		}
-		if (!skip) {
-			// if texture hasn't been loaded already, load it
+
+		if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
 			MeshTexture texture;
-			texture.id = Render::Texture::loadTexture(directory + "/" + std::string(str.C_Str()));
+			texture.id = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
 			texture.type = typeName;
-			texture.path = str.C_Str();
 			textures.push_back(texture);
-			textures_loaded.push_back(texture); // add to loaded textures
 		}
 	}
 	return textures;
