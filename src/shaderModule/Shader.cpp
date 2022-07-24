@@ -67,6 +67,10 @@ void ShaderBase::setUniformBlockIdx(const char* name, unsigned val) {
 	glUniformBlockBinding(getUniformLocation(name), val, 0);
 }
 
+ShaderBase::~ShaderBase() {
+	glDeleteShader(ID);
+}
+
 bool ShaderBase::checkCompileErrors(unsigned int shader, std::string_view type) {
 	int success;
 	char infoLog[1024];

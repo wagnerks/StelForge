@@ -26,7 +26,7 @@ namespace GameEngine::ShaderModule {
 		ShaderBase& operator=(const ShaderBase& other) = delete;
 		ShaderBase& operator=(ShaderBase&& other) noexcept = delete;
 	protected:
-		virtual ~ShaderBase() = default;
+		virtual ~ShaderBase();
 		ShaderBase() = default;
 		ShaderBase(size_t hash) : hash(hash){};
 		unsigned int ID = 0;
