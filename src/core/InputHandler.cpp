@@ -1,5 +1,6 @@
 ﻿#include "InputHandler.h"
 
+#include "Camera.h"
 #include "Engine.h"
 
 using namespace GameEngine::CoreModule;
@@ -9,17 +10,17 @@ void InputHandler::processInput(GLFWwindow* window) {
 		glfwSetWindowShouldClose(window, true);
 
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		Engine::getInstance()->getCamera().ProcessKeyboard(FORWARD, Engine::getInstance()->getDeltaTime());
+		Engine::getInstance()->getCamera()->ProcessKeyboard(FORWARD, Engine::getInstance()->getDeltaTime());
 	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		Engine::getInstance()->getCamera().ProcessKeyboard(BACKWARD, Engine::getInstance()->getDeltaTime());
+		Engine::getInstance()->getCamera()->ProcessKeyboard(BACKWARD, Engine::getInstance()->getDeltaTime());
 	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		Engine::getInstance()->getCamera().ProcessKeyboard(LEFT, Engine::getInstance()->getDeltaTime());
+		Engine::getInstance()->getCamera()->ProcessKeyboard(LEFT, Engine::getInstance()->getDeltaTime());
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		Engine::getInstance()->getCamera().ProcessKeyboard(RIGHT, Engine::getInstance()->getDeltaTime());
+		Engine::getInstance()->getCamera()->ProcessKeyboard(RIGHT, Engine::getInstance()->getDeltaTime());
 	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-		Engine::getInstance()->getCamera().ProcessKeyboard(TOP, Engine::getInstance()->getDeltaTime());
+		Engine::getInstance()->getCamera()->ProcessKeyboard(TOP, Engine::getInstance()->getDeltaTime());
 	if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
-		Engine::getInstance()->getCamera().ProcessKeyboard(BOTTOM, Engine::getInstance()->getDeltaTime());
+		Engine::getInstance()->getCamera()->ProcessKeyboard(BOTTOM, Engine::getInstance()->getDeltaTime());
 }
 
 void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposIn) {
@@ -35,20 +36,20 @@ void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposI
 	lastX = xpos;
 	lastY = ypos;
 
-	Engine::getInstance()->getCamera().ProcessMouseMovement(xoffset, yoffset);
+	Engine::getInstance()->getCamera()->ProcessMouseMovement(xoffset, yoffset);
 }
 
 void InputHandler::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
-	Engine::getInstance()->getCamera().ProcessMouseScroll(static_cast<float>(yoffset));
+	Engine::getInstance()->getCamera()->ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
 void InputHandler::mouseBtnInput(GLFWwindow* w, int btn, int act, int mode) {
 	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_PRESS) {
-		Engine::getInstance()->getCamera().processMouse = true;
+		Engine::getInstance()->getCamera()->processMouse = true;
 		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_RELEASE) {
-		Engine::getInstance()->getCamera().processMouse = false;
+		Engine::getInstance()->getCamera()->processMouse = false;
 		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 	}
 	
