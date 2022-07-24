@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 
 #include "DirectionalLight.h"
+#include "Skybox.h"
 
 namespace GameEngine {
 	namespace ModelModule {
@@ -39,6 +40,7 @@ namespace GameEngine::RenderModule {
 
 		unsigned int depthCubemap;
 		unsigned int buffer;
+		Skybox* skybox = nullptr;
 		
 	public:
 		static GLFWwindow* initGLFW();

@@ -148,19 +148,7 @@ void Renderer::draw() {
 	for (auto node : sceneNode->getAllNodes()) {
 		Debug::ComponentsDebug::transformComponentDebug(node->getId(), node->getComponent<TransformComponent>());
 	}
-
-	//auto skybox = sceneNode->getElement("skybox");
-	//auto skyboxId = TextureHandler::getInstance()->loader.loadCubemapTexture("skybox/");
-
-	//// draw skybox as last
- //   glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
-
-	//glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxId);
-	//skybox->getComponent<DrawComponent>()->draw();
- //   glDepthFunc(GL_LESS);
-
-
-	/*sceneNode->getComponent<DrawComponent>()->draw();*/
+	
 
 	/*auto debugDepth = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugDepth.vs", "shaders/debugDepth.fs");
 	debugDepth->use();
@@ -185,7 +173,7 @@ void Renderer::draw() {
 	light->setMat4("model", sceneNode->getElement("light")->getComponent<TransformComponent>()->getTransform());
 
 	auto mesh = sceneNode->getElement("light")->getComponent<ComponentsModule::MeshComponent>()->getMesh();
-	mesh->Draw(light);
+	mesh->draw(light);
 
 	auto lightTC = sceneNode->getElement("light")->getComponent<TransformComponent>();
 	auto prevPos = lightTC->getPos();
@@ -202,6 +190,8 @@ void Renderer::draw() {
 
 	lightTC->setPos(prevPos);
 	lightTC->setScale(prevScale);
+
+	skybox->draw();
 }
 
 void Renderer::postDraw() {
@@ -297,71 +287,14 @@ void Renderer::init() {
 	//}  
 	//glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	//std::vector<GameEngine::ModelModule::Vertex> skyboxVertices{
-	//    // positions          
-	//   {{ -1.0f,  1.0f, -1.0f},{},{}},
-	//   {{ -1.0f, -1.0f, -1.0f},{},{}},
-	//   {{  1.0f, -1.0f, -1.0f},{},{}},
-	//   {{  1.0f, -1.0f, -1.0f},{},{}},
-	//   {{  1.0f,  1.0f, -1.0f},{},{}},
-	//   {{ -1.0f,  1.0f, -1.0f},{},{}},
-
-	//   {{ -1.0f, -1.0f,  1.0f},{},{}},
-	//   {{ -1.0f, -1.0f, -1.0f},{},{}},
-	//   {{ -1.0f,  1.0f, -1.0f},{},{}},
-	//   {{ -1.0f,  1.0f, -1.0f},{},{}},
-	//   {{ -1.0f,  1.0f,  1.0f},{},{}},
-	//   {{ -1.0f, -1.0f,  1.0f},{},{}},
-
-	//   {{  1.0f, -1.0f, -1.0f},{},{}},
-	//   {{  1.0f, -1.0f,  1.0f},{},{}},
-	//   {{  1.0f,  1.0f,  1.0f},{},{}},
-	//   {{  1.0f,  1.0f,  1.0f},{},{}},
-	//   {{  1.0f,  1.0f, -1.0f},{},{}},
-	//   {{  1.0f, -1.0f, -1.0f},{},{}},
-
-	//   {{ -1.0f, -1.0f,  1.0f},{},{}},
-	//   {{ -1.0f,  1.0f,  1.0f},{},{}},
-	//   {{  1.0f,  1.0f,  1.0f},{},{}},
-	//   {{  1.0f,  1.0f,  1.0f},{},{}},
-	//   {{  1.0f, -1.0f,  1.0f},{},{}},
-	//   {{ -1.0f, -1.0f,  1.0f},{},{}},
-
-	//   {{ -1.0f,  1.0f, -1.0f},{},{}},
-	//   {{  1.0f,  1.0f, -1.0f},{},{}},
-	//   {{  1.0f,  1.0f,  1.0f},{},{}},
-	//   {{  1.0f,  1.0f,  1.0f},{},{}},
-	//   {{ -1.0f,  1.0f,  1.0f},{},{}},
-	//   {{ -1.0f,  1.0f, -1.0f},{},{}},
-
-	//   {{ -1.0f, -1.0f, -1.0f},{},{}},
-	//   {{ -1.0f, -1.0f,  1.0f},{},{}},
-	//   {{  1.0f, -1.0f, -1.0f},{},{}},
-	//   {{  1.0f, -1.0f, -1.0f},{},{}},
-	//   {{ -1.0f, -1.0f,  1.0f},{},{}},
-	//   {{  1.0f, -1.0f,  1.0f},{},{}}
-	//};
-
- //   std::vector<unsigned> skyboxindices{   };
-
-	//auto skybox = new NodeModule::Node("skybox");
-	//skybox->getComponent<ComponentsModule::MeshComponent>()->setMesh(new GameEngine::ModelModule::Mesh(skyboxVertices, skyboxindices, tex));
-	//
-	//skybox->getComponent<ShaderComponent>()->setShader(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/skybox.vs", "shaders/skybox.fs"));
-
-	//sceneNode->addElement(skybox);
-
-	/*auto skyboxShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/skyboxReflection.vs", "shaders/skyboxReflection.fs");
-	unsigned int uniformBlockIndexRed    = glGetUniformBlockIndex(skyboxShader->getID(), "Matrices");
-	unsigned int uniformSkybox    = glGetUniformBlockIndex(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/skybox.vs", "shaders/skybox.fs")->getID(), "Matrices");
+	
+	/*
 	unsigned int main    = glGetUniformBlockIndex(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/main.vs", "shaders/main.fs")->getID(), "Matrices");
 	
 
 	auto geom = SHADER_CONTROLLER->loadGeometryShader("shaders/geometry.vs","shaders/geometry.fs","shaders/geometry.gs");
 	unsigned int getomPlace    = glGetUniformBlockIndex(geom->getID(), "Matrices");
 
-	glUniformBlockBinding(skyboxShader->getID(),    uniformBlockIndexRed, 0);
-	glUniformBlockBinding(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/skybox.vs", "shaders/skybox.fs")->getID(),    uniformSkybox, 0);
 	glUniformBlockBinding(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/main.vs", "shaders/main.fs")->getID(),    main, 0);
 	glUniformBlockBinding(geom->getID(), getomPlace, 0);
 
@@ -394,7 +327,10 @@ void Renderer::init() {
 		light->getComponent<TransformComponent>()->setRotate({glm::linearRand(-30.f, 30.f),glm::linearRand(120.f, 160.f),0.f});
 		lights.push_back(light);
 	}*/
-	
+
+	skybox = new Skybox("skybox/");
+	skybox->init();
+
 }
 
 void Renderer::terminate() const {
