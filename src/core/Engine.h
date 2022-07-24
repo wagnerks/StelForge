@@ -1,11 +1,12 @@
 ﻿#pragma once
 
-#include "Camera.h"
 #include "Core.h"
 #include "InputHandler.h"
 
 #include "debugModule/DebugMenu.h"
 
+
+class Camera;
 
 namespace GameEngine {
 	class Engine {
@@ -22,7 +23,8 @@ namespace GameEngine {
 		bool isAlive();
 		
 		GLFWwindow* getMainWindow();
-		Camera& getCamera();
+		Camera* getCamera();
+		RenderModule::Renderer* getRenderer() const;
 	private:
 
 		void updateDelta();
@@ -44,7 +46,7 @@ namespace GameEngine {
 
 		GLFWwindow* window = nullptr;
 
-		Camera camera;
+		Camera* camera = nullptr;
 		Debug::DebugMenu debugMenu;
 	};
 }

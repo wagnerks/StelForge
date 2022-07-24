@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 
+#include "Camera.h"
 #include "Core.h"
 #include "InputHandler.h"
 #include "logsModule/logger.h"
@@ -35,7 +36,8 @@ void Engine::init() {
 	core = new CoreModule::Core();
 	core->init();
 	render = new RenderModule::Renderer();
-	
+	camera = new Camera();
+
 	render->init();
 
 	CoreModule::InputHandler::init();
@@ -99,8 +101,12 @@ GLFWwindow* Engine::getMainWindow() {
 	return window;
 }
 
-Camera& Engine::getCamera() {
+Camera* Engine::getCamera() {
 	return camera;
+}
+
+RenderModule::Renderer* Engine::getRenderer() const {
+	return render;
 }
 
 Engine::Engine() {
@@ -111,4 +117,5 @@ Engine::~Engine() {
 	delete core;
 	glfwDestroyWindow(getMainWindow());
 	delete render;
+	delete camera;
 }
