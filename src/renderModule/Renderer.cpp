@@ -143,11 +143,6 @@ void Renderer::draw() {
 		node->getComponent<DrawComponent>()->draw();
 	}*/
 
-	Debug::ComponentsDebug::transformComponentDebug(sceneNode->getId(), sceneNode->getComponent<TransformComponent>());
-	for (auto node : sceneNode->getAllNodes()) {
-		Debug::ComponentsDebug::transformComponentDebug(node->getId(), node->getComponent<TransformComponent>());
-	}
-	
 
 	/*auto debugDepth = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugDepth.vs", "shaders/debugDepth.fs");
 	debugDepth->use();
@@ -159,29 +154,9 @@ void Renderer::draw() {
 
 	glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	scene->updateScene(0.f);
+	scene->drawScene();
 
-	auto& projection = Engine::getInstance()->getCamera()->getProjectionsMatrix();
-	auto view = Engine::getInstance()->getCamera()->GetViewMatrix();
-
-	sceneNode->getElement("light")->getComponent<TransformComponent>()->reloadTransform();
-	auto light = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/light.vs", "shaders/light.fs");
-	light->use();
-	light->setMat4("projection", projection);
-	light->setMat4("view", view);
-	light->setMat4("model", sceneNode->getElement("light")->getComponent<TransformComponent>()->getTransform());
-
-	auto mesh = sceneNode->getElement("light")->getComponent<ComponentsModule::MeshComponent>()->getMesh();
-	mesh->draw(light);
-
-	auto lightTC = sceneNode->getElement("light")->getComponent<TransformComponent>();
-	auto xyzShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
-	xyzShader->use();
-	xyzShader->setMat4("PVM", projection * view * lightTC->getTransform());
-
-	Utils::renderXYZ(3.f);
-
-	skybox->draw();
-	floor->draw();
 }
 
 void Renderer::postDraw() {
@@ -190,20 +165,9 @@ void Renderer::postDraw() {
 }
 
 void Renderer::init() {
-	sceneNode = new NodeModule::Node("scene");
-	auto kek = sceneNode->getComponent<TransformComponent>()->getTransform();
+	scene = new GameModule::CoreModule::Scene();
+	scene->init();
 
-	floor = new SceneGridFloor(100.f);
-	floor->init();
-
-	skybox = new Skybox("skybox/");
-	skybox->init();
-
-	auto childNode = new NodeModule::Node("light");
-	childNode->getComponent<ComponentsModule::MeshComponent>()->setMesh(ModelModule::MeshFactory::createPrimitiveMesh(ModelModule::eDrawObjectType::CUBE));
-
-	sceneNode->addElement(childNode);
-	
 	/*modelObj = new ModelModule::Model("suzanne/scene.gltf");
 
 	auto backpacks = new NodeModule::Node("backpackHolder");

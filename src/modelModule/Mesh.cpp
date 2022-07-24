@@ -12,7 +12,17 @@ Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices, std::v
 }
 
 Mesh::~Mesh() {
-	glDeleteVertexArrays(1, &VAO);
+	if (VAO != -1) {
+		glDeleteVertexArrays(1, &VAO);
+	}
+
+	if (VBO != -1) {
+		glDeleteBuffers(1, &VBO);
+	}
+
+	if (IBO != -1) {
+		glDeleteBuffers(1, &IBO);
+	}
 }
 
 void Mesh::draw(ShaderModule::ShaderBase* shader) {
@@ -54,7 +64,7 @@ void Mesh::draw(ShaderModule::ShaderBase* shader) {
 void  Mesh::setupMesh() {
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
+    glGenBuffers(1, &IBO);
   
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -62,7 +72,7 @@ void  Mesh::setupMesh() {
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizei>(vertices.size() * sizeof(Vertex)), vertices.data(), GL_STATIC_DRAW);  
 
 	if (!indices.empty()) {
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizei>(indices.size() * sizeof(unsigned int)), indices.data(), GL_STATIC_DRAW);
 	}
 

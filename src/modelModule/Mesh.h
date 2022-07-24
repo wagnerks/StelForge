@@ -33,7 +33,7 @@ namespace GameEngine::ModelModule {
 		void draw(ShaderModule::ShaderBase* shader);
 	private:
 		//  render data
-		unsigned int VAO = 0, VBO = 0, EBO = 0;
+		unsigned int VAO = -1, VBO = -1, IBO = -1;
 		const GLuint type = GL_TRIANGLES;
 		void setupMesh();
 	};

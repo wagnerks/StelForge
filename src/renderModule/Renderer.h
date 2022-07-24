@@ -7,6 +7,7 @@
 #include "DirectionalLight.h"
 #include "SceneGridFloor.h"
 #include "Skybox.h"
+#include "core/Scene.h"
 
 namespace GameEngine {
 	namespace ModelModule {
@@ -34,15 +35,7 @@ namespace GameEngine::RenderModule {
 		inline static size_t drawCallsCount = 0;
 		inline static size_t drawVerticesCount = 0;
 	private:
-		unsigned int uboMatrices;
-		NodeModule::Node* sceneNode = nullptr;
-		ModelModule::Model* modelObj = nullptr;
-		std::vector<LightsModule::DirectionalLight*> lights;
-
-		unsigned int depthCubemap;
-		unsigned int buffer;
-		Skybox* skybox = nullptr;
-		SceneGridFloor* floor = nullptr;
+		GameModule::CoreModule::Scene* scene = nullptr;
 		
 	public:
 		static GLFWwindow* initGLFW();

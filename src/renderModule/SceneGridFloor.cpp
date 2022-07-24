@@ -8,6 +8,16 @@
 using namespace GameEngine::RenderModule;
 
 SceneGridFloor::SceneGridFloor(float size) : size(size) {}
+SceneGridFloor::~SceneGridFloor() {
+	if (VAO != -1) {
+		glDeleteVertexArrays(1, &VAO);
+	}
+	if (VBO != -1) {
+		glDeleteBuffers(1, &VBO);
+	}
+
+	SHADER_CONTROLLER->deleteShader(floorShader);
+}
 
 void SceneGridFloor::init() {
 	floorShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/floorGrid.vs", "shaders/floorGrid.fs");
@@ -27,7 +37,7 @@ void SceneGridFloor::init() {
 		size, 0.f, size, //near right
     };
 
-	unsigned VBO;
+	
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
 	glBindVertexArray(VAO);
@@ -39,7 +49,7 @@ void SceneGridFloor::init() {
 
 }
 void SceneGridFloor::draw() {
-	if (VAO == 0) {
+	if (VAO == -1) {
 		return;
 	}
 	floorShader->use();

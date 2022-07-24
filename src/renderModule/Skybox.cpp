@@ -10,6 +10,21 @@ using namespace GameEngine::RenderModule;
 
 Skybox::Skybox(std::string_view path) : skyboxPath(path) {}
 
+Skybox::~Skybox() {
+	if (VAO != -1) {
+		glDeleteVertexArrays(1, &VAO);
+	}
+	if (VBO != -1) {
+		glDeleteBuffers(1, &VBO);
+	}
+	if (cubemapTex != -1) {
+		//TextureHandler::getInstance()->deleteTexture(); TODO
+		glDeleteTextures(1, &cubemapTex);
+	}
+
+	SHADER_CONTROLLER->deleteShader(skyboxShader);
+}
+
 void Skybox::init() {
 	skyboxShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/skybox.vs", "shaders/skybox.fs");
 	if (!skyboxShader) {
@@ -71,7 +86,7 @@ void Skybox::init() {
 	     1.0f, -1.0f,  1.0f
 	};
 
-	unsigned VBO;
+	
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
 	glBindVertexArray(VAO);
@@ -83,7 +98,7 @@ void Skybox::init() {
 }
 
 void Skybox::draw() {
-	if (VAO == 0) {
+	if (VAO == -1) {
 		return;
 	}
 	skyboxShader->use();

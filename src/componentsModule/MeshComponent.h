@@ -14,6 +14,7 @@ namespace GameEngine::ComponentsModule{
 		void draw();
 	private:
 		ModelModule::Mesh* mesh = nullptr;
-		
 	};
 }
+
+using GameEngine::ComponentsModule::MeshComponent;

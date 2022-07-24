@@ -21,6 +21,7 @@ namespace GameEngine::ShaderModule {
 		void useShader(unsigned int ID);
 		void useDefaultShader();
 		void deleteShaderGL(unsigned int ID);
+		void deleteShader(ShaderBase* shader);
 
 		ShaderBase* defaultShader = nullptr;
 		void removeShader(ShaderBase* shader);

@@ -83,6 +83,12 @@ void ShaderController::deleteShaderGL(unsigned ID) {
 	glDeleteProgram(ID);
 }
 
+void ShaderController::deleteShader(ShaderBase* shader) {
+	removeShader(shader);
+	delete shader;
+	shader = nullptr;
+}
+
 void ShaderController::removeShader(ShaderBase* shader) {
 	if (!shader) {
 		return;
