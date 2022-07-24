@@ -28,6 +28,7 @@ namespace GameEngine::ModelModule {
 		std::vector<MeshTexture> textures;
 
 		Mesh(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, std::vector<MeshTexture>& textures);
+		~Mesh();
 		unsigned int getVAO() const { return VAO;}
 		void draw(ShaderModule::ShaderBase* shader);
 	private:

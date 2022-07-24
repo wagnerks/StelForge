@@ -29,6 +29,11 @@ DirectionalLight::DirectionalLight(size_t aShadowWidth, size_t aShadowHeight, fl
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);  
 }
 
+DirectionalLight::~DirectionalLight() {
+	glDeleteFramebuffers(1, &depthMapFBO);
+	glDeleteTextures(1, &depthMap);
+}
+
 void DirectionalLight::preDraw() {
 	auto tc = getComponent<TransformComponent>();
 	tc->setWithView(true);

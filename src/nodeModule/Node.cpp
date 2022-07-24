@@ -3,7 +3,11 @@
 using namespace GameEngine::NodeModule;
 
 Node::Node(std::string_view id) : id(id) {}
-Node::~Node() {}
+Node::~Node() {
+	for (auto& node : getElements()) {
+		delete node;
+	}
+}
 
 void Node::addElement(Node* child) {
 	if (auto childParent = child->getParent()) {

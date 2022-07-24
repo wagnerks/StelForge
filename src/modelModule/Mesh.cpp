@@ -11,6 +11,10 @@ Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices, std::v
 	setupMesh();
 }
 
+Mesh::~Mesh() {
+	glDeleteVertexArrays(1, &VAO);
+}
+
 void Mesh::draw(ShaderModule::ShaderBase* shader) {
 	unsigned int diffuseNr = 1;
     unsigned int specularNr = 1;
