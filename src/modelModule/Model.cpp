@@ -11,9 +11,9 @@
 
 using namespace GameEngine::ModelModule;
 
-void Model::Draw(ShaderModule::ShaderBase* shader) {
+void Model::draw(ShaderModule::ShaderBase* shader) {
     for(auto& mesh : meshes) {
-		mesh.Draw(shader);
+		mesh.draw(shader);
 	}
 }
 

@@ -11,7 +11,7 @@ Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices, std::v
 	setupMesh();
 }
 
-void Mesh::Draw(ShaderModule::ShaderBase* shader) {
+void Mesh::draw(ShaderModule::ShaderBase* shader) {
 	unsigned int diffuseNr = 1;
     unsigned int specularNr = 1;
 	for (unsigned int i = 0; i < textures.size(); i++) {
