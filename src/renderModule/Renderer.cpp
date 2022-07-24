@@ -187,10 +187,6 @@ void Renderer::draw() {
 	auto mesh = sceneNode->getElement("light")->getComponent<ComponentsModule::MeshComponent>()->getMesh();
 	mesh->Draw(light);
 
-	RenderModule::Renderer::drawCallsCount++;
-	RenderModule::Renderer::drawVerticesCount += mesh->vertices.size();
-
-
 	auto lightTC = sceneNode->getElement("light")->getComponent<TransformComponent>();
 	auto prevPos = lightTC->getPos();
 	auto prevScale = lightTC->getScale();
@@ -200,9 +196,9 @@ void Renderer::draw() {
 	lightTC->setPos(prevPos + front);
 	lightTC->setScale({0.3f,0.3f,0.3f});
 	lightTC->reloadTransform();
-
+	
 	light->setMat4("model", lightTC->getTransform());
-	mesh->Draw(light);
+	Utils::renderCube();
 
 	lightTC->setPos(prevPos);
 	lightTC->setScale(prevScale);

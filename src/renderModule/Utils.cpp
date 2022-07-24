@@ -46,3 +46,74 @@ void Utils::renderQuad() {
 	RenderModule::Renderer::drawVerticesCount += 4;
 	glBindVertexArray(0);
 }
+
+void Utils::renderCube() {
+	static unsigned cubeVAO = 0;
+	if (cubeVAO == 0) {
+		float vertices[] = {
+			//back
+			-0.5f, -0.5f, -0.5f,
+			-0.5f, 0.5f, -0.5f,
+			0.5f, 0.5f, -0.5f,
+			0.5f, 0.5f, -0.5f,
+			0.5f, -0.5f, -0.5f,
+			-0.5f, -0.5f, -0.5f,
+
+			-0.5f, -0.5f, 0.5f,
+			0.5f, -0.5f, 0.5f,
+			0.5f, 0.5f, 0.5f,
+			0.5f, 0.5f, 0.5f,
+			-0.5f, 0.5f, 0.5f,
+			-0.5f, -0.5f, 0.5f,
+
+			
+			-0.5f, 0.5f, 0.5f,
+			-0.5f, 0.5f, -0.5f,
+			-0.5f, -0.5f, -0.5f,
+			-0.5f, -0.5f, -0.5f,
+			-0.5f, -0.5f, 0.5f,
+			-0.5f, 0.5f, 0.5f,
+
+			//right
+			0.5f, 0.5f, -0.5f,
+			0.5f, 0.5f, 0.5f,
+			0.5f, -0.5f, -0.5f,
+			0.5f, 0.5f, 0.5f,
+			0.5f, -0.5f, 0.5f,
+			0.5f, -0.5f, -0.5f,
+			
+			
+
+			-0.5f, -0.5f, -0.5f,
+			0.5f, -0.5f, -0.5f,
+			0.5f, -0.5f, 0.5f,
+			0.5f, -0.5f, 0.5f,
+			-0.5f, -0.5f, 0.5f,
+			-0.5f, -0.5f, -0.5f,
+
+			//top
+			0.5f, 0.5f, -0.5f,
+			-0.5f, 0.5f, -0.5f,
+			-0.5f, 0.5f, 0.5f,
+			0.5f, 0.5f, -0.5f,
+			-0.5f, 0.5f, 0.5f,
+			0.5f, 0.5f, 0.5f,
+		};
+
+		// setup plane VAO
+		unsigned cubeVBO;
+		glGenVertexArrays(1, &cubeVAO);
+		glGenBuffers(1, &cubeVBO);
+		glBindVertexArray(cubeVAO);
+		glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	}
+	glBindVertexArray(cubeVAO);
+	glDrawArrays(GL_TRIANGLES, 0, 36);
+	RenderModule::Renderer::drawCallsCount++;
+	RenderModule::Renderer::drawVerticesCount += 36;
+	glBindVertexArray(0);
+}
