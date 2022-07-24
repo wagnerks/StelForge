@@ -6,15 +6,13 @@ Node::Node(std::string_view id) : id(id) {}
 Node::~Node() {}
 
 void Node::addElement(Node* child) {
-	if (auto parent = child->getParent()) {
-		parent->removeElement(child);
+	if (auto childParent = child->getParent()) {
+		childParent->removeElement(child);
 	}
 
 	child->setParent(this);
 
-	if (std::ranges::find(elements, child) == elements.end()) {
-		elements.emplace_back(child);
-	}
+	elements.emplace_back(child);
 }
 
 void Node::removeElement(std::string_view childId) {
