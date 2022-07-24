@@ -11,7 +11,6 @@
 #include "componentsModule/DrawComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
-#include "componentsModule/ShaderComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
@@ -202,8 +201,7 @@ void Renderer::init() {
 
 	auto childNode = new NodeModule::Node("light");
 	childNode->getComponent<ComponentsModule::MeshComponent>()->setMesh(ModelModule::MeshFactory::createPrimitiveMesh(ModelModule::eDrawObjectType::CUBE));
-	childNode->getComponent<ShaderComponent>()->setShader(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/light.vs", "shaders/light.fs"));
-	
+
 	sceneNode->addElement(childNode);
 	
 	/*modelObj = new ModelModule::Model("suzanne/scene.gltf");

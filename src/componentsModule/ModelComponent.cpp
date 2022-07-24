@@ -1,7 +1,6 @@
 ﻿#include "ModelComponent.h"
 
 #include "ComponentHolder.h"
-#include "ShaderComponent.h"
 #include "TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
@@ -12,9 +11,8 @@
 using namespace GameEngine::ComponentsModule;
 
 void ModelComponent::draw() {
-	auto shaderComp = owner->getComponent<ShaderComponent>(false);
 	auto transformComp = owner->getComponent<TransformComponent>(false);
-	auto shader = shaderComp ? shaderComp->getShader() : SHADER_CONTROLLER->defaultShader;
+	auto shader = SHADER_CONTROLLER->defaultShader;
 
 	auto projection = Engine::getInstance()->getCamera()->getProjectionsMatrix();
 
