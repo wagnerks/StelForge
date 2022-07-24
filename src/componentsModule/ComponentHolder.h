@@ -9,7 +9,7 @@ namespace GameEngine::ComponentsModule {
 
 	class ComponentHolder {
 	public:
-		~ComponentHolder();
+		virtual ~ComponentHolder();
 		void updateComponents() const;
 
 	    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Component, T>>>
