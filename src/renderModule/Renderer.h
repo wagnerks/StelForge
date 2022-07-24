@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 
 #include "DirectionalLight.h"
+#include "SceneGridFloor.h"
 #include "Skybox.h"
 
 namespace GameEngine {
@@ -41,6 +42,7 @@ namespace GameEngine::RenderModule {
 		unsigned int depthCubemap;
 		unsigned int buffer;
 		Skybox* skybox = nullptr;
+		SceneGridFloor* floor = nullptr;
 		
 	public:
 		static GLFWwindow* initGLFW();

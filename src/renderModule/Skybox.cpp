@@ -12,8 +12,14 @@ Skybox::Skybox(std::string_view path) : skyboxPath(path) {}
 
 void Skybox::init() {
 	skyboxShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/skybox.vs", "shaders/skybox.fs");
+	if (!skyboxShader) {
+		return;
+	}
+
+	skyboxShader->use();
 	skyboxShader->setInt("skybox", 16);
-		
+	skyboxShader->setMat4("projection", Engine::getInstance()->getCamera()->getProjectionsMatrix());
+
 	cubemapTex = TextureHandler::getInstance()->loader.loadCubemapTexture(skyboxPath);
 	if (cubemapTex == 0) {
 		assert(false && "can't load skybox texture");
@@ -77,11 +83,12 @@ void Skybox::init() {
 }
 
 void Skybox::draw() {
+	if (VAO == 0) {
+		return;
+	}
 	skyboxShader->use();
 
 	auto view = Engine::getInstance()->getCamera()->GetViewMatrix();
-
-	skyboxShader->setMat4("projection", Engine::getInstance()->getCamera()->getProjectionsMatrix());
 	skyboxShader->setMat4("view", glm::mat4(glm::mat3(view)));
 
 	glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content

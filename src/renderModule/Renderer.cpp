@@ -161,9 +161,8 @@ void Renderer::draw() {
 	glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	sceneNode->getComponent<DrawComponent>()->draw();
-	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH/(float)SCR_HEIGHT, 0.1f, 100.0f);
-	glm::mat4 view = Engine::getInstance()->getCamera()->GetViewMatrix();
+	auto& projection = Engine::getInstance()->getCamera()->getProjectionsMatrix();
+	auto view = Engine::getInstance()->getCamera()->GetViewMatrix();
 
 	sceneNode->getElement("light")->getComponent<TransformComponent>()->reloadTransform();
 	auto light = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/light.vs", "shaders/light.fs");
@@ -176,22 +175,14 @@ void Renderer::draw() {
 	mesh->draw(light);
 
 	auto lightTC = sceneNode->getElement("light")->getComponent<TransformComponent>();
-	auto prevPos = lightTC->getPos();
-	auto prevScale = lightTC->getScale();
+	auto xyzShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
+	xyzShader->use();
+	xyzShader->setMat4("PVM", projection * view * lightTC->getTransform());
 
-	glm::vec3 front = lightTC->getFront() * 2.f;
-
-	lightTC->setPos(prevPos + front);
-	lightTC->setScale({0.3f,0.3f,0.3f});
-	lightTC->reloadTransform();
-	
-	light->setMat4("model", lightTC->getTransform());
-	Utils::renderCube();
-
-	lightTC->setPos(prevPos);
-	lightTC->setScale(prevScale);
+	Utils::renderXYZ(3.f);
 
 	skybox->draw();
+	floor->draw();
 }
 
 void Renderer::postDraw() {
@@ -201,27 +192,13 @@ void Renderer::postDraw() {
 
 void Renderer::init() {
 	sceneNode = new NodeModule::Node("scene");
-	auto shaderComp = sceneNode->getComponent<ShaderComponent>();
-	shaderComp->setShader(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/floorGrid.vs", "shaders/floorGrid.fs"));
-	shaderComp->bind();
+	auto kek = sceneNode->getComponent<TransformComponent>()->getTransform();
 
-	constexpr float size = 100.f;
-	shaderComp->getShader()->setVec2("coordShift", {size, size});
+	floor = new SceneGridFloor(100.f);
+	floor->init();
 
-	std::vector<GameEngine::ModelModule::Vertex> verticesVec{
-		{{-size, 0.0f, -size},{0.f,1.f,0.f},{}},//near left
-		{{ size, 0.0f, -size},{0.f,1.f,0.f},{}},//near right
-		{{-size, 0.0f,  size},{0.f,1.f,0.f},{}},//far left
-		{{ size, 0.0f,  size},{0.f,1.f,0.f},{}},//far right
-    };
-
-    std::vector<unsigned> indices{
-		3,1,0,
-		3,0,2
-    };
-    std::vector<ModelModule::MeshTexture> tex;
-
-	sceneNode->getComponent<ComponentsModule::MeshComponent>()->setMesh(new GameEngine::ModelModule::Mesh(verticesVec, indices, tex));
+	skybox = new Skybox("skybox/");
+	skybox->init();
 
 	auto childNode = new NodeModule::Node("light");
 	childNode->getComponent<ComponentsModule::MeshComponent>()->setMesh(ModelModule::MeshFactory::createPrimitiveMesh(ModelModule::eDrawObjectType::CUBE));
@@ -291,7 +268,6 @@ void Renderer::init() {
 	/*
 	unsigned int main    = glGetUniformBlockIndex(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/main.vs", "shaders/main.fs")->getID(), "Matrices");
 	
-
 	auto geom = SHADER_CONTROLLER->loadGeometryShader("shaders/geometry.vs","shaders/geometry.fs","shaders/geometry.gs");
 	unsigned int getomPlace    = glGetUniformBlockIndex(geom->getID(), "Matrices");
 
@@ -316,21 +292,7 @@ void Renderer::init() {
 	glm::mat4 view = Engine::getInstance()->getCamera()->GetViewMatrix();	       
 	glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
 	glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-	for (auto i = 0; i < 1; i++) {
-		auto light = new LightsModule::DirectionalLight();
-		auto x = glm::linearRand(5.f, 10.f);
-		auto y = glm::linearRand(5.f, 10.f);
-		auto z = glm::linearRand(5.f, 10.f);
-		light->getComponent<TransformComponent>()->setPos({x,y,z});
-		light->getComponent<TransformComponent>()->setRotate({glm::linearRand(-30.f, 30.f),glm::linearRand(120.f, 160.f),0.f});
-		lights.push_back(light);
-	}*/
-
-	skybox = new Skybox("skybox/");
-	skybox->init();
-
+	glBindBuffer(GL_UNIFORM_BUFFER, 0); */
 }
 
 void Renderer::terminate() const {
