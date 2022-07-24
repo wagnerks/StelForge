@@ -1,14 +1,29 @@
 ﻿#include "TransformComponent.h"
 
+#include <detail/type_quat.hpp>
 #include <ext/matrix_transform.hpp>
+#include <ext/quaternion_trigonometric.hpp>
+#include <gtx/quaternion.hpp>
 #include "mat4x4.hpp"
 #include "nodeModule/Node.h"
 
 
 using namespace GameEngine::ComponentsModule;
 
+TransformComponent::TransformComponent(ComponentHolder* holder): Component(holder), ownerNode(dynamic_cast<NodeModule::Node*>(holder)) {
+}
+
 void TransformComponent::updateComponent() {
 	reloadTransform();
+}
+
+void TransformComponent::setWithView(bool isWithView) {
+	dirty = isWithView != withView;
+	
+	withView = isWithView;
+}
+bool TransformComponent::isWithView() {
+	return withView;
 }
 
 const glm::vec3& TransformComponent::getPos() {
@@ -36,6 +51,7 @@ void TransformComponent::setPos(glm::vec3 pos) {
 	this->pos = pos;
 }
 
+//x - pitch, y - yaw, z - roll
 const glm::vec3& TransformComponent::getRotate() {
 	return rotate;
 }
@@ -44,21 +60,25 @@ void TransformComponent::setRotateX(float x) {
 	dirty = dirty || std::fabs(x - rotate.x) > std::numeric_limits<float>::epsilon();
 
 	rotate.x = x;
+	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
 }
 void TransformComponent::setRotateY(float y) {
 	dirty = dirty || std::fabs(y - rotate.y) > std::numeric_limits<float>::epsilon();
 
 	rotate.y = y;
+	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
 }
 void TransformComponent::setRotateZ(float z) {
 	dirty = dirty || std::fabs(z - rotate.z) > std::numeric_limits<float>::epsilon();
 
 	rotate.z = z;
+	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
 }
 void TransformComponent::setRotate(glm::vec3 rotate) {
 	dirty = dirty || this->rotate != rotate;
 
 	this->rotate = rotate;
+	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
 }
 
 const glm::vec3& TransformComponent::getScale() {
@@ -85,8 +105,12 @@ void TransformComponent::setScale(glm::vec3 scale) {
 
 	this->scale = scale;
 }
-const glm::mat4& TransformComponent::getTransform() {
+glm::mat4& TransformComponent::getTransform() {
 	return transform;
+}
+
+glm::mat4 TransformComponent::getRotationMatrix() {
+	return glm::toMat4(rotateQuat);
 }
 
 void TransformComponent::reloadTransform() {
@@ -109,21 +133,31 @@ void TransformComponent::reloadTransform() {
 			childTransform->reloadTransform();
 		}
 	}
-	
+
+	if (withView) {
+		viewMatrix = glm::lookAt(getPos(), getPos() + getFront(), {0.f,1.f,0.f});
+	}
+	else {
+		viewMatrix = {};
+	}
 }
 
 glm::mat4 TransformComponent::getLocalTransform() {
-    const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f), glm::radians(rotate.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f), glm::radians(rotate.y), glm::vec3(0.0f, 1.0f, 0.0f));
-    const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f), glm::radians(rotate.z), glm::vec3(0.0f, 0.0f, 1.0f));
-
-    const glm::mat4 rotationMatrix = transformY * transformX * transformZ;
-
-    return glm::translate(glm::mat4(1.0f), pos) * rotationMatrix * glm::scale(glm::mat4(1.0f), scale);
+    return glm::translate(glm::mat4(1.0f), pos) * getRotationMatrix() * glm::scale(glm::mat4(1.0f), scale);
 }
 
-void TransformComponent::setOwnerNode(NodeModule::Node* node) {
-	ownerNode = node;
+const glm::mat4& TransformComponent::getViewMatrix() const {
+	return viewMatrix;
+}
+
+glm::vec3 TransformComponent::getFront() {
+	glm::vec3 front;
+
+	front.z = cos(glm::radians(getRotate().y)) * cos(glm::radians(getRotate().x));
+	front.y = -sin(glm::radians(getRotate().x));
+	front.x = sin(glm::radians(getRotate().y)) * cos(glm::radians(getRotate().x));
+
+	return glm::normalize(front);
 }
 
 void TransformComponent::markDirty() {
