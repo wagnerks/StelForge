@@ -4,7 +4,7 @@
 namespace GameEngine::LightsModule {
 	class DirectionalLight : public Light {
 	public:
-		DirectionalLight(size_t aShadowWidth = 1024, size_t aShadowHeight = 1024, float aNearPlane = 1.f, float aFarPlane = 500.f);
+		DirectionalLight(size_t aShadowWidth = 1024, size_t aShadowHeight = 1024, float aNearPlane = 1.f, float aFarPlane = 15.f);
 		~DirectionalLight() override;
 		void preDraw();
 		void postDraw();

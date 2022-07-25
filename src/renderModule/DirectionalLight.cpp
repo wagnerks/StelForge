@@ -3,6 +3,7 @@
 #include <ext/matrix_clip_space.hpp>
 #include <ext/matrix_transform.hpp>
 
+#include "imgui.h"
 #include "Utils.h"
 #include "componentsModule/TransformComponent.h"
 #include "glad/glad.h"
@@ -35,15 +36,17 @@ DirectionalLight::~DirectionalLight() {
 }
 
 void DirectionalLight::preDraw() {
+	ImGui::Begin("lightDebug");
+	ImGui::DragFloat("nearPlane", &nearPlane,0.1f);
+	ImGui::DragFloat("farPlane", &farPlane,0.1f);
+	ImGui::End();
+
 	auto tc = getComponent<TransformComponent>();
 	tc->setWithView(true);
 	tc->reloadTransform();
 	
 	glm::mat4 lightProjection = glm::ortho(-tc->getScale().x * 1.0f, tc->getScale().x * 1.0f, -tc->getScale().y * 1.0f, tc->getScale().y * 1.0f, nearPlane, farPlane);
-	//auto up = glm::vec3( 0.0f, 1.0f,  0.0f);
-	//glm::mat4 lightView = glm::lookAt(tc->getPos(), {0.f,0.f,0.f}, up);
-
-	lightSpaceMatrix = lightProjection * tc->getViewMatrix();
+    lightSpaceMatrix = lightProjection * tc->getViewMatrix();
 
 	auto simpleDepth = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/depth.vs", "shaders/depth.fs");
 	simpleDepth->use();
@@ -59,6 +62,9 @@ void DirectionalLight::preDraw() {
 void DirectionalLight::postDraw() {
 	glCullFace(GL_BACK); 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glViewport(0, 0, RenderModule::Renderer::SCR_WIDTH, RenderModule::Renderer::SCR_HEIGHT);
+
 }
 
 unsigned DirectionalLight::getDepthMapTexture() {
