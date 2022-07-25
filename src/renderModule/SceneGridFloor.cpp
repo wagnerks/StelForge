@@ -58,10 +58,14 @@ void SceneGridFloor::draw() {
 
 	glBindVertexArray(VAO);
 	glDisable(GL_CULL_FACE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	GameEngine::RenderModule::Renderer::drawCallsCount++;
 	GameEngine::RenderModule::Renderer::drawVerticesCount += 6;
 	glEnable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
 
 	glBindVertexArray(0);
 }
