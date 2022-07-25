@@ -44,6 +44,7 @@ std::string ShaderBase::loadShaderCode(const char* path) {
 		shaderCode = shaderStream.str();
 	}
 	catch (std::ifstream::failure& e) {
+		assert(false);
 		LogsModule::Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s, \npath: %s", e.what(), path);
 		return {};
 	}
