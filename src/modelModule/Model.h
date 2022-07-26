@@ -13,7 +13,7 @@ namespace GameEngine::ModelModule {
 			loadModel(path);
 		}
 
-		void draw(ShaderModule::ShaderBase* shader);
+		void draw(ShaderModule::ShaderBase* shader, bool ignoreTex = false);
 		const std::vector<Mesh>& getMeshes();
 	private:
 		//model data

@@ -17,6 +17,7 @@ namespace GameEngine::RenderModule {
 		static TextureHandler* getInstance();
 		void bindTexture(unsigned slot, unsigned type, unsigned int id);
 		TextureLoader loader;
+		unsigned getCurentTexture(unsigned slot) { return bindedTextures[slot];}
 	private:
 		std::unordered_map<unsigned, unsigned> bindedTextures;
 		inline static TextureHandler* instance = nullptr;

@@ -36,6 +36,25 @@ namespace GameEngine::RenderModule {
 		inline static size_t drawVerticesCount = 0;
 	private:
 		GameModule::CoreModule::Scene* scene = nullptr;
+		void initGlobalProjection();
+		std::vector<glm::vec3> lightPositions;
+		std::vector<glm::vec3> lightColors;
+		std::vector<glm::vec3> objectPositions;
+
+		std::vector<glm::vec3> randomLightSpeeds;
+
+		ModelModule::Model* modelObj = nullptr;
+		unsigned int gBuffer;
+		unsigned int gPosition, gNormal, gAlbedoSpec;
+		unsigned int rboDepth;
+
+		//unsigned depthMap;
+		//unsigned depthMapFBO;
+
+		LightsModule::DirectionalLight* light = nullptr;
+		LightsModule::DirectionalLight* light2 = nullptr;
+
+		std::vector<LightsModule::DirectionalLight*> lightsObj;
 		
 	public:
 		static GLFWwindow* initGLFW();

@@ -25,21 +25,24 @@ Mesh::~Mesh() {
 	}*/
 }
 
-void Mesh::draw(ShaderModule::ShaderBase* shader) {
-	unsigned int diffuseNr = 1;
-    unsigned int specularNr = 1;
-	for (unsigned int i = 0; i < textures.size(); i++) {
-		std::string number;
-		std::string name = textures[i].type;
-		if (name == "texture_diffuse")
-			number = std::to_string(diffuseNr++);
-		else if (name == "texture_specular")
-			number = std::to_string(specularNr++);
+void Mesh::draw(ShaderModule::ShaderBase* shader, bool ignoreTex) {
+	if (!ignoreTex) {
+		unsigned int diffuseNr = 1;
+	    unsigned int specularNr = 1;
+		for (unsigned int i = 0; i < textures.size(); i++) {
+			std::string number;
+			std::string name = textures[i].type;
+			if (name == "texture_diffuse")
+				number = std::to_string(diffuseNr++);
+			else if (name == "texture_specular")
+				number = std::to_string(specularNr++);
 
-		shader->setInt((name + number).c_str(), i);
+			shader->setInt((name + number).c_str(), i);
 
-		RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0 + i, GL_TEXTURE_2D, textures[i].id);
+			RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0 + i, GL_TEXTURE_2D, textures[i].id);
+		}
 	}
+	
 	
     glBindVertexArray(VAO);
 	if (!indices.empty()) {

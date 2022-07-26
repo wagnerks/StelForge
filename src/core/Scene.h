@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "modelModule/Model.h"
 #include "nodeModule/Node.h"
 #include "renderModule/DirectionalLight.h"
 #include "renderModule/SceneGridFloor.h"
@@ -16,6 +17,12 @@ namespace GameModule::CoreModule {
 		GameEngine::RenderModule::Skybox* skybox = nullptr;
 		GameEngine::RenderModule::SceneGridFloor* gridFloor = nullptr;
 		GameEngine::LightsModule::DirectionalLight* sunLight = nullptr;
+
+		std::vector<glm::vec3> objectPositions;
+
+		std::vector<glm::vec3> randomLightSpeeds;
+
+		GameEngine::ModelModule::Model* modelObj = nullptr;
 	};
 }
 

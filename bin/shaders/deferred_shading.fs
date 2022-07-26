@@ -7,6 +7,7 @@ uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
 
+
 struct Light {
     vec3 Position;
     vec3 Color;
@@ -19,6 +20,15 @@ const int NR_LIGHTS = 10;
 uniform Light lights[NR_LIGHTS];
 uniform vec3 viewPos;
 
+struct DirectionLight {
+    mat4 PV; //proj * view from light perspective matrix
+    sampler2D shadowsMap;
+};
+
+const int MAX_SHADOWS_SIZE = 5;
+uniform DirectionLight DirLights[MAX_SHADOWS_SIZE];
+uniform int shadowsCount;
+
 void main()
 {             
     // retrieve data from gbuffer
@@ -26,9 +36,17 @@ void main()
     vec3 Normal = texture(gNormal, TexCoords).rgb;
     vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
     float Specular = texture(gAlbedoSpec, TexCoords).a;
-    
+
+    float shadowDepth = 1.f;
+    for (int i = 0; i < shadowsCount; i++){
+        vec4 shadowCoord = DirLights[i].PV * vec4(FragPos,1.0);
+        vec3 projCoords = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;
+
+        shadowDepth *= texture(DirLights[i].shadowsMap, projCoords.xy).r;
+    }
+            
     // then calculate lighting as usual
-    vec3 lighting  = Diffuse * 0.1; // hard-coded ambient component
+    vec3 lighting  = Diffuse * 0.3; // hard-coded ambient component
     vec3 viewDir  = normalize(viewPos - FragPos);
     for(int i = 0; i < NR_LIGHTS; ++i)
     {
@@ -49,6 +67,10 @@ void main()
             specular *= attenuation;
             lighting += diffuse + specular;
         }
-    }    
+    }
+
+
+    lighting *= shadowDepth;
+    
     FragColor = vec4(lighting, 1.0);
 }

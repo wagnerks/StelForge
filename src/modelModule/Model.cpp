@@ -11,9 +11,9 @@
 
 using namespace GameEngine::ModelModule;
 
-void Model::draw(ShaderModule::ShaderBase* shader) {
+void Model::draw(ShaderModule::ShaderBase* shader, bool ignoreTex) {
     for(auto& mesh : meshes) {
-		mesh.draw(shader);
+		mesh.draw(shader, ignoreTex);
 	}
 }
 
