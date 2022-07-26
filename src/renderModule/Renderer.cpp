@@ -86,7 +86,10 @@ void Renderer::draw() {
 	auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
     auto shaderLightingPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/deferred_shading.vs", "shaders/deferred_shading.fs");
     auto shaderLightBox = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/deferred_light_box.vs", "shaders/deferred_light_box.fs");
-
+	shaderLightingPass->use();
+    shaderLightingPass->setInt("gPosition", 0);
+    shaderLightingPass->setInt("gNormal", 1);
+    shaderLightingPass->setInt("gAlbedoSpec", 2);
 
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -143,20 +146,18 @@ void Renderer::draw() {
     shaderGeometryPass->use();
     shaderGeometryPass->setMat4("projection", projection);
     shaderGeometryPass->setMat4("view", view);
-    for (unsigned int i = 0; i < objectPositions.size(); i++)
-    {
+    for (unsigned int i = 0; i < objectPositions.size(); i++) {
         model = glm::mat4(1.0f);
         model = glm::translate(model, objectPositions[i]);
         model = glm::scale(model, glm::vec3(0.005f));
-        //model = glm::scale(model, glm::vec3(1.f));
         shaderGeometryPass->setMat4("model", model);
         modelObj->draw(shaderGeometryPass);
-		//Utils::renderCube();
     }
 	model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(0.f,-10.f,0.f));
     model = glm::scale(model, glm::vec3(5.f));
 	shaderGeometryPass->setMat4("model", model);
+	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, TextureHandler::getInstance()->loader.loadTexture("white.png"));
 	Utils::renderCube();
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -167,6 +168,8 @@ void Renderer::draw() {
     shaderLightingPass->use();
 	shaderLightingPass->setMat4("DirLights[0].PV", light->getLightSpaceProjection());
 	shaderLightingPass->setMat4("DirLights[1].PV", light2->getLightSpaceProjection());
+	shaderLightingPass->setVec3("DirLights[0].lightPos", light->getComponent<TransformComponent>()->getPos());
+	shaderLightingPass->setVec3("DirLights[1].lightPos", light2->getComponent<TransformComponent>()->getPos());
 	shaderLightingPass->setInt("DirLights[0].shadowsMap", 3);
 	shaderLightingPass->setInt("DirLights[1].shadowsMap", 4);
 	shaderLightingPass->setInt("shadowsCount", 2);

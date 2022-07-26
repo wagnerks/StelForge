@@ -36,7 +36,8 @@ DirectionalLight::~DirectionalLight() {
 }
 
 void DirectionalLight::preDraw() {
-	ImGui::Begin("lightDebug");
+	std::string name = "lightDebud##" + std::to_string(reinterpret_cast<std::uintptr_t>(this));
+	ImGui::Begin(name.c_str());
 	ImGui::DragFloat("nearPlane", &nearPlane,0.1f);
 	ImGui::DragFloat("farPlane", &farPlane,0.1f);
 	ImGui::End();
