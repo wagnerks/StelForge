@@ -41,9 +41,7 @@ void Utils::renderQuad() {
 		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 	}
 	glBindVertexArray(quadVAO);
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	RenderModule::Renderer::drawCallsCount++;
-	RenderModule::Renderer::drawVerticesCount += 4;
+	RenderModule::Renderer::drawArrays(GL_TRIANGLE_STRIP, 4);
 	glBindVertexArray(0);
 }
 
@@ -70,9 +68,7 @@ void Utils::renderQuad(float x1, float y1, float x2, float y2) {
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 	
 	glBindVertexArray(quadVAO);
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	RenderModule::Renderer::drawCallsCount++;
-	RenderModule::Renderer::drawVerticesCount += 4;
+	RenderModule::Renderer::drawArrays(GL_TRIANGLE_STRIP, 4);
 	glBindVertexArray(0);
 
 	glDeleteVertexArrays(1, &quadVAO);
@@ -80,8 +76,14 @@ void Utils::renderQuad(float x1, float y1, float x2, float y2) {
 }
 
 void Utils::renderCube() {
-	static unsigned cubeVAO = 0;
-	static unsigned cubeVBO = 0;
+	initCubeVAO();
+	
+	glBindVertexArray(cubeVAO);
+	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 36);
+	glBindVertexArray(0);
+}
+
+void Utils::initCubeVAO() {
 	if (cubeVAO == 0) {
 		float vertices[] = {
             // back face
@@ -144,11 +146,6 @@ void Utils::renderCube() {
         glBindVertexArray(0);
 
 	}
-	glBindVertexArray(cubeVAO);
-	glDrawArrays(GL_TRIANGLES, 0, 36);
-	RenderModule::Renderer::drawCallsCount++;
-	RenderModule::Renderer::drawVerticesCount += 36;
-	glBindVertexArray(0);
 }
 
 void Utils::renderXYZ(float length) {
@@ -177,8 +174,6 @@ void Utils::renderXYZ(float length) {
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 	}
 	glBindVertexArray(linesVAO);
-	glDrawArrays(GL_LINES, 0, 6);
-	RenderModule::Renderer::drawCallsCount++;
-	RenderModule::Renderer::drawVerticesCount += 6;
+	RenderModule::Renderer::drawArrays(GL_LINES, 6);
 	glBindVertexArray(0);
 }

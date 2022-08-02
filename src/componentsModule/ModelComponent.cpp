@@ -17,17 +17,21 @@ void ModelComponent::draw() {
 	auto projection = Engine::getInstance()->getCamera()->getProjectionsMatrix();
 
 	// camera/view transformation
-	auto view = Engine::getInstance()->getCamera()->GetViewMatrix();
+	auto view = Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();
 	transformComp->reloadTransform();
 	shader->use();
 	shader->setMat4("model", transformComp->getTransform());
 	shader->setMat4("PVM", projection * view * transformComp->getTransform());
 	shader->setMat4("projection", projection);
 	shader->setMat4("view",  view);
-	shader->setVec3("cameraPos", Engine::getInstance()->getCamera()->Position);
+	shader->setVec3("cameraPos", Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos());
 	model->draw(shader);
 }
 
 void ModelComponent::setModel(ModelModule::Model* aModel) {
 	model = aModel;
+}
+
+GameEngine::ModelModule::Model* ModelComponent::getModel() const {
+	return model;
 }

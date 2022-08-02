@@ -52,7 +52,7 @@ Node* Node::findElement(std::string_view elementId) {
 std::vector<Node*> Node::getAllNodes() {
 	std::vector<Node*> res;
 	getAllNodesHelper(res);
-	return res;
+	return std::move(res);
 }
 
 const std::vector<Node*>& Node::getElements() {

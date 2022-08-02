@@ -14,8 +14,10 @@ namespace GameEngine::ShaderModule {
 
 		void setInt(const char* name, int val);
 		void setMat4(const char* name, const glm::mat4& val);
+		void setMat3(const char* name, const glm::mat3& val);
 		void setVec2(const char* name, const glm::vec2& val);
 		void setVec3(const char* name, const glm::vec3& val);
+		void setVec4(const char* name, const glm::vec4& val);
 		void setFloat(const char* name, float val);
 		void setUniformBlockIdx(const char* name, unsigned val);
 
@@ -35,7 +37,7 @@ namespace GameEngine::ShaderModule {
 		size_t hash = 0;
 
 		static bool checkCompileErrors(unsigned int shader, std::string_view type);
-		int getUniformLocation(const char* name);
+		int getUniformLocation(const std::string& name);
 		
 	};
 }

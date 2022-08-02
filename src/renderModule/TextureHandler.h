@@ -10,6 +10,7 @@ namespace GameEngine::RenderModule {
 		std::unordered_map<std::string, unsigned> loadedTex;
 		unsigned int loadTexture(const std::string& path, bool flip = false);
 		unsigned int loadCubemapTexture(const std::string& path, bool flip = false);
+		unsigned int createEmpty2DTexture(const std::string& id, int w, int h, int format);
 	};
 
 	class TextureHandler {

@@ -1,6 +1,7 @@
 ﻿#include "DebugInfo.h"
 
 #include "imgui.h"
+#include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
 
@@ -17,9 +18,14 @@ void DebugInfo::drawInfo() {
 	ImGui::Begin("Perf", &opened, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize);
 	ImGui::Text("FPS: %d", Engine::getInstance()->getFPS());
 	ImGui::Text("dt: %.4f", static_cast<double>(Engine::getInstance()->getDeltaTime()));
-	ImGui::Text("pos: [%.3f, %.3f, %.3f]", static_cast<double>(camera->Position.x), static_cast<double>(camera->Position.y), static_cast<double>(camera->Position.z));
-	ImGui::Text("drawCalls: %d", RenderModule::Renderer::drawCallsCount);
-	ImGui::Text("verticesDraw: %d", RenderModule::Renderer::drawVerticesCount);
+	ImGui::Separator();
+	ImGui::Text("camera:");
+	ImGui::Text("FOV: %.2f", camera->cameraView.getFOV());
+	ImGui::Text("pos: [%.3f, %.3f, %.3f]", static_cast<double>(camera->getComponent<TransformComponent>()->getPos().x), static_cast<double>(camera->getComponent<TransformComponent>()->getPos().y), static_cast<double>(camera->getComponent<TransformComponent>()->getPos().z));
+	auto cameraRotate = camera->getComponent<TransformComponent>()->getRotate();
+	ImGui::Text("angle: [%.3f, %.3f, %.3f]", cameraRotate.x, cameraRotate.y, cameraRotate.z);
+	ImGui::Text("drawCalls: %zu", RenderModule::Renderer::drawCallsCount);
+	ImGui::Text("verticesDraw: %zu", RenderModule::Renderer::drawVerticesCount);
 
 	ImGui::End();
 }

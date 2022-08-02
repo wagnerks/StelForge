@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <fwd.hpp>
 #include <vec3.hpp>
+#include <vector>
 #include <detail/type_quat.hpp>
 
 #include "matrix.hpp"
@@ -18,39 +19,47 @@ namespace GameEngine::ComponentsModule {
 	class TransformComponent : public Component {
 	public:
 		TransformComponent(ComponentHolder* holder);
+		~TransformComponent() override;
 		void updateComponent() override;
-		void setWithView(bool isWithView);
-		bool isWithView();
 
-		const glm::vec3& getPos();
+		void addChildTransform(TransformComponent* child);
+		void removeChildTransform(TransformComponent* child);
+
+		glm::vec3 getPos(bool global = false) const;
 		void setX(float x);
 		void setY(float y);
 		void setZ(float z);
 
 		void setPos(glm::vec3 pos);
 
-		const glm::vec3& getRotate();
+		const glm::vec3& getRotate() const;
 		void setRotateX(float x);
 		void setRotateY(float y);
 		void setRotateZ(float z);
 		void setRotate(glm::vec3 rotate);
 
-		const glm::vec3& getScale();
+		const glm::vec3& getScale() const;
 		void setScaleX(float x);
 		void setScaleY(float y);
 		void setScaleZ(float z);
 		void setScale(glm::vec3 scale);
 
-		glm::mat4& getTransform();
-		glm::mat4 getRotationMatrix();
-		glm::mat4 getLocalTransform();
-		const glm::mat4& getViewMatrix() const;
-		glm::vec3 getFront();
+		const glm::mat4& getTransform() const;
+		glm::mat4 getRotationMatrix() const;
+		glm::mat4 getLocalTransform() const;
+		glm::mat4 getViewMatrix() const;
+
+		glm::vec3 getRight();
+		glm::vec3 getUp();
+		glm::vec3 getBackward();
+		glm::vec3 getForward();
+
 		void reloadTransform();
 		
 		void markDirty();
 	private:
-		bool withView = false;
+		std::vector<TransformComponent*> childTransforms; //todo dirty, possible crashes
+		TransformComponent* parentTransform = nullptr;
 		NodeModule::Node* ownerNode = nullptr;
 
 		bool dirty = true;

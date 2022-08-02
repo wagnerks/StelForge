@@ -74,6 +74,13 @@ void ShaderBase::setMat4(const char* name, const glm::mat4& val) {
 	glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(val));
 }
 
+void ShaderBase::setMat3(const char* name, const glm::mat3& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniformMatrix3fv(getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(val));
+}
+
 void ShaderBase::setVec2(const char* name, const glm::vec2& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
@@ -86,6 +93,13 @@ void ShaderBase::setVec3(const char* name, const glm::vec3& val) {
 		return;
 	}
 	glUniform3fv(getUniformLocation(name), 1, glm::value_ptr(val));
+}
+
+void ShaderBase::setVec4(const char* name, const glm::vec4& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniform4fv(getUniformLocation(name), 1, glm::value_ptr(val));
 }
 
 void ShaderBase::setFloat(const char* name, float val) {
@@ -129,11 +143,11 @@ bool ShaderBase::checkCompileErrors(unsigned int shader, std::string_view type) 
 	return success;
 }
 
-int ShaderBase::getUniformLocation(const char* name) {
+int ShaderBase::getUniformLocation(const std::string& name) {
 	const auto found = cachedUniforms.find(name);
 	if (found != cachedUniforms.end()) {
 		return found->second;
 	}
 
-	return cachedUniforms.insert({name, glGetUniformLocation(ID, name)}).first->second;
+	return cachedUniforms.insert({name, glGetUniformLocation(ID, name.c_str())}).first->second;
 }

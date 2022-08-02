@@ -1,6 +1,7 @@
 ﻿#include "Skybox.h"
 
 #include "TextureHandler.h"
+#include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
 #include "modelModule/Mesh.h"
@@ -103,7 +104,7 @@ void Skybox::draw() {
 	}
 	skyboxShader->use();
 
-	auto view = Engine::getInstance()->getCamera()->GetViewMatrix();
+	auto view = Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();;
 	skyboxShader->setMat4("view", glm::mat4(glm::mat3(view)));
 
 	glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
@@ -111,9 +112,7 @@ void Skybox::draw() {
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE16, GL_TEXTURE_CUBE_MAP, cubemapTex);
    
 	glBindVertexArray(VAO);
-	glDrawArrays(GL_TRIANGLES, 0, 36);
-	RenderModule::Renderer::drawCallsCount++;
-	RenderModule::Renderer::drawVerticesCount += 36;
+	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 36);
 
 	glDepthFunc(GL_LESS);
 	glBindVertexArray(0);

@@ -4,7 +4,9 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include "DirectionalLight.h"
+#include "Batcher.h"
+#include "CascadeShadows.h"
+#include "DirectionalOrthoLight.h"
 #include "SceneGridFloor.h"
 #include "Skybox.h"
 #include "core/Scene.h"
@@ -30,6 +32,12 @@ namespace GameEngine::RenderModule {
 		void terminate() const;
 
 		void drawCall();
+
+		static void drawArrays(GLenum mode, GLsizei size, GLint first = 0);
+		static void drawElements(GLenum mode, GLsizei size, GLenum type, const void* place = nullptr);
+		static void drawElementsInstanced(GLenum mode, GLsizei size, GLenum type, GLsizei instancesCount, const void* place = nullptr);
+		static void drawArraysInstancing(GLenum mode, GLsizei size, GLsizei instancesCount, GLint first = 0);
+
 		inline static int SCR_WIDTH = 1920;
 		inline static int SCR_HEIGHT = 1080;
 		inline static size_t drawCallsCount = 0;
@@ -45,16 +53,16 @@ namespace GameEngine::RenderModule {
 
 		ModelModule::Model* modelObj = nullptr;
 		unsigned int gBuffer;
-		unsigned int gPosition, gNormal, gAlbedoSpec;
+		unsigned int gPosition, gNormal, gAlbedoSpec, gDepthBuffer;
 		unsigned int rboDepth;
 
-		//unsigned depthMap;
-		//unsigned depthMapFBO;
+		NodeModule::Node* node = new NodeModule::Node("lel");
 
-		LightsModule::DirectionalLight* light = nullptr;
-		LightsModule::DirectionalLight* light2 = nullptr;
+		std::vector<LightsModule::DirectionalOrthoLight*> lightsObj;
+		CascadeShadows* cascade = nullptr;
 
-		std::vector<LightsModule::DirectionalLight*> lightsObj;
+		Batcher* batcher = nullptr;
+
 		
 	public:
 		static GLFWwindow* initGLFW();

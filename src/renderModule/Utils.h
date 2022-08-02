@@ -9,6 +9,9 @@ namespace GameEngine::RenderModule {
 		static void renderQuad();
 		static void renderQuad(float x1, float y1, float x2, float y2);
 		static void renderCube();
+		static void initCubeVAO();
 		static void renderXYZ(float length);
+		inline static unsigned cubeVAO = 0;
+		inline static unsigned cubeVBO = 0;
 	};
 }

@@ -1,5 +1,6 @@
 ﻿#include "SceneGridFloor.h"
 
+#include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
 #include "modelModule/Mesh.h"
@@ -54,16 +55,14 @@ void SceneGridFloor::draw() {
 	}
 	floorShader->use();
 
-	floorShader->setMat4("PVM", Engine::getInstance()->getCamera()->getProjectionsMatrix()  * GameEngine::Engine::getInstance()->getCamera()->GetViewMatrix() * transform);
+	floorShader->setMat4("PVM", Engine::getInstance()->getCamera()->getProjectionsMatrix()  * GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix() * transform);
 
 	glBindVertexArray(VAO);
 	glDisable(GL_CULL_FACE);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-	GameEngine::RenderModule::Renderer::drawCallsCount++;
-	GameEngine::RenderModule::Renderer::drawVerticesCount += 6;
+	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 6);
 	glEnable(GL_CULL_FACE);
 	glDisable(GL_BLEND);
 

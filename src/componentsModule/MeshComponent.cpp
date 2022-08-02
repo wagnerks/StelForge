@@ -27,7 +27,7 @@ void MeshComponent::draw() {
 
 	// camera/view transformation
 	; 
-	auto view =Engine::getInstance()->getCamera()->GetViewMatrix();
+	auto view = Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();
 	shader->use();
 	if (transformComp) {
 		transformComp->reloadTransform();
@@ -38,7 +38,7 @@ void MeshComponent::draw() {
 		shader->setMat4("skyView", glm::mat4(glm::mat3(view)));
 		shader->setMat4("PVM", projection * view * transformComp->getTransform());
 		
-        shader->setVec3("cameraPos", Engine::getInstance()->getCamera()->Position);
+        shader->setVec3("cameraPos", Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos());
 		shader->setInt("skybox", 0);
 	}
 	

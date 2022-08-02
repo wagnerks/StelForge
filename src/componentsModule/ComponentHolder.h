@@ -2,6 +2,7 @@
 #include <glm.hpp>
 #include <map>
 #include <typeindex>
+#include <unordered_map>
 
 
 namespace GameEngine::ComponentsModule {
@@ -14,7 +15,7 @@ namespace GameEngine::ComponentsModule {
 
 	    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Component, T>>>
 	    T* addComponent() {
-			return static_cast<T*>(components.insert(std::make_pair(std::type_index(typeid(T)), new T(this)))->second);
+			return static_cast<T*>(components.insert(std::make_pair(std::type_index(typeid(T)), new T(this))).first->second);
 	    }
 
 	    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Component, T>>>
@@ -30,7 +31,7 @@ namespace GameEngine::ComponentsModule {
 	    }
 
 	private:
-		std::multimap<std::type_index, Component*> components;
+		std::unordered_map<std::type_index, Component*> components;
 	};
 
 	

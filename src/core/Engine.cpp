@@ -36,7 +36,7 @@ void Engine::init() {
 	core = new CoreModule::Core();
 	core->init();
 	render = new RenderModule::Renderer();
-	camera = new Camera();
+	camera = new Camera({45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), 0.1f, 500.f});
 
 	render->init();
 

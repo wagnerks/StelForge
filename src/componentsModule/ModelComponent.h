@@ -15,6 +15,7 @@ namespace GameEngine::ComponentsModule{
 		void updateComponent() override {};
 		void draw();
 		void setModel(ModelModule::Model* aModel);
+		ModelModule::Model* getModel() const;
 	private:
 		ModelModule::Model* model = nullptr;
 	};

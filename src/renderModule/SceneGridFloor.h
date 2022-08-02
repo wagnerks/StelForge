@@ -12,7 +12,7 @@ namespace GameEngine::RenderModule {
 	private:
 		GameEngine::ShaderModule::ShaderBase* floorShader = nullptr;
 		unsigned VAO = 0;
-		unsigned VBO;
+		unsigned VBO = 0;
 		float size = 0;
 		glm::mat4 transform = glm::mat4(1.f);
 	};

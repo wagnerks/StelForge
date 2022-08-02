@@ -121,3 +121,16 @@ unsigned TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
 	loadedTex[path] = id;
 	return id;
 }
+
+unsigned TextureLoader::createEmpty2DTexture(const std::string& id, int w, int h, int format) {
+	unsigned int textureID;
+	glGenTextures(1, &textureID);
+	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, textureID);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, nullptr);
+
+	return textureID;
+}
