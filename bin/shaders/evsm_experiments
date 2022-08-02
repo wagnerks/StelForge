@@ -1,0 +1,62 @@
+uniform float	  u_ShadowBias;
+
+uniform int		  u_EVSMMode; // 0 - EVSM2, 1 - EVSM4
+
+uniform float	  u_VarianceMinLimit;
+uniform float	  u_LightBleedReduction;
+
+uniform vec2      u_Exponents;
+uniform vec3        evsmLightPos;
+uniform sampler2D u_DepthMapTexture;
+uniform mat4 evsmLightMatrix;
+
+float calcShadow(vec4 fragLightSpacePos);
+float chebyshev(vec2 moments, float depth);
+float reduceLightBleed(float p_max, float amount);
+float linstep(float minVal, float maxVal, float val);
+
+
+
+
+
+float calcShadow(vec4 fragLightSpacePos) {
+	vec3 projCoords = fragLightSpacePos.xyz / fragLightSpacePos.w;
+    
+	projCoords.z -= u_ShadowBias; // z bias
+	projCoords = projCoords * 0.5 + vec3(0.5);
+    if (projCoords.z <= 0.01f || projCoords.x <= 0.01f || projCoords.y <= 0.01f || projCoords.z >= 0.99 || projCoords.x >= 0.99 || projCoords.y >= 0.99){
+        return 0.0;
+    }
+	
+	vec4 moments = texture(u_DepthMapTexture, projCoords.xy); // pos, pos^2, neg, neg^2
+
+	projCoords.z = projCoords.z * 2.0 - 1.0;
+
+    float shadow = chebyshev(moments.xy, exp(u_Exponents.x * projCoords.z));
+
+    return (1 - shadow) / 2.f;
+}
+
+float chebyshev(vec2 moments, float depth) {
+
+	if (depth <= moments.x) {
+		return 1.0;
+	}
+
+	float variance = moments.y - (moments.x * moments.x);
+	variance = max(variance, u_VarianceMinLimit / 1000.0);
+
+	float d = depth - moments.x; // attenuation
+	float p_max = variance / (variance + d * d);
+    return smoothstep(0.0, 1.0, p_max);
+	//return reduceLightBleed(p_max, u_LightBleedReduction);
+}
+
+float reduceLightBleed(float p_max, float amount) {
+    return smoothstep(0.0, 1.0, amount);
+	//return linstep(amount, 1.0, p_max);
+}
+
+float linstep(float minVal, float maxVal, float val) {
+	return clamp((val - minVal) / (maxVal - minVal), 0.0, 1.0);
+}
