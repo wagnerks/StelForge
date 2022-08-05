@@ -2,11 +2,12 @@
 #include <string_view>
 #include <vector>
 
-#include "componentsModule/ComponentHolder.h"
+#include "ecsModule/EntityBase.h"
+
 
 namespace GameEngine::NodeModule {
 
-	class Node : public ComponentsModule::ComponentHolder {
+	class Node : public ecsModule::Entity<Node> {
 	public:
 		Node(std::string_view id);
 		virtual ~Node();
@@ -21,10 +22,10 @@ namespace GameEngine::NodeModule {
 		const std::vector<Node*>& getElements();
 		Node* getElement(std::string_view elementId);
 		std::string_view getId();
-		void setParent(Node* parentNode);
 
 	private:
 		void getAllNodesHelper(std::vector<Node*>& res);
+		void setParent(Node* parentNode);
 
 		Node* parent = nullptr;
 		std::vector<Node*> elements;

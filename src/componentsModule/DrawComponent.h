@@ -1,16 +1,14 @@
 ﻿#pragma once
-#include "Component.h"
+#include <vector>
+
+#include "ecsModule/ComponentBase.h"
+
 
 namespace GameEngine::ComponentsModule{
-	class DrawComponent : public Component{
+	class DrawComponent : public ecsModule::Component<DrawComponent>{
 	public:
-		DrawComponent(ComponentHolder* holder): Component(holder) {}
-
-		void updateComponent() override {};
 		void draw();
 	private:
-
-
 	};
 }
 

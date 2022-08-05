@@ -97,6 +97,8 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 			}
 		}
 
+		GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png"));
+
 		if (drawObjects.indicesCount) {
 			GameEngine::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
 		}

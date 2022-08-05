@@ -4,45 +4,21 @@
 #include <ext/matrix_transform.hpp>
 #include <ext/quaternion_trigonometric.hpp>
 #include <gtx/quaternion.hpp>
-#include "mat4x4.hpp"
 #include "nodeModule/Node.h"
 
 
 using namespace GameEngine::ComponentsModule;
 
-TransformComponent::TransformComponent(ComponentHolder* holder): Component(holder), ownerNode(dynamic_cast<NodeModule::Node*>(holder)) {
-}
-
-TransformComponent::~TransformComponent() {
-	for (auto childTransform : childTransforms) {
-		childTransform->parentTransform = nullptr;
-	}
-}
-
-void TransformComponent::updateComponent() {
-	reloadTransform();
-}
-
-void TransformComponent::addChildTransform(TransformComponent* child) {
-	if (!child) {
+void TransformComponent::addChildTransform(TransformComponent* comp) {
+	if (std::ranges::find(childTransforms, comp) != childTransforms.end()) {
 		return;
 	}
 
-	if (child->parentTransform) {
-		child->parentTransform->removeChildTransform(child);
-		child->parentTransform = nullptr;
-	}
-
-	childTransforms.emplace_back(child);
-	child->parentTransform = this;
+	childTransforms.push_back(comp);
 }
 
-void TransformComponent::removeChildTransform(TransformComponent* child) {
-	if (!child) {
-		return;
-	}
-
-	std::erase(childTransforms, child);
+void TransformComponent::removeChildTransform(TransformComponent* comp) {
+	std::erase(childTransforms, comp);
 }
 
 glm::vec3 TransformComponent::getPos(bool global) const {
@@ -143,20 +119,12 @@ void TransformComponent::reloadTransform() {
 
 	transform = getLocalTransform();
 
-	if (parentTransform) {
-		parentTransform->reloadTransform();
-		transform = parentTransform->getTransform() * transform;
+	if (mParentTransform) {
+		mParentTransform->reloadTransform();
+		transform = mParentTransform->getTransform() * transform;
 	}
 
-	if (ownerNode) {
-		for (auto node : ownerNode->getElements()) {
-			const auto childTransform = node->getComponent<TransformComponent>();
-			childTransform->markDirty();
-			childTransform->reloadTransform();
-		}
-	}
-
-	for (auto childTransform : childTransforms) {
+	for (const auto childTransform : childTransforms) {
 		childTransform->markDirty();
 		childTransform->reloadTransform();
 	}
@@ -188,4 +156,17 @@ glm::vec3 TransformComponent::getForward() {
 
 void TransformComponent::markDirty() {
 	dirty = true;
+}
+
+bool TransformComponent::isDirty() const {
+	return dirty;
+}
+
+void TransformComponent::setParentTransform(TransformComponent* parentTransform) {
+	if (parentTransform == mParentTransform) {
+		return;
+	}
+
+	markDirty();
+	mParentTransform = parentTransform;
 }

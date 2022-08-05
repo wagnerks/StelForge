@@ -22,7 +22,10 @@ CascadeShadows::~CascadeShadows() {
 }
 
 void CascadeShadows::init() {
-	shadowCascadeLevels = { cameraFarPlane / 45.0f, cameraFarPlane / 25.0f, cameraFarPlane / 10.0f, cameraFarPlane / 2.0f };
+	projection = GameEngine::ProjectionModule::PerspectiveProjection(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()), static_cast<float>(GameEngine::RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(GameEngine::RenderModule::Renderer::SCR_HEIGHT), 0.01f, 500.f);
+
+	shadowCascadeLevels = { 500.f / 45.0f, 500.f / 25.0f, 500.f / 10.0f, 500.f / 2.0f };
+
 	lightPos = glm::vec3(20.0f, 50, 20.0f);
 	lightDir = glm::normalize(glm::vec3(20.0f, 50, 20.0f));
 
@@ -141,6 +144,8 @@ glm::mat4 CascadeShadows::getLightSpaceMatrix(const float nearPlane, const float
 		(float)GameEngine::RenderModule::Renderer::SCR_WIDTH / (float)GameEngine::RenderModule::Renderer::SCR_HEIGHT,
 		nearPlane,
 		farPlane);
+
+
 	const auto corners = getFrustumCornersWorldSpace(
 		proj, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix());
 
@@ -198,13 +203,13 @@ std::vector<glm::mat4> CascadeShadows::getLightSpaceMatrices() {
 	std::vector<glm::mat4> ret;
 	for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i) {
 		if (i == 0) {
-			ret.push_back(getLightSpaceMatrix(cameraNearPlane, shadowCascadeLevels[i]));
+			ret.push_back(getLightSpaceMatrix(0.01f, shadowCascadeLevels[i]));
 		}
 		else if (i < shadowCascadeLevels.size()) {
 			ret.push_back(getLightSpaceMatrix(shadowCascadeLevels[i - 1], shadowCascadeLevels[i]));
 		}
 		else {
-			ret.push_back(getLightSpaceMatrix(shadowCascadeLevels[i - 1], cameraFarPlane));
+			ret.push_back(getLightSpaceMatrix(shadowCascadeLevels[i - 1], 500.f));
 		}
 	}
 	return ret;
@@ -236,7 +241,7 @@ const glm::vec2& CascadeShadows::getResolution() const {
 }
 
 float CascadeShadows::getCameraFarPlane() {
-	return cameraFarPlane;
+	return 500.f;
 }
 
 unsigned CascadeShadows::getShadowMapTextureArray() {

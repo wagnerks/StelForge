@@ -4,11 +4,11 @@
 #include "componentsModule/TransformComponent.h"
 
 Camera::Camera(GameEngine::ProjectionModule::PerspectiveProjection view, glm::vec3 position, float yaw) {
-	auto tc = getComponent<TransformComponent>();
+	/*auto tc = getComponent<TransformComponent>();
 	tc->setPos(position);
 	tc->setRotate({0.f, yaw, 0.f});
 
-	tc->reloadTransform();
+	tc->reloadTransform();*/
 	cameraView = std::move(view);
 }
 

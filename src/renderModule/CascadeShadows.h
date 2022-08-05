@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "shaderModule/ShaderBase.h"
+#include "core/Projection.h"
 
 class CascadeShadows {
 public:
@@ -55,8 +56,8 @@ private:
 
 	std::vector<glm::mat4> lightMatricesCache;
 	std::vector<float> shadowCascadeLevels;
-	float cameraNearPlane = 0.1f;
-	float cameraFarPlane = 500.0f;
+
+	GameEngine::ProjectionModule::PerspectiveProjection projection;
 	float bias = 0.f;
 
 };

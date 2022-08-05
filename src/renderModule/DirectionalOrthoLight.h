@@ -6,7 +6,7 @@ namespace GameEngine::LightsModule {
 	class DirectionalOrthoLight : public Light {
 	public:
 		DirectionalOrthoLight(int aShadowWidth = 2048, int aShadowHeight = 2048, float zNear = 1.f, float zFar = 30.f);
-		~DirectionalOrthoLight() override;
+		~DirectionalOrthoLight();
 		void preDraw();
 		void postDraw();
 		unsigned getDepthMapTexture() const;

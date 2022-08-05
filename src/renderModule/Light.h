@@ -1,8 +1,9 @@
 ﻿#pragma once
-#include "componentsModule/ComponentHolder.h"
+#include "ecsModule/EntityBase.h"
+
 
 namespace GameEngine::LightsModule {
-	class Light : public GameEngine::ComponentsModule::ComponentHolder {
+	class Light : public ecsModule::Entity<Light> {
 	public:
 		
 	};

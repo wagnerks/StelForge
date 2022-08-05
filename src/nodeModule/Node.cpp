@@ -1,11 +1,16 @@
 ﻿#include "Node.h"
 
+#include "componentsModule/TransformComponent.h"
+#include "ecsModule/EntityManager.h"
+
 using namespace GameEngine::NodeModule;
 
 Node::Node(std::string_view id) : id(id) {}
 Node::~Node() {
-	for (auto& node : getElements()) {
-		delete node;
+	for (auto node : getElements()) {
+		ecsModule::ECSHandler::entityManagerInstance()->destroyEntity(node->getEntityID());
+		node->getComponent<TransformComponent>()->setParentTransform(nullptr);
+		getComponent<TransformComponent>()->removeChildTransform(node->getComponent<TransformComponent>());
 	}
 }
 
@@ -15,6 +20,8 @@ void Node::addElement(Node* child) {
 	}
 
 	child->setParent(this);
+	child->getComponent<TransformComponent>()->setParentTransform(getComponent<TransformComponent>());
+	getComponent<TransformComponent>()->addChildTransform(child->getComponent<TransformComponent>());
 
 	elements.emplace_back(child);
 }
@@ -28,6 +35,8 @@ void Node::removeElement(std::string_view childId) {
 void Node::removeElement(Node* child) {
 	std::erase(elements, child);
 	child->setParent(nullptr);
+	child->getComponent<TransformComponent>()->setParentTransform(nullptr);
+	getComponent<TransformComponent>()->removeChildTransform(child->getComponent<TransformComponent>());
 }
 
 Node* Node::getParent() const {

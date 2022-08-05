@@ -4,6 +4,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include "ecsModule/EntityManager.h"
 #include "logsModule/logger.h"
 #include "renderModule/TextureHandler.h"
 

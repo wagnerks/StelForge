@@ -3,10 +3,10 @@
 #include <vector>
 
 #include "Mesh.h"
-#include "componentsModule/ComponentHolder.h"
+
 
 namespace GameEngine::ModelModule {
-	class Model : public ComponentsModule::ComponentHolder {
+	class Model {
 	public:
 		Model(std::vector<std::unique_ptr<Mesh>>& meshes) : meshes(std::move(meshes)) {
 		}

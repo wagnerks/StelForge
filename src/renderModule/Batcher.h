@@ -44,6 +44,6 @@ public:
 	std::vector<DrawObject> drawList;
 
 	unsigned instanceVBO = -1;
-	unsigned maxDrawSize = 1000;
+	unsigned maxDrawSize = 100000;
 	unsigned ssboModelMatrices;
 };

@@ -4,7 +4,8 @@ namespace GameEngine::LogsModule {
 	enum class eLogLevel {
 		INFO,
 		WARNING,
-		ERROR_
+		ERROR_,
+		FATAL
 	};
 
 	class Logger {
@@ -42,6 +43,15 @@ namespace GameEngine::LogsModule {
 		template <typename... Args>
 		static void LOG_WARNING(const char* msg,const Args&... args) {
 			log(eLogLevel::WARNING, msg, args...);
+		}
+
+		template <typename... Args>
+		static void LOG_FATAL(bool check, const char* msg,const Args&... args) {
+			if (check) {
+				return;
+			}
+
+			log(eLogLevel::FATAL, msg, args...);
 		}
 	};
 }

@@ -3,7 +3,6 @@
 #include <unordered_map>
 #include <assimp/material.h>
 
-#include "SharedObject.h"
 #include "modelModule/Model.h"
 
 struct aiMaterial;

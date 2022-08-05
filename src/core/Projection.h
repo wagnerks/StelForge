@@ -2,8 +2,6 @@
 #include <vec3.hpp>
 #include <mat4x4.hpp>
 
-#include "componentsModule/ComponentHolder.h"
-
 namespace GameEngine::ProjectionModule {
 	struct Projection {
 		virtual ~Projection() = default;

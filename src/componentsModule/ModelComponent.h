@@ -1,5 +1,7 @@
 ﻿#pragma once
-#include "Component.h"
+
+#include "ecsModule/ComponentBase.h"
+
 
 namespace GameEngine {
 	namespace ModelModule {
@@ -8,12 +10,9 @@ namespace GameEngine {
 }
 
 namespace GameEngine::ComponentsModule{
-	class ModelComponent : public Component {
+	class ModelComponent : public ecsModule::Component<ModelComponent> {
 	public:
-		ModelComponent(ComponentHolder* holder) : Component(holder){}
 
-		void updateComponent() override {};
-		void draw();
 		void setModel(ModelModule::Model* aModel);
 		ModelModule::Model* getModel() const;
 	private:

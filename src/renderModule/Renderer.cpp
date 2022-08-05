@@ -26,6 +26,7 @@
 #include "gtc/random.hpp"
 #include "core/BoundingVolume.h"
 #include "core/ModelLoader.h"
+#include "ecsModule/EntityManager.h"
 
 constexpr int GLFW_CONTEXT_VER_MAJ = 4;
 constexpr int GLFW_CONTEXT_VER_MIN = 6;
@@ -41,48 +42,113 @@ void Renderer::draw() {
 	RenderModule::Renderer::drawVerticesCount = 0;
 
 	scene->updateScene(0.f);
-	node->getComponent<TransformComponent>()->reloadTransform();
-	for (auto element : node->getElements()) {
-		Debug::ComponentsDebug::transformComponentDebug(element->getId(), element->getComponent<TransformComponent>());
+	
+	ImGui::Begin("comp test");
+	if (ImGui::Button("add")) {
+		node->getComponent<TransformComponent>();
 	}
+	if (ImGui::Button("remove")) {
+		node->removeComponent<TransformComponent>();
+	}
+	if (ImGui::Button("removeall")) {
+		ecsModule::ECSHandler::componentManagerInstance()->removeAllComponents(node->getEntityID());
+		node->removeComponent<TransformComponent>();
+	}
+	ImGui::End();
 
 	auto camera = Engine::getInstance()->getCamera();
-	auto camFrustum = FrustumModule::createPerspectiveProjectionFrustum(camera->getComponent<TransformComponent>(), camera->cameraView.getAspect(), glm::radians(camera->cameraView.getFOV()), camera->cameraView.getZNear(), camera->cameraView.getZFar());
+	ImGui::Begin("keklol");
+	ImGui::Checkbox("update cam frustum", &updateFrustum);
+	ImGui::End();
+
+	if (updateFrustum) {
+		camFrustum = FrustumModule::createPerspectiveProjectionFrustum(camera->getComponent<TransformComponent>(), camera->cameraView.getAspect(), glm::radians(camera->cameraView.getFOV()), camera->cameraView.getZNear(), camera->cameraView.getZFar());
+	}
+
+
 	auto& projection = camera->getProjectionsMatrix();
     auto view = camera->getComponent<TransformComponent>()->getViewMatrix();
 	Utils::initCubeVAO();
 	lightPositions.clear();
-	for (auto element : node->getElements()) {
-		float koef = 0.01f;
-		auto transform = element->getComponent<TransformComponent>();
-		if (false && element->getId().find("cube") == std::string::npos) {
-			transform->setPos(glm::vec3(transform->getPos().x, transform->getPos().y + glm::linearRand(-5.f*koef,5.f*koef), transform->getPos().z));
-			transform->setRotate(glm::vec3(transform->getRotate().x + 3.f, transform->getRotate().y + 3.f, transform->getRotate().z));
-			transform->setScale(glm::vec3(transform->getScale().x + glm::linearRand(-0.1f*koef,0.1f*koef), transform->getScale().y + glm::linearRand(-0.1f*koef,0.1f*koef), transform->getScale().z + glm::linearRand(-0.1f*koef,0.1f*koef)));
-			transform->reloadTransform();
 
-			//lightPositions.push_back(transform->getPos());
+	auto conta = ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<TransformComponent>();
+
+	for (auto& transform : *conta) {
+		transform.reloadTransform();
+		Debug::ComponentsDebug::transformComponentDebug(std::to_string(transform.getOwnerId()), &transform);
+		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(transform.getOwnerId())->getComponent<ModelComponent>(false)){
+			if (modelComp->getModel()) {
+				for (auto& mesh : modelComp->getModel()->getMeshes()) {
+					unsigned tex = -1;
+					//auto sphere = FrustumModule::generateSphereBV(mesh);
+					if (mesh->bounds->isOnFrustum(camFrustum, transform)) {
+						batcher->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),mesh->textures, transform.getTransform(), false);
+					}
+
+				}
+			}
 			
 		}
-		if (auto modelComp = element->getComponent<ModelComponent>(false)){
-			for (auto& mesh : modelComp->getModel()->getMeshes()) {
-				unsigned tex = -1;
-				//auto sphere = FrustumModule::generateSphereBV(mesh);
-				if (mesh->bounds->isOnFrustum(camFrustum, *element->getComponent<TransformComponent>())) {
-					batcher->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),mesh->textures, transform->getTransform(), false);
-				}
-
-			}
-		}
 		else {
-			if (element->getId() == "cube") {
-				batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), true);
-			}
-			else {
-				batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), false);
-			}
+			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform.getTransform(), false);
 		}
 	}
+
+
+	/*for (auto& transform : TransformComponent::components) {
+		transform.reloadTransform();
+		Debug::ComponentsDebug::transformComponentDebug(std::to_string(transform.getOwner()->getID()), &transform);
+		if (auto modelComp = transform.getOwner()->getComponent<ModelComponent>(false)){
+			if (modelComp->getModel()) {
+				for (auto& mesh : modelComp->getModel()->getMeshes()) {
+					unsigned tex = -1;
+					auto sphere = FrustumModule::generateSphereBV(mesh);
+					if (mesh->bounds->isOnFrustum(camFrustum, transform)) {
+						batcher->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),mesh->textures, transform.getTransform(), false);
+					}
+
+				}
+			}
+			
+		}
+		else {
+			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform.getTransform(), false);
+		}
+	}*/
+
+	//for (auto element : node->getElements()) {
+	//	float koef = 0.01f;
+	//	auto transform = element->getComponent<TransformComponent>();
+	//	if (false && element->getId().find("cube") == std::string::npos) {
+	//		transform->setPos(glm::vec3(transform->getPos().x, transform->getPos().y + glm::linearRand(-5.f*koef,5.f*koef), transform->getPos().z));
+	//		transform->setRotate(glm::vec3(transform->getRotate().x + 3.f, transform->getRotate().y + 3.f, transform->getRotate().z));
+	//		transform->setScale(glm::vec3(transform->getScale().x + glm::linearRand(-0.1f*koef,0.1f*koef), transform->getScale().y + glm::linearRand(-0.1f*koef,0.1f*koef), transform->getScale().z + glm::linearRand(-0.1f*koef,0.1f*koef)));
+
+	//		//lightPositions.push_back(transform->getPos());
+	//		
+	//	}
+	//	if (auto modelComp = element->getComponent<ModelComponent>(false)){
+	//		if (modelComp->getModel()) {
+	//			for (auto& mesh : modelComp->getModel()->getMeshes()) {
+	//				unsigned tex = -1;
+	//				//auto sphere = FrustumModule::generateSphereBV(mesh);
+	//				if (mesh->bounds->isOnFrustum(camFrustum, *element->getComponent<TransformComponent>())) {
+	//					batcher->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),mesh->textures, transform->getTransform(), false);
+	//				}
+
+	//			}
+	//		}
+	//		
+	//	}
+	//	else {
+	//		if (element->getId() == "cube") {
+	//			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), true);
+	//		}
+	//		else {
+	//			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), false);
+	//		}
+	//	}
+	//}
 
 
 	for (auto dirLight : lightsObj) {
@@ -158,7 +224,7 @@ void Renderer::draw() {
 	}
 
 	
-	shaderLightingPass->setInt("lightsCount", lightPositions.size());
+	shaderLightingPass->setInt("lightsCount", static_cast<int>(lightPositions.size()));
 
 	for (unsigned int i = 0; i < lightPositions.size(); i++) {
 		shaderLightingPass->setVec3(("lights[" + std::to_string(i) + "].Position").c_str(), lightPositions[i]);
@@ -308,11 +374,12 @@ void Renderer::init() {
 	// build and compile shaders
     // -------------------------
 
-	modelObj = ModelLoader::getInstance()->load("model/scene.gltf");
+	//modelObj = ModelLoader::getInstance()->load("model/scene.gltf");
+	//objectPositions.emplace_back(glm::vec3(glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f)));
 
-	//modelObj = new ModelModule::Model("suzanne/scene.gltf");
-	objectPositions.emplace_back(glm::vec3(glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f)));
-	auto count = 0;
+	modelObj = ModelLoader::getInstance()->load("suzanne/scene.gltf");
+	
+	auto count = 20;
 	for (auto i = -count; i < count; i++) {
 		for (auto j = -count; j < count; j++) {
 			for (auto k = 1u; k < count / 2; k++) {
@@ -321,29 +388,37 @@ void Renderer::init() {
 			
 		}
 	}
+	auto id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("lel");
 
+	node = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
 	for (auto i = 0u; i < objectPositions.size(); i++) {
 		auto objectPos = objectPositions[i];
-		auto backpack = new NodeModule::Node("backpack" + std::to_string(i));
+		auto id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("backpack" + std::to_string(i));
+
+		auto backpack = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
 		backpack->getComponent<TransformComponent>()->setPos(objectPos);
-		backpack->getComponent<TransformComponent>()->setScale({0.05f,0.05f,0.05f});
-		//backpack->getComponent<TransformComponent>()->setRotate({-90.f,0.f,0.f});
+		//backpack->getComponent<TransformComponent>()->setScale({0.05f,0.05f,0.05f});
+		backpack->getComponent<TransformComponent>()->setRotate({-90.f,0.f,0.f});
 		backpack->getComponent<ModelComponent>()->setModel(modelObj);
 		node->addElement(backpack);
 	}
-	auto cube = new NodeModule::Node("cube");
+	
+	id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube");
+
+	auto cube = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
+
 	node->addElement(cube);
-	auto cube2 = new NodeModule::Node("cube2");
+	id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
+
+	auto cube2 = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
 	node->addElement(cube2);
 	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
 
+
 	cube->getComponent<TransformComponent>()->setScale({50.f,1.f,50.f});
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
-	//auto mountain = new ModelModule::Model("mountain/mount.blend1.obj");
-	//auto mountNode = new NodeModule::Node("mountain");
-	//mountNode->getComponent<ModelComponent>()->setModel(mountain);
-	//node->addElement(mountNode);
+
 
 	// configure g-buffer framebuffer
     // ------------------------------

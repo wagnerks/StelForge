@@ -1,29 +1,19 @@
 ﻿#pragma once
 #include <fwd.hpp>
-#include <vec3.hpp>
 #include <vector>
 #include <detail/type_quat.hpp>
 
 #include "matrix.hpp"
 
-#include "Component.h"
+#include "ecsModule/ComponentBase.h"
 
-namespace GameEngine {
-	namespace NodeModule {
-		class Node;
-	}
-}
 
 namespace GameEngine::ComponentsModule {
-
-	class TransformComponent : public Component {
+	
+	class TransformComponent : public ecsModule::Component<TransformComponent> {
 	public:
-		TransformComponent(ComponentHolder* holder);
-		~TransformComponent() override;
-		void updateComponent() override;
-
-		void addChildTransform(TransformComponent* child);
-		void removeChildTransform(TransformComponent* child);
+		void addChildTransform(TransformComponent* comp);
+		void removeChildTransform(TransformComponent* comp);
 
 		glm::vec3 getPos(bool global = false) const;
 		void setX(float x);
@@ -57,14 +47,15 @@ namespace GameEngine::ComponentsModule {
 		void reloadTransform();
 		
 		void markDirty();
+		bool isDirty() const;
+		void setParentTransform(TransformComponent* parentTransform);
 	private:
-		std::vector<TransformComponent*> childTransforms; //todo dirty, possible crashes
-		TransformComponent* parentTransform = nullptr;
-		NodeModule::Node* ownerNode = nullptr;
+		TransformComponent* mParentTransform = nullptr;
+
+		std::vector<TransformComponent*> childTransforms;
 
 		bool dirty = true;
 		glm::mat4 transform = glm::mat4(1.0f);
-		glm::mat4 viewMatrix = glm::mat4(0.0f);
 
 		glm::quat rotateQuat = {};
 		glm::vec3 pos = glm::vec3(0.0f, 0.0f, 0.0f);

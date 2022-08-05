@@ -10,7 +10,7 @@
 #include "SceneGridFloor.h"
 #include "Skybox.h"
 #include "core/Scene.h"
-
+#include "core/BoundingVolume.h"
 namespace GameEngine {
 	namespace ModelModule {
 		class Model;
@@ -56,14 +56,15 @@ namespace GameEngine::RenderModule {
 		unsigned int gPosition, gNormal, gAlbedoSpec, gDepthBuffer;
 		unsigned int rboDepth;
 
-		NodeModule::Node* node = new NodeModule::Node("lel");
+		NodeModule::Node* node = nullptr;
 
 		std::vector<LightsModule::DirectionalOrthoLight*> lightsObj;
 		CascadeShadows* cascade = nullptr;
 
 		Batcher* batcher = nullptr;
 
-		
+		GameEngine::FrustumModule::Frustum camFrustum;
+		bool updateFrustum = true;
 	public:
 		static GLFWwindow* initGLFW();
 	private:

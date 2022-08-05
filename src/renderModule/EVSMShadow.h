@@ -1,10 +1,11 @@
 ﻿#pragma once
 #include <glm.hpp>
 
-#include "componentsModule/ComponentHolder.h"
+#include "ecsModule/EntityBase.h"
+
 
 //exponential variance shadow map
-class EVSMShadow : public GameEngine::ComponentsModule::ComponentHolder {
+class EVSMShadow : public ecsModule::Entity<EVSMShadow> {
 public:
 	EVSMShadow();
 	~EVSMShadow();

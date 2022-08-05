@@ -7,6 +7,8 @@
 #include "Camera.h"
 #include "Core.h"
 #include "InputHandler.h"
+#include "ecsModule/EntityManager.h"
+#include "ecsModule/SystemManager.h"
 #include "logsModule/logger.h"
 
 using namespace GameEngine;
@@ -36,7 +38,8 @@ void Engine::init() {
 	core = new CoreModule::Core();
 	core->init();
 	render = new RenderModule::Renderer();
-	camera = new Camera({45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), 0.1f, 500.f});
+	auto camId = ecsModule::ECSHandler::entityManagerInstance()->createEntity<Camera>(GameEngine::ProjectionModule::PerspectiveProjection{45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), 0.1f, 500.f});
+	camera = static_cast<Camera*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(camId));
 
 	render->init();
 
@@ -58,7 +61,7 @@ void Engine::update() {
 
 	Debug::ImGuiDecorator::preDraw();
 	debugMenu.draw();
-
+	ecsModule::ECSHandler::systemManagerInstance()->update(deltaTime);
 	render->draw();
 	Debug::ImGuiDecorator::draw();
 
@@ -117,5 +120,6 @@ Engine::~Engine() {
 	delete core;
 	glfwDestroyWindow(getMainWindow());
 	delete render;
-	delete camera;
+	//delete camera;
+	ecsModule::ECSHandler::terminate();
 }
