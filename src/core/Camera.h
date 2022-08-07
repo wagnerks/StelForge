@@ -18,7 +18,7 @@ enum Camera_Movement {
 
 class Camera : public ecsModule::Entity<Camera> {
 public:
-	Camera(GameEngine::ProjectionModule::PerspectiveProjection view, glm::vec3 position = glm::vec3(0.0f, 1.0f, 0.0f),float yaw = -90.f);
+	Camera(size_t entID, GameEngine::ProjectionModule::PerspectiveProjection view, glm::vec3 position = glm::vec3(0.0f, 1.0f, 0.0f),float yaw = -90.f);
 
 	float MovementSpeed = 10.f;
 	float MouseSensitivity = 0.1f;

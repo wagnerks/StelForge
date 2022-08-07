@@ -7,7 +7,7 @@
 #include "shaderModule/ShaderController.h"
 using namespace GameEngine::LightsModule;
 
-DirectionalOrthoLight::DirectionalOrthoLight(int aShadowWidth, int aShadowHeight, float zNear, float zFar) : shadowWidthResolution(aShadowWidth), shadowHeightResolution(aShadowHeight) {
+DirectionalOrthoLight::DirectionalOrthoLight(size_t entID, int aShadowWidth, int aShadowHeight, float zNear, float zFar) : Light(entID), shadowWidthResolution(aShadowWidth), shadowHeightResolution(aShadowHeight) {
 
 	glGenTextures(1, &depthMap);
 	glBindTexture(GL_TEXTURE_2D, depthMap);

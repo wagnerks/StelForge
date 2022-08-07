@@ -10,7 +10,7 @@
 #include "logsModule/logger.h"
 #include "shaderModule/ShaderController.h"
 
-EVSMShadow::EVSMShadow() {
+EVSMShadow::EVSMShadow(size_t entID) : Entity<EVSMShadow>(entID) {
 	shadowWidth = 1024;
 	shadowHeight = 1024;
 

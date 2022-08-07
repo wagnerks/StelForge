@@ -276,7 +276,7 @@ void Renderer::draw() {
 
 		Debug::ComponentsDebug::transformComponentDebug("light" + std::to_string(i), light->getComponent<TransformComponent>());
 
-		auto scale = light->getComponent<TransformComponent>()->getScale();
+		auto& scale = light->getComponent<TransformComponent>()->getScale();
 		light->getComponent<TransformComponent>()->setScale({0.5f,0.5f,0.5f});
 		light->getComponent<TransformComponent>()->reloadTransform();
 		
@@ -295,7 +295,7 @@ void Renderer::draw() {
     shader->use();
 	shader->setMat4("PV", projection * view);
 	if (cascade) {
-		auto pos = cascade->getLightPosition();
+		auto& pos = cascade->getLightPosition();
 		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos) * glm::mat4(1.f) * glm::scale(glm::mat4(1.0f), {3.f,3.f,3.f});
 		batcher->addToDrawList(Utils::cubeVAO, 36, 0, {}, model, false);
 	}
@@ -352,10 +352,10 @@ void Renderer::draw() {
 
 	ImGui::Begin("kek");
 	float size = 500.f;
-	ImGui::Image((ImTextureID)gAlbedoSpec, {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((ImTextureID)gPosition, {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((ImTextureID)gNormal, {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((ImTextureID)gDepthBuffer, {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(gAlbedoSpec), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(gPosition), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(gNormal), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(gDepthBuffer), {size,size}, {0.f, 1.f}, {1.f,0.f});
 
 	ImGui::End();
 }
@@ -382,7 +382,7 @@ void Renderer::init() {
 	auto count = 20;
 	for (auto i = -count; i < count; i++) {
 		for (auto j = -count; j < count; j++) {
-			for (auto k = 1u; k < count / 2; k++) {
+			for (auto k = 1; k < count / 2; k++) {
 				objectPositions.emplace_back(glm::vec3(i * glm::linearRand(2.3f,4.f), k * glm::linearRand(2.3f,4.f), j * glm::linearRand(2.3f,4.f)));
 			}
 			
@@ -392,7 +392,7 @@ void Renderer::init() {
 
 	node = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
 	for (auto i = 0u; i < objectPositions.size(); i++) {
-		auto objectPos = objectPositions[i];
+		auto& objectPos = objectPositions[i];
 		auto id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("backpack" + std::to_string(i));
 
 		auto backpack = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));

@@ -5,7 +5,7 @@
 
 using namespace GameEngine::NodeModule;
 
-Node::Node(std::string_view id) : id(id) {}
+Node::Node(size_t entID, std::string_view id) : Entity<Node>(entID), id(id) {}
 Node::~Node() {
 	for (auto node : getElements()) {
 		ecsModule::ECSHandler::entityManagerInstance()->destroyEntity(node->getEntityID());
@@ -61,7 +61,7 @@ Node* Node::findElement(std::string_view elementId) {
 std::vector<Node*> Node::getAllNodes() {
 	std::vector<Node*> res;
 	getAllNodesHelper(res);
-	return std::move(res);
+	return res;
 }
 
 const std::vector<Node*>& Node::getElements() {

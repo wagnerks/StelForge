@@ -47,11 +47,9 @@ namespace ecsModule {
 		template <class T, class... ARGS>
 		size_t createEntity(ARGS&&... args) {
 			void* pObjectMemory = getEntityContainer<T>()->createObject();
-			
-			auto entity = new(pObjectMemory)T(std::forward<ARGS>(args)...);
 
-			auto entityId = acquireEntityId(entity);
-			entity->setId(entityId);
+			auto entityId = acquireEntityId(static_cast<T*>(pObjectMemory));
+			auto entity = new(pObjectMemory)T(entityId, std::forward<ARGS>(args)...);
 
 			return entityId;
 		}

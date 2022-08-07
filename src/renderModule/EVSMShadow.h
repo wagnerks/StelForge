@@ -7,7 +7,7 @@
 //exponential variance shadow map
 class EVSMShadow : public ecsModule::Entity<EVSMShadow> {
 public:
-	EVSMShadow();
+	EVSMShadow(size_t entID);
 	~EVSMShadow();
 
 	void preDraw();

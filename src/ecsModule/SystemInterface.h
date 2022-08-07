@@ -1,8 +1,6 @@
 ﻿#pragma once
 #include <cmath>
 
-#include "helper.h"
-
 namespace ecsModule {
 	class SystemInterface {
 		friend class SystemManager;
@@ -14,9 +12,8 @@ namespace ecsModule {
 		uint16_t mPriority;
 
 		bool mEnabled = true;
-		bool mNeedsUpdate  = true;
 	protected:
-		SystemInterface(uint16_t priority = ecsModule::NORMAL_SYSTEM_PRIORITY, float_t updateInterval_ms = -1.0f);
+		SystemInterface(uint16_t priority = 0, float_t updateInterval = 0.0f);
 
 	public:
 		virtual ~SystemInterface() = default;

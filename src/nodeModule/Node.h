@@ -9,7 +9,7 @@ namespace GameEngine::NodeModule {
 
 	class Node : public ecsModule::Entity<Node> {
 	public:
-		Node(std::string_view id);
+		Node(size_t entID, std::string_view id);
 		virtual ~Node();
 
 		void addElement(Node* child);

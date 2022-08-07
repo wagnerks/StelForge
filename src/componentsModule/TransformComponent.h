@@ -12,6 +12,7 @@ namespace GameEngine::ComponentsModule {
 	
 	class TransformComponent : public ecsModule::Component<TransformComponent> {
 	public:
+		void setParentTransform(TransformComponent* parentTransform);
 		void addChildTransform(TransformComponent* comp);
 		void removeChildTransform(TransformComponent* comp);
 
@@ -48,7 +49,7 @@ namespace GameEngine::ComponentsModule {
 		
 		void markDirty();
 		bool isDirty() const;
-		void setParentTransform(TransformComponent* parentTransform);
+		
 	private:
 		TransformComponent* mParentTransform = nullptr;
 

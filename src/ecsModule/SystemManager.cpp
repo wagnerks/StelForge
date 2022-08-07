@@ -21,47 +21,37 @@ SystemManager::~SystemManager() {
 	delete mSystemAllocator;
 }
 
-void SystemManager::update(float_t dt) {
+void SystemManager::update(float_t dt) const {
 	for (SystemInterface* system : mWorkQueue) {
 		system->mTimeSinceLastUpdate += dt;
+		if (!system->mEnabled) {
+			continue;
+		}
 
-		system->mNeedsUpdate = (system->mUpdateInterval < 0.0f) || ((system->mUpdateInterval > 0.0f) && (system->
-			mTimeSinceLastUpdate > system->mUpdateInterval));
-
-		if (system->mEnabled == true && system->mNeedsUpdate == true) {
+		if (system->mTimeSinceLastUpdate > system->mUpdateInterval || system->mUpdateInterval == 0.f) {
 			system->preUpdate(dt);
 		}
 	}
 
 	for (SystemInterface* system : mWorkQueue) {
-		if (system->mEnabled == true && system->mNeedsUpdate == true) {
-			system->update(dt);
+		if (!system->mEnabled) {
+			continue;
+		}
 
-			system->mTimeSinceLastUpdate = 0.0f;
+		if (system->mTimeSinceLastUpdate > system->mUpdateInterval || system->mUpdateInterval == 0.f) {
+			system->update(dt);
 		}
 	}
 
 	for (SystemInterface* system : mWorkQueue) {
-		if (system->mEnabled == true && system->mNeedsUpdate == true) {
-			system->postUpdate(dt);
+		if (!system->mEnabled) {
+			continue;
 		}
-	}
-}
 
-std::vector<bool> SystemManager::GetSystemWorkState() const {
-	std::vector<bool> mask(mWorkQueue.size());
+		if (system->mTimeSinceLastUpdate > system->mUpdateInterval || system->mUpdateInterval == 0.f) {
+			system->postUpdate(dt);
 
-	for (auto i = 0u; i < mWorkQueue.size(); ++i) {
-		mask[i] = mWorkQueue[i]->mEnabled;
-	}
-
-	return mask;
-}
-
-void SystemManager::setSystemWorkState(const std::vector<bool>& mask) {
-	assert(mask.size() == mWorkQueue.size() && "Provided mask does not match size of current system array.");
-
-	for (int i = 0; i < mWorkQueue.size(); ++i) {
-		mWorkQueue[i]->mEnabled = mask[i];
+			system->mTimeSinceLastUpdate = 0.0f;
+		}
 	}
 }

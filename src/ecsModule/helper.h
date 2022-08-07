@@ -1,5 +1,4 @@
 ﻿#pragma once
-#include <cstdint>
 #include <limits>
 
 namespace ecsModule {
@@ -7,21 +6,7 @@ namespace ecsModule {
 	static constexpr size_t ECS_GLOBAL_MEMORY_CAPACITY = 128ll * 1024 * 1024; // 128 MB
 
 	static constexpr size_t INVALID_ID = std::numeric_limits<size_t>::max();
-
-	static constexpr uint16_t LOWEST_SYSTEM_PRIORITY = std::numeric_limits<uint16_t>::min();
-
-	static constexpr uint16_t VERY_LOW_SYSTEM_PRIORITY = 99;
-	static constexpr uint16_t LOW_SYSTEM_PRIORITY = 100;
-
-	static constexpr uint16_t NORMAL_SYSTEM_PRIORITY = 200;
-
-	static constexpr uint16_t MEDIUM_SYSTEM_PRIORITY = 300;
-
-	static constexpr uint16_t HIGH_SYSTEM_PRIORITY = 400;
-	static constexpr uint16_t VERY_HIGH_SYSTEM_PRIORITY = 401;
-
-	static constexpr uint16_t HIGHEST_SYSTEM_PRIORITY = std::numeric_limits<uint16_t>::max();
-
+	
 	template <class T>
 	class FamilySize {
 	private:

@@ -24,8 +24,8 @@ struct DrawObject {
 	}
 
 	unsigned VAO;
-	unsigned verticesCount;
-	unsigned indicesCount;
+	size_t verticesCount;
+	size_t indicesCount;
 	std::vector<GameEngine::ModelModule::MeshTexture> textures;
 	std::vector<glm::mat4> transforms;
 
@@ -38,7 +38,7 @@ struct DrawObject {
 class Batcher {
 public:
 	Batcher();
-	void addToDrawList(unsigned VAO, unsigned vertices, unsigned indices, std::vector<GameEngine::ModelModule::MeshTexture> textures, glm::mat4 transform, bool transparentForShadow);
+	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, std::vector<GameEngine::ModelModule::MeshTexture> textures, glm::mat4 transform, bool transparentForShadow);
 	void flushAll(bool clear = false, const glm::vec3& viewPos = {}, bool shadowMap = false);
 
 	std::vector<DrawObject> drawList;

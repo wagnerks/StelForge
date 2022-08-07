@@ -33,13 +33,14 @@ namespace ecsModule {
 	private:
 		size_t mId = INVALID_ID;
 	protected:
-		EntityInterface() = default;
+		EntityInterface(size_t entityID) : mId(entityID){};
 		virtual ~EntityInterface();
 	};
 
 	template<class T>
 	class Entity : public EntityInterface {
 	public:
+		Entity(size_t entID) : EntityInterface(entID){};
 		size_t getStaticTypeID() const override { return STATIC_ENTITY_TYPE_ID;}
 
 		inline static const size_t STATIC_ENTITY_TYPE_ID = FamilySize<EntityInterface>::Get<T>();
