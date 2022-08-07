@@ -5,11 +5,11 @@
 
 
 namespace GameEngine::ComponentsModule{
-	class DrawComponent : public ecsModule::Component<DrawComponent>{
+	class RenderComponent : public ecsModule::Component<RenderComponent>{
 	public:
 		void draw();
 	private:
 	};
 }
 
-using GameEngine::ComponentsModule::DrawComponent;
+using GameEngine::ComponentsModule::RenderComponent;

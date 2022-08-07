@@ -8,8 +8,9 @@
 #include "logsModule/logger.h"
 #include "renderModule/TextureHandler.h"
 
+using namespace GameEngine::CoreModule;
 
-GameEngine::ModelModule::Model* GameEngine::CoreModule::ModelLoader::load(const std::string& path) {
+GameEngine::ModelModule::Model* ModelLoader::load(const std::string& path) {
 	if (auto it = loaded.find(path); it != loaded.end()) {
 		return it->second.get();
 	}
@@ -22,7 +23,20 @@ GameEngine::ModelModule::Model* GameEngine::CoreModule::ModelLoader::load(const 
 	return loaded[path].get();
 }
 
-std::vector<std::unique_ptr<GameEngine::ModelModule::Mesh>> GameEngine::CoreModule::ModelLoader::loadModel(const std::string& path) {
+GameEngine::ModelModule::Model* ModelLoader::loadLOD(const std::string& path) {
+	
+}
+
+void ModelLoader::releaseModel(const std::string& path) {
+	auto it = loaded.find(path);
+	if (it == loaded.end()) {
+		return;
+	}
+
+	loaded.erase(it);
+}
+
+std::vector<std::unique_ptr<GameEngine::ModelModule::Mesh>> ModelLoader::loadModel(const std::string& path) {
 	RenderModule::TextureLoader loader;
 	Assimp::Importer import;
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
@@ -41,7 +55,7 @@ std::vector<std::unique_ptr<GameEngine::ModelModule::Mesh>> GameEngine::CoreModu
 	return meshes;
 }
 
-void GameEngine::CoreModule::ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, std::vector<std::unique_ptr<ModelModule::Mesh>>& meshes) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, std::vector<std::unique_ptr<ModelModule::Mesh>>& meshes) {
 	auto parent = node->mParent;
 	while (parent) {
 		node->mTransformation *= parent->mTransformation;
@@ -58,7 +72,7 @@ void GameEngine::CoreModule::ModelLoader::processNode(aiNode* node, const aiScen
 	}
 }
 
-std::unique_ptr<GameEngine::ModelModule::Mesh> GameEngine::CoreModule::ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory) {
+std::unique_ptr<GameEngine::ModelModule::Mesh> ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory) {
 	std::unique_ptr<ModelModule::Mesh> modelMesh = std::make_unique<ModelModule::Mesh>();
 	modelMesh->vertices.resize(mesh->mNumVertices);
 
@@ -110,7 +124,7 @@ std::unique_ptr<GameEngine::ModelModule::Mesh> GameEngine::CoreModule::ModelLoad
 	return modelMesh;
 }
 
-std::vector<GameEngine::ModelModule::MeshTexture> GameEngine::CoreModule::ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
+std::vector<GameEngine::ModelModule::MeshTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
 	std::vector<ModelModule::MeshTexture> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;

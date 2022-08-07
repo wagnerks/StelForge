@@ -13,8 +13,6 @@ namespace GameEngine::ModelModule {
 
 		void draw(ShaderModule::ShaderBase* shader, bool ignoreTex = false);
 		const std::vector<std::unique_ptr<Mesh>>& getMeshes();
-
-		void preDraw(ShaderModule::ShaderBase* currentShader);
 	private:
 		std::vector<std::unique_ptr<Mesh>> meshes;
 	};

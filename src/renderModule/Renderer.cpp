@@ -11,7 +11,7 @@
 #include "imgui.h"
 #include "TextureHandler.h"
 #include "Utils.h"
-#include "componentsModule/DrawComponent.h"
+#include "componentsModule/RenderComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
@@ -388,29 +388,23 @@ void Renderer::init() {
 			
 		}
 	}
-	auto id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("lel");
 
-	node = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
+	node = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("lel");
 	for (auto i = 0u; i < objectPositions.size(); i++) {
 		auto& objectPos = objectPositions[i];
-		auto id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("backpack" + std::to_string(i));
-
-		auto backpack = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
+		auto backpack = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("backpack" + std::to_string(i));
 		backpack->getComponent<TransformComponent>()->setPos(objectPos);
 		//backpack->getComponent<TransformComponent>()->setScale({0.05f,0.05f,0.05f});
 		backpack->getComponent<TransformComponent>()->setRotate({-90.f,0.f,0.f});
 		backpack->getComponent<ModelComponent>()->setModel(modelObj);
 		node->addElement(backpack);
 	}
-	
-	id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube");
 
-	auto cube = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
+	auto cube = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube");
 
 	node->addElement(cube);
-	id = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
 
-	auto cube2 = static_cast<NodeModule::Node*>(ecsModule::ECSHandler::entityManagerInstance()->getEntity(id));
+	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
 	node->addElement(cube2);
 	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});

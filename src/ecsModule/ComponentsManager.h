@@ -63,16 +63,16 @@ namespace ecsModule {
 
 	template <class T, class ... Args>
 	T* ComponentManager::addComponent(const size_t entityId,  Args&&... args) {
-		void* pObjectMemory = getComponentContainer<T>()->createObject(); // acquire memory for new component object of type T
+		void* pObjectMemory = getComponentContainer<T>()->createObject();
 
 		auto componentId = acquireComponentId(static_cast<T*>(pObjectMemory));
 
 		static_cast<T*>(pObjectMemory)->setId(componentId);
-		ComponentInterface* component = new(pObjectMemory)T();
+		ComponentInterface* component = new(pObjectMemory)T(std::forward<Args>(args)...);
 
 		component->setOwnerId(entityId);
 			
-		mapEntityComponent(entityId, componentId, T::STATIC_COMPONENT_TYPE_ID); // create mapping from entity id its component id
+		mapEntityComponent(entityId, componentId, T::STATIC_COMPONENT_TYPE_ID);
 
 		return static_cast<T*>(component);
 	}

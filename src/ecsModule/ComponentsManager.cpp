@@ -10,8 +10,9 @@ ComponentManager::ComponentManager(GameEngine::MemoryModule::MemoryManager* memo
 	const size_t NUM_COMPONENTS{FamilySize<ComponentInterface>::Get()};
 
 	entityComponentMap.resize(ENITY_LUT_GROW);
-	for (auto i = 0; i < ENITY_LUT_GROW; ++i)
+	for (auto i = 0; i < ENITY_LUT_GROW; ++i) {
 		entityComponentMap[i].resize(NUM_COMPONENTS, ecsModule::INVALID_ID);
+	}
 }
 
 ComponentManager::~ComponentManager() {
@@ -50,7 +51,7 @@ void ComponentManager::removeAllComponents(const size_t entityId) {
 }
 
 size_t ComponentManager::acquireComponentId(ComponentInterface* component) {
-	int i = 0;
+	size_t i = 0;
 	for (; i < componentLookupTable.size(); ++i) {
 		if (componentLookupTable[i] == nullptr) {
 			componentLookupTable[i] = component;
@@ -73,7 +74,7 @@ void ComponentManager::releaseComponentId(size_t id) {
 	componentLookupTable[id] = nullptr;
 }
 
-void ComponentManager::mapEntityComponent(size_t entityId, size_t componentId, size_t componentsize_t) {
+void ComponentManager::mapEntityComponent(size_t entityId, size_t componentId, size_t componentSize) {
 	static const size_t NUM_COMPONENTS{FamilySize<ComponentInterface>::Get()};
 	if (NUM_COMPONENTS == 0) {
 		assert(false && "no components but try to allocate");
@@ -91,7 +92,7 @@ void ComponentManager::mapEntityComponent(size_t entityId, size_t componentId, s
 		}
 	}
 
-	entityComponentMap[entityId][componentsize_t] = componentId;
+	entityComponentMap[entityId][componentSize] = componentId;
 }
 
 void ComponentManager::releaseEntityComponent(size_t entityId, size_t componentId, size_t componentType) {

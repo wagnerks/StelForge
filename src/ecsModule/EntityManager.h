@@ -45,13 +45,13 @@ namespace ecsModule {
 
 
 		template <class T, class... ARGS>
-		size_t createEntity(ARGS&&... args) {
+		T* createEntity(ARGS&&... args) {
 			void* pObjectMemory = getEntityContainer<T>()->createObject();
 
 			auto entityId = acquireEntityId(static_cast<T*>(pObjectMemory));
 			auto entity = new(pObjectMemory)T(entityId, std::forward<ARGS>(args)...);
 
-			return entityId;
+			return entity;
 		}
 
 
