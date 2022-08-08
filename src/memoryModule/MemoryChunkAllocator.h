@@ -27,6 +27,7 @@ namespace GameEngine::MemoryModule {
 
 		size_t allocatorID = 0;
 		size_t capacity = CAPACITY;
+		size_t mSize = 0;
 	public:
 
 		struct Chunk {
@@ -117,15 +118,28 @@ namespace GameEngine::MemoryModule {
 			return iterator(this->chunksBlock.begin(), this->chunksBlock.end());
 		}
 		inline iterator end() {
+			if (empty()) {
+				return begin();
+			}
 			return iterator(this->chunksBlock.end(), this->chunksBlock.end());
 		}
 		inline iterator begin() const {
 			return iterator(this->chunksBlock.begin(), this->chunksBlock.end());
 		}
 		inline iterator end() const {
+			if (empty()) {
+				return begin();
+			}
 			return iterator(this->chunksBlock.end(), this->chunksBlock.end());
 		}
 
+		size_t size() const {
+			return mSize;
+		}
+
+		bool empty() const {
+			return !size();
+		}
 	protected:
 		std::list<Chunk*> chunksBlock;
 	};
@@ -161,6 +175,7 @@ namespace GameEngine::MemoryModule {
 
 			slot = chunk->allocator->allocate(sizeof(T), alignof(T));
 			if (slot != nullptr) {
+				mSize++;
 				chunk->objects.push_back(static_cast<T*>(slot));
 				break;
 			}
@@ -178,8 +193,11 @@ namespace GameEngine::MemoryModule {
 
 			slot = newChunk->allocator->allocate(sizeof(T), alignof(T));
 			assert(slot != nullptr && "Unable to create new object. Out of memory?!");
-
-			newChunk->objects.push_back(static_cast<T*>(slot));
+			if (slot) {
+				mSize++;
+				newChunk->objects.push_back(static_cast<T*>(slot));
+			}
+			
 		}
 
 		return slot;
@@ -195,6 +213,7 @@ namespace GameEngine::MemoryModule {
 
 				chunk->objects.remove(static_cast<T*>(object));
 				chunk->allocator->free(object);
+				mSize--;
 				return;
 			}
 		}
