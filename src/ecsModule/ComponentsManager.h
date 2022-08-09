@@ -29,28 +29,25 @@ namespace ecsModule {
 
 		void removeAllComponents(const size_t entityId);
 	private:
-		std::unordered_map<size_t, ContainerInterface*> componentContainerRegistry;
-
-		std::vector<ComponentInterface*> componentLookupTable; //pos == componentID
-
-		std::vector<std::vector<size_t>> entityComponentMap;
-
-
 		size_t acquireComponentId(ComponentInterface* component);
 		void releaseComponentId(size_t id);
 
-		void mapEntityComponent(size_t entityId, size_t componentId, size_t componentsize_t);
+		void mapEntityComponent(size_t entityId, size_t componentId, size_t componentSize);
 		void releaseEntityComponent(size_t entityId, size_t componentId, size_t componentType);
+
+		std::unordered_map<size_t, ContainerInterface*> componentContainerRegistry;
+		std::vector<ComponentInterface*> componentLookupTable; //pos == componentID
+		std::vector<std::vector<size_t>> entityComponentMap;
 	};
 
 	template <class T>
 	Container<T>* ComponentManager::getComponentContainer() {
-		const size_t CTID = T::STATIC_COMPONENT_TYPE_ID;
+		const size_t componentTypeID = T::STATIC_COMPONENT_TYPE_ID;
 
 		Container<T>* compContainer = nullptr;
-		if (const auto it = componentContainerRegistry.find(CTID); it == componentContainerRegistry.end()) {
+		if (const auto it = componentContainerRegistry.find(componentTypeID); it == componentContainerRegistry.end()) {
 			compContainer = new Container<T>(std::type_index(typeid(this)).hash_code(), globalMemoryManager);
-			componentContainerRegistry[CTID] = compContainer;
+			componentContainerRegistry[componentTypeID] = compContainer;
 		}
 		else {
 			compContainer = static_cast<Container<T>*>(it->second);
@@ -95,7 +92,7 @@ namespace ecsModule {
 
 		ComponentInterface* component = componentLookupTable[componentId];
 		if (!component ) {
-			assert(false && "FATAL: Trying to remove a component which is not used by this entity!");
+			GameEngine::LogsModule::Logger::LOG_FATAL(false, "Trying to remove a component which is not used by this entity!");
 			return;
 		}
 

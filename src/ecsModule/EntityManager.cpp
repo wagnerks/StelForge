@@ -5,13 +5,23 @@
 using namespace ecsModule;
 
 
-EntityManager::EntityManager(GameEngine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
-}
+EntityManager::EntityManager(GameEngine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {}
 
 EntityManager::~EntityManager() {
 	for (auto& ec : mEntityContainers) {
 		delete ec.second;
 	}
+}
+
+EntityInterface* EntityManager::getEntity(size_t entityId) const {
+	if (entityId >= mEntities.size()) {
+		return nullptr;
+	}
+	return mEntities[entityId];
+}
+
+void EntityManager::destroyEntity(size_t entityId) {
+	mEntitiesToDelete.emplace_back(entityId);
 }
 
 size_t EntityManager::acquireEntityId(EntityInterface* entity) {
@@ -23,7 +33,7 @@ size_t EntityManager::acquireEntityId(EntityInterface* entity) {
 		}
 	}
 
-	mEntities.resize(mEntities.size() + 1024, nullptr);
+	mEntities.resize(mEntities.size() + ENTITIES_GROW, nullptr);
 	mEntities[i] = entity;
 
 	return i;

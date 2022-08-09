@@ -21,6 +21,12 @@ SystemManager::~SystemManager() {
 	delete mSystemAllocator;
 }
 
+void SystemManager::sortWorkQueue() {
+	std::ranges::sort(mWorkQueue, [](const SystemInterface* a, const SystemInterface* b) {
+		return a->mPriority > b->mPriority;
+	});
+}
+
 void SystemManager::update(float_t dt) const {
 	for (SystemInterface* system : mWorkQueue) {
 		system->mTimeSinceLastUpdate += dt;

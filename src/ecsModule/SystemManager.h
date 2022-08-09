@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <algorithm>
 #include <unordered_map>
 
 #include "SystemBase.h"
@@ -16,6 +17,8 @@ namespace ecsModule {
 
 		SystemManager(GameEngine::MemoryModule::MemoryManager* memoryManager);
 		~SystemManager() override;
+
+		void sortWorkQueue();
 
 		template <class T>
 		T* getSystem() {
@@ -44,6 +47,7 @@ namespace ecsModule {
 			mSystemsMap[T::STATIC_SYSTEM_TYPE_ID] = system;
 
 			mWorkQueue.push_back(system);
+			sortWorkQueue();
 
 			return system;
 		}
@@ -74,6 +78,8 @@ namespace ecsModule {
 				}
 
 				system->mPriority = newPriority;
+
+				sortWorkQueue();
 			}
 		}
 	private:

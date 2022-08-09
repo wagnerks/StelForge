@@ -2,15 +2,13 @@
 
 using namespace ecsModule;
 
-#define ENITY_LUT_GROW 1024
-
 ComponentManager::ComponentManager(GameEngine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
 	GameEngine::LogsModule::Logger::LOG_INFO("Initialize ComponentManager");
 
 	const size_t NUM_COMPONENTS{FamilySize<ComponentInterface>::Get()};
 
-	entityComponentMap.resize(ENITY_LUT_GROW);
-	for (auto i = 0; i < ENITY_LUT_GROW; ++i) {
+	entityComponentMap.resize(COMPONENTS_GROW);
+	for (auto i = 0; i < COMPONENTS_GROW; ++i) {
 		entityComponentMap[i].resize(NUM_COMPONENTS, ecsModule::INVALID_ID);
 	}
 }
@@ -59,7 +57,7 @@ size_t ComponentManager::acquireComponentId(ComponentInterface* component) {
 		}
 	}
 
-	componentLookupTable.resize(componentLookupTable.size() + ENITY_LUT_GROW, nullptr);
+	componentLookupTable.resize(componentLookupTable.size() + COMPONENTS_GROW, nullptr);
 
 	componentLookupTable[i] = component;
 	return i;
@@ -77,13 +75,13 @@ void ComponentManager::releaseComponentId(size_t id) {
 void ComponentManager::mapEntityComponent(size_t entityId, size_t componentId, size_t componentSize) {
 	static const size_t NUM_COMPONENTS{FamilySize<ComponentInterface>::Get()};
 	if (NUM_COMPONENTS == 0) {
-		assert(false && "no components but try to allocate");
+		GameEngine::LogsModule::Logger::LOG_FATAL(false, "no components but try to allocate");
 		return;
 	}
 
 	if (entityComponentMap.size() <= entityId) {
 		const size_t oldSize = entityComponentMap.size();
-		const size_t newSize = oldSize + ENITY_LUT_GROW;
+		const size_t newSize = oldSize + COMPONENTS_GROW;
 
 		entityComponentMap.resize(newSize);
 

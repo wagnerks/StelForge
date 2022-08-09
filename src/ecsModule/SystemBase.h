@@ -1,10 +1,7 @@
 ﻿#pragma once
 #include <typeindex>
-#include <utility>
 
-#include "ECSHandler.h"
 #include "SystemInterface.h"
-#include "SystemManager.h"
 #include "ecsModule/helper.h"
 
 namespace ecsModule {
@@ -20,11 +17,6 @@ namespace ecsModule {
 		const char* getSystemTypeName() const override {
 			static const char* SYSTEM_TYPE_NAME{std::type_index(typeid(T)).name()};
 			return SYSTEM_TYPE_NAME;
-		}
-
-		template <class... Dependencies>
-		void AddDependencies(Dependencies&&... dependencies) {
-			ECSHandler::systemManagerInstance()->addSystemDependency(this, std::forward<Dependencies>(dependencies)...);
 		}
 
 		void preUpdate(float_t dt) override {}

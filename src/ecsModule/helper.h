@@ -5,6 +5,9 @@ namespace ecsModule {
 	static constexpr size_t ECS_SYSTEM_MEMORY_BUFFER_SIZE =	8ll * 1024u * 1024u;// 8MB
 	static constexpr size_t ECS_GLOBAL_MEMORY_CAPACITY = 128ll * 1024 * 1024; // 128 MB
 
+	static constexpr size_t COMPONENTS_GROW = 1024;
+	static constexpr size_t ENTITIES_GROW = 1024;
+
 	static constexpr size_t INVALID_ID = std::numeric_limits<size_t>::max();
 	
 	template <class T>
