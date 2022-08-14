@@ -22,6 +22,7 @@ namespace ecsModule {
 		static void terminate();
 
 		void init();
+		void initSystems();
 		~ECSHandler();
 	private:
 		inline static ECSHandler* instance = nullptr;

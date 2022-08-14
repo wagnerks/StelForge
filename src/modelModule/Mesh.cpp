@@ -7,8 +7,8 @@
 
 using namespace GameEngine::ModelModule;
 
-Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices, std::vector<MeshTexture>& textures) :
-	vertices(std::move(vertices)), indices(std::move(indices)), textures(std::move(textures)) {
+Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices) :
+	vertices(std::move(vertices)), indices(std::move(indices)) {
 	setupMesh();
 }
 
@@ -26,25 +26,7 @@ Mesh::~Mesh() {
 	}
 }
 
-void Mesh::draw(ShaderModule::ShaderBase* shader, bool ignoreTex) {
-	if (!ignoreTex) {
-		unsigned int diffuseNr = 1;
-	    unsigned int specularNr = 1;
-		for (unsigned int i = 0; i < textures.size(); i++) {
-			std::string number;
-			std::string name = textures[i].type;
-			if (name == "texture_diffuse")
-				number = std::to_string(diffuseNr++);
-			else if (name == "texture_specular")
-				number = std::to_string(specularNr++);
-
-			shader->setInt((name + number).c_str(), i);
-
-			RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0 + i, GL_TEXTURE_2D, textures[i].id);
-		}
-	}
-	
-	
+void Mesh::draw(ShaderModule::ShaderBase* shader, bool ignoreTex) {	
     glBindVertexArray(VAO);
 	if (!indices.empty()) {
 		RenderModule::Renderer::drawElements(type, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT);

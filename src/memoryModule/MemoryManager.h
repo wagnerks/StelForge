@@ -33,7 +33,7 @@ namespace GameEngine::MemoryModule {
 		~MemoryManager();
 
 		inline void* allocate(size_t memSize, size_t user) {
-			LogsModule::Logger::LOG_INFO("%d allocated %d bytes of global memory.", user, memSize);
+			LogsModule::Logger::LOG_INFO("%zu allocated %d bytes of global memory.", user, memSize);
 
 			void* pMemory = allocator->allocate(memSize, alignof(uint8_t));
 			pendingMemory.emplace_back(user, pMemory);

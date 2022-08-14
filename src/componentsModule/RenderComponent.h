@@ -7,8 +7,10 @@
 namespace GameEngine::ComponentsModule{
 	class RenderComponent : public ecsModule::Component<RenderComponent>{
 	public:
-		void draw();
+		bool isDrawable() const;
+		void setDrawable(bool isDrawable);
 	private:
+		bool mIsDrawable = true;
 	};
 }
 

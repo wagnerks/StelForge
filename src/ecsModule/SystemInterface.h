@@ -5,8 +5,7 @@ namespace ecsModule {
 	class SystemInterface {
 		friend class SystemManager;
 	protected:
-		SystemInterface(uint16_t priority = 0, float_t updateInterval = 0.0f);
-
+		SystemInterface();
 	public:
 		virtual ~SystemInterface() = default;
 
@@ -17,6 +16,7 @@ namespace ecsModule {
 		virtual void update(float_t dt) = 0;
 		virtual void postUpdate(float_t dt) = 0;
 	private:
+		//variables should be set through systemManager
 		float_t mTimeSinceLastUpdate;
 		float_t mUpdateInterval;
 

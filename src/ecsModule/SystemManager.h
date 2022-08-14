@@ -71,7 +71,7 @@ namespace ecsModule {
 		}
 
 		template <class T>
-		void setSystemPriority(size_t newPriority) {
+		void setSystemPriority(uint16_t newPriority) {
 			if (auto system = getSystem<T>()) {
 				if (system->mPriority == newPriority) {
 					return;

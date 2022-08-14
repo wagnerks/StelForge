@@ -3,6 +3,7 @@
 #include <cassert>
 
 #include "Mesh.h"
+#include "Model.h"
 
 using namespace GameEngine::ModelModule;
 
@@ -10,7 +11,6 @@ Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 	Mesh* res = nullptr;
 	std::vector<Vertex> vertices;
 	std::vector<unsigned> indices;
-	std::vector<MeshTexture> tex;
 
 	switch(type) {
 	case eDrawObjectType::CUBE:
@@ -168,6 +168,6 @@ Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 		assert(false);
 	}
 
-	res = new Mesh(vertices, indices, tex);
+	res = new Mesh(vertices, indices);
 	return res;
 }

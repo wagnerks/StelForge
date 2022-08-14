@@ -2,7 +2,6 @@
 
 #include "Camera.h"
 #include "Engine.h"
-#include "componentsModule/MeshComponent.h"
 #include "debugModule/ComponentsDebug.h"
 #include "modelModule/MeshFactory.h"
 #include "shaderModule/ShaderController.h"
@@ -24,19 +23,19 @@ using namespace GameModule::CoreModule;
 void Scene::init() {
 	//rootNode = new GameEngine::NodeModule::Node("root");
 
-	skybox = new GameEngine::RenderModule::Skybox("skybox/");
+	/*skybox = new GameEngine::RenderModule::Skybox("skybox/");
 	skybox->init();
 
 	gridFloor = new GameEngine::RenderModule::SceneGridFloor(100.f);
-	gridFloor->init();
+	gridFloor->init();*/
 
 	/*auto box = new GameEngine::NodeModule::Node("box1");
-	box->getComponent<MeshComponent>()->setMesh(GameEngine::ModelModule::MeshFactory::createPrimitiveMesh(GameEngine::ModelModule::eDrawObjectType::CUBE));
+	box->getComponent<MeshComponent>()->addMesh(GameEngine::ModelModule::MeshFactory::createPrimitiveMesh(GameEngine::ModelModule::eDrawObjectType::CUBE));
 	rootNode->addElement(box);
 	box->getComponent<TransformComponent>()->setY(2.f);
 
 	auto box2 = new GameEngine::NodeModule::Node("box2");
-	box2->getComponent<MeshComponent>()->setMesh(GameEngine::ModelModule::MeshFactory::createPrimitiveMesh(GameEngine::ModelModule::eDrawObjectType::CUBE));
+	box2->getComponent<MeshComponent>()->addMesh(GameEngine::ModelModule::MeshFactory::createPrimitiveMesh(GameEngine::ModelModule::eDrawObjectType::CUBE));
 	box2->getComponent<TransformComponent>()->setScale({5.f,1.f,5.f});
 	box2->getComponent<TransformComponent>()->setY(-0.9f);*/
 
@@ -45,7 +44,7 @@ void Scene::init() {
 	
 
 
-	modelObj = GameEngine::CoreModule::ModelLoader::getInstance()->load("model/scene.gltf");
+	//modelObj = GameEngine::CoreModule::ModelLoader::getInstance()->load("model/scene.gltf");
 
 
     objectPositions.push_back(glm::vec3(-3.0,  3.5, -3.0));

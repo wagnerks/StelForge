@@ -11,35 +11,31 @@
 using namespace GameEngine::CoreModule;
 
 GameEngine::ModelModule::Model* ModelLoader::load(const std::string& path) {
-	if (auto it = loaded.find(path); it != loaded.end()) {
+	if (auto it = models.find(path); it != models.end()) {
 		return it->second.get();
 	}
-	auto meshes = loadModel(path);
-	if (meshes.empty()) {
+	auto modelData = loadModel(path);
+	if (modelData.meshes.empty()) {
 		return nullptr;
 	}
 
-	loaded[path] = std::make_unique<ModelModule::Model>(meshes);
-	return loaded[path].get();
-}
-
-GameEngine::ModelModule::Model* ModelLoader::loadLOD(const std::string& path) {
-	
+	models[path] = std::make_unique<ModelModule::Model>(modelData);
+	return models[path].get();
 }
 
 void ModelLoader::releaseModel(const std::string& path) {
-	auto it = loaded.find(path);
-	if (it == loaded.end()) {
+	auto it = models.find(path);
+	if (it == models.end()) {
 		return;
 	}
 
-	loaded.erase(it);
+	models.erase(it);
 }
 
-std::vector<std::unique_ptr<GameEngine::ModelModule::Mesh>> ModelLoader::loadModel(const std::string& path) {
+GameEngine::ModelModule::RawModel ModelLoader::loadModel(const std::string& path) {
 	RenderModule::TextureLoader loader;
 	Assimp::Importer import;
-	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_FixInfacingNormals);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
@@ -48,14 +44,13 @@ std::vector<std::unique_ptr<GameEngine::ModelModule::Mesh>> ModelLoader::loadMod
 
 	auto directory = path.substr(0, path.find_last_of('/'));
 
-	std::vector<std::unique_ptr<ModelModule::Mesh>> meshes;
+	ModelModule::RawModel rawModel;
+	processNode(scene->mRootNode, scene, &loader, directory, rawModel);
 
-	processNode(scene->mRootNode, scene, &loader, directory, meshes);
-
-	return meshes;
+	return rawModel;
 }
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, std::vector<std::unique_ptr<ModelModule::Mesh>>& meshes) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::RawModel& rawModel) {
 	auto parent = node->mParent;
 	while (parent) {
 		node->mTransformation *= parent->mTransformation;
@@ -64,16 +59,33 @@ void ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::
 	
 	for (unsigned int i = 0; i < node->mNumMeshes; i++) {
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		meshes.emplace_back(processMesh( mesh, scene, node, loader, directory));
+		processMesh( mesh, scene, node, loader, directory, rawModel);
 	}
 		
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
-		processNode(node->mChildren[i], scene, loader, directory, meshes);
+		processNode(node->mChildren[i], scene, loader, directory, rawModel);
 	}
 }
 
-std::unique_ptr<GameEngine::ModelModule::Mesh> ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory) {
-	std::unique_ptr<ModelModule::Mesh> modelMesh = std::make_unique<ModelModule::Mesh>();
+void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::RawModel& rawModel) {
+	auto lodLevel = 0;
+	auto i = parent->mName.length - 4;
+	for (; i > 0; i--) {
+		if (parent->mName.data[i] == '_' && parent->mName.data[i + 1] == 'L' && parent->mName.data[i + 2] == 'O' && parent->mName.data[i + 3] == 'D') {
+			break;
+		}
+	}
+
+	if (i != 0) {
+		auto nameString = std::string(parent->mName.C_Str());
+		lodLevel = std::atoi(nameString.substr(i + 4, parent->mName.length - i).c_str());
+	}
+	
+	
+	rawModel.meshes[lodLevel].emplace_back();
+
+	auto& modelMesh = rawModel.meshes[lodLevel].back();
+	modelMesh = std::make_unique<ModelModule::Mesh>();
 	modelMesh->vertices.resize(mesh->mNumVertices);
 
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
@@ -113,25 +125,24 @@ std::unique_ptr<GameEngine::ModelModule::Mesh> ModelLoader::processMesh(aiMesh* 
 
 	// process material
 	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-	std::vector<ModelModule::MeshTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
-	modelMesh->textures.insert(modelMesh->textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-	std::vector<ModelModule::MeshTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader, directory);
-	modelMesh->textures.insert(modelMesh->textures.end(), specularMaps.begin(), specularMaps.end());
-	std::vector<ModelModule::MeshTexture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", loader, directory);
-	modelMesh->textures.insert(modelMesh->textures.end(), normalMaps.begin(), normalMaps.end());
+	std::vector<GameEngine::ModelModule::ModelTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
+	rawModel.textures.insert(rawModel.textures.end(), diffuseMaps.begin(), diffuseMaps.end());
+	std::vector<GameEngine::ModelModule::ModelTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader, directory);
+	rawModel.textures.insert(rawModel.textures.end(), specularMaps.begin(), specularMaps.end());
+	std::vector<GameEngine::ModelModule::ModelTexture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", loader, directory);
+	rawModel.textures.insert(rawModel.textures.end(), normalMaps.begin(), normalMaps.end());
 
 	modelMesh->setupMesh();
-	return modelMesh;
 }
 
-std::vector<GameEngine::ModelModule::MeshTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
-	std::vector<ModelModule::MeshTexture> textures;
+std::vector<GameEngine::ModelModule::ModelTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
+	std::vector<GameEngine::ModelModule::ModelTexture> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
 		if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
-			ModelModule::MeshTexture texture;
+			GameEngine::ModelModule::ModelTexture texture;
 			texture.id = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
 			texture.type = typeName;
 			textures.push_back(texture);

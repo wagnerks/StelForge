@@ -5,12 +5,17 @@
 
 using namespace GameEngine::NodeModule;
 
-Node::Node(size_t entID, std::string_view id) : Entity<Node>(entID), id(id) {}
+Node::Node(size_t entID, std::string_view id) : Entity<Node>(entID), id(id) {
+	addComponent<TransformComponent>();
+}
 Node::~Node() {
 	for (auto node : getElements()) {
 		ecsModule::ECSHandler::entityManagerInstance()->destroyEntity(node->getEntityID());
-		node->getComponent<TransformComponent>()->setParentTransform(nullptr);
-		getComponent<TransformComponent>()->removeChildTransform(node->getComponent<TransformComponent>());
+		if (auto comp = ecsModule::ECSHandler::componentManagerInstance()->getComponent<TransformComponent>(node->getEntityID())) {
+			comp->setParentTransform(nullptr);
+			getComponent<TransformComponent>()->removeChildTransform(comp);
+		}
+		
 	}
 }
 

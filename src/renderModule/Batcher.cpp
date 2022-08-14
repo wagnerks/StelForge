@@ -9,6 +9,7 @@
 #include "core/Camera.h"
 #include "core/Engine.h"
 #include "glad/glad.h"
+#include "shaderModule/ShaderController.h"
 
 void DrawObject::sortTransformAccordingToView(const glm::vec3& viewPos) {
 	if (sortedPos == viewPos) {
@@ -28,7 +29,7 @@ Batcher::Batcher() {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, std::vector<GameEngine::ModelModule::MeshTexture> textures, glm::mat4 transform, bool transparentForShadow) {
+void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, std::vector<GameEngine::ModelModule::ModelTexture> textures, glm::mat4 transform, bool transparentForShadow) {
 	auto apos = glm::vec3(transform[3]);
 	if (glm::distance(apos, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos()) > 1100.f) {
 		return;
@@ -75,7 +76,9 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 		ImGui::Text("%d", drawObjects.indicesCount);
 	}
 	ImGui::End();
-	
+
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
+
 	for (auto& drawObjects : drawList) {
 		if (shadowMap) {
 			if (drawObjects.transparentForShadow) {
@@ -84,10 +87,8 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 		}
 		glBindVertexArray(drawObjects.VAO);
 
-		
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::mat4x4) * drawObjects.transforms.size(), &drawObjects.transforms[0]);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		
 		for (auto& texture : drawObjects.textures) {
 			if (texture.type == "texture_diffuse") {
 				GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texture.id);
@@ -98,7 +99,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 		}
 
 		GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png"));
-
+		
 		if (drawObjects.indicesCount) {
 			GameEngine::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
 		}
@@ -107,8 +108,9 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 		}
 	}
 
-
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	glBindVertexArray(0);
+	
 
 	if (clear) {
 		drawList.clear();

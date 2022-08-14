@@ -13,7 +13,6 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 	if (!opened) {
 		return;
 	}
-
 	ImGui::Begin("shaders", &opened);
 	for (auto& [hash, shader] : SHADER_CONTROLLER->getShaders()) {
 

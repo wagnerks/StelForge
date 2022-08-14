@@ -38,7 +38,7 @@ namespace GameEngine::ComponentsModule {
 		const glm::mat4& getTransform() const;
 		glm::mat4 getRotationMatrix() const;
 		glm::mat4 getLocalTransform() const;
-		glm::mat4 getViewMatrix() const;
+		const glm::mat4& getViewMatrix() const;
 
 		glm::vec3 getRight();
 		glm::vec3 getUp();
@@ -57,6 +57,7 @@ namespace GameEngine::ComponentsModule {
 
 		bool dirty = true;
 		glm::mat4 transform = glm::mat4(1.0f);
+		glm::mat4 view = glm::mat4(1.0f);
 
 		glm::quat rotateQuat = {};
 		glm::vec3 pos = glm::vec3(0.0f, 0.0f, 0.0f);

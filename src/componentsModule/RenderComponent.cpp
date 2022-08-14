@@ -3,5 +3,9 @@
 
 using namespace GameEngine::ComponentsModule;
 
-void RenderComponent::draw() {
+bool RenderComponent::isDrawable() const {
+	return mIsDrawable;
+}
+void RenderComponent::setDrawable(bool isDrawable) {
+	mIsDrawable = isDrawable;
 }

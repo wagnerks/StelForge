@@ -7,6 +7,7 @@
 #include "Camera.h"
 #include "Core.h"
 #include "InputHandler.h"
+#include "debugModule/ComponentsDebug.h"
 #include "ecsModule/EntityManager.h"
 #include "ecsModule/SystemManager.h"
 #include "logsModule/logger.h"
@@ -35,12 +36,15 @@ void Engine::init() {
 		return;
 	}
 
+	
+
 	core = new CoreModule::Core();
 	core->init();
 	render = new RenderModule::Renderer();
 	camera = ecsModule::ECSHandler::entityManagerInstance()->createEntity<Camera>(GameEngine::ProjectionModule::PerspectiveProjection{45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), 0.1f, 500.f});
 
 	render->init();
+	ecsModule::ECSHandler::getInstance()->initSystems();
 
 	CoreModule::InputHandler::init();
 	
@@ -59,9 +63,15 @@ void Engine::update() {
 	core->update(deltaTime);
 
 	Debug::ImGuiDecorator::preDraw();
-	debugMenu.draw();
+
+	ecsModule::ECSHandler::entityManagerInstance()->destroyEntities();
 	ecsModule::ECSHandler::systemManagerInstance()->update(deltaTime);
+
+	debugMenu.draw();
+
 	render->draw();
+
+	Debug::ComponentsDebug::entitiesDebug();
 	Debug::ImGuiDecorator::draw();
 
 	render->postDraw();

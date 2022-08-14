@@ -60,6 +60,10 @@ namespace ecsModule {
 
 	template <class T, class ... Args>
 	T* ComponentManager::addComponent(const size_t entityId,  Args&&... args) {
+		if (auto comp = getComponent<T>(entityId)) {
+			return comp;
+		}
+
 		void* pObjectMemory = getComponentContainer<T>()->createObject();
 
 		auto componentId = acquireComponentId(static_cast<T*>(pObjectMemory));

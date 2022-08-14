@@ -124,6 +124,8 @@ void TransformComponent::reloadTransform() {
 		transform = mParentTransform->getTransform() * transform;
 	}
 
+	view = glm::inverse(transform);
+
 	for (const auto childTransform : childTransforms) {
 		childTransform->markDirty();
 		childTransform->reloadTransform();
@@ -134,8 +136,8 @@ glm::mat4 TransformComponent::getLocalTransform() const {
     return glm::translate(glm::mat4(1.0f), pos) * getRotationMatrix() * glm::scale(glm::mat4(1.0f), scale);
 }
 
-glm::mat4 TransformComponent::getViewMatrix() const {
-	return glm::inverse(transform);
+const glm::mat4& TransformComponent::getViewMatrix() const {
+	return view;
 }
 
 glm::vec3 TransformComponent::getRight() {

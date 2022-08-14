@@ -11,8 +11,8 @@
 #include "imgui.h"
 #include "TextureHandler.h"
 #include "Utils.h"
+#include "componentsModule/LodComponent.h"
 #include "componentsModule/RenderComponent.h"
-#include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
@@ -40,217 +40,22 @@ using namespace GameEngine::CoreModule;
 void Renderer::draw() {
 	RenderModule::Renderer::drawCallsCount = 0;
 	RenderModule::Renderer::drawVerticesCount = 0;
-
+	Utils::initCubeVAO();
 	scene->updateScene(0.f);
-	
-	ImGui::Begin("comp test");
-	if (ImGui::Button("add")) {
-		node->getComponent<TransformComponent>();
-	}
-	if (ImGui::Button("remove")) {
-		node->removeComponent<TransformComponent>();
-	}
-	if (ImGui::Button("removeall")) {
-		ecsModule::ECSHandler::componentManagerInstance()->removeAllComponents(node->getEntityID());
-		node->removeComponent<TransformComponent>();
-	}
-	ImGui::End();
+	return;
 
 	auto camera = Engine::getInstance()->getCamera();
-	ImGui::Begin("keklol");
-	ImGui::Checkbox("update cam frustum", &updateFrustum);
-	ImGui::End();
-
-	if (updateFrustum) {
-		camFrustum = FrustumModule::createPerspectiveProjectionFrustum(camera->getComponent<TransformComponent>(), camera->cameraView.getAspect(), glm::radians(camera->cameraView.getFOV()), camera->cameraView.getZNear(), camera->cameraView.getZFar());
-	}
-
-
 	auto& projection = camera->getProjectionsMatrix();
     auto view = camera->getComponent<TransformComponent>()->getViewMatrix();
-	Utils::initCubeVAO();
+
 	lightPositions.clear();
-
-	auto conta = ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<TransformComponent>();
-
-	for (auto& transform : *conta) {
-		transform.reloadTransform();
-		Debug::ComponentsDebug::transformComponentDebug(std::to_string(transform.getOwnerId()), &transform);
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(transform.getOwnerId())->getComponent<ModelComponent>(false)){
-			if (modelComp->getModel()) {
-				for (auto& mesh : modelComp->getModel()->getMeshes()) {
-					unsigned tex = -1;
-					//auto sphere = FrustumModule::generateSphereBV(mesh);
-					if (mesh->bounds->isOnFrustum(camFrustum, transform)) {
-						batcher->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),mesh->textures, transform.getTransform(), false);
-					}
-
-				}
-			}
-			
-		}
-		else {
-			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform.getTransform(), false);
-		}
-	}
-
-
-	/*for (auto& transform : TransformComponent::components) {
-		transform.reloadTransform();
-		Debug::ComponentsDebug::transformComponentDebug(std::to_string(transform.getOwner()->getID()), &transform);
-		if (auto modelComp = transform.getOwner()->getComponent<ModelComponent>(false)){
-			if (modelComp->getModel()) {
-				for (auto& mesh : modelComp->getModel()->getMeshes()) {
-					unsigned tex = -1;
-					auto sphere = FrustumModule::generateSphereBV(mesh);
-					if (mesh->bounds->isOnFrustum(camFrustum, transform)) {
-						batcher->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),mesh->textures, transform.getTransform(), false);
-					}
-
-				}
-			}
-			
-		}
-		else {
-			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform.getTransform(), false);
-		}
-	}*/
-
-	//for (auto element : node->getElements()) {
-	//	float koef = 0.01f;
-	//	auto transform = element->getComponent<TransformComponent>();
-	//	if (false && element->getId().find("cube") == std::string::npos) {
-	//		transform->setPos(glm::vec3(transform->getPos().x, transform->getPos().y + glm::linearRand(-5.f*koef,5.f*koef), transform->getPos().z));
-	//		transform->setRotate(glm::vec3(transform->getRotate().x + 3.f, transform->getRotate().y + 3.f, transform->getRotate().z));
-	//		transform->setScale(glm::vec3(transform->getScale().x + glm::linearRand(-0.1f*koef,0.1f*koef), transform->getScale().y + glm::linearRand(-0.1f*koef,0.1f*koef), transform->getScale().z + glm::linearRand(-0.1f*koef,0.1f*koef)));
-
-	//		//lightPositions.push_back(transform->getPos());
-	//		
-	//	}
-	//	if (auto modelComp = element->getComponent<ModelComponent>(false)){
-	//		if (modelComp->getModel()) {
-	//			for (auto& mesh : modelComp->getModel()->getMeshes()) {
-	//				unsigned tex = -1;
-	//				//auto sphere = FrustumModule::generateSphereBV(mesh);
-	//				if (mesh->bounds->isOnFrustum(camFrustum, *element->getComponent<TransformComponent>())) {
-	//					batcher->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),mesh->textures, transform->getTransform(), false);
-	//				}
-
-	//			}
-	//		}
-	//		
-	//	}
-	//	else {
-	//		if (element->getId() == "cube") {
-	//			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), true);
-	//		}
-	//		else {
-	//			batcher->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), false);
-	//		}
-	//	}
-	//}
-
-
+	
 	for (auto dirLight : lightsObj) {
 		dirLight->preDraw();
 		batcher->flushAll(false, dirLight->getComponent<TransformComponent>()->getPos(), true);
 		dirLight->postDraw();
 	}
 
-
-	if (cascade) {
-		cascade->preDraw();
-		batcher->flushAll(false, cascade->getLightPosition(), true);
-		cascade->postDraw();
-	}
-
-
-	glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
-
-    // 1. geometry pass: render scene's geometry/color data into gbuffer
-    // -----------------------------------------------------------------
-    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
-    shaderGeometryPass->use();
-	shaderGeometryPass->setMat4("PV", projection * view);
-	shaderGeometryPass->setInt("texture_diffuse1" , 0);
-	shaderGeometryPass->setInt("normalMap" , 1);
-	batcher->flushAll(true);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // 2. lighting pass: calculate lighting by iterating over a screen filled quad pixel-by-pixel using the gbuffer's content.
-    // -----------------------------------------------------------------------------------------------------------------------
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    auto shaderLightingPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/deferred_shading.vs", "shaders/deferred_shading.fs");
-
-    shaderLightingPass->use();
-    shaderLightingPass->setInt("gPosition", 0);
-    shaderLightingPass->setInt("gNormal", 1);
-    shaderLightingPass->setInt("gAlbedoSpec", 2);
-
-	if (cascade) {
-		shaderLightingPass->setFloat("bias", cascade->getBias());
-		TextureHandler::getInstance()->bindTexture(GL_TEXTURE31, GL_TEXTURE_2D_ARRAY, cascade->getShadowMapTextureArray());
-		shaderLightingPass->setInt("cascadedShadow.shadowMap", 31);
-		shaderLightingPass->setVec3("cascadedShadow.direction", cascade->getLightDirection());
-		shaderLightingPass->setVec3("cascadedShadow.color", cascade->getLightColor());
-		shaderLightingPass->setVec2("cascadedShadow.texelSize", 1.f / cascade->getResolution());
-		shaderLightingPass->setInt("cascadeCount", static_cast<int>(cascade->getShadowCascadeLevels().size()));
-	    for (size_t i = 0; i < cascade->getShadowCascadeLevels().size(); ++i) {
-	        shaderLightingPass->setFloat(("cascadePlaneDistances[" + std::to_string(i) + "]").c_str(), cascade->getShadowCascadeLevels()[i]);
-	    }
-		shaderLightingPass->setFloat("farPlane", cascade->getCameraFarPlane());
-	}
-
-
-    shaderLightingPass->setMat4("view", view);
-    // set light uniforms
-	shaderLightingPass->setVec3("viewPos", camera->getComponent<TransformComponent>()->getPos());
-
-
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, gPosition);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, gNormal);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, gAlbedoSpec);
-
-	shaderLightingPass->setInt("shadowsCount", static_cast<int>(lightsObj.size()));
-	for (auto i = 0u; i < lightsObj.size(); i++) {
-		auto lightSource = lightsObj[i];
-		shaderLightingPass->setMat4(("DirLights[" + std::to_string(i) + "].PV").c_str(), lightSource->getProjectionViewMatrix());
-		shaderLightingPass->setVec3(("DirLights[" + std::to_string(i) + "].Position").c_str(), lightSource->getComponent<TransformComponent>()->getPos());
-		shaderLightingPass->setInt(("DirLights[" + std::to_string(i) + "].shadowsMap").c_str(), i + 3);
-		TextureHandler::getInstance()->bindTexture(GL_TEXTURE3 + i, GL_TEXTURE_2D, lightSource->getDepthMapTexture());
-	}
-
-	
-	shaderLightingPass->setInt("lightsCount", static_cast<int>(lightPositions.size()));
-
-	for (unsigned int i = 0; i < lightPositions.size(); i++) {
-		shaderLightingPass->setVec3(("lights[" + std::to_string(i) + "].Position").c_str(), lightPositions[i]);
-		shaderLightingPass->setVec3(("lights[" + std::to_string(i) + "].Color").c_str(), lightColors[i]);
-		// update attenuation parameters and calculate radius
-		const float constant = 1.0f;
-		// note that we don't send this to the shader, we assume it is always 1.0 (in our case)
-		const float linear = 0.7f;
-		const float quadratic = 1.8f;
-		shaderLightingPass->setFloat(("lights[" + std::to_string(i) + "].Linear").c_str(), linear);
-		shaderLightingPass->setFloat(("lights[" + std::to_string(i) + "].Quadratic").c_str(), quadratic);
-		// then calculate radius of light volume/sphere
-		const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
-		float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
-		shaderLightingPass->setFloat(("lights[" + std::to_string(i) + "].Radius").c_str(), radius);
-	}
-    
-    // finally render quad
-    Utils::renderQuad();
-	
-    // 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
-    // ----------------------------------------------------------------------------------
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
-    glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // 3. render lights on top of scene
     // --------------------------------
@@ -294,70 +99,19 @@ void Renderer::draw() {
 	auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/light.vs", "shaders/light.fs");
     shader->use();
 	shader->setMat4("PV", projection * view);
-	if (cascade) {
-		auto& pos = cascade->getLightPosition();
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos) * glm::mat4(1.f) * glm::scale(glm::mat4(1.0f), {3.f,3.f,3.f});
-		batcher->addToDrawList(Utils::cubeVAO, 36, 0, {}, model, false);
-	}
+	
 
 	batcher->flushAll(true);
 
-	if (ImGui::Begin("lightSpaceMatrix")) {
-		ImGui::DragFloat("camera speed", &Engine::getInstance()->getCamera()->MovementSpeed, 0.1f);
 
-		if (cascade) {
-			if(ImGui::Button("cache")) {
-				cascade->cacheMatrices();
-			}
-			if(ImGui::Button("clear")) {
-				cascade->clearCacheMatrices();
-			}
-			
-			float color[3] = {cascade->getLightColor().x, cascade->getLightColor().y, cascade->getLightColor().z};
-			if (ImGui::ColorEdit3("sunColor", color)) {
-				cascade->setLightColor({color[0], color[1], color[2]});
-			}
-			float lightPosDir[] = {cascade->getLightPosition().x, cascade->getLightPosition().y, cascade->getLightPosition().z};
-			if (ImGui::DragFloat3("sun position",lightPosDir , 0.01f)) {
-				cascade->setLightPosition({lightPosDir[0], lightPosDir[1], lightPosDir[2]});
-			}
-			float cascadeBias = cascade->getBias();
-			if (ImGui::DragFloat("bias", &cascadeBias, 0.00001f,0.f,1.f, "%.5f")) {
-				cascade->setBias(cascadeBias);
-			}
 
-			if (ImGui::DragFloat("sun pos", &cascade->sunProgress, 0.001f, 0.f)) {
-				auto x = glm::cos(glm::radians(-cascade->sunProgress * 180.f));
-				auto y = glm::sin(glm::radians(cascade->sunProgress * 180.f));
-				auto z = glm::sin(glm::radians(cascade->sunProgress * 180.f));
-				cascade->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});
-			}
-		}
-	}
-	ImGui::End();
-
-	if (cascade) {
+	//if (cascade) {
 		//cascade->sunProgress += 0.001f;
 		/*auto x = glm::cos(glm::radians(-cascade->sunProgress * 180.f));
 		auto y = glm::sin(glm::radians(cascade->sunProgress * 180.f));
 		auto z = glm::sin(glm::radians(cascade->sunProgress * 180.f));
 		cascade->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});*/
-	}
-	
-	//cascade->setLightColor(glm::vec3(1.f, std::max(std::min(1.f, y* 2.f), 0.f), std::max(std::min(1.f, y* 3.f), 0.f)));
-	//scene->drawScene();
-	if (cascade) {
-		cascade->debugDraw();
-	}
-
-	ImGui::Begin("kek");
-	float size = 500.f;
-	ImGui::Image((void*)static_cast<size_t>(gAlbedoSpec), {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((void*)static_cast<size_t>(gPosition), {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((void*)static_cast<size_t>(gNormal), {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((void*)static_cast<size_t>(gDepthBuffer), {size,size}, {0.f, 1.f}, {1.f,0.f});
-
-	ImGui::End();
+	//}
 }
 
 void Renderer::postDraw() {
@@ -377,13 +131,15 @@ void Renderer::init() {
 	//modelObj = ModelLoader::getInstance()->load("model/scene.gltf");
 	//objectPositions.emplace_back(glm::vec3(glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f)));
 
-	modelObj = ModelLoader::getInstance()->load("suzanne/scene.gltf");
+	//modelObj = ModelLoader::getInstance()->load("suzanne/scene.gltf");
+	//modelObj = ModelLoader::getInstance()->load("susaLod/untitled.fbx");
+	modelObj = ModelLoader::getInstance()->load("sphere.fbx");
 	
-	auto count = 20;
-	for (auto i = -count; i < count; i++) {
-		for (auto j = -count; j < count; j++) {
-			for (auto k = 1; k < count / 2; k++) {
-				objectPositions.emplace_back(glm::vec3(i * glm::linearRand(2.3f,4.f), k * glm::linearRand(2.3f,4.f), j * glm::linearRand(2.3f,4.f)));
+	auto count = 40;
+	for (auto i = 0; i < count; i++) {
+		for (auto j = 0; j < count; j++) {
+			for (auto k = 1; k < 2 + 1; k++) {
+				objectPositions.emplace_back(glm::vec3(i * 10.f /** glm::linearRand(2.3f,4.f)*/, 10 * k/* * glm::linearRand(2.3f,4.f)*/, j * 10.f /** glm::linearRand(2.3f,4.f)*/));
 			}
 			
 		}
@@ -394,9 +150,14 @@ void Renderer::init() {
 		auto& objectPos = objectPositions[i];
 		auto backpack = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("backpack" + std::to_string(i));
 		backpack->getComponent<TransformComponent>()->setPos(objectPos);
-		//backpack->getComponent<TransformComponent>()->setScale({0.05f,0.05f,0.05f});
+		backpack->getComponent<TransformComponent>()->setScale({0.01f,0.01f,0.01f});
 		backpack->getComponent<TransformComponent>()->setRotate({-90.f,0.f,0.f});
-		backpack->getComponent<ModelComponent>()->setModel(modelObj);
+		backpack->addComponent<ModelComponent>()->setModel(modelObj);
+		backpack->addComponent<RenderComponent>();
+		auto lodComp = backpack->addComponent<LodComponent>(eLodType::SCREEN_SPACE);
+		lodComp->addLodLevelValue(0.02f);
+		lodComp->addLodLevelValue(0.011f);
+		lodComp->addLodLevelValue(0.001f);
 		node->addElement(backpack);
 	}
 
@@ -404,77 +165,15 @@ void Renderer::init() {
 
 	node->addElement(cube);
 
-	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
+	/*auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
 	node->addElement(cube2);
 	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
+	cube2->addComponent<RenderComponent>();*/
 
-
-	cube->getComponent<TransformComponent>()->setScale({50.f,1.f,50.f});
+	cube->getComponent<TransformComponent>()->setScale({1.f,1.f,1.f});
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
-
-
-	// configure g-buffer framebuffer
-    // ------------------------------
-    
-    glGenFramebuffers(1, &gBuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
-   
-    // position color buffer
-    glGenTextures(1, &gPosition);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, gPosition);
-    //glBindTexture(GL_TEXTURE_2D, gPosition);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
-    // normal color buffer
-    glGenTextures(1, &gNormal);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, gNormal);
-    //glBindTexture(GL_TEXTURE_2D, gNormal);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
-    // color + specular color buffer
-    glGenTextures(1, &gAlbedoSpec);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, gAlbedoSpec);
-    //glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
-    // tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
-
-	glGenTextures(1, &gDepthBuffer);
-	glBindTexture(GL_TEXTURE_2D, gDepthBuffer);
-
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, static_cast<GLsizei>(SCR_WIDTH), static_cast<GLsizei>(SCR_HEIGHT), 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-	const float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor); 
-
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gDepthBuffer, 0);
-	glDrawBuffer(GL_NONE);
-	glReadBuffer(GL_NONE);
-
-
-    unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
-	glDrawBuffers(3, attachments);
-
-    // create and attach depth buffer (renderbuffer)
- /*   glGenRenderbuffers(1, &rboDepth);
-    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);*/
-    // finally check if framebuffer is complete
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "Framebuffer not complete!" << std::endl;
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	cube->addComponent<RenderComponent>();
 
 	// lighting info
     // -------------
@@ -493,11 +192,7 @@ void Renderer::init() {
 	
 	// shader configuration
     // --------------------
-
-
-	cascade = new CascadeShadows({2048, 2048});
-
-
+	
 	batcher = new Batcher();
 
 	//lightsObj.push_back(new LightsModule::DirectionalLight(1024,1024));

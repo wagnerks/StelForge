@@ -8,8 +8,8 @@
 namespace GameEngine::FrustumModule {
 	struct Plan
 	{
-		glm::vec3 normal = { 0.f, 1.f, 0.f }; // unit vector
-		float     distance = 0.f;        // Distance with origin
+		glm::vec3 normal	= { 0.f, 1.f, 0.f }; // unit vector
+		float     distance  = 0.f;					      // Distance with origin
 
 		Plan() = default;
 
@@ -270,6 +270,29 @@ namespace GameEngine::FrustumModule {
 		frustum.leftFace = { pos, glm::cross(frontMultFar - viewTransform->getRight() * halfHSide, viewTransform->getUp()) };
 		frustum.topFace = { pos, glm::cross(viewTransform->getRight(), frontMultFar - viewTransform->getUp() * halfVSide) };
 		frustum.bottomFace = { pos, glm::cross(frontMultFar + viewTransform->getUp() * halfVSide, viewTransform->getRight()) };
+		return frustum;
+	}
+
+	inline Frustum createOrthoProjectionFrustum(TransformComponent* viewTransform, float zNear, float zFar) {
+		if (!viewTransform) {
+			return {};
+		}
+
+		Frustum frustum;
+
+		viewTransform->reloadTransform();
+
+		const glm::vec3 frontMultFar = zFar * viewTransform->getForward();
+
+		auto pos = viewTransform->getPos();
+
+		frustum.nearFace = { pos + zNear * viewTransform->getForward(), viewTransform->getForward() };
+		frustum.farFace = { pos + frontMultFar, -viewTransform->getForward() };
+		frustum.rightFace = { pos, glm::cross(viewTransform->getUp(), frontMultFar + viewTransform->getRight()) };
+		frustum.leftFace = { pos, glm::cross(frontMultFar - viewTransform->getRight(), viewTransform->getUp()) };
+		frustum.topFace = { pos, glm::cross(viewTransform->getRight(), frontMultFar - viewTransform->getUp()) };
+		frustum.bottomFace = { pos, glm::cross(frontMultFar + viewTransform->getUp(), viewTransform->getRight()) };
+
 		return frustum;
 	}
 }

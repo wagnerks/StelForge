@@ -1,5 +1,11 @@
 ﻿#include "SystemInterface.h"
 
-ecsModule::SystemInterface::SystemInterface(uint16_t priority, float_t updateInterval) : mTimeSinceLastUpdate(0),
-	mUpdateInterval(updateInterval),
-	mPriority(priority) { }
+#include "ECSHandler.h"
+#include "SystemManager.h"
+
+using namespace ecsModule;
+
+SystemInterface::SystemInterface() :
+	mTimeSinceLastUpdate(0.f),
+	mUpdateInterval(0.f),
+	mPriority(0) { }

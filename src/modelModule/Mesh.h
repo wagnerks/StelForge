@@ -21,23 +21,17 @@ namespace GameEngine::ModelModule {
 		glm::vec2 TexCoords;
 		glm::vec3 Tangent;
 	};
-
-	struct MeshTexture {
-		unsigned int id = 0;
-		std::string type;
-	};
-
+	
 	class Mesh {
 	public:
 		// mesh data
 		std::vector<Vertex> vertices;
 		std::vector<unsigned int> indices;
-		std::vector<MeshTexture> textures; //todo should be moved into model?
 		Mesh() = default;
 		void setupMesh();
 
 		~Mesh();
-		Mesh(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, std::vector<MeshTexture>& textures);
+		Mesh(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices);
 		
 		unsigned int getVAO() const { return VAO;}
 		void draw(ShaderModule::ShaderBase* shader, bool ignoreTex = false);

@@ -5,6 +5,7 @@
 #include <vec4.hpp>
 #include <vector>
 
+#include "core/BoundingVolume.h"
 #include "shaderModule/ShaderBase.h"
 #include "core/Projection.h"
 
@@ -32,6 +33,17 @@ public:
 	float getBias() const;
 	void setBias(float cascade_bias) { bias = cascade_bias;};
 	float sunProgress = 0.f;
+
+	bool first = false;
+	float _minX = std::numeric_limits<float>::max();
+	float _maxX = std::numeric_limits<float>::min();
+
+	float _minY = std::numeric_limits<float>::max();
+	float _maxY = std::numeric_limits<float>::min();
+
+	float _minZ = std::numeric_limits<float>::max();
+	float _maxZ = std::numeric_limits<float>::min();
+	std::vector<glm::vec4> corners;
 private:
 	unsigned lightFBO;
 	unsigned lightDepthMaps;
@@ -43,8 +55,7 @@ private:
 
 	glm::vec3 lightColor;
 
-	std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
-	glm::mat4 getLightSpaceMatrix(const float nearPlane, const float farPlane);
+	glm::mat4 getLightSpaceMatrix(const std::vector<glm::vec4>& corners);
 	std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& projview);
 	
 	std::vector<unsigned> visualizerVAOs;
@@ -56,8 +67,9 @@ private:
 
 	std::vector<glm::mat4> lightMatricesCache;
 	std::vector<float> shadowCascadeLevels;
+	std::vector<glm::mat4> shadowProjections;
 
 	GameEngine::ProjectionModule::PerspectiveProjection projection;
-	float bias = 0.f;
+	float bias = -0.0003f;
 
 };

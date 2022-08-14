@@ -15,7 +15,7 @@ PoolAllocator::PoolAllocator(size_t memSize, const void* mem, size_t chunkSize, 
 		LogsModule::Logger::LOG_WARNING("Chunk size must be greater or equal to 8");
 		chunkSize = 8;
 	}
-	if (const auto rem = totalSize % chunkSize; rem != 0) {
+	if (const auto rem = totalSize % (chunkSize + chunkAlignment); rem != 0) {
 		LogsModule::Logger::LOG_WARNING("Total size must be a multiple of Chunk size");
 		totalSize += chunkSize - rem;
 	}

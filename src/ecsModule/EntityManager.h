@@ -28,6 +28,10 @@ namespace ecsModule {
 			return static_cast<entityType*>(mEntities[entityId]);
 		}
 
+		const std::vector<EntityInterface*>& getAllEntities() {
+			return mEntities;
+		}
+
 		void destroyEntity(size_t entityId);
 		void destroyEntities();
 	private:

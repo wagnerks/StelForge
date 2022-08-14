@@ -15,7 +15,6 @@ ShaderController::~ShaderController() {
 }
 
 void ShaderController::init() {
-	initDefaultShader();
 }
 
 ShaderBase* ShaderController::loadVertexFragmentShader(const std::string& vertexPath, const std::string& fragmentPath) {
@@ -72,6 +71,7 @@ void ShaderController::useShader(unsigned ID) {
 }
 
 void ShaderController::useDefaultShader() {
+	initDefaultShader();
 	useShader(defaultShader->getID());
 }
 

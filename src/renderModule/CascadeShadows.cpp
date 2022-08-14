@@ -11,9 +11,7 @@
 #include "logsModule/logger.h"
 #include "shaderModule/ShaderController.h"
 
-CascadeShadows::CascadeShadows(glm::vec2 resolution) : resolution(resolution) {
-	init();
-}
+CascadeShadows::CascadeShadows(glm::vec2 resolution) : resolution(resolution) {}
 
 CascadeShadows::~CascadeShadows() {
 	glDeleteFramebuffers(1, &lightFBO);
@@ -22,12 +20,28 @@ CascadeShadows::~CascadeShadows() {
 }
 
 void CascadeShadows::init() {
-	projection = GameEngine::ProjectionModule::PerspectiveProjection(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()), static_cast<float>(GameEngine::RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(GameEngine::RenderModule::Renderer::SCR_HEIGHT), 0.01f, 500.f);
+	projection = GameEngine::ProjectionModule::PerspectiveProjection(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()), GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(), 0.01f, 500.f);
 
-	shadowCascadeLevels = { 500.f / 45.0f, 500.f / 25.0f, 500.f / 10.0f, 500.f / 2.0f };
+	shadowCascadeLevels = { 500.f / 25.0f, 500.f / 15.0f, 500.f / 10.0f, 500.f / 5.0f, 500.f / 2.0f, 500.f };
+
+	for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i) {
+		if (i == 0) {
+			const auto proj = glm::perspective(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
+				GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(),	0.01f, shadowCascadeLevels[i]);
+
+			shadowProjections.push_back(proj);
+		}
+		else if (i < shadowCascadeLevels.size()) {
+			const auto proj = glm::perspective(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
+				GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(), shadowCascadeLevels[i - 1], shadowCascadeLevels[i]);
+
+			shadowProjections.push_back(proj);
+		}
+	}
+
+
 
 	lightPos = glm::vec3(20.0f, 50, 20.0f);
-	lightDir = glm::normalize(glm::vec3(20.0f, 50, 20.0f));
 
 	lightColor = glm::vec3(1.f);
 
@@ -48,10 +62,12 @@ void CascadeShadows::init() {
 	    GL_FLOAT,
 	    nullptr);
     
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
 	    
 	constexpr float bordercolor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, bordercolor);
@@ -70,8 +86,6 @@ void CascadeShadows::init() {
 	    
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	// configure UBO
-    // --------------------
 
     glGenBuffers(1, &matricesUBO);
     glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
@@ -86,14 +100,17 @@ void CascadeShadows::preDraw() {
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4x4) * lightMatrices.size(), &lightMatrices[0]);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
-	simpleDepthShader->use();
+
 
 	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, lightDepthMaps, 0);
 	glViewport(0, 0, static_cast<int>(resolution.x), static_cast<int>(resolution.y));
 	glClear(GL_DEPTH_BUFFER_BIT);
 	glCullFace(GL_FRONT);  // peter panning
+
+	auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
+	//auto simpleDepthShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs");
+	simpleDepthShader->use();
 }
 void CascadeShadows::postDraw() {
 	glCullFace(GL_BACK);
@@ -132,45 +149,36 @@ std::vector<glm::vec4> CascadeShadows::getFrustumCornersWorldSpace(const glm::ma
 	return frustumCorners;
 }
 
-std::vector<glm::vec4> CascadeShadows::getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {
-    return getFrustumCornersWorldSpace(proj * view);
-}
-
-
-
-glm::mat4 CascadeShadows::getLightSpaceMatrix(const float nearPlane, const float farPlane) {
-	const auto proj = glm::perspective(
-		glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
-		(float)GameEngine::RenderModule::Renderer::SCR_WIDTH / (float)GameEngine::RenderModule::Renderer::SCR_HEIGHT,
-		nearPlane,
-		farPlane);
-
-
-	const auto corners = getFrustumCornersWorldSpace(
-		proj, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix());
-
+glm::mat4 CascadeShadows::getLightSpaceMatrix(const std::vector<glm::vec4>& corners) {
 	glm::vec3 center = glm::vec3(0, 0, 0);
 	for (const auto& v : corners) {
 		center += glm::vec3(v);
 	}
+
 	center /= corners.size();
-	lightDir = glm::normalize(lightPos);
-	const auto lightView = glm::lookAt(center + lightDir, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+	const auto lightView = glm::lookAt(center + glm::normalize(lightPos), center, glm::vec3(0.0f, 1.0f, 0.0f));
 
 	float minX = std::numeric_limits<float>::max();
 	float maxX = std::numeric_limits<float>::min();
+
 	float minY = std::numeric_limits<float>::max();
 	float maxY = std::numeric_limits<float>::min();
+
 	float minZ = std::numeric_limits<float>::max();
 	float maxZ = std::numeric_limits<float>::min();
+	
 	for (const auto& v : corners) {
-		const auto trf = lightView * v;
-		minX = std::min(minX, trf.x);
-		maxX = std::max(maxX, trf.x);
-		minY = std::min(minY, trf.y);
-		maxY = std::max(maxY, trf.y);
-		minZ = std::min(minZ, trf.z);
-		maxZ = std::max(maxZ, trf.z);
+		const auto transform = lightView * v;
+
+		minX = std::min(minX, transform.x);
+		maxX = std::max(maxX, transform.x);
+
+		minY = std::min(minY, transform.y);
+		maxY = std::max(maxY, transform.y);
+
+		minZ = std::min(minZ, transform.z);
+		maxZ = std::max(maxZ, transform.z);
 	}
 
 	// Tune this parameter according to the scene
@@ -181,11 +189,26 @@ glm::mat4 CascadeShadows::getLightSpaceMatrix(const float nearPlane, const float
 	else {
 		minZ /= zMult;
 	}
+
 	if (maxZ < 0) {
 		maxZ /= zMult;
 	}
 	else {
 		maxZ *= zMult;
+	}
+
+	if (first) {
+		_minX = minX;
+		_maxX = maxX;
+
+		_minY = minY;
+		_maxY = maxY;
+
+		_minZ = minZ;
+		_maxZ = maxZ;
+
+
+		first = false;
 	}
 
 	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
@@ -200,18 +223,18 @@ std::vector<glm::mat4> CascadeShadows::getLightSpaceMatrices() {
 		return lightMatricesCache;
 	}
 
+	const auto view = GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();
+
 	std::vector<glm::mat4> ret;
-	for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i) {
-		if (i == 0) {
-			ret.push_back(getLightSpaceMatrix(0.01f, shadowCascadeLevels[i]));
+	first = true;
+	for (auto& shadowProjection : shadowProjections) {
+		const auto corners = getFrustumCornersWorldSpace(shadowProjection * view);
+		if (first) {
+			this->corners = corners;
 		}
-		else if (i < shadowCascadeLevels.size()) {
-			ret.push_back(getLightSpaceMatrix(shadowCascadeLevels[i - 1], shadowCascadeLevels[i]));
-		}
-		else {
-			ret.push_back(getLightSpaceMatrix(shadowCascadeLevels[i - 1], 500.f));
-		}
+		ret.push_back(getLightSpaceMatrix(corners));
 	}
+
 	return ret;
 }
 
@@ -223,7 +246,8 @@ const glm::vec3& CascadeShadows::getLightPosition() const {
 	return lightPos;
 }
 glm::vec3 CascadeShadows::getLightDirection() const {
-	return  glm::normalize(lightPos); //cause we look at 0 always
+	auto pos = glm::vec3(0.f) - lightPos;
+	return  glm::normalize(pos); //cause we look at 0 always
 }
 const glm::vec3& CascadeShadows::getLightColor() const {
 	return lightColor;
@@ -259,9 +283,6 @@ void CascadeShadows::clearCacheMatrices() {
 float CascadeShadows::getBias() const {
 	return bias;
 }
-
-
-
 
 void CascadeShadows::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, GameEngine::ShaderModule::ShaderBase* shader) {
 	visualizerVAOs.resize(8);

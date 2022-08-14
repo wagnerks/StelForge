@@ -32,6 +32,7 @@ namespace GameEngine::RenderModule {
 		void terminate() const;
 
 		void drawCall();
+		Batcher* getBatcher() { return batcher;};
 
 		static void drawArrays(GLenum mode, GLsizei size, GLint first = 0);
 		static void drawElements(GLenum mode, GLsizei size, GLenum type, const void* place = nullptr);
@@ -52,19 +53,13 @@ namespace GameEngine::RenderModule {
 		std::vector<glm::vec3> randomLightSpeeds;
 
 		ModelModule::Model* modelObj = nullptr;
-		unsigned int gBuffer;
-		unsigned int gPosition, gNormal, gAlbedoSpec, gDepthBuffer;
-		unsigned int rboDepth;
 
 		NodeModule::Node* node = nullptr;
 
 		std::vector<LightsModule::DirectionalOrthoLight*> lightsObj;
-		CascadeShadows* cascade = nullptr;
 
 		Batcher* batcher = nullptr;
 
-		GameEngine::FrustumModule::Frustum camFrustum;
-		bool updateFrustum = true;
 	public:
 		static GLFWwindow* initGLFW();
 	private:

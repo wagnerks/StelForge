@@ -6,14 +6,25 @@
 
 
 namespace GameEngine::ModelModule {
+	struct ModelTexture {
+		unsigned int id = 0;
+		std::string type;
+	};
+
+	struct RawModel {
+		std::unordered_map<size_t, std::vector<std::unique_ptr<Mesh>>> meshes;
+		 
+		std::vector<ModelTexture> textures;
+	};
+
 	class Model {
 	public:
-		Model(std::vector<std::unique_ptr<Mesh>>& meshes) : meshes(std::move(meshes)) {
+		Model(RawModel& model) : meshes(std::move(model.meshes)), textures(model.textures) {
 		}
-
-		void draw(ShaderModule::ShaderBase* shader, bool ignoreTex = false);
-		const std::vector<std::unique_ptr<Mesh>>& getMeshes();
+		const std::vector<std::unique_ptr<Mesh>>& getMeshes(size_t LOD = 0);
+		const std::vector<ModelTexture>& getTextures();
 	private:
-		std::vector<std::unique_ptr<Mesh>> meshes;
+		std::unordered_map<size_t, std::vector<std::unique_ptr<Mesh>>> meshes;
+		std::vector<ModelTexture> textures;
 	};
 }

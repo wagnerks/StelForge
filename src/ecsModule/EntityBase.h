@@ -11,17 +11,17 @@ namespace ecsModule {
 		void setId(size_t id);
 		virtual size_t getStaticTypeID() const = 0;
 
-		template<typename E>
-	    E* getComponent(bool add = true) {
+		template<typename E, class ... Args>
+	    E* getComponent() const {
 			if (auto cmp = ECSHandler::componentManagerInstance()->getComponent<E>(getEntityID())) {
 				return cmp;
 			}
-			if (!add) {
-				return nullptr;
-			}
-			return ECSHandler::componentManagerInstance()->addComponent<E>(getEntityID());;
+			return nullptr;
 	    }
-
+		template<typename E, class ... Args>
+	    E* addComponent(Args&&... args) const {
+			return ECSHandler::componentManagerInstance()->addComponent<E>(getEntityID(), std::forward<Args>(args)...);;
+	    }
 		template<typename E>
 	    void removeComponent() const {
 			ECSHandler::componentManagerInstance()->removeComponent<E>(getEntityID());

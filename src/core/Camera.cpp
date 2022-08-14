@@ -4,7 +4,7 @@
 #include "componentsModule/TransformComponent.h"
 
 Camera::Camera(size_t entID, GameEngine::ProjectionModule::PerspectiveProjection view, glm::vec3 position, float yaw) : Entity<Camera>(entID) {
-	auto tc = getComponent<TransformComponent>();
+	auto tc = addComponent<TransformComponent>();
 	tc->setPos(position);
 	tc->setRotate({0.f, yaw, 0.f});
 

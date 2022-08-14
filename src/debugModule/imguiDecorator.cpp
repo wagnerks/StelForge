@@ -15,6 +15,7 @@ void ImGuiDecorator::init(GLFWwindow* window) {
 #if not IMGUI_ENABLED
 	return;
 #endif
+
 	if (inited) {
 		return;
 	}
