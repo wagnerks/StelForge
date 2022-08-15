@@ -24,7 +24,7 @@ void CascadedShadowPass::init() {
 	}
 	mInited = true;
 
-	mShadowSource = new CascadeShadows({2048.f,2048.f});
+	mShadowSource = new CascadeShadows({1024.f,1024.f});
 	mShadowSource->init();
 }
 

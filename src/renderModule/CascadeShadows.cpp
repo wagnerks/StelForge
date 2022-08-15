@@ -22,21 +22,13 @@ CascadeShadows::~CascadeShadows() {
 void CascadeShadows::init() {
 	projection = GameEngine::ProjectionModule::PerspectiveProjection(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()), GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(), 0.01f, 500.f);
 
-	shadowCascadeLevels = { 500.f / 25.0f, 500.f / 15.0f, 500.f / 10.0f, 500.f / 5.0f, 500.f / 2.0f, 500.f };
+	shadowCascadeLevels = {0.01f, 500.f / 12.0f, 500.f / 8.0f, 500.f / 5.0f, 500.f / 2.0f, 500.f };
 
-	for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i) {
-		if (i == 0) {
-			const auto proj = glm::perspective(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
-				GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(),	0.01f, shadowCascadeLevels[i]);
+	for (size_t i = 1; i < shadowCascadeLevels.size(); ++i) {
+		const auto proj = glm::perspective(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
+			GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(), shadowCascadeLevels[i - 1], shadowCascadeLevels[i]);
 
-			shadowProjections.push_back(proj);
-		}
-		else if (i < shadowCascadeLevels.size()) {
-			const auto proj = glm::perspective(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
-				GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(), shadowCascadeLevels[i - 1], shadowCascadeLevels[i]);
-
-			shadowProjections.push_back(proj);
-		}
+		shadowProjections.push_back(proj);
 	}
 
 
@@ -56,7 +48,7 @@ void CascadeShadows::init() {
 	    GL_DEPTH_COMPONENT16,
 	    static_cast<int>(resolution.x),
 	    static_cast<int>(resolution.y),
-	    int(shadowCascadeLevels.size()) + 1,
+	    int(shadowCascadeLevels.size()) - 1,
 	    0,
 	    GL_DEPTH_COMPONENT,
 	    GL_FLOAT,

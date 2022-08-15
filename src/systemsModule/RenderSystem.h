@@ -12,6 +12,7 @@
 #include "renderModule/RenderPass.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/GeometryPass.h"
+#include "renderModule/renderPasses/SSAOPass.h"
 
 namespace GameEngine {
 	namespace RenderModule {
@@ -30,6 +31,7 @@ namespace GameEngine::SystemsModule{
 
 		RenderModule::RenderPasses::CascadedShadowPass::Data mCascadedShadowsPassData;
 		RenderModule::RenderPasses::GeometryPass::Data mGeometryPassData;
+		RenderModule::RenderPasses::SSAOPass::Data mSSAOPassData;
 	};
 
 	class RenderSystem : public ecsModule::System<RenderSystem> {

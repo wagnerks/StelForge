@@ -7,6 +7,7 @@ in vec2 TexCoords;
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
+uniform sampler2D ssao;
 
 struct DirectionalLight {
     mat4 PV; //proj * view from light perspective matrix
@@ -116,7 +117,7 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal, float curSh
     for(int y = -pcfCount; y <= pcfCount; ++y) {
         for(int x = -pcfCount; x <= pcfCount; ++x) {
             float pcfDepth = texture(cascadedShadow.shadowMap, vec3(projCoords.xy + vec2(x, y) * cascadedShadow.texelSize, layer)).r;
-            shadow += (projCoords.z - bias) > pcfDepth ? 0.03 : 0.0;    
+            shadow += (projCoords.z - bias) > pcfDepth ? 0.01 : 0.0;    
         }
     }  
 
@@ -141,16 +142,19 @@ void main() {
     vec3 Normal = texture(gNormal, TexCoords).rgb;
     vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
     float Specular = texture(gAlbedoSpec, TexCoords).a;
-
+    float AmbientOcclusion = texture(ssao, TexCoords).r;
 
     float shadow = 0.f;
-    vec3 lighting = Diffuse * vec3(0.f);
-   
+    vec3 lighting = vec3(Diffuse * 0.3f * AmbientOcclusion);
+    
     vec3 viewDir  = normalize(viewPos - FragPos);
 
     shadow += ShadowCascadedCalculation(FragPos, Normal, 0.f);
-  
-    lighting = calculateLighting(Normal, cascadedShadow.direction, viewDir, Diffuse, cascadedShadow.color, Specular) * 0.7f; 
+    if (shadow == 1.0){
+        discard;
+    }
+
+    lighting += calculateLighting(Normal, cascadedShadow.direction, viewDir, Diffuse, cascadedShadow.color, Specular) * 0.7f; 
  
     for (int i = 0; i < shadowsCount; i++) {
         vec4 shadowCoord = DirLights[i].PV * vec4(FragPos,1.0);

@@ -135,7 +135,7 @@ void Renderer::init() {
 	//modelObj = ModelLoader::getInstance()->load("susaLod/untitled.fbx");
 	modelObj = ModelLoader::getInstance()->load("sphere.fbx");
 	
-	auto count = 40;
+	auto count = 2;
 	for (auto i = 0; i < count; i++) {
 		for (auto j = 0; j < count; j++) {
 			for (auto k = 1; k < 2 + 1; k++) {
@@ -165,13 +165,13 @@ void Renderer::init() {
 
 	node->addElement(cube);
 
-	/*auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
+	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
 	node->addElement(cube2);
 	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
-	cube2->addComponent<RenderComponent>();*/
+	cube2->addComponent<RenderComponent>();
 
-	cube->getComponent<TransformComponent>()->setScale({1.f,1.f,1.f});
+	cube->getComponent<TransformComponent>()->setScale({50.f,1.f,50.f});
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
 	cube->addComponent<RenderComponent>();
 

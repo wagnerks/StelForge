@@ -7,6 +7,7 @@ namespace GameEngine::RenderModule::RenderPasses {
 		struct Data {
 			unsigned int mGBuffer = 0;
 			unsigned int gPosition = 0;
+			unsigned int gViewPosition = 0;
 			unsigned int gNormal = 0;
 			unsigned int gAlbedoSpec = 0;
 			unsigned int rboDepth = 0;

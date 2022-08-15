@@ -10,5 +10,7 @@ enum eSystemsPriority : uint16_t {
 enum eRenderPassPriority : size_t {
 	CASCADE_SHADOWS = 0,
 	GEOMETRY,
-	LIGHTING
+	SSAO,
+	LIGHTING,
+
 };

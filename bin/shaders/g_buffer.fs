@@ -2,10 +2,12 @@
 layout (location = 0) out highp vec4 gPosition;
 layout (location = 1) out vec3 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
+layout (location = 3) out highp vec3 gViewPosition;
 
 in vec2 TexCoords;
 in highp vec3 FragPos;
 in vec3 Normal;
+in vec3 ViewPos;
 
 uniform sampler2D texture_diffuse1;
 uniform sampler2D texture_specular1;
@@ -23,7 +25,7 @@ void main()
     gPosition.a = gl_FragCoord.a;
     // also store the per-fragment normals into the gbuffer
     gNormal = Normal;
-
+    gViewPosition = ViewPos;
     //  // obtain normal from normal map in range [0,1]
     // vec3 normal = texture(normalMap, TexCoords).rgb;
     // // transform normal vector to range [-1,1]

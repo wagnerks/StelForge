@@ -13,6 +13,7 @@
 #include "renderModule/Utils.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/LightingPass.h"
+#include "renderModule/renderPasses/SSAOPass.h"
 
 using namespace GameEngine::SystemsModule;
 
@@ -30,6 +31,11 @@ RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(rendere
 	auto lightingPass = new RenderModule::RenderPasses::LightingPass();
 	lightingPass->setPriority(LIGHTING);
 	mRenderPasses.emplace_back(lightingPass);
+
+	auto ssaoPass = new RenderModule::RenderPasses::SSAOPass();
+	ssaoPass->setPriority(SSAO);
+	ssaoPass->init();
+	mRenderPasses.emplace_back(ssaoPass);
 
 	std::ranges::sort(mRenderPasses);
 }
@@ -93,6 +99,9 @@ void RenderSystem::update(float_t dt) {
 	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gAlbedoSpec), {size,size}, {0.f, 1.f}, {1.f,0.f});
 	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gPosition), {size,size}, {0.f, 1.f}, {1.f,0.f});
 	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gNormal), {size,size}, {0.f, 1.f}, {1.f,0.f});
+
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.ssaoColorBuffer), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.ssaoColorBufferBlur), {size,size}, {0.f, 1.f}, {1.f,0.f});
 
 	ImGui::End();
 }

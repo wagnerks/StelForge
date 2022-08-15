@@ -19,6 +19,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
     shaderLightingPass->setInt("gPosition", 0);
     shaderLightingPass->setInt("gNormal", 1);
     shaderLightingPass->setInt("gAlbedoSpec", 2);
+    shaderLightingPass->setInt("ssao", 3);
 	
 	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
 		shaderLightingPass->setFloat("bias", renderDataHandle.mCascadedShadowsPassData.bias);
@@ -43,6 +44,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gPosition);
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gAlbedoSpec);
+	TextureHandler::getInstance()->bindTexture(GL_TEXTURE3, GL_TEXTURE_2D, renderDataHandle.mSSAOPassData.ssaoColorBufferBlur);
 
 	//shaderLightingPass->setInt("shadowsCount", static_cast<int>(lightsObj.size()));
 	//for (auto i = 0u; i < lightsObj.size(); i++) {
