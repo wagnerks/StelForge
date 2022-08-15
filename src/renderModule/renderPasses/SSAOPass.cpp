@@ -16,29 +16,28 @@ float lerp(float a, float b, float f) {
 }
 
 void SSAOPass::init() {
-
-	glGenFramebuffers(1, &ssaoFBO);
-	glGenFramebuffers(1, &ssaoBlurFBO);
-	glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+	glGenFramebuffers(1, &mData.mSsaoFbo);
+	glGenFramebuffers(1, &mData.mSsaoBlurFbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
 
 	// SSAO color buffer
-	glGenTextures(1, &ssaoColorBuffer);
-	glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+	glGenTextures(1, &mData.mSsaoColorBuffer);
+	glBindTexture(GL_TEXTURE_2D, mData.mSsaoColorBuffer);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.mSsaoColorBuffer, 0);
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		LogsModule::Logger::LOG_FATAL(false, "SSAO Framebuffer not complete!");
 	}
 	// and blur stage
-	glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
-	glGenTextures(1, &ssaoColorBufferBlur);
-	glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
+	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
+	glGenTextures(1, &mData.mSsaoColorBufferBlur);
+	glBindTexture(GL_TEXTURE_2D, mData.mSsaoColorBufferBlur);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBufferBlur, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.mSsaoColorBufferBlur, 0);
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		LogsModule::Logger::LOG_FATAL(false, "SSAO Blur Framebuffer not complete!");
 	}
@@ -57,7 +56,7 @@ void SSAOPass::init() {
 		// scale samples s.t. they're more aligned to center of kernel
 		scale = lerp(0.1f, 1.0f, scale * scale);
 		sample *= scale;
-		ssaoKernel.push_back(sample);
+		mData.mSsaoKernel.push_back(sample);
 	}
 
 	// generate noise texture
@@ -69,8 +68,8 @@ void SSAOPass::init() {
 		ssaoNoise.push_back(noise);
 	}
 
-	glGenTextures(1, &noiseTexture);
-	glBindTexture(GL_TEXTURE_2D, noiseTexture);
+	glGenTextures(1, &mData.mNoiseTexture);
+	glBindTexture(GL_TEXTURE_2D, mData.mNoiseTexture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -82,12 +81,13 @@ void SSAOPass::init() {
 	shaderSSAO->setInt("gPosition", 0);
 	shaderSSAO->setInt("gNormal", 1);
 	shaderSSAO->setInt("texNoise", 2);
-	shaderSSAO->setInt("kernelSize", kernelSize);
-	shaderSSAO->setFloat("radius", radius);
-	shaderSSAO->setFloat("bias", bias);
-	shaderSSAO->setVec2("noiseScale", glm::vec2(Renderer::SCR_WIDTH / 4.f, Renderer::SCR_HEIGHT / 4.f));
+
+	shaderSSAO->setInt("kernelSize", mData.mKernelSize);
+	shaderSSAO->setFloat("radius", mData.mRadius);
+	shaderSSAO->setFloat("bias", mData.mBias);
+	shaderSSAO->setVec2("noiseScale", glm::vec2(static_cast<float>(Renderer::SCR_WIDTH)/4.f, static_cast<float>(Renderer::SCR_WIDTH)/4.f));
 	for (unsigned int i = 0; i < 64; ++i) {
-		shaderSSAO->setVec3(("samples[" + std::to_string(i) + "]").c_str(), ssaoKernel[i]);
+		shaderSSAO->setVec3(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
 	}
 
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
@@ -101,38 +101,35 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& rende
 
 	if (ImGui::Begin("SSAO")) {
 		shaderSSAO->use();
-		if (ImGui::DragInt("kernelSize", &kernelSize)) {
-			shaderSSAO->setInt("kernelSize", kernelSize);
+		if (ImGui::DragInt("kernelSize", &mData.mKernelSize)) {
+			shaderSSAO->setInt("kernelSize", mData.mKernelSize);
 		}
-		if (ImGui::DragFloat("radius", &radius, 0.01f)) {
-			shaderSSAO->setFloat("radius", radius);
+		if (ImGui::DragFloat("radius", &mData.mRadius, 0.01f)) {
+			shaderSSAO->setFloat("radius", mData.mRadius);
 		}
-		if (ImGui::DragFloat("bias", &bias, 0.001f)) {
-			shaderSSAO->setFloat("bias", bias);
+		if (ImGui::DragFloat("bias", &mData.mBias, 0.001f)) {
+			shaderSSAO->setFloat("bias", mData.mBias);
 		}
 	}
 	ImGui::End();
 
-	glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAO->use();
 	shaderSSAO->setMat4("projection", renderDataHandle.projection);
 
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, noiseTexture);
+	TextureHandler::getInstance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, mData.mNoiseTexture);
 	Utils::renderQuad();
 	
 
-	glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAOBlur->use();
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, ssaoColorBuffer);
+	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.mSsaoColorBuffer);
 	Utils::renderQuad();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-	renderDataHandle.mSSAOPassData = {
-		ssaoColorBuffer,
-		ssaoColorBufferBlur
-	};
+	renderDataHandle.mSSAOPassData = mData;
 }
