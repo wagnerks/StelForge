@@ -100,8 +100,8 @@ void RenderSystem::update(float_t dt) {
 	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gPosition), {size,size}, {0.f, 1.f}, {1.f,0.f});
 	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gNormal), {size,size}, {0.f, 1.f}, {1.f,0.f});
 
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.ssaoColorBuffer), {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.ssaoColorBufferBlur), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBuffer), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBufferBlur), {size,size}, {0.f, 1.f}, {1.f,0.f});
 
 	ImGui::End();
 }

@@ -44,7 +44,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gPosition);
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gAlbedoSpec);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE3, GL_TEXTURE_2D, renderDataHandle.mSSAOPassData.ssaoColorBufferBlur);
+	TextureHandler::getInstance()->bindTexture(GL_TEXTURE3, GL_TEXTURE_2D, renderDataHandle.mSSAOPassData.mSsaoColorBufferBlur);
 
 	//shaderLightingPass->setInt("shadowsCount", static_cast<int>(lightsObj.size()));
 	//for (auto i = 0u; i < lightsObj.size(); i++) {
