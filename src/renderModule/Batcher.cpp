@@ -88,6 +88,8 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 		glBindVertexArray(drawObjects.VAO);
 
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::mat4x4) * drawObjects.transforms.size(), &drawObjects.transforms[0]);
+
+		GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png"));
 		
 		for (auto& texture : drawObjects.textures) {
 			if (texture.type == "texture_diffuse") {
@@ -98,7 +100,6 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 			}
 		}
 
-		GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png"));
 		
 		if (drawObjects.indicesCount) {
 			GameEngine::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
