@@ -93,6 +93,15 @@ void SSAOPass::init() {
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
 	shaderSSAOBlur->use();
 	shaderSSAOBlur->setInt("ssaoInput", 0);
+
+	float facL = -1.f/(2.f*mData.sigmaL*mData.sigmaL);
+	shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
+	shaderSSAOBlur->setFloat("facL", facL);
+
+	float facS = -1.f/(2.f*mData.sigmaS*mData.sigmaS);
+	shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
+	shaderSSAOBlur->setFloat("facS", facS);
+
 }
 
 void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
@@ -110,9 +119,23 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& rende
 		if (ImGui::DragFloat("bias", &mData.mBias, 0.001f)) {
 			shaderSSAO->setFloat("bias", mData.mBias);
 		}
+		if (ImGui::DragFloat("sigmaS", &mData.sigmaS, 0.01f, 0.000001f)) {
+			shaderSSAOBlur->use();
+			float facS = -1.f/(2.f*mData.sigmaS*mData.sigmaS);
+  
+			shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
+			shaderSSAOBlur->setFloat("facS", facS);
+		}
+		if (ImGui::DragFloat("sigmaL", &mData.sigmaL, 0.01f, 0.000001f)) {
+			shaderSSAOBlur->use();
+			float facL = -1.f/(2.f*mData.sigmaL*mData.sigmaL);
+			shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
+			shaderSSAOBlur->setFloat("facL", facL);
+		}
 	}
 	ImGui::End();
 
+	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAO->use();

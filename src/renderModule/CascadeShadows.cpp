@@ -107,6 +107,7 @@ void CascadeShadows::preDraw() {
 void CascadeShadows::postDraw() {
 	glCullFace(GL_BACK);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, GameEngine::RenderModule::Renderer::SCR_WIDTH, GameEngine::RenderModule::Renderer::SCR_HEIGHT);
 }
 
 void CascadeShadows::debugDraw() {
@@ -174,7 +175,7 @@ glm::mat4 CascadeShadows::getLightSpaceMatrix(const std::vector<glm::vec4>& corn
 	}
 
 	// Tune this parameter according to the scene
-	constexpr float zMult = 10.0f;
+	constexpr float zMult = 5.0f;
 	if (minZ < 0) {
 		minZ *= zMult;
 	}
@@ -188,21 +189,7 @@ glm::mat4 CascadeShadows::getLightSpaceMatrix(const std::vector<glm::vec4>& corn
 	else {
 		maxZ *= zMult;
 	}
-
-	if (first) {
-		_minX = minX;
-		_maxX = maxX;
-
-		_minY = minY;
-		_maxY = maxY;
-
-		_minZ = minZ;
-		_maxZ = maxZ;
-
-
-		first = false;
-	}
-
+	
 	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
 
 	return lightProjection * lightView;

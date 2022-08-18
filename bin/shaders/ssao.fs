@@ -18,21 +18,31 @@ uniform vec2 noiseScale;
 
 uniform mat4 projection;
 
-void main()
-{
-    vec3 normal = normalize(texture(gNormal, TexCoords).rgb);
+void main() {
+    float radius = radius;
+    int kernelSize = kernelSize;
+    float depth = texture(gNormal, TexCoords).a;
+    if (depth < 0.96){
+        radius = 0.1;
+        kernelSize = 16;
+    }
+    vec3 normal = texture(gNormal, TexCoords).rgb;
     if (normal == vec3(0.0)){
         discard;
     }
    
-   vec3 fragPos = vec3(texture(gPosition, TexCoords));
-    
+    vec3 fragPos = vec3(texture(gPosition, TexCoords));
+    if (fragPos.z == 0.0){
+        discard;
+    }
     vec3 randomVec = normalize(texture(texNoise, TexCoords * noiseScale).xyz);
+    
     // create TBN change-of-basis matrix: from tangent-space to view-space
     vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
     vec3 bitangent = cross(normal, tangent);
     mat3 TBN = mat3(tangent, bitangent, normal);
     // iterate over the sample kernel and calculate occlusion factor
+    
     float occlusion = 0.0;
     for(int i = 0; i < kernelSize; ++i) {
         // get sample position
@@ -47,12 +57,11 @@ void main()
         
         // get sample depth
         float sampleDepth = (texture(gPosition, offset.xy)).z; // get depth value of kernel sample
-        
+
         // range check & accumulate
         float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));
         occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;           
     }
     occlusion = 1.0 - (occlusion / kernelSize);
-    
     FragColor = occlusion;
 }

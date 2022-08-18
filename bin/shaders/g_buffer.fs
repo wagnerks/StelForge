@@ -1,6 +1,6 @@
 #version 330 core
 layout (location = 0) out highp vec4 gPosition;
-layout (location = 1) out vec3 gNormal;
+layout (location = 1) out vec4 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
 layout (location = 3) out highp vec3 gViewPosition;
 
@@ -24,7 +24,8 @@ void main()
     gPosition.rgb = FragPos;
     gPosition.a = gl_FragCoord.a;
     // also store the per-fragment normals into the gbuffer
-    gNormal = Normal;
+    gNormal.xyz = Normal;
+    gNormal.a = gl_FragCoord.z; //4 byte for depth buffer
     gViewPosition = ViewPos;
     //  // obtain normal from normal map in range [0,1]
     // vec3 normal = texture(normalMap, TexCoords).rgb;
