@@ -175,6 +175,31 @@ void Renderer::init() {
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
 	cube->addComponent<RenderComponent>();
 
+	cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
+	node->addElement(cube2);
+	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
+	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
+	cube2->addComponent<RenderComponent>();
+
+	cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
+	node->addElement(cube2);
+	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
+	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
+	cube2->addComponent<RenderComponent>();
+
+	/*auto train = ModelLoader::getInstance()->load("models/sponza/scene.gltf");
+	auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("trainNode");
+	trainNode->addComponent<RenderComponent>();
+	trainNode->addComponent<ModelComponent>()->setModel(train);*/
+
+	/*auto house = ModelLoader::getInstance()->load("models/train/untitled.gltf");
+	auto houseNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("houseNode");
+	houseNode->getComponent<TransformComponent>()->setPos({15.f,-2.f,-20.f});
+	houseNode->getComponent<TransformComponent>()->setRotate({86.f,320.f,6.f});
+	houseNode->getComponent<TransformComponent>()->setScale({5.f,5.f,5.f});
+	houseNode->addComponent<RenderComponent>();
+	houseNode->addComponent<ModelComponent>()->setModel(house);*/
+
 	// lighting info
     // -------------
     const unsigned int NR_LIGHTS = 0;

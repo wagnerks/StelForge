@@ -32,10 +32,10 @@ RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(rendere
 	lightingPass->setPriority(LIGHTING);
 	mRenderPasses.emplace_back(lightingPass);
 
-	auto ssaoPass = new RenderModule::RenderPasses::SSAOPass();
+	/*auto ssaoPass = new RenderModule::RenderPasses::SSAOPass();
 	ssaoPass->setPriority(SSAO);
 	ssaoPass->init();
-	mRenderPasses.emplace_back(ssaoPass);
+	mRenderPasses.emplace_back(ssaoPass);*/
 
 	std::ranges::sort(mRenderPasses);
 }

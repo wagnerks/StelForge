@@ -20,9 +20,15 @@ CascadeShadows::~CascadeShadows() {
 }
 
 void CascadeShadows::init() {
-	projection = GameEngine::ProjectionModule::PerspectiveProjection(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()), GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect(), 0.01f, 500.f);
+	auto zNear = GameEngine::Engine::getInstance()->getCamera()->cameraView.getZNear();
+	auto zFar = GameEngine::Engine::getInstance()->getCamera()->cameraView.getZFar();
+	auto fov = glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV());
+	auto aspect = GameEngine::Engine::getInstance()->getCamera()->cameraView.getAspect();
 
-	shadowCascadeLevels = {0.01f, 500.f / 12.0f, 500.f / 8.0f, 500.f / 5.0f, 500.f / 2.0f, 500.f };
+	projection = GameEngine::ProjectionModule::PerspectiveProjection(fov, aspect, zNear, zFar);
+
+	
+	shadowCascadeLevels = {zNear,zFar / 20.0f, zFar / 12.0f, zFar / 5.0f, zFar };
 
 	for (size_t i = 1; i < shadowCascadeLevels.size(); ++i) {
 		const auto proj = glm::perspective(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
@@ -45,7 +51,7 @@ void CascadeShadows::init() {
 	glTexImage3D(
 	    GL_TEXTURE_2D_ARRAY,
 	    0,
-	    GL_DEPTH_COMPONENT16,
+	    GL_DEPTH_COMPONENT24,
 	    static_cast<int>(resolution.x),
 	    static_cast<int>(resolution.y),
 	    int(shadowCascadeLevels.size()) - 1,
@@ -59,7 +65,7 @@ void CascadeShadows::init() {
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
+	//glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
 	    
 	constexpr float bordercolor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, bordercolor);
@@ -103,8 +109,10 @@ void CascadeShadows::preDraw() {
 	auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
 	//auto simpleDepthShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs");
 	simpleDepthShader->use();
+	glEnable(GL_DEPTH_CLAMP);
 }
 void CascadeShadows::postDraw() {
+	glDisable(GL_DEPTH_CLAMP);
 	glCullFace(GL_BACK);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, GameEngine::RenderModule::Renderer::SCR_WIDTH, GameEngine::RenderModule::Renderer::SCR_HEIGHT);
@@ -133,7 +141,13 @@ std::vector<glm::vec4> CascadeShadows::getFrustumCornersWorldSpace(const glm::ma
 	for (unsigned int x = 0; x < 2; ++x) {
 		for (unsigned int y = 0; y < 2; ++y) {
 			for (unsigned int z = 0; z < 2; ++z) {
-				const glm::vec4 pt = inv * glm::vec4(2.0f * x - 1.0f, 2.0f * y - 1.0f, 2.0f * z - 1.0f, 1.0f);
+				const glm::vec4 pt = inv * glm::vec4(
+					2.0f * x - 1.0f, 
+					2.0f * y - 1.0f, 
+					2.0f * z - 1.0f, 
+					1.0f
+				);
+
 				frustumCorners.push_back(pt / pt.w);
 			}
 		}
@@ -175,12 +189,12 @@ glm::mat4 CascadeShadows::getLightSpaceMatrix(const std::vector<glm::vec4>& corn
 	}
 
 	// Tune this parameter according to the scene
-	constexpr float zMult = 5.0f;
+	constexpr float zMult = 10.0f;
 	if (minZ < 0) {
-		minZ *= zMult;
+		minZ *= 1;
 	}
 	else {
-		minZ /= zMult;
+		minZ /= 1;
 	}
 
 	if (maxZ < 0) {
