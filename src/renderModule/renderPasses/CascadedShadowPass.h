@@ -18,8 +18,10 @@ namespace GameEngine::RenderModule::RenderPasses {
 			glm::vec2 resolution = {};
 			glm::vec3 pos = {};
 			float cameraFarPlane = 0.f;
+			float texelSize = 0.5f;
 			std::vector<float> shadowCascadeLevels;
 			CascadeShadows* shadows;
+			int samples = 5;
 		};
 
 		CascadedShadowPass();

@@ -24,7 +24,7 @@ void CascadedShadowPass::init() {
 	}
 	mInited = true;
 
-	mShadowSource = new CascadeShadows({2048.f,2048.f});
+	mShadowSource = new CascadeShadows({4096.f,4096.f});
 	mShadowSource->init();
 }
 
@@ -37,6 +37,8 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 		return;
 	}
 
+	if (! (int(std::floorf(mShadowSource->sunProgress)) % 2 != 0)){
+	
 
 	auto& drawableEntities = renderDataHandle.mDrawableEntities;
 
@@ -89,7 +91,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	//draw meshes which should cast shadow
 
 	mShadowSource->postDraw();
-
+	}
 	mData = {
 		mShadowSource->getBias(),
 		mShadowSource->getShadowMapTextureArray(),
@@ -98,8 +100,10 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 		mShadowSource->getResolution(),
 		mShadowSource->getLightPosition(),
 		mShadowSource->getCameraFarPlane(),
+		mShadowSource->texelSize,
 		mShadowSource->getShadowCascadeLevels(),
-		mShadowSource
+		mShadowSource,
+		mShadowSource->samples
 	};
 
 	renderDataHandle.mCascadedShadowsPassData = mData;
@@ -129,12 +133,27 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 				mShadowSource->setBias(cascadeBias);
 			}
 
+			if (ImGui::DragFloat("texel size", &mShadowSource->texelSize, 0.01f,0.f,1.f, "%.3f")) {
+				
+			}
+			if (ImGui::DragInt("samples", &mShadowSource->samples, 1, 1)){
+				if (mShadowSource->samples < 1){
+					mShadowSource->samples = 1;
+				}
+			}
+
 			if (ImGui::DragFloat("sun pos", &mShadowSource->sunProgress, 0.001f, 0.f)) {
 				auto x = glm::cos(glm::radians(-mShadowSource->sunProgress * 180.f));
 				auto y = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
 				auto z = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
 				mShadowSource->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});
 			}
+
+			mShadowSource->sunProgress += 0.00001f;
+			auto x = glm::cos(glm::radians(-mShadowSource->sunProgress * 180.f));
+			auto y = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
+			auto z = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
+			mShadowSource->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});
 		}
 	}
 	ImGui::End();
