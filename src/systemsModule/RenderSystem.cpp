@@ -1,4 +1,5 @@
 ﻿#include "RenderSystem.h"
+#include "renderModule/Utils.h"
 
 #include <algorithm>
 
@@ -93,6 +94,17 @@ void RenderSystem::update(float_t dt) {
 	}
 
 	mRenderer->getBatcher()->flushAll(true);*/
+	ImGui::Begin("render mode");
+
+	if (ImGui::Button("wireframe")){
+		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+	}
+
+	if (ImGui::Button("usual")){
+		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	}
+
+	ImGui::End();
 
 	ImGui::Begin("kek");
 	float size = 500.f;
