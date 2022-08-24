@@ -102,16 +102,6 @@ void Renderer::draw() {
 	
 
 	batcher->flushAll(true);
-
-
-
-	//if (cascade) {
-		//cascade->sunProgress += 0.001f;
-		/*auto x = glm::cos(glm::radians(-cascade->sunProgress * 180.f));
-		auto y = glm::sin(glm::radians(cascade->sunProgress * 180.f));
-		auto z = glm::sin(glm::radians(cascade->sunProgress * 180.f));
-		cascade->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});*/
-	//}
 }
 
 void Renderer::postDraw() {
@@ -133,12 +123,12 @@ void Renderer::init() {
 
 	//modelObj = ModelLoader::getInstance()->load("suzanne/scene.gltf");
 	//modelObj = ModelLoader::getInstance()->load("susaLod/untitled.fbx");
-	modelObj = ModelLoader::getInstance()->load("sphere.fbx");
+	modelObj = ModelLoader::getInstance()->load("models/tree/scene.gltf");
 	
 	auto count = 2;
 	for (auto i = 0; i < count; i++) {
 		for (auto j = 0; j < count; j++) {
-			for (auto k = 1; k < 2 + 1; k++) {
+			for (auto k = 1; k < count + 1; k++) {
 				objectPositions.emplace_back(glm::vec3(i * 10.f /** glm::linearRand(2.3f,4.f)*/, 10 * k/* * glm::linearRand(2.3f,4.f)*/, j * 10.f /** glm::linearRand(2.3f,4.f)*/));
 			}
 			
@@ -154,7 +144,7 @@ void Renderer::init() {
 		backpack->getComponent<TransformComponent>()->setRotate({-90.f,0.f,0.f});
 		backpack->addComponent<ModelComponent>()->setModel(modelObj);
 		backpack->addComponent<RenderComponent>();
-		auto lodComp = backpack->addComponent<LodComponent>(eLodType::SCREEN_SPACE);
+		auto lodComp = backpack->addComponent<LodComponent>(eLodType::DISTANCE);
 		lodComp->addLodLevelValue(0.02f);
 		lodComp->addLodLevelValue(0.011f);
 		lodComp->addLodLevelValue(0.001f);
@@ -164,6 +154,9 @@ void Renderer::init() {
 	auto cube = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube");
 
 	node->addElement(cube);
+	cube->getComponent<TransformComponent>()->setScale({5000.f,1.f,5000.f});
+	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
+	cube->addComponent<RenderComponent>();
 
 	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
 	node->addElement(cube2);
@@ -171,11 +164,9 @@ void Renderer::init() {
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
 	cube2->addComponent<RenderComponent>();
 
-	cube->getComponent<TransformComponent>()->setScale({50.f,1.f,50.f});
-	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
-	cube->addComponent<RenderComponent>();
+	
 
-	cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
+	/*cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
 	node->addElement(cube2);
 	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
@@ -185,21 +176,26 @@ void Renderer::init() {
 	node->addElement(cube2);
 	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
-	cube2->addComponent<RenderComponent>();
+	cube2->addComponent<RenderComponent>();*/
 
-	/*auto train = ModelLoader::getInstance()->load("models/sponza/scene.gltf");
-	auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("trainNode");
-	trainNode->addComponent<RenderComponent>();
-	trainNode->addComponent<ModelComponent>()->setModel(train);*/
+	auto train = ModelLoader::getInstance()->load("model/cube.fbx");
+	count = 80;
+	for (auto i = 0; i < count; i++) {
+		for (auto j = 0; j < count; j++) {
+			for (auto k = 1; k < 5 + 1; k++) {
+				auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("trainNode");
+				trainNode->addComponent<RenderComponent>();
+				trainNode->addComponent<ModelComponent>()->setModel(train);
+				trainNode->getComponent<TransformComponent>()->setRotateX(0.f);
+				trainNode->getComponent<TransformComponent>()->setScale({0.01f,0.01f,0.01f});
 
-	/*auto house = ModelLoader::getInstance()->load("models/train/untitled.gltf");
-	auto houseNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("houseNode");
-	houseNode->getComponent<TransformComponent>()->setPos({15.f,-2.f,-20.f});
-	houseNode->getComponent<TransformComponent>()->setRotate({86.f,320.f,6.f});
-	houseNode->getComponent<TransformComponent>()->setScale({5.f,5.f,5.f});
-	houseNode->addComponent<RenderComponent>();
-	houseNode->addComponent<ModelComponent>()->setModel(house);*/
-
+				trainNode->getComponent<TransformComponent>()->setPos(glm::vec3(i * 10.f * glm::linearRand(2.3f,4.f), k * 10.f * glm::linearRand(2.3f,4.f), j * 10.f * glm::linearRand(2.3f,4.f)));
+				node->addElement(trainNode);
+			}
+			
+		}
+	}
+	
 	// lighting info
     // -------------
     const unsigned int NR_LIGHTS = 0;
@@ -335,7 +331,7 @@ GLFWwindow* Renderer::initGLFW() {
 	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glEnable(GL_CULL_FACE);
-	glClearDepth(1000.0f);
+	glClearDepth(50000.0f);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 
