@@ -51,9 +51,11 @@ void ECSHandler::initSystems() {
 
 	systemManager->addSystem<GameEngine::SystemsModule::TransformSystem>();
 	systemManager->setSystemPriority<GameEngine::SystemsModule::TransformSystem>(eSystemsPriority::TRANSFORM_SYSTEM);
+	systemManager->setSystemUpdateInterval<GameEngine::SystemsModule::TransformSystem>(1/60.f);
 
 	systemManager->addSystem<GameEngine::SystemsModule::LODSystem>();
 	systemManager->setSystemPriority<GameEngine::SystemsModule::LODSystem>(eSystemsPriority::LOD_SYSTEM);
+	systemManager->setSystemUpdateInterval<GameEngine::SystemsModule::LODSystem>(1/60.f);
 
 	systemManager->addSystem<GameEngine::SystemsModule::RenderSystem>(GameEngine::Engine::getInstance()->getRenderer());
 	systemManager->setSystemPriority<GameEngine::SystemsModule::RenderSystem>(eSystemsPriority::RENDER_SYSTEM);
