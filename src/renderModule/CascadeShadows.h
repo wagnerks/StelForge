@@ -44,6 +44,8 @@ public:
 	float _minZ = std::numeric_limits<float>::max();
 	float _maxZ = std::numeric_limits<float>::min();
 	std::vector<glm::vec4> corners;
+	float texelSize = 0.001f;
+	int samples = 64;
 private:
 	unsigned lightFBO;
 	unsigned lightDepthMaps;
@@ -70,6 +72,7 @@ private:
 	std::vector<glm::mat4> shadowProjections;
 
 	GameEngine::ProjectionModule::PerspectiveProjection projection;
-	float bias = -0.0003f;
+	float bias = 0.0001f;
+	
 
 };

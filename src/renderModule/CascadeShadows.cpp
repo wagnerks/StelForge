@@ -28,7 +28,7 @@ void CascadeShadows::init() {
 	projection = GameEngine::ProjectionModule::PerspectiveProjection(fov, aspect, zNear, zFar);
 
 	
-	shadowCascadeLevels = {zNear,zFar / 20.0f, zFar / 12.0f, zFar / 5.0f, zFar };
+	shadowCascadeLevels = {zNear, 25.f, 75.f, 150.f, 500.f, 2000.f };
 
 	for (size_t i = 1; i < shadowCascadeLevels.size(); ++i) {
 		const auto proj = glm::perspective(glm::radians(GameEngine::Engine::getInstance()->getCamera()->cameraView.getFOV()),
@@ -51,7 +51,7 @@ void CascadeShadows::init() {
 	glTexImage3D(
 	    GL_TEXTURE_2D_ARRAY,
 	    0,
-	    GL_DEPTH_COMPONENT24,
+	    GL_DEPTH_COMPONENT,
 	    static_cast<int>(resolution.x),
 	    static_cast<int>(resolution.y),
 	    int(shadowCascadeLevels.size()) - 1,
@@ -62,13 +62,13 @@ void CascadeShadows::init() {
     
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-	//glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
 	    
-	constexpr float bordercolor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, bordercolor);
+	/*constexpr float bordercolor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, bordercolor);*/
 	    
 	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
@@ -103,7 +103,7 @@ void CascadeShadows::preDraw() {
 	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, lightDepthMaps, 0);
 	glViewport(0, 0, static_cast<int>(resolution.x), static_cast<int>(resolution.y));
-	glClear(GL_DEPTH_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glCullFace(GL_FRONT);  // peter panning
 
 	auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
@@ -191,10 +191,10 @@ glm::mat4 CascadeShadows::getLightSpaceMatrix(const std::vector<glm::vec4>& corn
 	// Tune this parameter according to the scene
 	constexpr float zMult = 10.0f;
 	if (minZ < 0) {
-		minZ *= 1;
+		minZ *= zMult;
 	}
 	else {
-		minZ /= 1;
+		minZ /= zMult;
 	}
 
 	if (maxZ < 0) {
