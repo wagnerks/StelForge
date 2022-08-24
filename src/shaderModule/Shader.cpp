@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <glad/glad.h>
 #include <string>
+#include "logsModule/logger.h"
 
 using namespace GameEngine;
 using namespace GameEngine::ShaderModule;
@@ -16,7 +17,10 @@ bool Shader::compile() {
 	ID = glCreateProgram();
 
 	auto success = compileShader(loadShaderCode(vertexPath.c_str()).c_str(), GL_VERTEX_SHADER);
-	success = compileShader(loadShaderCode(fragmentPath.c_str()).c_str(), GL_FRAGMENT_SHADER) || success;
+	success = compileShader(loadShaderCode(fragmentPath.c_str()).c_str(), GL_FRAGMENT_SHADER) && success;
+	if (!success){
+		LogsModule::Logger::LOG_ERROR("[%s, %s] error downloading", vertexPath.c_str(), fragmentPath.c_str());
+	}
 	return success;
 }
 

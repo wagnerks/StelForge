@@ -1,6 +1,7 @@
 ﻿#include "GeometryShader.h"
 
 #include "glad/glad.h"
+#include "logsModule/logger.h"
 
 using namespace GameEngine::ShaderModule;
 
@@ -11,7 +12,9 @@ bool GeometryShader::compile() {
 	success = compileShader(loadShaderCode(vertexPath.c_str()).c_str(), GL_VERTEX_SHADER) && success;
 	success = compileShader(loadShaderCode(fragmentPath.c_str()).c_str(), GL_FRAGMENT_SHADER) && success;
 	success = compileShader(loadShaderCode(geometryPath.c_str()).c_str(), GL_GEOMETRY_SHADER) && success;
-
+	if (!success){
+		LogsModule::Logger::LOG_ERROR("[%s, %s, %s] error downloading", vertexPath.c_str(), fragmentPath.c_str(), geometryPath.c_str());
+	}
 	return success;
 }
 
