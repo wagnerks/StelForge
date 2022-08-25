@@ -17,6 +17,11 @@ namespace GameEngine::RenderModule::RenderPasses {
 			int mKernelSize = 64;
 			float mRadius = 0.5f;
 			float mBias = 0.1f;
+			int samples = 64;
+			float intencity = 1.f;
+			float scale = 2.5f;
+			float sample_rad = 0.2f;
+			float max_distance = 0.7f;
 
 			float sigmaS = 0.5f;
 			float sigmaL = 0.5f;

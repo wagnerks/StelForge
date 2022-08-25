@@ -117,8 +117,27 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& rende
 			shaderSSAO->setFloat("radius", mData.mRadius);
 		}
 		if (ImGui::DragFloat("bias", &mData.mBias, 0.001f)) {
-			shaderSSAO->setFloat("bias", mData.mBias);
+			shaderSSAO->setFloat("BIAS", mData.mBias);
 		}
+		if (ImGui::DragFloat("intencity", &mData.intencity, 0.1f)) {
+			shaderSSAO->setFloat("INTENSITY", mData.intencity);
+		}
+
+		if (ImGui::DragFloat("scale", &mData.scale, 0.1f)) {
+			shaderSSAO->setFloat("SCALE", mData.scale);
+		}
+
+		if (ImGui::DragFloat("sample_rad", &mData.sample_rad, 0.1f)) {
+			shaderSSAO->setFloat("SAMPLE_RAD", mData.sample_rad);
+		}
+
+		if (ImGui::DragFloat("max_distance", &mData.max_distance, 0.1f)) {
+			shaderSSAO->setFloat("MAX_DISTANCE", mData.max_distance);
+		}
+		if (ImGui::DragInt("samples", &mData.samples)) {
+			shaderSSAO->setInt("SAMPLES", mData.samples);
+		}
+
 		if (ImGui::DragFloat("sigmaS", &mData.sigmaS, 0.01f, 0.000001f)) {
 			shaderSSAOBlur->use();
 			float facS = -1.f/(2.f*mData.sigmaS*mData.sigmaS);

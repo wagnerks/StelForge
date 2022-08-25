@@ -208,14 +208,8 @@
 
 #version 450
 
-
-
-
 uniform sampler2D ssaoInput;
 in vec2 TexCoords;
-
-//uniform sampler2D texture;
-//in vec2 v_texcoord;
 
 uniform float sigmaS = 1.0;
 uniform float sigmaL = 1.0;
@@ -223,7 +217,6 @@ uniform float sigmaL = 1.0;
 uniform float facS = 1.0;
 uniform float facL = 1.0;
 
-//out vec4 FragColor;
 out float FragColor;
 
 float lum(in vec4 color) {

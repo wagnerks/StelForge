@@ -5,63 +5,102 @@ in vec2 TexCoords;
 
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
-uniform sampler2D texNoise;
 
-uniform vec3 samples[64];
+uniform int SAMPLES = 64;
+uniform float INTENSITY = 1.0;
+uniform float SCALE = 2.5;
+uniform float BIAS = 0.1;
+uniform float SAMPLE_RAD = 0.2;
+uniform float MAX_DISTANCE = 0.15;
 
-uniform int kernelSize;
-uniform float radius;
-uniform float bias;
+#define MOD3 vec3(.1031,.11369,.13787)
 
-// tile noise texture over screen based on screen dimensions divided by noise size
-uniform vec2 noiseScale;
 
-uniform mat4 projection;
+float hash12(vec2 p)
+{
+	vec3 p3  = fract(vec3(p.xyx) * MOD3);
+    p3 += dot(p3, p3.yzx + 19.19);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 hash22(vec2 p)
+{
+	vec3 p3 = fract(vec3(p.xyx) * MOD3);
+    p3 += dot(p3, p3.yzx+19.19);
+    return fract(vec2((p3.x + p3.y)*p3.z, (p3.x+p3.z)*p3.y));
+}
+
+vec3 getPosition(vec2 uv) {
+    return texture(gPosition, uv).xyz;
+    float fl = texture(gPosition, vec2(0.)).x; 
+    float d = texture(gNormal, uv).w;
+       
+    vec2 p = uv*2.-1.;
+    mat3 ca = mat3(1.,0.,0.,0.,1.,0.,0.,0.,-1./1.5);
+    vec3 rd = normalize( ca * vec3(p,fl) );
+    
+	vec3 pos = rd * d;
+    return pos;
+}
+
+vec3 getNormal(vec2 uv) {
+    return texture(gNormal, uv, 0.).xyz;
+}
+
+vec2 getRandom(vec2 uv) {
+    return normalize(hash22(uv*126.1231) * 2. - 1.);
+}
+
+float doAmbientOcclusion(in vec2 tcoord,in vec2 uv, in vec3 p, in vec3 cnorm)
+{
+    vec3 diff = getPosition(tcoord + uv) - p;
+    float l = length(diff);
+    vec3 v = diff/l;
+    float d = l*SCALE;
+    float ao = max(0.0,dot(cnorm,v)-BIAS)*(1.0/(1.0+d));
+    ao *= smoothstep(MAX_DISTANCE,MAX_DISTANCE * 0.5, l);
+    return ao;
+
+}
+
+float spiralAO(vec2 uv, vec3 p, vec3 n, float rad)
+{
+    float goldenAngle = 2.4;
+    float ao = 0.;
+    float inv = 1. / float(SAMPLES);
+    float radius = 0.;
+
+    float rotatePhase = hash12( uv*100. ) * 6.28;
+    float rStep = inv * rad;
+    vec2 spiralUV;
+
+    for (int i = 0; i < SAMPLES; i++) {
+        spiralUV.x = sin(rotatePhase);
+        spiralUV.y = cos(rotatePhase);
+        radius += rStep;
+        ao += doAmbientOcclusion(uv, spiralUV * radius, p, n);
+        rotatePhase += goldenAngle;
+    }
+    ao *= inv;
+    return ao;
+}
 
 void main() {
-    float radius = radius;
-    int kernelSize = kernelSize;
-    float depth = texture(gNormal, TexCoords).a;
-    if (depth < 0.96){
-        radius = 0.1;
-        kernelSize = 16;
-    }
-    vec3 normal = texture(gNormal, TexCoords).rgb;
-    if (normal == vec3(0.0)){
-        discard;
-    }
-   
-    vec3 fragPos = vec3(texture(gPosition, TexCoords));
-    if (fragPos.z == 0.0){
-        discard;
-    }
-    vec3 randomVec = normalize(texture(texNoise, TexCoords * noiseScale).xyz);
-    
-    // create TBN change-of-basis matrix: from tangent-space to view-space
-    vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
-    vec3 bitangent = cross(normal, tangent);
-    mat3 TBN = mat3(tangent, bitangent, normal);
-    // iterate over the sample kernel and calculate occlusion factor
-    
-    float occlusion = 0.0;
-    for(int i = 0; i < kernelSize; ++i) {
-        // get sample position
-        vec3 samplePos = TBN * samples[i]; // from tangent to view-space
-        samplePos = fragPos + samplePos * radius; 
-        
-        // project sample position (to sample texture) (to get position on screen/texture)
-        vec4 offset = vec4(samplePos, 1.0);
-        offset = projection * offset; // from view to clip-space
-        offset.xyz /= offset.w; // perspective divide
-        offset.xyz = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0
-        
-        // get sample depth
-        float sampleDepth = (texture(gPosition, offset.xy)).z; // get depth value of kernel sample
+    vec2 iResolution = vec2(1920.0, 1080.0);
 
-        // range check & accumulate
-        float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));
-        occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;           
-    }
-    occlusion = 1.0 - (occlusion / kernelSize);
-    FragColor = occlusion;
+    
+    
+	vec2 uv = gl_FragCoord.xy / iResolution.xy;
+        
+    vec3 p = getPosition(uv);
+    vec3 n = getNormal(uv);
+
+    float ao = 0.;
+    float rad = SAMPLE_RAD/p.z;
+
+    ao = spiralAO(uv, p, n, rad);
+
+    ao = 1. - ao * INTENSITY;
+    
+	FragColor = ao;
 }
