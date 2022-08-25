@@ -1,0 +1,11 @@
+Model Information:
+* title:	MAZ Diorama
+* source:	https://sketchfab.com/3d-models/maz-diorama-6cbc792cb8c94f078586873613696fa4
+* author:	biegnoncy (https://sketchfab.com/biegnoncy)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "MAZ Diorama" (https://sketchfab.com/3d-models/maz-diorama-6cbc792cb8c94f078586873613696fa4) by biegnoncy (https://sketchfab.com/biegnoncy) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
