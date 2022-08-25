@@ -1,14 +1,11 @@
 #version 400 core
 
-
 uniform sampler2D u_InputTexture;
-
 uniform vec2 u_TexelSize;
 
-layout (location = 0) out vec4 FragColor;
+out float FragColor;
 
 in vec2 v_TexCoords;
-in vec3 posCoord;
 
 //const float blurKernel[9] = float[](
 //    1.0 / 16, 2.0 / 16, 1.0 / 16,
@@ -29,5 +26,5 @@ void main(void) {
 			finalColor += vec3(texture(u_InputTexture, vec2(v_TexCoords.x + u_TexelSize.x * x, v_TexCoords.y + u_TexelSize.y * y))) * blurKernel[x + 1 + (y + 1) * 3];
 		}
 	}
-	FragColor = vec4(finalColor, 1.0);
+	FragColor = finalColor.r;
 }
