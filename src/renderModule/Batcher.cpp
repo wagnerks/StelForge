@@ -31,7 +31,7 @@ Batcher::Batcher() {
 
 void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, std::vector<GameEngine::ModelModule::ModelTexture> textures, glm::mat4 transform, bool transparentForShadow) {
 	auto apos = glm::vec3(transform[3]);
-	if (glm::distance(apos, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos()) > 1100.f) {
+	if (glm::distance(apos, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f) {
 		return;
 	}
 	
@@ -99,6 +99,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 				GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, texture.id);
 			}
 		}
+		//GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png"));
 
 		
 		if (drawObjects.indicesCount) {

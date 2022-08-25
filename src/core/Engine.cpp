@@ -41,7 +41,7 @@ void Engine::init() {
 	core = new CoreModule::Core();
 	core->init();
 	render = new RenderModule::Renderer();
-	camera = ecsModule::ECSHandler::entityManagerInstance()->createEntity<Camera>(GameEngine::ProjectionModule::PerspectiveProjection{45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), 0.1f, 500.f});
+	camera = ecsModule::ECSHandler::entityManagerInstance()->createEntity<Camera>(GameEngine::ProjectionModule::PerspectiveProjection{45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), 0.1f, 5000.f});
 
 	render->init();
 	ecsModule::ECSHandler::getInstance()->initSystems();
