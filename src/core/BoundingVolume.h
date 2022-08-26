@@ -6,40 +6,42 @@
 #include "modelModule/Model.h"
 
 namespace GameEngine::FrustumModule {
-	struct Plan
+	struct Plane
 	{
 		glm::vec3 normal	= { 0.f, 1.f, 0.f }; // unit vector
 		float     distance  = 0.f;					      // Distance with origin
 
-		Plan() = default;
+		Plane() = default;
 
-		Plan(const glm::vec3& p1, const glm::vec3& norm)
+		Plane(const glm::vec3& p1, const glm::vec3& norm)
 			: normal(glm::normalize(norm)),
 			distance(glm::dot(normal, p1))
 		{}
-
+		Plane(const glm::vec4& p1) : normal(glm::vec3(p1)), distance(p1.w)
+		{}
 		float getSignedDistanceToPlan(const glm::vec3& point) const
 		{
-			return glm::dot(normal, point) - distance;
+			auto d = glm::dot(normal, point) + distance;
+			return d;
 		}
 	};
 
 	struct Frustum {
-		Plan topFace;
-		Plan bottomFace;
+		Plane topFace;
+		Plane bottomFace;
 
-		Plan rightFace;
-		Plan leftFace;
+		Plane rightFace;
+		Plane leftFace;
 
-		Plan farFace;
-		Plan nearFace;
+		Plane farFace;
+		Plane nearFace;
 	};
 
 	struct BoundingVolume
 	{
 		virtual bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const = 0;
 
-		virtual bool isOnOrForwardPlan(const Plan& plan) const = 0;
+		virtual bool isOnOrForwardPlan(const Plane& plan) const = 0;
 
 		bool isOnFrustum(const Frustum& camFrustum) const
 		{
@@ -61,7 +63,7 @@ namespace GameEngine::FrustumModule {
 			: BoundingVolume{}, center{ inCenter }, radius{ inRadius }
 		{}
 
-		bool isOnOrForwardPlan(const Plan& plan) const final
+		bool isOnOrForwardPlan(const Plane& plan) const final
 		{
 			return plan.getSignedDistanceToPlan(center) > -radius;
 		}
@@ -69,10 +71,10 @@ namespace GameEngine::FrustumModule {
 		bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const final
 		{
 			//Get global scale thanks to our transform
-			const glm::vec3 globalScale = transform.getScale();
+			const glm::vec3 globalScale = transform.getScale(true);
 
 			//Get our global center with process it with the global model matrix of our transform
-			const glm::vec3 globalCenter{ transform.getTransform() * glm::vec4(center, 1.f) };
+			const glm::vec3 globalCenter{ transform.getPos(true) };
 
 			//To wrap correctly our shape, we need the maximum scale scalar.
 			const float maxScale = std::max(std::max(globalScale.x, globalScale.y), globalScale.z);
@@ -99,7 +101,7 @@ namespace GameEngine::FrustumModule {
 			: BoundingVolume{}, center{ inCenter }, extent{ inExtent }
 		{}
 	
-		bool isOnOrForwardPlan(const Plan& plan) const final
+		bool isOnOrForwardPlan(const Plane& plan) const final
 		{
 			// Compute the projection interval radius of b onto L(t) = b.c + t * p.n
 			const float r = extent * (std::abs(plan.normal.x) + std::abs(plan.normal.y) + std::abs(plan.normal.z));
@@ -166,7 +168,7 @@ namespace GameEngine::FrustumModule {
 		}
 
 		//see https://gdbooks.gitbooks.io/3dcollisions/content/Chapter2/static_aabb_plan.html
-		bool isOnOrForwardPlan(const Plan& plan) const final
+		bool isOnOrForwardPlan(const Plane& plan) const final
 		{
 			// Compute the projection interval radius of b onto L(t) = b.c + t * p.n
 			const float r = extents.x * std::abs(plan.normal.x) + extents.y * std::abs(plan.normal.y) +
@@ -270,6 +272,7 @@ namespace GameEngine::FrustumModule {
 		frustum.leftFace = { pos, glm::cross(frontMultFar - viewTransform->getRight() * halfHSide, viewTransform->getUp()) };
 		frustum.topFace = { pos, glm::cross(viewTransform->getRight(), frontMultFar - viewTransform->getUp() * halfVSide) };
 		frustum.bottomFace = { pos, glm::cross(frontMultFar + viewTransform->getUp() * halfVSide, viewTransform->getRight()) };
+		
 		return frustum;
 	}
 
@@ -288,10 +291,79 @@ namespace GameEngine::FrustumModule {
 
 		frustum.nearFace = { pos + zNear * viewTransform->getForward(), viewTransform->getForward() };
 		frustum.farFace = { pos + frontMultFar, -viewTransform->getForward() };
-		frustum.rightFace = { pos, glm::cross(viewTransform->getUp(), frontMultFar + viewTransform->getRight()) };
-		frustum.leftFace = { pos, glm::cross(frontMultFar - viewTransform->getRight(), viewTransform->getUp()) };
-		frustum.topFace = { pos, glm::cross(viewTransform->getRight(), frontMultFar - viewTransform->getUp()) };
-		frustum.bottomFace = { pos, glm::cross(frontMultFar + viewTransform->getUp(), viewTransform->getRight()) };
+		frustum.rightFace = { pos,viewTransform->getRight() };
+		frustum.leftFace = { pos,-viewTransform->getRight() };
+		frustum.topFace = { pos, -viewTransform->getUp() };
+		frustum.bottomFace = { pos, viewTransform->getUp() };
+
+		return frustum;
+	}
+
+	inline void normalizePlane(glm::vec4& planeVec) {
+		auto mag = glm::sqrt(planeVec.x * planeVec.x + planeVec.y * planeVec.y + planeVec.z * planeVec.z );
+		planeVec.x /= mag; 
+		planeVec.y /= mag; 
+		planeVec.z /= mag; 
+		planeVec.w /= mag;
+	}
+
+	//https://www.gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf
+	inline Frustum createFrustum(const glm::mat4& projView) {
+
+		Frustum frustum;
+		glm::vec4 left;
+		glm::vec4 right;
+
+		glm::vec4 btm;
+		glm::vec4 top;
+
+		glm::vec4 near;
+		glm::vec4 far;
+
+		left.x = projView[0][3] + projView[0][0];
+		left.y = projView[1][3] + projView[1][0];
+		left.z = projView[2][3] + projView[2][0];
+		left.w = projView[3][3] + projView[3][0];
+		normalizePlane(left);
+
+		right.x = projView[0][3] - projView[0][0];
+		right.y = projView[1][3] - projView[1][0];
+		right.z = projView[2][3] - projView[2][0];
+		right.w = projView[3][3] - projView[3][0];
+		normalizePlane(right);
+
+		btm.x = projView[0][3] + projView[0][1];
+		btm.y = projView[1][3] + projView[1][1];
+		btm.z = projView[2][3] + projView[2][1];
+		btm.w = projView[3][3] + projView[3][1];
+		normalizePlane(btm);
+
+		top.x = projView[0][3] - projView[0][1];
+		top.y = projView[1][3] - projView[1][1];
+		top.z = projView[2][3] - projView[2][1];
+		top.w = projView[3][3] - projView[3][1];
+		normalizePlane(top);
+
+		near.x = projView[0][3] + projView[0][2];
+		near.y = projView[1][3] + projView[1][2];
+		near.z = projView[2][3] + projView[2][2];
+		near.w = projView[3][3] + projView[3][2];
+		normalizePlane(near);
+
+		far.x = projView[0][3] - projView[0][2];
+		far.y = projView[1][3] - projView[1][2];
+		far.z = projView[2][3] - projView[2][2];
+		far.w = projView[3][3] - projView[3][2];
+		normalizePlane(far);
+
+		frustum.leftFace = { left };
+		frustum.rightFace = { right };
+
+		frustum.bottomFace = { btm };
+		frustum.topFace = { top };
+
+		frustum.nearFace = { near };
+		frustum.farFace = { far };
 
 		return frustum;
 	}
