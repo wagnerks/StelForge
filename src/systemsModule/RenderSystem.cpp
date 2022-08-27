@@ -15,6 +15,7 @@
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/LightingPass.h"
 #include "renderModule/renderPasses/SSAOPass.h"
+#include "mathModule/MathUtils.h"
 
 using namespace GameEngine::SystemsModule;
 
@@ -65,7 +66,7 @@ void RenderSystem::update(float_t dt) {
 	ImGui::End();
 
 	if (updateFrustum) {
-		mRenderData.camFrustum = FrustumModule::createPerspectiveProjectionFrustum(playerCamera->getComponent<TransformComponent>(), playerCamera->cameraView.getAspect(), glm::radians(playerCamera->cameraView.getFOV()), playerCamera->cameraView.getZNear(), playerCamera->cameraView.getZFar());
+		mRenderData.camFrustum = FrustumModule::createFrustum(mRenderData.projection * mRenderData.view);
 	}
 
 	mRenderData.mDrawableEntities.clear();
@@ -73,7 +74,7 @@ void RenderSystem::update(float_t dt) {
 	for (const auto& renderComp : *renderComponents) {
 		if (renderComp.isDrawable()) {
 			if (auto transform = compManager->getComponent<TransformComponent>(renderComp.getOwnerId())) {
-				if (glm::distance(transform->getPos(true),  playerPos) > 1000.f) {
+				if (GameEngine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->cameraView.getZFar()*playerCamera->cameraView.getZFar()) {
 					continue;
 				}
 			}
@@ -87,13 +88,7 @@ void RenderSystem::update(float_t dt) {
 	}
 
 	mRenderData.mCascadedShadowsPassData.shadows->debugDraw();
-	/*if (!mRenderData.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
-		auto& pos = mRenderData.mCascadedShadowsPassData.pos;
-		glm::mat4 model = glm::translate(glm::mat4(1.0f), pos) * glm::mat4(1.f) * glm::scale(glm::mat4(1.0f), {3.f,3.f,3.f});
-		mRenderer->getBatcher()->addToDrawList(RenderModule::Utils::cubeVAO, 36, 0, {}, model, false);
-	}
 
-	mRenderer->getBatcher()->flushAll(true);*/
 	ImGui::Begin("render mode");
 
 	if (ImGui::Button("wireframe")){

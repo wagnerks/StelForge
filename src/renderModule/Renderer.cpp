@@ -42,66 +42,6 @@ void Renderer::draw() {
 	RenderModule::Renderer::drawVerticesCount = 0;
 	Utils::initCubeVAO();
 	scene->updateScene(0.f);
-	return;
-
-	auto camera = Engine::getInstance()->getCamera();
-	auto& projection = camera->getProjectionsMatrix();
-    auto view = camera->getComponent<TransformComponent>()->getViewMatrix();
-
-	lightPositions.clear();
-	
-	for (auto dirLight : lightsObj) {
-		dirLight->preDraw();
-		batcher->flushAll(false, dirLight->getComponent<TransformComponent>()->getPos(), true);
-		dirLight->postDraw();
-	}
-
-
-    // 3. render lights on top of scene
-    // --------------------------------
-    auto shaderLightBox = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/deferred_light_box.vs", "shaders/deferred_light_box.fs");
-
-    shaderLightBox->use();
-    shaderLightBox->setMat4("projection", projection);
-    shaderLightBox->setMat4("view", view);
-
-	for (unsigned int i = 0; i < lightPositions.size(); i++) {
-		auto model = glm::mat4(1.0f);
-		model = glm::translate(model, lightPositions[i]);
-		model = glm::scale(model, glm::vec3(0.125f));
-		shaderLightBox->setMat4("model", model);
-		shaderLightBox->setVec3("lightColor", lightColors[i]);
-		batcher->addToDrawList(Utils::cubeVAO, 36, 0, {}, model, false);
-	}
-	batcher->flushAll(true);
-
-	int  i =0;
-
-	for (auto light : lightsObj) {
-
-		Debug::ComponentsDebug::transformComponentDebug("light" + std::to_string(i), light->getComponent<TransformComponent>());
-
-		auto& scale = light->getComponent<TransformComponent>()->getScale();
-		light->getComponent<TransformComponent>()->setScale({0.5f,0.5f,0.5f});
-		light->getComponent<TransformComponent>()->reloadTransform();
-		
-		batcher->addToDrawList(Utils::cubeVAO, 36, 0, {}, light->getComponent<TransformComponent>()->getTransform(), false);
-		light->getComponent<TransformComponent>()->setScale(scale);
-		light->getComponent<TransformComponent>()->reloadTransform();
-
-		auto lines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
-		lines->use();
-		lines->setMat4("PVM",GameEngine::Engine::getInstance()->getCamera()->getProjectionsMatrix() * GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix() *  light->getComponent<TransformComponent>()->getTransform());
-		GameEngine::RenderModule::Utils::renderXYZ(20.f);
-		i++;
-	}
-	
-	auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/light.vs", "shaders/light.fs");
-    shader->use();
-	shader->setMat4("PV", projection * view);
-	
-
-	batcher->flushAll(true);
 }
 
 void Renderer::postDraw() {
@@ -113,59 +53,25 @@ void Renderer::init() {
 	scene = new GameModule::CoreModule::Scene();
 	scene->init();
 
-	initGlobalProjection();
-
-	// build and compile shaders
-    // -------------------------
-
-	//modelObj = ModelLoader::getInstance()->load("model/scene.gltf");
-	//objectPositions.emplace_back(glm::vec3(glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f), glm::linearRand(2.3f,4.f)));
-
-	//modelObj = ModelLoader::getInstance()->load("suzanne/scene.gltf");
-	//modelObj = ModelLoader::getInstance()->load("susaLod/untitled.fbx");
-	modelObj = ModelLoader::getInstance()->load("models/tree/scene.gltf");
-	
-	auto count = 2;
-	for (auto i = 0; i < count; i++) {
-		for (auto j = 0; j < count; j++) {
-			for (auto k = 1; k < count + 1; k++) {
-				objectPositions.emplace_back(glm::vec3(i * 10.f /** glm::linearRand(2.3f,4.f)*/, 10 * k/* * glm::linearRand(2.3f,4.f)*/, j * 10.f /** glm::linearRand(2.3f,4.f)*/));
-			}
-			
-		}
-	}
+	auto train = ModelLoader::getInstance()->load("model/cube.fbx");
 
 	node = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("lel");
-	for (auto i = 0u; i < objectPositions.size(); i++) {
-		auto& objectPos = objectPositions[i];
-		auto backpack = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("backpack" + std::to_string(i));
-		backpack->getComponent<TransformComponent>()->setPos(objectPos);
-		backpack->getComponent<TransformComponent>()->setScale({0.01f,0.01f,0.01f});
-		backpack->getComponent<TransformComponent>()->setRotate({-90.f,0.f,0.f});
-		backpack->addComponent<ModelComponent>()->setModel(modelObj);
-		backpack->addComponent<RenderComponent>();
-		auto lodComp = backpack->addComponent<LodComponent>(eLodType::DISTANCE);
-		lodComp->addLodLevelValue(0.02f);
-		lodComp->addLodLevelValue(0.011f);
-		lodComp->addLodLevelValue(0.001f);
-		node->addElement(backpack);
-	}
 
 	auto cube = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube");
-
-	node->addElement(cube);
-	cube->getComponent<TransformComponent>()->setScale({5000.f,1.f,5000.f});
+	cube->getComponent<TransformComponent>()->setScale({50.f,0.01f,50.f});
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
 	cube->addComponent<RenderComponent>();
+	cube->addComponent<ModelComponent>()->setModel(train);
+
+	node->addElement(cube);
 
 	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
-	node->addElement(cube2);
-	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
+	cube2->getComponent<TransformComponent>()->setScale({0.01f,1.f,5.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
 	cube2->addComponent<RenderComponent>();
-
+	cube2->addComponent<ModelComponent>()->setModel(train);
 	
-
+	node->addElement(cube2);
 	/*cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
 	node->addElement(cube2);
 	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
@@ -178,11 +84,11 @@ void Renderer::init() {
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
 	cube2->addComponent<RenderComponent>();*/
 
-	auto train = ModelLoader::getInstance()->load("model/cube.fbx");
-	count = 80;
+	
+	auto count = 30;
 	for (auto i = 0; i < count; i++) {
 		for (auto j = 0; j < count; j++) {
-			for (auto k = 1; k < 5 + 1; k++) {
+			for (auto k = 1; k < count + 1; k++) {
 				auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("trainNode");
 				trainNode->addComponent<RenderComponent>();
 				trainNode->addComponent<ModelComponent>()->setModel(train);
@@ -249,38 +155,6 @@ void Renderer::drawArraysInstancing(GLenum mode, GLsizei size, GLsizei instances
 	glDrawArraysInstanced(mode, first, size, instancesCount);
 	drawCallsCount++;
 	drawVerticesCount += size * instancesCount;
-}
-
-void Renderer::initGlobalProjection() {
-	//todo
-	/*
-	unsigned int main    = glGetUniformBlockIndex(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/main.vs", "shaders/main.fs")->getID(), "Matrices");
-	
-	auto geom = SHADER_CONTROLLER->loadGeometryShader("shaders/geometry.vs","shaders/geometry.fs","shaders/geometry.gs");
-	unsigned int getomPlace    = glGetUniformBlockIndex(geom->getID(), "Matrices");
-
-	glUniformBlockBinding(SHADER_CONTROLLER->loadVertexFragmentShader("shaders/main.vs", "shaders/main.fs")->getID(),    main, 0);
-	glUniformBlockBinding(geom->getID(), getomPlace, 0);
-
-	
-	glGenBuffers(1, &uboMatrices);
-	  
-	glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
-	glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
-	  
-	glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboMatrices, 0, 2 * sizeof(glm::mat4));
-
-	
-	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH/(float)SCR_HEIGHT, 0.1f, 100.0f);
-	glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
-	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-	glm::mat4 view = Engine::getInstance()->getCamera()->GetViewMatrix();	       
-	glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
-	glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
-	glBindBuffer(GL_UNIFORM_BUFFER, 0); */
 }
 
 GLFWwindow* Renderer::initGLFW() {
