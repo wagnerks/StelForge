@@ -10,6 +10,7 @@
 #include "core/Engine.h"
 #include "glad/glad.h"
 #include "shaderModule/ShaderController.h"
+#include "mathModule/MathUtils.h"
 
 void DrawObject::sortTransformAccordingToView(const glm::vec3& viewPos) {
 	if (sortedPos == viewPos) {
@@ -17,7 +18,7 @@ void DrawObject::sortTransformAccordingToView(const glm::vec3& viewPos) {
 	}
 	sortedPos = viewPos;
 	std::ranges::sort(transforms, [&viewPos](const glm::mat4& a, const glm::mat4& b) {
-		return glm::distance(viewPos, glm::vec3(a[3])) < glm::distance(viewPos, glm::vec3(b[3]));
+		return GameEngine::Math::distanceSqr(viewPos, glm::vec3(a[3])) < GameEngine::Math::distanceSqr(viewPos, glm::vec3(b[3]));
 	});
 }
 
@@ -31,7 +32,7 @@ Batcher::Batcher() {
 
 void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, std::vector<GameEngine::ModelModule::ModelTexture> textures, glm::mat4 transform, bool transparentForShadow) {
 	auto apos = glm::vec3(transform[3]);
-	if (glm::distance(apos, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f) {
+	if (GameEngine::Math::distanceSqr(apos, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f * 500000.f) {
 		return;
 	}
 	
@@ -64,11 +65,11 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 		if (viewPos == glm::vec3{}) {
 			auto cameraPos = GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos();
 
-			return glm::distance(cameraPos, apos) < glm::distance(cameraPos, bpos);
+			return GameEngine::Math::distanceSqr(cameraPos, apos) < GameEngine::Math::distanceSqr(cameraPos, bpos);
 			
 		}
 
-		return glm::distance(viewPos, apos) < glm::distance(viewPos, bpos);
+		return GameEngine::Math::distanceSqr(viewPos, apos) < GameEngine::Math::distanceSqr(viewPos, bpos);
 	});
 
 	ImGui::Begin("draw order");

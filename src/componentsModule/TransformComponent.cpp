@@ -21,9 +21,9 @@ void TransformComponent::removeChildTransform(TransformComponent* comp) {
 	std::erase(childTransforms, comp);
 }
 
-glm::vec3 TransformComponent::getPos(bool global) const {
+const glm::vec3& TransformComponent::getPos(bool global) const {
 	if (global) {
-		return transform[3];
+		return globalPos;
 	}
 	return pos;
 }
@@ -43,7 +43,7 @@ void TransformComponent::setZ(float z) {
 
 	pos.z = z;
 }
-void TransformComponent::setPos(glm::vec3 pos) {
+void TransformComponent::setPos(const glm::vec3& pos) {
 	dirty = dirty || this->pos != pos;
 
 	this->pos = pos;
@@ -72,14 +72,18 @@ void TransformComponent::setRotateZ(float z) {
 	rotate.z = z;
 	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
 }
-void TransformComponent::setRotate(glm::vec3 rotate) {
+void TransformComponent::setRotate(const glm::vec3& rotate) {
 	dirty = dirty || this->rotate != rotate;
 
 	this->rotate = rotate;
 	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
 }
 
-const glm::vec3& TransformComponent::getScale() const {
+const glm::vec3& TransformComponent::getScale(bool global) const {
+	if (global){
+		return globalScale;
+	}
+
 	return scale;
 }
 
@@ -98,13 +102,17 @@ void TransformComponent::setScaleZ(float z) {
 
 	scale.z = z;
 }
-void TransformComponent::setScale(glm::vec3 scale) {
+void TransformComponent::setScale(const glm::vec3& scale) {
 	dirty = dirty || this->scale != scale;
 
 	this->scale = scale;
 }
 const glm::mat4& TransformComponent::getTransform() const {
 	return transform;
+}
+
+void TransformComponent::setTransform(const glm::mat4& transform){
+	this->transform = transform;
 }
 
 glm::mat4 TransformComponent::getRotationMatrix() const {
@@ -125,6 +133,8 @@ void TransformComponent::reloadTransform() {
 	}
 
 	view = glm::inverse(transform);
+	globalScale = calculateGlobalScale();
+	globalPos = glm::vec3(transform[3]);
 
 	for (const auto childTransform : childTransforms) {
 		childTransform->markDirty();
@@ -171,4 +181,14 @@ void TransformComponent::setParentTransform(TransformComponent* parentTransform)
 
 	markDirty();
 	mParentTransform = parentTransform;
+}
+
+glm::vec3 TransformComponent::calculateGlobalScale(){
+	auto& t = transform;
+
+	return {
+		sqrt(t[0][0] * t[0][0] + t[0][1] * t[0][1] + t[0][2] * t[0][2]),
+		sqrt(t[1][0] * t[1][0] + t[1][1] * t[1][1] + t[1][2] * t[1][2]),
+		sqrt(t[2][0] * t[2][0] + t[2][1] * t[2][1] + t[2][2] * t[2][2])
+	};
 }

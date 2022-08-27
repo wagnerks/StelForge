@@ -16,26 +16,28 @@ namespace GameEngine::ComponentsModule {
 		void addChildTransform(TransformComponent* comp);
 		void removeChildTransform(TransformComponent* comp);
 
-		glm::vec3 getPos(bool global = false) const;
+		const glm::vec3& getPos(bool global = false) const;
 		void setX(float x);
 		void setY(float y);
 		void setZ(float z);
 
-		void setPos(glm::vec3 pos);
+		void setPos(const glm::vec3& pos);
 
 		const glm::vec3& getRotate() const;
 		void setRotateX(float x);
 		void setRotateY(float y);
 		void setRotateZ(float z);
-		void setRotate(glm::vec3 rotate);
+		void setRotate(const glm::vec3& rotate);
 
-		const glm::vec3& getScale() const;
+		const glm::vec3& getScale(bool global = false) const;
 		void setScaleX(float x);
 		void setScaleY(float y);
 		void setScaleZ(float z);
-		void setScale(glm::vec3 scale);
+		void setScale(const glm::vec3& scale);
 
 		const glm::mat4& getTransform() const;
+		void setTransform(const glm::mat4& transform);
+
 		glm::mat4 getRotationMatrix() const;
 		glm::mat4 getLocalTransform() const;
 		const glm::mat4& getViewMatrix() const;
@@ -51,6 +53,7 @@ namespace GameEngine::ComponentsModule {
 		bool isDirty() const;
 		
 	private:
+		glm::vec3 calculateGlobalScale();
 		TransformComponent* mParentTransform = nullptr;
 
 		std::vector<TransformComponent*> childTransforms;
@@ -63,6 +66,9 @@ namespace GameEngine::ComponentsModule {
 		glm::vec3 pos = glm::vec3(0.0f, 0.0f, 0.0f);
 		glm::vec3 scale = glm::vec3(1.0f, 1.0f, 1.0f);
 		glm::vec3 rotate = glm::vec3(0.0f, 0.0f, 0.0f);
+		
+		glm::vec3 globalScale = glm::vec3(1.0f, 1.0f, 1.0f);
+		glm::vec3 globalPos = glm::vec3(1.0f, 1.0f, 1.0f);
 	};
 
 }

@@ -71,10 +71,10 @@ namespace GameEngine::FrustumModule {
 		bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const final
 		{
 			//Get global scale thanks to our transform
-			const glm::vec3 globalScale = transform.getScale(true);
+			const glm::vec3& globalScale = transform.getScale(true);
 
 			//Get our global center with process it with the global model matrix of our transform
-			const glm::vec3 globalCenter{ transform.getPos(true) };
+			const glm::vec3& globalCenter = transform.getPos(true);
 
 			//To wrap correctly our shape, we need the maximum scale scalar.
 			const float maxScale = std::max(std::max(globalScale.x, globalScale.y), globalScale.z);
@@ -264,7 +264,7 @@ namespace GameEngine::FrustumModule {
 
 		const glm::vec3 frontMultFar = zFar * viewTransform->getForward();
 
-		auto pos = viewTransform->getPos();
+		auto& pos = viewTransform->getPos();
 
 		frustum.nearFace = { pos + zNear * viewTransform->getForward(), viewTransform->getForward() };
 		frustum.farFace = { pos + frontMultFar, -viewTransform->getForward() };
@@ -287,7 +287,7 @@ namespace GameEngine::FrustumModule {
 
 		const glm::vec3 frontMultFar = zFar * viewTransform->getForward();
 
-		auto pos = viewTransform->getPos();
+		auto& pos = viewTransform->getPos();
 
 		frustum.nearFace = { pos + zNear * viewTransform->getForward(), viewTransform->getForward() };
 		frustum.farFace = { pos + frontMultFar, -viewTransform->getForward() };
