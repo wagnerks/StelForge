@@ -30,8 +30,28 @@ namespace ecsModule {
 		void releaseComponents() const {
 			ECSHandler::componentManagerInstance()->removeAllComponents(getEntityID());
 		}
+
+		void addElement(EntityInterface* child);
+		void removeElement(std::string_view childId);
+		void removeElement(EntityInterface* child);
+
+		EntityInterface* getParent() const;
+		EntityInterface* findElement(std::string_view elementId);
+		std::vector<EntityInterface*> getAllNodes();
+		const std::vector<EntityInterface*>& getElements();
+		EntityInterface* getElement(std::string_view elementId);
+		std::string_view getStringId();
+		void setStringId(std::string_view id);
+
 	private:
+		void getAllNodesHelper(std::vector<EntityInterface*>& res);
+		void setParent(EntityInterface* parentNode);
+
+		EntityInterface* mParent = nullptr;
+		std::vector<EntityInterface*> mElements;
+
 		size_t mId = INVALID_ID;
+		std::string mStringId;
 	protected:
 		EntityInterface(size_t entityID) : mId(entityID){};
 		virtual ~EntityInterface();
