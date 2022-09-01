@@ -35,7 +35,6 @@ void ComponentsDebug::transformComponentDebug(std::string_view id, TransformComp
 		if (ImGui::DragFloat3("scale", scaleV, 0.1f)) {
 			transformComp->setScale({scaleV[0], scaleV[1], scaleV[2]});
 		}
-
 		transformComp->reloadTransform();
 		ImGui::TreePop();
 	}
@@ -64,7 +63,8 @@ void ComponentsDebug::entitiesDebug() {
 			auto id = entity->getEntityID();
 
 			bool selected = selectedID == id;
-			if (ImGui::Selectable(std::to_string(id).c_str(), selected)) {
+			
+			if (ImGui::Selectable((std::string(entity->getStringId()) + ":" + std::to_string(id)).c_str(), selected)) {
 				selectedID = id;
 			}
 
@@ -78,6 +78,8 @@ void ComponentsDebug::entitiesDebug() {
 			ImGui::NextColumn();
 
 			ImGui::BeginChild("##comps");
+			ImGui::Text("entity: %s", currentEntity->getStringId().data());
+			ImGui::Text("entity id: %d", currentEntity->getEntityID());
 
 			if (ImGui::TreeNode("Transform Component")) {
 				auto comp = currentEntity->getComponent<TransformComponent>();
@@ -127,6 +129,93 @@ void ComponentsDebug::transformComponentInternal(TransformComponent* component) 
 	if (ImGui::DragFloat3("Scale", scaleV, 0.1f)) {
 		component->setScale({scaleV[0], scaleV[1], scaleV[2]});
 	}
+
+	auto t = component->getTransform();
+	
+	float line1[4] = {t[0][0], t[0][1], t[0][2], t[0][3]};
+	float line2[4] = {t[1][0], t[1][1], t[1][2], t[1][3]};
+	float line3[4] = {t[2][0], t[2][1], t[2][2], t[2][3]};
+	float line4[4] = {t[3][0], t[3][1], t[3][2], t[3][3]};
+
+	if (ImGui::DragFloat4("1", line1)){
+		t[0][0] = line1[0];
+		t[0][1] = line1[1];
+		t[0][2] = line1[2];
+		t[0][3] = line1[3];
+	}
+	if (ImGui::DragFloat4("2", line2)){
+		t[1][0] = line2[0];
+		t[1][1] = line2[1];
+		t[1][2] = line2[2];
+		t[1][3] = line2[3];
+	}
+	if (ImGui::DragFloat4("3", line3)){
+		t[2][0] = line3[0];
+		t[2][1] = line3[1];
+		t[2][2] = line3[2];
+		t[2][3] = line3[3];
+	}
+	if (ImGui::DragFloat4("4", line4)){
+		t[3][0] = line4[0];
+		t[3][1] = line4[1];
+		t[3][2] = line4[2];
+		t[3][3] = line4[3];
+	}
+
+	component->setTransform(t);
+
+	auto globalScale = component->getScale(true);
+	glm::mat4 rotation = {};
+	rotation[0][0] = t[0][0] / globalScale.x;
+	rotation[0][1] = t[0][1] / globalScale.x;
+	rotation[0][2] = t[0][2] / globalScale.x;
+
+	rotation[1][0] = t[1][0] / globalScale.y;
+	rotation[1][1] = t[1][1] / globalScale.y;
+	rotation[1][2] = t[1][2] / globalScale.y;
+
+	rotation[2][0] = t[2][0] / globalScale.z;
+	rotation[2][1] = t[2][1] / globalScale.z;
+	rotation[2][2] = t[2][2] / globalScale.z;
+	auto& r = rotation;
+	float rline1[4] = {r[0][0], r[0][1], r[0][2], r[0][3]};
+	float rline2[4] = {r[1][0], r[1][1], r[1][2], r[1][3]};
+	float rline3[4] = {r[2][0], r[2][1], r[2][2], r[2][3]};
+	float rline4[4] = {r[3][0], r[3][1], r[3][2], r[3][3]};
+
+	if (ImGui::DragFloat4("r1", rline1)){
+	}
+	if (ImGui::DragFloat4("r2", rline2)){
+	}
+	if (ImGui::DragFloat4("r3", rline3)){
+	}
+	if (ImGui::DragFloat4("r4", rline4)){
+	}
+
+	float rX = -glm::degrees(glm::atan(r[2][1],r[2][2]));
+	float rY = -glm::degrees(glm::atan(-r[2][0],glm::sqrt(r[2][1]*r[2][1] + r[2][2]*r[2][2])));
+	float rZ = -glm::degrees(glm::atan(r[1][0],r[0][0]));
+
+	auto& view = component->getViewMatrix();
+	float viewline1[4] = {view[0][0], view[0][1], view[0][2], view[0][3]};
+	float viewline2[4] = {view[1][0], view[1][1], view[1][2], view[1][3]};
+	float viewline3[4] = {view[2][0], view[2][1], view[2][2], view[2][3]};
+	float viewline4[4] = {view[3][0], view[3][1], view[3][2], r[3][3]};
+
+	if (ImGui::DragFloat4("view1", viewline1)){
+	}
+	if (ImGui::DragFloat4("view1", viewline2)){
+	}
+	if (ImGui::DragFloat4("view1", viewline3)){
+	}
+	if (ImGui::DragFloat4("view1", viewline4)){
+	}
+
+	float globalRot[] = {rX, rY, rZ};
+	if (ImGui::DragFloat3("RotateGlobal", globalRot)) {
+		component->setRotate({globalRot[0], globalRot[1], globalRot[2]});
+	}
+
 }
 
 void ComponentsDebug::lodComponentInternal(LodComponent* component) {
