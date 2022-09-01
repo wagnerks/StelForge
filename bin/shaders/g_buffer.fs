@@ -27,10 +27,12 @@ void main()
     gNormal.xyz = Normal;
     gNormal.a = gl_FragCoord.z; //4 byte for depth buffer
     gViewPosition = ViewPos;
-    //  // obtain normal from normal map in range [0,1]
-    // vec3 normal = texture(normalMap, TexCoords).rgb;
-    // // transform normal vector to range [-1,1]
-    // gNormal = Normal * normalize(normal * 2.0 - 1.0);   
+
+    // obtain normal from normal map in range [0,1]
+    vec3 normal = texture(normalMap, TexCoords).rgb;
+    // transform normal vector to range [-1,1]
+    //gNormal.xyz = normal;  
+    gNormal.xyz = Normal * normalize(normal * 2.0 - 1.0);   
 
     // and the diffuse per-fragment color
     gAlbedoSpec.rgb = texture(texture_diffuse1, TexCoords).rgb;
