@@ -3,7 +3,6 @@
 #include <algorithm>
 
 LodComponent::LodComponent(eLodType type): mLodType(type) {
-	
 }
 
 void LodComponent::setLodLevel(size_t lodLevel) {

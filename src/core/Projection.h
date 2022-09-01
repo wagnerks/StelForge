@@ -3,46 +3,50 @@
 #include <mat4x4.hpp>
 
 namespace GameEngine::ProjectionModule {
-	struct Projection {
-		virtual ~Projection() = default;
-		const glm::mat4& getProjectionsMatrix() const;
-		virtual void initProjection() = 0;
-		float getZNear();
-		float getZFar();
-		void setZNear(float near);
-		void setZFar(float far);
-	protected:
-		Projection() = default;
-		Projection(float zNear, float zFar) : zNear(zNear), zFar(zFar){};
-		glm::mat4 projection = {};
-		float zNear = 0.1f;
-		float zFar = 1000.f;
+	enum eProjectionType {
+		NONE,
+		ORTHO,
+		PERSPECTIVE
 	};
 
-	struct OrthoProjection : public Projection {
-		OrthoProjection() = default;
-		OrthoProjection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar);
-		void initProjection() override;
+	struct Projection {
+		Projection() = default;
+		Projection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar);
+		Projection(float FOV, float aspect, float zNear, float zFar);
+
+		virtual ~Projection() = default;
+
+		const glm::mat4& getProjectionsMatrix() const;
+		void initProjection();
+		float getNear() const;
+		float getFar() const;
+		void setNear(float near);
+		void setFar(float far);
+
+
+		void setFOV(float FOV);
+		float getFOV() const;
+		void setAspect(float aspect);
+		float getAspect() const;
+		void setProjection(float FOV, float aspect, float zNear, float zFar);
+		
+
 		void setLeftBtm(glm::vec2 point);
 		void setRightTop(glm::vec2 point);
 		void setProjection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar);
 	private:
-		glm::vec2 leftBtm = {};
-		glm::vec2 rightTop = {};
-	};
+		glm::mat4 mProjectionMatrix = {};
+		float mNear = 0.1f;
+		float mFar = 1000.f;
 
-	struct PerspectiveProjection : public Projection {
-		PerspectiveProjection() = default;
-		PerspectiveProjection(float FOV, float aspect, float zNear, float zFar);
-		void setFOV(float FOV);
-		float getFOV() const;
-		void setAspect(float aspect);
-		void initProjection() override;
-		void setProjection(float FOV, float aspect, float zNear, float zFar);
-		float getAspect() const;;
-	private:
-		float FOV = 45.0f;
-		float aspect = 0.f;
+		//all in one to avoid memory slicing and casting
+		float mFOV = 45.0f;
+		float mAspect = 0.f;
+
+		glm::vec2 mLeftBtm = {};
+		glm::vec2 mRightTop = {};
+
+		eProjectionType mType = NONE;
 	};
 }
 

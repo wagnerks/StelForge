@@ -1,15 +1,19 @@
 ﻿#include "Camera.h"
 
 #include "Engine.h"
+#include "componentsModule/ProjectionComponent.h"
 #include "componentsModule/TransformComponent.h"
 
-Camera::Camera(size_t entID, GameEngine::ProjectionModule::PerspectiveProjection view, glm::vec3 position, float yaw) : Entity<Camera>(entID) {
+Camera::Camera(size_t entID, GameEngine::ProjectionModule::Projection view, glm::vec3 position, float yaw) : Entity<Camera>(entID) {
 	auto tc = addComponent<TransformComponent>();
 	tc->setPos(position);
 	tc->setRotate({0.f, yaw, 0.f});
 
 	tc->reloadTransform();
-	cameraView = std::move(view);
+	auto projectionComp = addComponent<ProjectionComponent>();
+	projectionComp->initProjection(view);
+
+	setStringId("mainCamera");
 }
 
 
@@ -56,12 +60,8 @@ void Camera::ProcessMouseMovement(float xoffset, float yoffset, GLboolean constr
 	tc->reloadTransform();
 }
 void Camera::ProcessMouseScroll(float yoffset) {
-	auto fov = cameraView.getFOV();
+	auto fov = getComponent<ProjectionComponent>()->getProjection().getFOV();
 	fov -= yoffset;
 
-	cameraView.setFOV(std::min(std::max(1.f, fov), 90.f));
-}
-
-const glm::mat4& Camera::getProjectionsMatrix() const {
-	return cameraView.getProjectionsMatrix();
+	getComponent<ProjectionComponent>()->getProjection().setFOV(std::min(std::max(1.f, fov), 90.f));
 }

@@ -1,5 +1,6 @@
 ﻿#include "SceneGridFloor.h"
 
+#include "componentsModule/ProjectionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
@@ -55,7 +56,7 @@ void SceneGridFloor::draw() {
 	}
 	floorShader->use();
 
-	floorShader->setMat4("PVM", Engine::getInstance()->getCamera()->getProjectionsMatrix()  * GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix() * transform);
+	floorShader->setMat4("PVM", Engine::getInstance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix()  * GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix() * transform);
 
 	glBindVertexArray(VAO);
 	glDisable(GL_CULL_FACE);

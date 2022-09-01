@@ -2,8 +2,6 @@
 
 #include <ranges>
 
-#include "renderModule/TextureHandler.h"
-
 using namespace GameEngine::ModelModule;
 
 
@@ -18,8 +16,4 @@ const std::vector<std::unique_ptr<Mesh>>& Model::getMeshes(size_t LOD) {
 	}
 
 	return meshes[maxLod];
-}
-
-const std::vector<ModelTexture>& Model::getTextures() {
-	return textures;
 }

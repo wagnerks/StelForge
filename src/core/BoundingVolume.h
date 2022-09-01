@@ -217,7 +217,7 @@ namespace GameEngine::FrustumModule {
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
 
 		
-		for (auto&& vertex : mesh.vertices)
+		for (auto&& vertex : mesh.mVertices)
 		{
 			minAABB.x = std::min(minAABB.x, vertex.Position.x);
 			minAABB.y = std::min(minAABB.y, vertex.Position.y);
@@ -236,7 +236,7 @@ namespace GameEngine::FrustumModule {
 		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
 
-		for (auto& vertex : mesh.vertices)
+		for (auto& vertex : mesh.mVertices)
 		{
 			minAABB.x = std::min(minAABB.x, vertex.Position.x);
 			minAABB.y = std::min(minAABB.y, vertex.Position.y);
@@ -249,54 +249,6 @@ namespace GameEngine::FrustumModule {
 		
 
 		return Sphere((maxAABB + minAABB) * 0.5f, glm::length(minAABB - maxAABB));
-	}
-
-	inline Frustum createPerspectiveProjectionFrustum(TransformComponent* viewTransform, float aspect, float fovY, float zNear, float zFar) {
-		if (!viewTransform) {
-			return {};
-		}
-
-		Frustum frustum;
-		const float halfVSide = zFar * tanf(fovY * 0.5f);
-		const float halfHSide = halfVSide * aspect;
-		
-		viewTransform->reloadTransform();
-
-		const glm::vec3 frontMultFar = zFar * viewTransform->getForward();
-
-		auto& pos = viewTransform->getPos();
-
-		frustum.nearFace = { pos + zNear * viewTransform->getForward(), viewTransform->getForward() };
-		frustum.farFace = { pos + frontMultFar, -viewTransform->getForward() };
-		frustum.rightFace = { pos, glm::cross(viewTransform->getUp(), frontMultFar + viewTransform->getRight() * halfHSide) };
-		frustum.leftFace = { pos, glm::cross(frontMultFar - viewTransform->getRight() * halfHSide, viewTransform->getUp()) };
-		frustum.topFace = { pos, glm::cross(viewTransform->getRight(), frontMultFar - viewTransform->getUp() * halfVSide) };
-		frustum.bottomFace = { pos, glm::cross(frontMultFar + viewTransform->getUp() * halfVSide, viewTransform->getRight()) };
-		
-		return frustum;
-	}
-
-	inline Frustum createOrthoProjectionFrustum(TransformComponent* viewTransform, float zNear, float zFar) {
-		if (!viewTransform) {
-			return {};
-		}
-
-		Frustum frustum;
-
-		viewTransform->reloadTransform();
-
-		const glm::vec3 frontMultFar = zFar * viewTransform->getForward();
-
-		auto& pos = viewTransform->getPos();
-
-		frustum.nearFace = { pos + zNear * viewTransform->getForward(), viewTransform->getForward() };
-		frustum.farFace = { pos + frontMultFar, -viewTransform->getForward() };
-		frustum.rightFace = { pos,viewTransform->getRight() };
-		frustum.leftFace = { pos,-viewTransform->getRight() };
-		frustum.topFace = { pos, -viewTransform->getUp() };
-		frustum.bottomFace = { pos, viewTransform->getUp() };
-
-		return frustum;
 	}
 
 	inline void normalizePlane(glm::vec4& planeVec) {

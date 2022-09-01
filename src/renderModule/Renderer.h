@@ -11,15 +11,16 @@
 #include "Skybox.h"
 #include "core/Scene.h"
 #include "core/BoundingVolume.h"
+
 namespace GameEngine {
-	namespace ModelModule {
+	namespace EntitiesModule {
 		class Model;
 	}
 }
 
 namespace GameEngine {
-	namespace NodeModule {
-		class Node;
+	namespace ModelModule {
+		class Model;
 	}
 }
 
@@ -53,7 +54,7 @@ namespace GameEngine::RenderModule {
 
 		ModelModule::Model* modelObj = nullptr;
 
-		NodeModule::Node* node = nullptr;
+		EntitiesModule::Model* node = nullptr;
 
 		std::vector<LightsModule::DirectionalOrthoLight*> lightsObj;
 

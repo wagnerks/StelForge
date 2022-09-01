@@ -1,6 +1,7 @@
 ﻿#include "Skybox.h"
 
 #include "TextureHandler.h"
+#include "componentsModule/ProjectionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
@@ -34,9 +35,9 @@ void Skybox::init() {
 
 	skyboxShader->use();
 	skyboxShader->setInt("skybox", 16);
-	skyboxShader->setMat4("projection", Engine::getInstance()->getCamera()->getProjectionsMatrix());
+	skyboxShader->setMat4("projection", Engine::getInstance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix());
 
-	cubemapTex = TextureHandler::getInstance()->loader.loadCubemapTexture(skyboxPath);
+	cubemapTex = TextureHandler::getInstance()->loader.loadCubemapTexture(skyboxPath).mId;
 	if (cubemapTex == 0) {
 		assert(false && "can't load skybox texture");
 		return;

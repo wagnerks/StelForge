@@ -5,12 +5,13 @@
 #include <vector>
 
 #include "glad/glad.h"
+#include "renderModule/TextureHandler.h"
 #include "shaderModule/Shader.h"
 
 
 namespace GameEngine {
 	namespace FrustumModule {
-		struct Sphere;
+		struct AABB;
 	}
 }
 
@@ -21,12 +22,23 @@ namespace GameEngine::ModelModule {
 		glm::vec2 TexCoords;
 		glm::vec3 Tangent;
 	};
-	
+
+	struct MaterialTexture {
+		RenderModule::Texture mTexture;
+		std::string mType;
+	};
+
+	struct Material {
+		MaterialTexture mDiffuse;
+		MaterialTexture mNormal;
+		MaterialTexture mSpecular;
+	};
+
 	class Mesh {
 	public:
 		// mesh data
-		std::vector<Vertex> vertices;
-		std::vector<unsigned int> indices;
+		std::vector<Vertex> mVertices;
+		std::vector<unsigned int> mIndices;
 		Mesh() = default;
 		void setupMesh();
 
@@ -36,8 +48,8 @@ namespace GameEngine::ModelModule {
 		unsigned int getVAO() const { return VAO;}
 		void draw(ShaderModule::ShaderBase* shader, bool ignoreTex = false);
 
-		FrustumModule::Sphere* bounds = nullptr;
-		
+		FrustumModule::AABB* bounds = nullptr;
+		Material mMaterial;
 	private:
 		
 		//  render data

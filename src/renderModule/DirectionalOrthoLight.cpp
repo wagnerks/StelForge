@@ -64,6 +64,6 @@ const glm::mat4& DirectionalOrthoLight::getProjectionViewMatrix() const {
 	return lightPV;
 }
 
-const GameEngine::ProjectionModule::OrthoProjection& DirectionalOrthoLight::getProjection() {
+const GameEngine::ProjectionModule::Projection& DirectionalOrthoLight::getProjection() {
 	return lightProjection;
 }

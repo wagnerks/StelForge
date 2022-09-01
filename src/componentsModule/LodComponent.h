@@ -4,13 +4,14 @@
 #include "ecsModule/ComponentBase.h"
 
 enum eLodType {
-	DISTANCE = 0,
+	NONE = 0,
+	DISTANCE,
 	SCREEN_SPACE
 };
 
 class LodComponent : public ecsModule::Component<LodComponent> {
 public:
-	LodComponent(eLodType type);
+	LodComponent(eLodType type = eLodType::NONE);
 	void setLodLevel(size_t lodLevel);
 	size_t getLodLevel() const;
 

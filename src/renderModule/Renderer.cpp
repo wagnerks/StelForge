@@ -21,12 +21,13 @@
 #include "logsModule/logger.h"
 #include "modelModule/MeshFactory.h"
 #include "modelModule/Model.h"
-#include "nodeModule/Node.h"
+
 #include "shaderModule/ShaderController.h"
 #include "gtc/random.hpp"
 #include "core/BoundingVolume.h"
 #include "core/ModelLoader.h"
 #include "ecsModule/EntityManager.h"
+#include "entitiesModule/ModelEntity.h"
 
 constexpr int GLFW_CONTEXT_VER_MAJ = 4;
 constexpr int GLFW_CONTEXT_VER_MIN = 6;
@@ -53,45 +54,42 @@ void Renderer::init() {
 	scene = new GameModule::CoreModule::Scene();
 	scene->init();
 
-	auto train = ModelLoader::getInstance()->load("model/cube.fbx");
+	auto cubeModel = ModelLoader::getInstance()->load("model/cube.fbx");
+	
 
-	node = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("lel");
+	node = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
 
-	auto cube = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube");
+	auto cube = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+	cube->setStringId("floor");
 	cube->getComponent<TransformComponent>()->setScale({50.f,0.01f,50.f});
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
-	cube->addComponent<RenderComponent>();
-	cube->addComponent<ModelComponent>()->setModel(train);
+	cube->getComponent<ModelComponent>()->setModel(cubeModel);
 
 	node->addElement(cube);
 
-	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
-	cube2->getComponent<TransformComponent>()->setScale({0.01f,1.f,5.f});
+	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+	cube2->setStringId("wall");
+	cube2->getComponent<TransformComponent>()->setScale({0.01f,0.1f,5.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
-	cube2->addComponent<RenderComponent>();
-	cube2->addComponent<ModelComponent>()->setModel(train);
+	cube2->getComponent<ModelComponent>()->setModel(cubeModel);
 	
 	node->addElement(cube2);
-	/*cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
-	node->addElement(cube2);
-	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
-	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
-	cube2->addComponent<RenderComponent>();
 
-	cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("cube2");
-	node->addElement(cube2);
-	cube2->getComponent<TransformComponent>()->setScale({1.f,10.f,50.f});
-	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
-	cube2->addComponent<RenderComponent>();*/
+	auto sponza = ModelLoader::getInstance()->load("models/sponza/scene.gltf");
+	auto sponzaModel = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+	sponzaModel->setStringId("sponza");
+	sponzaModel->getComponent<TransformComponent>()->setScale({1.f,1.f,1.f});
+	sponzaModel->getComponent<TransformComponent>()->setPos({-25.f,25.f,0.f});
+	sponzaModel->getComponent<TransformComponent>()->setRotate({0.f,0.f,180.f});
+	sponzaModel->getComponent<ModelComponent>()->setModel(sponza);
+	node->addElement(sponzaModel);
 
-	
-	auto count = 30;
+	auto count = 3;
 	for (auto i = 0; i < count; i++) {
 		for (auto j = 0; j < count; j++) {
 			for (auto k = 1; k < count + 1; k++) {
-				auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<NodeModule::Node>("trainNode");
-				trainNode->addComponent<RenderComponent>();
-				trainNode->addComponent<ModelComponent>()->setModel(train);
+				auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+				trainNode->getComponent<ModelComponent>()->setModel(cubeModel);
 				trainNode->getComponent<TransformComponent>()->setRotateX(0.f);
 				trainNode->getComponent<TransformComponent>()->setScale({0.01f,0.01f,0.01f});
 

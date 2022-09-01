@@ -30,7 +30,7 @@ Batcher::Batcher() {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, std::vector<GameEngine::ModelModule::ModelTexture> textures, glm::mat4 transform, bool transparentForShadow) {
+void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, GameEngine::ModelModule::Material textures, glm::mat4 transform, bool transparentForShadow) {
 	auto apos = glm::vec3(transform[3]);
 	if (GameEngine::Math::distanceSqr(apos, GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f * 500000.f) {
 		return;
@@ -79,7 +79,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 	ImGui::End();
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
-
+	auto defaultTex = GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png").mId;
 	for (auto& drawObjects : drawList) {
 		if (shadowMap) {
 			if (drawObjects.transparentForShadow) {
@@ -90,19 +90,21 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::mat4x4) * drawObjects.transforms.size(), &drawObjects.transforms[0]);
 
-		GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png"));
-		
-		for (auto& texture : drawObjects.textures) {
-			if (texture.type == "texture_diffuse") {
-				GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texture.id);
-			}
-			else if (texture.type == "texture_normal") {
-				GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, texture.id);
-			}
-		}
-		//GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png"));
 
-		
+		if (drawObjects.material.mDiffuse.mTexture.isValid()) {
+			GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture.mId);
+		}
+		else {
+			GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, defaultTex);
+		}
+
+		if (drawObjects.material.mNormal.mTexture.isValid()) {
+			GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, drawObjects.material.mNormal.mTexture.mId);
+		}
+		else {
+			GameEngine::RenderModule::TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultTex);
+		}
+
 		if (drawObjects.indicesCount) {
 			GameEngine::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
 		}

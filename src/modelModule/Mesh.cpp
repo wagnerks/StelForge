@@ -8,7 +8,7 @@
 using namespace GameEngine::ModelModule;
 
 Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices) :
-	vertices(std::move(vertices)), indices(std::move(indices)) {
+	mVertices(std::move(vertices)), mIndices(std::move(indices)) {
 	setupMesh();
 }
 
@@ -28,11 +28,11 @@ Mesh::~Mesh() {
 
 void Mesh::draw(ShaderModule::ShaderBase* shader, bool ignoreTex) {	
     glBindVertexArray(VAO);
-	if (!indices.empty()) {
-		RenderModule::Renderer::drawElements(type, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT);
+	if (!mIndices.empty()) {
+		RenderModule::Renderer::drawElements(type, static_cast<GLsizei>(mIndices.size()), GL_UNSIGNED_INT);
 	}
 	else {
-		RenderModule::Renderer::drawArrays(type, static_cast<int>(vertices.size()));
+		RenderModule::Renderer::drawArrays(type, static_cast<int>(mVertices.size()));
 	}
 
     glBindVertexArray(0);
@@ -46,11 +46,11 @@ void  Mesh::setupMesh() {
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizei>(vertices.size() * sizeof(Vertex)), vertices.data(), GL_STATIC_DRAW);  
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizei>(mVertices.size() * sizeof(Vertex)), mVertices.data(), GL_STATIC_DRAW);  
 
-	if (!indices.empty()) {
+	if (!mIndices.empty()) {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizei>(indices.size() * sizeof(unsigned int)), indices.data(), GL_STATIC_DRAW);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizei>(mIndices.size() * sizeof(unsigned int)), mIndices.data(), GL_STATIC_DRAW);
 	}
 
     // vertex positions
@@ -71,7 +71,7 @@ void  Mesh::setupMesh() {
 	glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
 
-		for (auto& vertex : vertices)
+		for (auto& vertex : mVertices)
 		{
 			minAABB.x = std::min(minAABB.x, vertex.Position.x);
 			minAABB.y = std::min(minAABB.y, vertex.Position.y);
@@ -84,5 +84,5 @@ void  Mesh::setupMesh() {
 		
 
 
-	bounds = new FrustumModule::Sphere((maxAABB + minAABB) * 0.5f, glm::length(minAABB - maxAABB));
+	bounds = new FrustumModule::AABB(minAABB, maxAABB);
 }

@@ -86,10 +86,10 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 
 	auto& modelMesh = rawModel.meshes[lodLevel].back();
 	modelMesh = std::make_unique<ModelModule::Mesh>();
-	modelMesh->vertices.resize(mesh->mNumVertices);
+	modelMesh->mVertices.resize(mesh->mNumVertices);
 
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
-		auto& vertex = modelMesh->vertices[i];
+		auto& vertex = modelMesh->mVertices[i];
 
 		auto newPos = parent->mTransformation * mesh->mVertices[i];
 		// process vertex positions, normals and texture coordinates
@@ -116,37 +116,48 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 		}
 	}
 	// process indices
-	modelMesh->indices.reserve(mesh->mNumFaces * 3);
+	modelMesh->mIndices.reserve(mesh->mNumFaces * 3);
 	for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
 		const aiFace& face = mesh->mFaces[i];
 		for (unsigned int j = 0; j < face.mNumIndices; j++)
-			modelMesh->indices.push_back(face.mIndices[j]);
+			modelMesh->mIndices.push_back(face.mIndices[j]);
 	}
 
 	// process material
 	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-	std::vector<GameEngine::ModelModule::ModelTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
-	rawModel.textures.insert(rawModel.textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-	std::vector<GameEngine::ModelModule::ModelTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader, directory);
-	rawModel.textures.insert(rawModel.textures.end(), specularMaps.begin(), specularMaps.end());
-	std::vector<GameEngine::ModelModule::ModelTexture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", loader, directory);
-	rawModel.textures.insert(rawModel.textures.end(), normalMaps.begin(), normalMaps.end());
+	
+	std::vector<ModelModule::MaterialTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
+	assert(diffuseMaps.size() < 2);
+	if (!diffuseMaps.empty()) {
+		modelMesh->mMaterial.mDiffuse = diffuseMaps.front();
+	}
+	//modelMesh->mMaterial.mDiffuse.insert(modelMesh->mMaterial.mDiffuse.end(), diffuseMaps.begin(), diffuseMaps.end());
+	std::vector<ModelModule::MaterialTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader, directory);
+	if (!specularMaps.empty()) {
+		modelMesh->mMaterial.mSpecular = specularMaps.front();
+	}
+	//modelMesh->mMaterial.mSpecular.insert(modelMesh->mMaterial.mSpecular.end(), specularMaps.begin(), specularMaps.end());
+	std::vector<ModelModule::MaterialTexture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", loader, directory);
+	if (!normalMaps.empty()) {
+		modelMesh->mMaterial.mNormal = normalMaps.front();
+	}
+	//modelMesh->mMaterial.mNormal.insert(modelMesh->mMaterial.mNormal.end(), normalMaps.begin(), normalMaps.end());
 
 	modelMesh->setupMesh();
 }
 
-std::vector<GameEngine::ModelModule::ModelTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
-	std::vector<GameEngine::ModelModule::ModelTexture> textures;
+std::vector<GameEngine::ModelModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
+	std::vector<ModelModule::MaterialTexture> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
-		if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
-			GameEngine::ModelModule::ModelTexture texture;
-			texture.id = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
-			texture.type = typeName;
+		//if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
+			ModelModule::MaterialTexture texture;
+			texture.mTexture = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
+			texture.mType = typeName;
 			textures.push_back(texture);
-		}
+		//}
 	}
 	return textures;
 }

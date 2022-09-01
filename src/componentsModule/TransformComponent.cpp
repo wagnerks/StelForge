@@ -4,8 +4,8 @@
 #include <ext/matrix_transform.hpp>
 #include <ext/quaternion_trigonometric.hpp>
 #include <gtx/quaternion.hpp>
-#include "nodeModule/Node.h"
 
+#include "mathModule/MathUtils.h"
 
 using namespace GameEngine::ComponentsModule;
 
@@ -129,7 +129,8 @@ void TransformComponent::reloadTransform() {
 
 	if (mParentTransform) {
 		mParentTransform->reloadTransform();
-		transform = mParentTransform->getTransform() * transform;
+		transform = Math::matrixMultiplication(mParentTransform->getTransform(), transform);
+		//transform = mParentTransform->getTransform() * transform;
 	}
 
 	view = glm::inverse(transform);

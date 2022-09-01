@@ -18,16 +18,13 @@ enum Camera_Movement {
 
 class Camera : public ecsModule::Entity<Camera> {
 public:
-	Camera(size_t entID, GameEngine::ProjectionModule::PerspectiveProjection view, glm::vec3 position = glm::vec3(0.0f, 1.0f, 0.0f),float yaw = -90.f);
+	Camera(size_t entID, GameEngine::ProjectionModule::Projection view, glm::vec3 position = glm::vec3(0.0f, 1.0f, 0.0f), float yaw = 0.f);
 
 	float MovementSpeed = 10.f;
 	float MouseSensitivity = 0.1f;
-
-	GameEngine::ProjectionModule::PerspectiveProjection cameraView;
-
+	
 	bool processMouse = false;
 	void ProcessKeyboard(Camera_Movement direction, float deltaTime);
 	void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true);
 	void ProcessMouseScroll(float yoffset);
-	const glm::mat4& getProjectionsMatrix() const;
 };
