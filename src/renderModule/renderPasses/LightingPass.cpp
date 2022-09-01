@@ -5,6 +5,7 @@
 #include "shaderModule/ShaderController.h"
 #include "systemsModule/RenderSystem.h"
 #include "imgui.h"
+#include "componentsModule/LightComponent.h"
 
 using namespace GameEngine::RenderModule::RenderPasses;
 
@@ -24,17 +25,23 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
     shaderLightingPass->setInt("shadows", 4);
 	
 	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
-		shaderLightingPass->setFloat("bias", renderDataHandle.mCascadedShadowsPassData.bias);
+		shaderLightingPass->setFloat("ambientColor", std::max((glm::sin(glm::radians(renderDataHandle.mCascadedShadowsPassData.shadows->sunProgress * 180.f))) * 1.f, 0.1f));
 		TextureHandler::getInstance()->bindTexture(GL_TEXTURE31, GL_TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData.shadowMapTexture);
 		shaderLightingPass->setInt("cascadedShadow.shadowMap", 31);
 		shaderLightingPass->setVec3("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData.lightDirection);
 		shaderLightingPass->setVec3("cascadedShadow.color", renderDataHandle.mCascadedShadowsPassData.lightColor);
-		shaderLightingPass->setFloat("cascadedShadow.texelSize", renderDataHandle.mCascadedShadowsPassData.texelSize);
 		shaderLightingPass->setInt("cascadeCount", static_cast<int>(renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.size()));
-		shaderLightingPass->setInt("g_shadow_samples", static_cast<int>(renderDataHandle.mCascadedShadowsPassData.samples));
+
 	    for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.size(); ++i) {
 	        shaderLightingPass->setFloat(("cascadePlaneDistances[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[i]);
 	    }
+
+		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData.shadowCascades.size(); ++i) {
+	        shaderLightingPass->setVec2(("cascadedShadow.texelSize[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i]->getComponent<LightComponent>()->getTexelSize());
+	        shaderLightingPass->setFloat(("cascadedShadow.bias[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i]->getComponent<LightComponent>()->getBias());
+			shaderLightingPass->setInt(("cascadedShadow.samples[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i]->getComponent<LightComponent>()->getSamples());
+	    }
+
 		shaderLightingPass->setFloat("farPlane", renderDataHandle.mCascadedShadowsPassData.cameraFarPlane);
 	}
 

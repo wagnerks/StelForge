@@ -90,7 +90,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 				}
 				for (auto& mesh : modelComp->getModel()->getMeshes(LODLevel)) {
                     if (mesh->bounds->isOnFrustum(renderDataHandle.camFrustum, *transform)) {
-						renderer->getBatcher()->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),model->getTextures(), transform->getTransform(), false);
+						renderer->getBatcher()->addToDrawList(mesh->getVAO(), mesh->mVertices.size(), mesh->mIndices.size(),mesh->mMaterial, transform->getTransform(), false);
                     }
 				}
 			}

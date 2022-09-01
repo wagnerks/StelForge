@@ -2,6 +2,7 @@
 
 #include "componentsModule/LodComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/ProjectionComponent.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/ECSHandler.h"
@@ -53,15 +54,15 @@ float LODSystem::calculateScreenSpaceArea(const ModelModule::Mesh* mesh, const C
 	}
 
 	auto t = meshTransform->getTransform();
-	t = camera->getProjectionsMatrix() * camera->getComponent<TransformComponent>()->getViewMatrix() * t;
+	t = camera->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix() * camera->getComponent<TransformComponent>()->getViewMatrix() * t;
 	auto d = glm::distance(camera->getComponent<TransformComponent>()->getPos(true), meshTransform->getPos(true));
 
 
-	glm::vec3 globalScale = {
+	glm::vec3 globalScale = meshTransform->getScale(true);/*{
 		sqrt(t[0][0] * t[0][0] + t[1][0] * t[1][0] + t[2][0] * t[2][0]),
 		sqrt(t[0][1] * t[0][1] + t[1][1] * t[1][1] + t[2][1] * t[2][1]),
 		sqrt(t[0][2] * t[0][2] + t[1][2] * t[1][2] + t[2][2] * t[2][2])
-	};
+	};*/
 
 	if (d == 0.f) {
 		globalScale.x = std::numeric_limits<float>::max();
@@ -78,7 +79,7 @@ float LODSystem::calculateScreenSpaceArea(const ModelModule::Mesh* mesh, const C
 	}
 
 	const float maxScale = std::max(std::max(globalScale.x, globalScale.y), globalScale.z);
-	auto spaceRadius = mesh->bounds->radius * (maxScale * 0.5f);
+	auto spaceRadius = /*mesh->bounds->radius * */(maxScale * 0.5f);
 
 	return spaceRadius * spaceRadius * glm::pi<float>();
 }

@@ -5,6 +5,7 @@
 
 #include "imgui.h"
 #include "SystemsPriority.h"
+#include "componentsModule/ProjectionComponent.h"
 #include "componentsModule/RenderComponent.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
@@ -56,7 +57,7 @@ void RenderSystem::update(float_t dt) {
 	auto renderComponents = compManager->getComponentContainer<RenderComponent>();
 	auto playerCamera = Engine::getInstance()->getCamera(); //todo entity player should have camera component
 	auto playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
-	mRenderData.projection = playerCamera->getProjectionsMatrix();
+	mRenderData.projection = playerCamera->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix();
 	mRenderData.view = playerCamera->getComponent<TransformComponent>()->getViewMatrix();
 	mRenderData.cameraPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
@@ -74,7 +75,7 @@ void RenderSystem::update(float_t dt) {
 	for (const auto& renderComp : *renderComponents) {
 		if (renderComp.isDrawable()) {
 			if (auto transform = compManager->getComponent<TransformComponent>(renderComp.getOwnerId())) {
-				if (GameEngine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->cameraView.getZFar()*playerCamera->cameraView.getZFar()) {
+				if (GameEngine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar()*playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar()) {
 					continue;
 				}
 			}

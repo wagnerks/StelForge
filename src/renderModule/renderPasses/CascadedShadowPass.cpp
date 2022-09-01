@@ -1,17 +1,17 @@
 ﻿#include "CascadedShadowPass.h"
 
 #include "imgui.h"
+#include "componentsModule/FrustumComponent.h"
 #include "componentsModule/LodComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "core/Engine.h"
-#include "ecsModule/ComponentsManager.h"
 #include "ecsModule/ECSHandler.h"
 #include "ecsModule/EntityManager.h"
 #include "renderModule/CascadeShadows.h"
 #include "renderModule/Renderer.h"
 #include "renderModule/Utils.h"
-#include "shaderModule/ShaderController.h"
 #include "systemsModule/RenderSystem.h"
+#include "core/BoundingVolume.h"
 
 using namespace GameEngine::RenderModule::RenderPasses;
 
@@ -24,7 +24,7 @@ void CascadedShadowPass::init() {
 	}
 	mInited = true;
 
-	mShadowSource = new CascadeShadows({4096.f,4096.f});
+	mShadowSource = ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadows>(glm::vec2{4096.f,4096.f});
 	mShadowSource->init();
 }
 
@@ -37,15 +37,9 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 		return;
 	}
 
-	if (! (int(std::floorf(mShadowSource->sunProgress)) % 2 != 0)){
-	
-
 	auto& drawableEntities = renderDataHandle.mDrawableEntities;
 
 	mShadowSource->preDraw();
-
-	auto lightSpaceMatrices = mShadowSource->getLightSpaceMatrices();
-	
 
 	//cull meshes
 	for (auto entityId : drawableEntities) {
@@ -56,27 +50,17 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 				if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
 					LODLevel = lodComp->getLodLevel();
 				}
-				for (auto& mesh : modelComp->getModel()->getMeshes(LODLevel)) {
+				for (auto& mesh : model->getMeshes(LODLevel)) {
 					bool pass = false;
-					for (auto i = 0; i < lightSpaceMatrices.size(); i++) {
-						auto modelT = lightSpaceMatrices[i] * transform->getTransform();
-						auto pos = glm::vec3(modelT[3]);
-						auto radius = -0.3f;
-						auto k = 1.f;
-						if (pos.x - radius > -k && pos.x + radius < k) {
-							if (pos.y - radius > -k && pos.y + radius < k) {
-								if (pos.z - radius > -k && pos.z + radius < k) {
-									pass = true;
-								}
-							}
-						}
-						if (pass) {
+					for (auto shadow : mShadowSource->shadows) {
+						if (mesh->bounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform)) {
+							pass = true;
 							break;
 						}
 					}
-					pass = true;
+
 					if (pass) {
-						renderer->getBatcher()->addToDrawList(mesh->getVAO(), mesh->vertices.size(), mesh->indices.size(),model->getTextures(), transform->getTransform(), false);
+						renderer->getBatcher()->addToDrawList(mesh->getVAO(), mesh->mVertices.size(), mesh->mIndices.size(),mesh->mMaterial, transform->getTransform(), false);
 					}
 				}
 			}
@@ -87,23 +71,21 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	}
 
 	renderer->getBatcher()->flushAll(true, mShadowSource->getLightPosition(), true);
-	
+
 	//draw meshes which should cast shadow
 
 	mShadowSource->postDraw();
-	}
+	
 	mData = {
-		mShadowSource->getBias(),
 		mShadowSource->getShadowMapTextureArray(),
 		mShadowSource->getLightDirection(),
-		mShadowSource->getLightColor(),
+		glm::vec3{1.f},
 		mShadowSource->getResolution(),
 		mShadowSource->getLightPosition(),
 		mShadowSource->getCameraFarPlane(),
-		mShadowSource->texelSize,
 		mShadowSource->getShadowCascadeLevels(),
 		mShadowSource,
-		mShadowSource->samples
+		mShadowSource->shadows
 	};
 
 	renderDataHandle.mCascadedShadowsPassData = mData;
@@ -120,40 +102,19 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 				mShadowSource->clearCacheMatrices();
 			}
 
-			float color[3] = {mShadowSource->getLightColor().x, mShadowSource->getLightColor().y, mShadowSource->getLightColor().z};
-			if (ImGui::ColorEdit3("sunColor", color)) {
-				mShadowSource->setLightColor({color[0], color[1], color[2]});
-			}
-			float lightPosDir[] = {mShadowSource->getLightPosition().x, mShadowSource->getLightPosition().y, mShadowSource->getLightPosition().z};
-			if (ImGui::DragFloat3("sun position",lightPosDir , 0.01f)) {
-				mShadowSource->setLightPosition({lightPosDir[0], lightPosDir[1], lightPosDir[2]});
-			}
-			float cascadeBias = mShadowSource->getBias();
-			if (ImGui::DragFloat("bias", &cascadeBias, 0.00001f,0.f,1.f, "%.5f")) {
-				mShadowSource->setBias(cascadeBias);
-			}
-
-			if (ImGui::DragFloat("texel size", &mShadowSource->texelSize, 0.01f,0.f,1.f, "%.3f")) {
-				
-			}
-			if (ImGui::DragInt("samples", &mShadowSource->samples, 1, 1)){
-				if (mShadowSource->samples < 1){
-					mShadowSource->samples = 1;
-				}
-			}
-
 			if (ImGui::DragFloat("sun pos", &mShadowSource->sunProgress, 0.001f, 0.f)) {
 				auto x = glm::cos(glm::radians(-mShadowSource->sunProgress * 180.f));
 				auto y = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
 				auto z = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
-				mShadowSource->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});
+				mShadowSource->getComponent<TransformComponent>()->setRotate({-mShadowSource->sunProgress * 180.f,0.f, mShadowSource->sunProgress * 5.f});
+				mShadowSource->getComponent<TransformComponent>()->reloadTransform();
 			}
 
-			mShadowSource->sunProgress += 0.00001f;
+			/*mShadowSource->sunProgress += 0.00001f;
 			auto x = glm::cos(glm::radians(-mShadowSource->sunProgress * 180.f));
 			auto y = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
 			auto z = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
-			mShadowSource->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});
+			mShadowSource->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});*/
 		}
 	}
 	ImGui::End();
