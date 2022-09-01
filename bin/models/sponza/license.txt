@@ -1,11 +1,11 @@
 Model Information:
-* title:	MAZ Diorama
-* source:	https://sketchfab.com/3d-models/maz-diorama-6cbc792cb8c94f078586873613696fa4
-* author:	biegnoncy (https://sketchfab.com/biegnoncy)
+* title:	Sponza Scene
+* source:	https://sketchfab.com/3d-models/sponza-scene-725bc7dc88b049a5b38bfa718b218909
+* author:	kevin.kayu (https://sketchfab.com/kevin.kayu)
 
 Model License:
-* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
-* requirements:	Author must be credited. No commercial use.
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
 
 If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
-This work is based on "MAZ Diorama" (https://sketchfab.com/3d-models/maz-diorama-6cbc792cb8c94f078586873613696fa4) by biegnoncy (https://sketchfab.com/biegnoncy) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+This work is based on "Sponza Scene" (https://sketchfab.com/3d-models/sponza-scene-725bc7dc88b049a5b38bfa718b218909) by kevin.kayu (https://sketchfab.com/kevin.kayu) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
