@@ -16,7 +16,6 @@
 #include <gtx/quaternion.hpp>
 #include "mat4x4.hpp"
 #include "ModelLoader.h"
-#include "nodeModule/Node.h"
 
 using namespace GameModule::CoreModule;
 
@@ -60,11 +59,11 @@ void Scene::init() {
 }
 
 void Scene::updateScene(float dt) {
-	/*GameEngine::Debug::ComponentsDebug::transformComponentDebug(rootNode->getId(), rootNode->getComponent<TransformComponent>());
+	/*GameEngine::Debug::ComponentsDebug::transformComponentDebug(rootNode->getStringId(), rootNode->getComponent<TransformComponent>());
 	for (auto node : rootNode->getAllNodes()) {
 		auto nodeTC = node->getComponent<TransformComponent>();
 		
-		GameEngine::Debug::ComponentsDebug::transformComponentDebug(node->getId(), nodeTC);
+		GameEngine::Debug::ComponentsDebug::transformComponentDebug(node->getStringId(), nodeTC);
 		nodeTC->reloadTransform();
 	}*/
 

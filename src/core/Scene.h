@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include "modelModule/Model.h"
-#include "nodeModule/Node.h"
 #include "renderModule/DirectionalOrthoLight.h"
 #include "renderModule/SceneGridFloor.h"
 #include "renderModule/Skybox.h"
@@ -13,7 +12,7 @@ namespace GameModule::CoreModule {
 		void drawScene();
 		~Scene();
 	private:
-		GameEngine::NodeModule::Node* rootNode = nullptr;
+		//GameEngine::NodeModule::Node* rootNode = nullptr;
 		GameEngine::RenderModule::Skybox* skybox = nullptr;
 		GameEngine::RenderModule::SceneGridFloor* gridFloor = nullptr;
 		GameEngine::LightsModule::DirectionalOrthoLight* sunLight = nullptr;
