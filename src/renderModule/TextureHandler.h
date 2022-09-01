@@ -5,12 +5,27 @@
 
 namespace GameEngine::RenderModule {
 
+	enum class eTextureType {
+		NONE,
+		TWO_D,
+		CUBEMAP,
+		TEXTURE_ARRAY
+	};
+
+	struct Texture {
+		unsigned mId = std::numeric_limits<unsigned>::max();
+		bool isValid() const {
+			return mId != std::numeric_limits<unsigned>::max();
+		}
+		eTextureType mType = eTextureType::NONE;
+	};
+
 	class TextureLoader {
 	public:
-		std::unordered_map<std::string, unsigned> loadedTex;
-		unsigned int loadTexture(const std::string& path, bool flip = false);
-		unsigned int loadCubemapTexture(const std::string& path, bool flip = false);
-		unsigned int createEmpty2DTexture(const std::string& id, int w, int h, int format);
+		std::unordered_map<std::string, Texture> loadedTex;
+		Texture loadTexture(const std::string& path, bool flip = false);
+		Texture loadCubemapTexture(const std::string& path, bool flip = false);
+		Texture createEmpty2DTexture(const std::string& id, int w, int h, int format);
 	};
 
 	class TextureHandler {

@@ -25,7 +25,7 @@ void TextureHandler::bindTexture(unsigned slot, unsigned type, unsigned id) {
 	glBindTexture(type, id);
 }
 
-unsigned TextureLoader::loadTexture(const std::string& path, bool flip) {
+Texture TextureLoader::loadTexture(const std::string& path, bool flip) {
 	if (&TextureHandler::getInstance()->loader == this) {
 		auto it = loadedTex.find(path);
 		if (it != loadedTex.end()) {
@@ -40,7 +40,7 @@ unsigned TextureLoader::loadTexture(const std::string& path, bool flip) {
 		if (!data) {
 			LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
 			stbi_image_free(data);
-			return 0;
+			return {};
 		}
 		glGenTextures(1, &texID);
 
@@ -55,8 +55,9 @@ unsigned TextureLoader::loadTexture(const std::string& path, bool flip) {
 
 		stbi_image_free(data);
 
-		loadedTex[path] = texID;
-		return texID;
+		Texture tex = {texID, eTextureType::TWO_D};
+		loadedTex[path] = tex;
+		return tex;
 	}
 
 	auto it = loadedTex.find(path);
@@ -68,7 +69,7 @@ unsigned TextureLoader::loadTexture(const std::string& path, bool flip) {
 	return id;
 }
 
-unsigned TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
+Texture TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
 	if (&TextureHandler::getInstance()->loader == this) {
 		auto it = loadedTex.find(path);
 		if (it != loadedTex.end()) {
@@ -103,14 +104,15 @@ unsigned TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
 				LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
 				stbi_image_free(data);
 				glDeleteTextures(1, &textureID);
-				return 0;
+				return {};
 			}
 		    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 			stbi_image_free(data);
 		}
 
-		loadedTex[path] = textureID;
-		return textureID;
+		Texture tex = {textureID, eTextureType::CUBEMAP};
+		loadedTex[path] = tex;
+		return tex;
 	}
 
 	auto it = loadedTex.find(path);
@@ -122,7 +124,7 @@ unsigned TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
 	return id;
 }
 
-unsigned TextureLoader::createEmpty2DTexture(const std::string& id, int w, int h, int format) {
+Texture TextureLoader::createEmpty2DTexture(const std::string& id, int w, int h, int format) {
 	unsigned int textureID;
 	glGenTextures(1, &textureID);
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, textureID);
@@ -132,5 +134,5 @@ unsigned TextureLoader::createEmpty2DTexture(const std::string& id, int w, int h
 
 	glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, nullptr);
 
-	return textureID;
+	return {textureID, eTextureType::TWO_D};
 }
