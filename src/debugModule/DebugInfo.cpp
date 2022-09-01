@@ -1,6 +1,7 @@
 ﻿#include "DebugInfo.h"
 
 #include "imgui.h"
+#include "componentsModule/ProjectionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
@@ -20,7 +21,7 @@ void DebugInfo::drawInfo() {
 	ImGui::Text("dt: %.4f", static_cast<double>(Engine::getInstance()->getDeltaTime()));
 	ImGui::Separator();
 	ImGui::Text("camera:");
-	ImGui::Text("FOV: %.2f", camera->cameraView.getFOV());
+	ImGui::Text("FOV: %.2f", camera->getComponent<ProjectionComponent>()->getProjection().getFOV());
 	ImGui::Text("pos: [%.3f, %.3f, %.3f]", static_cast<double>(camera->getComponent<TransformComponent>()->getPos().x), static_cast<double>(camera->getComponent<TransformComponent>()->getPos().y), static_cast<double>(camera->getComponent<TransformComponent>()->getPos().z));
 	auto cameraRotate = camera->getComponent<TransformComponent>()->getRotate();
 	ImGui::Text("angle: [%.3f, %.3f, %.3f]", cameraRotate.x, cameraRotate.y, cameraRotate.z);
