@@ -8,13 +8,14 @@ uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
 uniform sampler2D ssao;
-uniform sampler2D shadows;
 
 struct DirectionalLight {
     mat4 PV; //proj * view from light perspective matrix
-    sampler2D shadowsMap;
+    sampler2DShadow shadowMap;
     vec3 Position;
-    vec2 textureSize;
+    vec2 texelSize;
+    float bias;
+    int samples;
 };
 
 const int MAX_SHADOWS_SIZE = 3;
@@ -39,30 +40,22 @@ struct CascadedShadow {
     sampler2DArrayShadow shadowMap;
     vec3 direction;
     vec3 color;
-
+    float intensity;
     vec2 texelSize[16];
     float bias[16];
     int samples[16];
-    float lightIntensity;
 };
 
 uniform CascadedShadow cascadedShadow;
 uniform int cascadeCount;   // number of frusta - 1
 
-uniform float farPlane;
-
-uniform mat4 view;
 
 layout (std140, binding = 0) uniform LightSpaceMatrices
 {
     mat4 lightSpaceMatrices[16];
 };
 
-uniform float cascadePlaneDistances[16];
-uniform float bias = 0.001;
 
-const int pcfCount = 4;
-const float shadowForce = 0.01;
 uniform float ambientColor = 1.0;
 
 
@@ -79,7 +72,7 @@ vec2 vogel_disk_sample(uint sample_index, int sample_count, float angle)
   return vec2(cosine, sine) * r;
 }
 
-float Technique_Vogel(int layer, float bias, vec3 projCoords) {
+float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
     float shadow = 0.f; 
 
     float penumbra        = 1.0f;
@@ -95,6 +88,28 @@ float Technique_Vogel(int layer, float bias, vec3 projCoords) {
         vec2 offset = vogel_disk_sample(i, cascadedShadow.samples[layer], temporal_angle) * (cascadedShadow.texelSize[layer]) *  g_shadow_filter_size * penumbra;
         
         float depth = texture(cascadedShadow.shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z));
+        shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
+    } 
+
+    return shadow * g_shadow_samples_rpc;
+}
+
+float TechniqueVogel(DirectionalLight light, float bias, vec3 projCoords) {
+    float shadow = 0.f; 
+
+    float penumbra        = 1.0f;
+    
+    float temporal_offset = 0.0;
+    float temporal_angle  = temporal_offset * 3.14 * 2;
+    float g_shadow_filter_size = 1.0;
+    float g_shadow_samples_rpc = 1.0 / light.samples;
+
+    
+
+    for (uint i = 0; i < light.samples; i++) {
+        vec2 offset = vogel_disk_sample(i, light.samples, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
+        
+        float depth = texture(light.shadowMap, vec3(projCoords.xy + offset, projCoords.z));
         shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
     } 
 
@@ -134,35 +149,25 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
         return koef;
     }
 
-    float K = dot(Normal, -cascadedShadow.direction);
     float bias = cascadedShadow.bias[layer] * tan(acos(dot(Normal, cascadedShadow.direction)));;
-
-    float shadow = Technique_Vogel(layer, bias, projCoords); 
-    //return shadow;
-
-    return min( 2.0 * koef - 1.0, shadow);
+    return TechniqueVogelCascaded(layer, bias, projCoords);
 }
 
 
-float ShadowCalculation(DirectionalLight light, vec3 projCoords, vec3 FragPos, vec3 lightDir, vec3 normal) {
+float ShadowCalculation(DirectionalLight light, vec3 projCoords, vec3 lightDir, vec3 normal) {
     float vertexNormalToLight = dot(normal, lightDir);
-    float normalKoef = 1 - (vertexNormalToLight + 1.0) * 0.5;
-    if (normalKoef <= 0.0){
-        return 1.0;
-    }
-
-    if (projCoords.z < 0.0){
-        return 0.0;
-    }
-    float shadow = 0.f; 
+    float koef = 1 - (vertexNormalToLight + 1.0) * 0.5; //1 when parallel, 0.5 if normal, 0 if divergent
     
-    // PCF
-    for(int y = -pcfCount; y <= pcfCount; ++y) { //pcf only for y axis
-        float pcfDepth = texture(light.shadowsMap, projCoords.xy + vec2(0.f, y) * 0.01).r; 
-        shadow += projCoords.z - bias > pcfDepth  ? 1.0 : 0.0;        
-    }    
+    if (koef <= 0.5){
+        return 1 - koef * 2.0;
+    }
 
-    return normalKoef * shadow * shadowForce;
+    if (projCoords.z > 1.0){
+        return koef;
+    }
+
+    float bias = light.bias * tan(acos(dot(normal, lightDir)));;
+    return TechniqueVogel(light, bias, projCoords);
 }
 
 vec3 calculateLightDiffuse(vec3 Normal, vec3 lightDirection, vec3 Diffuse, vec3 lightColor){
@@ -206,7 +211,7 @@ void main() {
         if (lighting.x == 0.f && lighting.y == 0.f && lighting.z == 0.f){
             continue; //if here is fully shadowed object, why need i calculate shadow?
         }
-        shadow += ShadowCalculation(DirLights[i], projCoords, FragPos, lightDir, Normal);
+        shadow += ShadowCalculation(DirLights[i], projCoords, lightDir, Normal);
 
     }
 
