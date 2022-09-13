@@ -17,6 +17,7 @@
 #include "renderModule/renderPasses/LightingPass.h"
 #include "renderModule/renderPasses/SSAOPass.h"
 #include "mathModule/MathUtils.h"
+#include "renderModule/CascadeShadows.h"
 
 using namespace GameEngine::SystemsModule;
 
@@ -32,6 +33,7 @@ RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(rendere
 	mRenderPasses.emplace_back(geometryPass);
 
 	auto lightingPass = new RenderModule::RenderPasses::LightingPass();
+	lightingPass->init();
 	lightingPass->setPriority(LIGHTING);
 	mRenderPasses.emplace_back(lightingPass);
 
@@ -57,9 +59,10 @@ void RenderSystem::update(float_t dt) {
 	auto renderComponents = compManager->getComponentContainer<RenderComponent>();
 	auto playerCamera = Engine::getInstance()->getCamera(); //todo entity player should have camera component
 	auto playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
-	mRenderData.projection = playerCamera->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix();
-	mRenderData.view = playerCamera->getComponent<TransformComponent>()->getViewMatrix();
-	mRenderData.cameraPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
+
+	mRenderData.mProjection = playerCamera->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix();
+	mRenderData.mView = playerCamera->getComponent<TransformComponent>()->getViewMatrix();
+	mRenderData.mCameraPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
 	ImGui::Begin("keklol");
 	static bool updateFrustum = true;
@@ -67,7 +70,7 @@ void RenderSystem::update(float_t dt) {
 	ImGui::End();
 
 	if (updateFrustum) {
-		mRenderData.camFrustum = FrustumModule::createFrustum(mRenderData.projection * mRenderData.view);
+		mRenderData.mCamFrustum = FrustumModule::createFrustum(mRenderData.mProjection * mRenderData.mView);
 	}
 
 	mRenderData.mDrawableEntities.clear();
@@ -91,18 +94,10 @@ void RenderSystem::update(float_t dt) {
 	mRenderData.mCascadedShadowsPassData.shadows->debugDraw();
 
 	ImGui::Begin("render mode");
-
-	if (ImGui::Button("wireframe")){
-		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-	}
-
-	if (ImGui::Button("usual")){
-		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-	}
-
+	ImGui::Checkbox("wireframe", &mRenderData.mWireframeMode);
 	ImGui::End();
 
-	ImGui::Begin("kek");
+	ImGui::Begin("geometry pass data");
 	float size = 500.f;
 	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gAlbedoSpec), {size,size}, {0.f, 1.f}, {1.f,0.f});
 	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gPosition), {size,size}, {0.f, 1.f}, {1.f,0.f});

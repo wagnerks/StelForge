@@ -23,15 +23,17 @@ namespace GameEngine {
 namespace GameEngine::SystemsModule{
 	struct RenderDataHandle {
 		std::vector<size_t> mDrawableEntities;
-		FrustumModule::Frustum camFrustum;
+		FrustumModule::Frustum mCamFrustum;
 
-		glm::mat4 projection = {};
-		glm::mat4 view = {};
-		glm::vec3 cameraPos = {};
+		glm::mat4 mProjection = {};
+		glm::mat4 mView = {};
+		glm::vec3 mCameraPos = {};
 
 		RenderModule::RenderPasses::CascadedShadowPass::Data mCascadedShadowsPassData;
 		RenderModule::RenderPasses::GeometryPass::Data mGeometryPassData;
 		RenderModule::RenderPasses::SSAOPass::Data mSSAOPassData;
+
+		bool mWireframeMode = false;
 	};
 
 	class RenderSystem : public ecsModule::System<RenderSystem> {
