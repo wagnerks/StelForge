@@ -22,12 +22,12 @@ CascadeShadow::CascadeShadow(size_t entID) : Entity(entID) {
 	addComponent<ProjectionComponent>();
 	addComponent<LightComponent>(GameEngine::ComponentsModule::eLightType::DIRECTIONAL);
 
-	setStringId("cascade");
+	setNodeId("cascade");
 }
 
 CascadeShadows::CascadeShadows(size_t entID, glm::vec2 resolution) : Entity(entID), resolution(resolution) {
 	addComponent<TransformComponent>();
-	setStringId("cascadeShadows");
+	setNodeId("cascadeShadows");
 }
 
 CascadeShadows::~CascadeShadows() {
@@ -99,26 +99,6 @@ void CascadeShadows::init() {
 }
 
 void CascadeShadows::preDraw() {
-	ImGui::Begin("shadows");
-	int i = 0;
-	for (auto shadow : shadows) {
-		ImGui::Text("%d", i);
-		std::string bias = "bias##" + std::to_string(i);
-		ImGui::DragFloat(bias.c_str(), &shadow->mBiasMultiplier, 0.01f);
-		std::string texel = "texel##" + std::to_string(i);
-		ImGui::DragFloat(texel.c_str(), &shadow->mTexelsMultiplier, 0.01f);
-		std::string samples = "samples##" + std::to_string(i);
-		auto samplesCount = shadow->getComponent<LightComponent>()->getSamples();
-		if (ImGui::DragInt(samples.c_str(), &samplesCount, 1, 1)) {
-			if (samplesCount < 1) {
-				samplesCount = 1;
-			}
-			shadow->getComponent<LightComponent>()->setSamples(samplesCount);
-		}
-		i++;
-	}
-	ImGui::End();
-
 	const auto lightMatrices = getLightSpaceMatrices();
 	if (!lightMatrices.empty()){
 		glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);

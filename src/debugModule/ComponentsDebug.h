@@ -2,24 +2,33 @@
 #include <string>
 
 
+namespace ecsModule {
+	class EntityInterface;
+}
+
 namespace GameEngine {
 	namespace ComponentsModule {
+		class MeshComponent;
+		class LightComponent;
 		class ModelComponent;
 		class TransformComponent;
+		class LodComponent;
 	}
 }
 
-class LodComponent;
 
 namespace GameEngine::Debug {
 	class ComponentsDebug {
 	public:
-		static void transformComponentDebug(std::string_view id, ComponentsModule::TransformComponent* transformComp);
-
+		static void drawTree(ecsModule::EntityInterface* entity, size_t& selectedID);
 		static void entitiesDebug();
-		static void transformComponentInternal(ComponentsModule::TransformComponent* component);
-		static void lodComponentInternal(LodComponent* component);
-		static void modelComponentInternal(ComponentsModule::ModelComponent* component);
+		static void componentEditorInternal(ComponentsModule::TransformComponent* component);
+		static void componentEditorInternal(ComponentsModule::LodComponent* component);
+		static void componentEditorInternal(ComponentsModule::ModelComponent* component);
+		static void componentEditorInternal(ComponentsModule::LightComponent* component);
+		static void componentEditorInternal(ComponentsModule::MeshComponent* component);
+		
+		static inline size_t mSelectedId = std::numeric_limits<size_t>::max();
 	};
 
 }

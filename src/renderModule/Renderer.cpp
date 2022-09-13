@@ -2,29 +2,20 @@
 
 #include <deque>
 #include <functional>
-#include <iostream>
 
-#include <glm.hpp>
-#include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
-
 #include "imgui.h"
-#include "TextureHandler.h"
 #include "Utils.h"
-#include "componentsModule/LodComponent.h"
-#include "componentsModule/RenderComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
-#include "core/Camera.h"
 #include "core/Engine.h"
-#include "debugModule/ComponentsDebug.h"
 #include "logsModule/logger.h"
-#include "modelModule/MeshFactory.h"
+
 #include "modelModule/Model.h"
 
-#include "shaderModule/ShaderController.h"
+
 #include "gtc/random.hpp"
-#include "core/BoundingVolume.h"
+
 #include "core/ModelLoader.h"
 #include "ecsModule/EntityManager.h"
 #include "entitiesModule/ModelEntity.h"
@@ -39,10 +30,9 @@ using namespace GameEngine::CoreModule;
 
 
 void Renderer::draw() {
-	RenderModule::Renderer::drawCallsCount = 0;
-	RenderModule::Renderer::drawVerticesCount = 0;
+	RenderModule::Renderer::mDrawCallsCount = 0;
+	RenderModule::Renderer::mDrawVerticesCount = 0;
 	Utils::initCubeVAO();
-	scene->updateScene(0.f);
 }
 
 void Renderer::postDraw() {
@@ -51,37 +41,33 @@ void Renderer::postDraw() {
 }
 
 void Renderer::init() {
-	scene = new GameModule::CoreModule::Scene();
-	scene->init();
-
-	auto cubeModel = ModelLoader::getInstance()->load("model/cube.fbx");
-	
-
-	node = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
-
+	auto cubeModel = ModelLoader::getInstance()->load("models/cube.fbx");
+	auto node = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
 	auto cube = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
-	cube->setStringId("floor");
+
+	cube->setNodeId("floor");
 	cube->getComponent<TransformComponent>()->setScale({50.f,0.01f,50.f});
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
 	cube->getComponent<ModelComponent>()->setModel(cubeModel);
-
+	cube->init(cubeModel->mMeshTree);
 	node->addElement(cube);
 
 	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
-	cube2->setStringId("wall");
+	cube2->setNodeId("wall");
 	cube2->getComponent<TransformComponent>()->setScale({0.01f,0.1f,5.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
 	cube2->getComponent<ModelComponent>()->setModel(cubeModel);
-	
+	cube2->init(cubeModel->mMeshTree);
 	node->addElement(cube2);
 
 	auto sponza = ModelLoader::getInstance()->load("models/sponza/scene.gltf");
 	auto sponzaModel = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
-	sponzaModel->setStringId("sponza");
+	sponzaModel->setNodeId("sponza");
 	sponzaModel->getComponent<TransformComponent>()->setScale({1.f,1.f,1.f});
 	sponzaModel->getComponent<TransformComponent>()->setPos({-25.f,25.f,0.f});
 	sponzaModel->getComponent<TransformComponent>()->setRotate({0.f,0.f,180.f});
 	sponzaModel->getComponent<ModelComponent>()->setModel(sponza);
+	sponzaModel->init(sponza->mMeshTree);
 	node->addElement(sponzaModel);
 
 	auto count = 3;
@@ -99,68 +85,44 @@ void Renderer::init() {
 			
 		}
 	}
-	
-	// lighting info
-    // -------------
-    const unsigned int NR_LIGHTS = 0;
-    
-    srand(13);
-	for (unsigned int i = 0; i < 1600; i++) {
-		// calculate slightly random offsets
 
-		// also calculate random color
-		float rColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
-		float gColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
-		float bColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
-		lightColors.push_back(glm::vec3(rColor, gColor, bColor));
-	}
-	
-	// shader configuration
-    // --------------------
-	
-	batcher = new Batcher();
-
-	//lightsObj.push_back(new LightsModule::DirectionalLight(1024,1024));
+	mBatcher = new Batcher();
 }
 
 void Renderer::terminate() const {
 	glfwTerminate();
 }
 
-void Renderer::drawCall() {
-	
-}
-
 void Renderer::drawArrays(GLenum mode, GLsizei size, GLint first) {
 	glDrawArrays(mode, first, size);
-	drawCallsCount++;
-	drawVerticesCount += size;
+	mDrawCallsCount++;
+	mDrawVerticesCount += size;
 }
 
 void Renderer::drawElements(GLenum mode, GLsizei size, GLenum type, const void* place) {
 	glDrawElements(mode, size, type, place);
-	drawCallsCount++;
-	drawVerticesCount += size;
+	mDrawCallsCount++;
+	mDrawVerticesCount += size;
 }
 
 void Renderer::drawElementsInstanced(GLenum mode, GLsizei size, GLenum type, GLsizei instancesCount, const void* place) {
 	glDrawElementsInstanced(mode, size, type, place, instancesCount);
-	drawCallsCount++;
-	drawVerticesCount += size * instancesCount;
+	mDrawCallsCount++;
+	mDrawVerticesCount += size * instancesCount;
 }
 
 void Renderer::drawArraysInstancing(GLenum mode, GLsizei size, GLsizei instancesCount, GLint first) {
 	glDrawArraysInstanced(mode, first, size, instancesCount);
-	drawCallsCount++;
-	drawVerticesCount += size * instancesCount;
+	mDrawCallsCount++;
+	mDrawVerticesCount += size * instancesCount;
 }
 
 GLFWwindow* Renderer::initGLFW() {
-	if (GLFWInited) {
+	if (mGLFWInited) {
 		assert(false && "GLFW Already inited");
 		return nullptr;
 	}
-	GLFWInited = true;
+	mGLFWInited = true;
 
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GLFW_CONTEXT_VER_MAJ);
@@ -203,7 +165,7 @@ GLFWwindow* Renderer::initGLFW() {
 	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glEnable(GL_CULL_FACE);
-	glClearDepth(50000.0f);
+	glClearDepth(50000.0);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 

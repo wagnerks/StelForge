@@ -76,27 +76,26 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
     if (!mInited) {
 	    return;
     }
+    if (renderDataHandle.mWireframeMode){
+		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+	}
 
+	
 	renderDataHandle.mGeometryPassData = mData;
 
 	auto& drawableEntities = renderDataHandle.mDrawableEntities;
     for (auto entityId : drawableEntities) {
 		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>()){
-			if (auto model = modelComp->getModel()) {
-                size_t LODLevel = 0;
-				if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
-					LODLevel = lodComp->getLodLevel();
-				}
-				for (auto& mesh : modelComp->getModel()->getMeshes(LODLevel)) {
-                    if (mesh->bounds->isOnFrustum(renderDataHandle.camFrustum, *transform)) {
-						renderer->getBatcher()->addToDrawList(mesh->getVAO(), mesh->mVertices.size(), mesh->mIndices.size(),mesh->mMaterial, transform->getTransform(), false);
-                    }
-				}
+		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<MeshComponent>()){
+            size_t LODLevel = 0;
+			if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
+				LODLevel = lodComp->getLodLevel();
 			}
-		}
-		else {
-			renderer->getBatcher()->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), false);
+			auto& mesh = modelComp->getMesh(LODLevel);
+            if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, *transform)) {
+				renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(),mesh.mMaterial, transform->getTransform(), false);
+            }
+			
 		}
 	}
 
@@ -107,13 +106,17 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
     shaderGeometryPass->use();
-	shaderGeometryPass->setMat4("P", renderDataHandle.projection);
-	shaderGeometryPass->setMat4("V", renderDataHandle.view);
-	shaderGeometryPass->setMat4("PV", renderDataHandle.projection * renderDataHandle.view);
+	shaderGeometryPass->setMat4("P", renderDataHandle.mProjection);
+	shaderGeometryPass->setMat4("V", renderDataHandle.mView);
+	shaderGeometryPass->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
 	shaderGeometryPass->setInt("texture_diffuse1" , 0);
 	shaderGeometryPass->setInt("normalMap" , 1);
 
 	renderer->getBatcher()->flushAll(true);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    if (renderDataHandle.mWireframeMode){
+		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	}
 }

@@ -6,8 +6,12 @@
 #include "systemsModule/RenderSystem.h"
 #include "imgui.h"
 #include "componentsModule/LightComponent.h"
+#include "renderModule/CascadeShadows.h"
+#include "renderModule/SceneGridFloor.h"
 
 using namespace GameEngine::RenderModule::RenderPasses;
+
+void LightingPass::init() {}
 
 void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
 	if (!renderer) {
@@ -46,9 +50,9 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	}
 
 
-    shaderLightingPass->setMat4("view", renderDataHandle.view);
+    shaderLightingPass->setMat4("view", renderDataHandle.mView);
     // set light uniforms
-	shaderLightingPass->setVec3("viewPos", renderDataHandle.cameraPos);
+	shaderLightingPass->setVec3("viewPos", renderDataHandle.mCameraPos);
 
 
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gPosition);
@@ -144,8 +148,8 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	ImGui::End();
 
 	sky->use();
-	sky->setMat4("view", renderDataHandle.view);
-	sky->setMat4("projection", renderDataHandle.projection);
+	sky->setMat4("view", renderDataHandle.mView);
+	sky->setMat4("projection", renderDataHandle.mProjection);
 	sky->setVec3("sun_direction", -renderDataHandle.mCascadedShadowsPassData.lightDirection);
 	sky->setFloat("time", time);
 

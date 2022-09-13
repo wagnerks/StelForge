@@ -6,16 +6,40 @@
 
 
 namespace GameEngine::ModelModule {
-	struct RawModel {
-		std::unordered_map<size_t, std::vector<std::unique_ptr<Mesh>>> meshes;
+	struct MeshNode : NodeModule::Node<MeshNode> {
+		MeshNode() = default;
+		MeshNode(MeshNode&& other) noexcept
+			: NodeModule::Node<MeshNode>(std::move(other)),
+			  mMeshes(std::move(other.mMeshes)) {
+			auto elements = other.getElements();
+			for (auto element : elements) {
+				other.removeElement(element);
+			}
+		}
+
+		MeshNode& operator=(MeshNode&& other) noexcept {
+			if (this == &other)
+				return *this;
+			NodeModule::Node<MeshNode>::operator =(std::move(other));
+			mMeshes = std::move(other.mMeshes);
+			auto elements  = other.getElements();
+			for (auto element : elements) {
+				other.removeElement(element);
+			}
+			return *this;
+		}
+
+		std::unordered_map<size_t, std::vector<Mesh>> mMeshes;
 	};
 
-	class Model {
+	class Model : public ecsModule::Entity<Model> {
 	public:
-		Model(RawModel& model) : meshes(std::move(model.meshes)) {
+		Model(size_t entID, MeshNode& model) : Entity<Model>(entID) {
+			mMeshTree = std::move(model);
 		}
-		const std::vector<std::unique_ptr<Mesh>>& getMeshes(size_t LOD = 0);
+
+		MeshNode mMeshTree;
 	private:
-		std::unordered_map<size_t, std::vector<std::unique_ptr<Mesh>>> meshes;
+		
 	};
 }

@@ -79,7 +79,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 	ImGui::End();
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
-	auto defaultTex = GameEngine::RenderModule::TextureHandler::getInstance()->loader.loadTexture("white.png").mId;
+	auto defaultTex = GameEngine::RenderModule::TextureHandler::getInstance()->mLoader.loadTexture("white.png").mId;
 	for (auto& drawObjects : drawList) {
 		if (shadowMap) {
 			if (drawObjects.transparentForShadow) {

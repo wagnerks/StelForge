@@ -27,7 +27,7 @@ void LightComponent::setTexelSize(const glm::vec2& texelSize) {
 	mTexelSize = texelSize;
 }
 
-glm::vec2 LightComponent::getTexelSize() const {
+const glm::vec2& LightComponent::getTexelSize() const {
 	return mTexelSize;
 }
 
@@ -43,6 +43,6 @@ void LightComponent::setLightColor(const glm::vec3& lightColor) {
 	mLightColor = lightColor;
 }
 
-glm::vec3 LightComponent::getLightColor() {
+const glm::vec3& LightComponent::getLightColor() const {
 	return mLightColor;
 }

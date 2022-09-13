@@ -25,8 +25,8 @@ void DebugInfo::drawInfo() {
 	ImGui::Text("pos: [%.3f, %.3f, %.3f]", static_cast<double>(camera->getComponent<TransformComponent>()->getPos().x), static_cast<double>(camera->getComponent<TransformComponent>()->getPos().y), static_cast<double>(camera->getComponent<TransformComponent>()->getPos().z));
 	auto cameraRotate = camera->getComponent<TransformComponent>()->getRotate();
 	ImGui::Text("angle: [%.3f, %.3f, %.3f]", cameraRotate.x, cameraRotate.y, cameraRotate.z);
-	ImGui::Text("drawCalls: %zu", RenderModule::Renderer::drawCallsCount);
-	ImGui::Text("verticesDraw: %zu", RenderModule::Renderer::drawVerticesCount);
+	ImGui::Text("drawCalls: %zu", RenderModule::Renderer::mDrawCallsCount);
+	ImGui::Text("verticesDraw: %zu", RenderModule::Renderer::mDrawVerticesCount);
 
 	ImGui::End();
 }

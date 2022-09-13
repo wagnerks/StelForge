@@ -1,8 +1,12 @@
 ﻿#include "LODSystem.h"
 
+#include <ext/scalar_constants.hpp>
+
 #include "componentsModule/LodComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/ProjectionComponent.h"
+#include "componentsModule/TransformComponent.h"
+#include "core/Camera.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/ECSHandler.h"
@@ -16,22 +20,22 @@ void LODSystem::update(float_t dt) {
 	}
 
 	for (auto& lodObject : *ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<LodComponent>()) {
-		auto transform = ecsModule::ECSHandler::componentManagerInstance()->getComponent<TransformComponent>(lodObject.getOwnerId());
+		auto transform = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ComponentsModule::TransformComponent>(lodObject.getOwnerId());
 		if (!transform) {
 			continue;
 		}
 
 		float value = 0.f;
-		if (lodObject.getLodType() == eLodType::SCREEN_SPACE) {
+		if (lodObject.getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
 			if (const auto modelComponent = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ModelComponent>(lodObject.getOwnerId())) {
 				if (const auto model = modelComponent->getModel()) {
-					for (auto& mesh : model->getMeshes()){
-						value = std::max(value, calculateScreenSpaceArea(mesh.get(), playerCamera, transform));
-					}
+					/*for (auto& mesh : model->getMeshes()){
+						value = std::max(value, calculateScreenSpaceArea(&mesh, playerCamera, transform));
+					}*/
 				}
 			}
 		}
-		else if (lodObject.getLodType() == eLodType::DISTANCE) {
+		else if (lodObject.getLodType() == ComponentsModule::eLodType::DISTANCE) {
 			value = calculateDistanceToMesh(playerCamera, transform);
 		}
 
@@ -58,11 +62,7 @@ float LODSystem::calculateScreenSpaceArea(const ModelModule::Mesh* mesh, const C
 	auto d = glm::distance(camera->getComponent<TransformComponent>()->getPos(true), meshTransform->getPos(true));
 
 
-	glm::vec3 globalScale = meshTransform->getScale(true);/*{
-		sqrt(t[0][0] * t[0][0] + t[1][0] * t[1][0] + t[2][0] * t[2][0]),
-		sqrt(t[0][1] * t[0][1] + t[1][1] * t[1][1] + t[2][1] * t[2][1]),
-		sqrt(t[0][2] * t[0][2] + t[1][2] * t[1][2] + t[2][2] * t[2][2])
-	};*/
+	glm::vec3 globalScale = meshTransform->getScale(true);
 
 	if (d == 0.f) {
 		globalScale.x = std::numeric_limits<float>::max();
@@ -84,6 +84,6 @@ float LODSystem::calculateScreenSpaceArea(const ModelModule::Mesh* mesh, const C
 	return spaceRadius * spaceRadius * glm::pi<float>();
 }
 
-float LODSystem::calculateDistanceToMesh(const Camera* camera, TransformComponent* meshTransform) {
-	return glm::distance(camera->getComponent<TransformComponent>()->getPos(true), meshTransform->getPos(true));
+float LODSystem::calculateDistanceToMesh(const Camera* camera, ComponentsModule::TransformComponent* meshTransform) {
+	return glm::distance(camera->getComponent<ComponentsModule::TransformComponent>()->getPos(true), meshTransform->getPos(true));
 }

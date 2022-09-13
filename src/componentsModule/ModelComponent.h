@@ -1,6 +1,9 @@
 ﻿#pragma once
 
+#include <vector>
+
 #include "ecsModule/ComponentBase.h"
+#include "modelModule/Mesh.h"
 
 
 namespace GameEngine {
@@ -16,9 +19,18 @@ namespace GameEngine::ComponentsModule{
 		void setModel(ModelModule::Model* aModel);
 		ModelModule::Model* getModel() const;
 	private:
-		ModelModule::Model* model = nullptr;
+		ModelModule::Model* mModel = nullptr;
+	};
+
+	class MeshComponent : public ecsModule::Component<MeshComponent> {
+	public:
+		MeshComponent(std::vector<ModelModule::MeshHandle> meshData);
+		const ModelModule::MeshHandle& getMesh(size_t LOD);
+	//private:
+		std::vector<ModelModule::MeshHandle> mMeshData;
 	};
 
 }
 
 using GameEngine::ComponentsModule::ModelComponent;
+using GameEngine::ComponentsModule::MeshComponent;

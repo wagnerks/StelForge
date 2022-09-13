@@ -3,53 +3,59 @@
 #include <algorithm>
 
 #include "imgui.h"
+#include "componentsModule/FrustumComponent.h"
+#include "componentsModule/LightComponent.h"
 #include "componentsModule/LodComponent.h"
+#include "componentsModule/MaterialComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/ProjectionComponent.h"
+#include "componentsModule/RenderComponent.h"
+#include "componentsModule/TransformComponent.h"
 #include "core/Engine.h"
+#include "ecsModule/ECSHandler.h"
+#include "ecsModule/EntityBase.h"
 #include "ecsModule/EntityManager.h"
 
 using namespace GameEngine::Debug;
 
-void ComponentsDebug::transformComponentDebug(std::string_view id, TransformComponent* transformComp) {
-	if (!transformComp) {
-		return;
+void ComponentsDebug::drawTree(ecsModule::EntityInterface* entity, size_t& selectedID) {
+	auto id = entity->getEntityID();
+	auto& children = entity->getElements();
+
+	if (!children.empty()) {
+		int flag = ImGuiTreeNodeFlags_OpenOnDoubleClick  | ImGuiTreeNodeFlags_OpenOnArrow;
+		if (selectedID == id) {
+			flag = flag | ImGuiTreeNodeFlags_Selected;
+		}
+		
+		if (ImGui::TreeNodeEx((std::string(entity->getNodeId()) + ":" + std::to_string(id)).c_str(), flag)) {
+			if (ImGui::IsItemClicked()) {
+				selectedID = id;
+			}
+			
+			for (auto child : children) {
+				drawTree(child, selectedID);
+			}
+			
+			ImGui::TreePop();
+		}
+		else {
+			if (ImGui::IsItemClicked()) {
+				selectedID = id;
+			}
+		}
 	}
-
-	ImGui::Begin("transforms");
-	if (ImGui::TreeNode(id.data())) {
-		auto pos = transformComp->getPos();
-		auto scale = transformComp->getScale();
-
-		float posV[] = {pos.x, pos.y, pos.z};
-		float scaleV[] = {scale.x, scale.y, scale.z};
-
-		if (ImGui::DragFloat3("pos", posV, 0.001f)) {
-			transformComp->setPos({posV[0], posV[1], posV[2]});
+	else {
+		if (ImGui::Selectable((std::string(entity->getNodeId()) + ":" + std::to_string(id)).c_str(), selectedID == id)) {
+			selectedID = id;
 		}
-
-		float rotations[] = {transformComp->getRotate().x, transformComp->getRotate().y, transformComp->getRotate().z};
-		if (ImGui::DragFloat3("rotations", rotations)) {
-			transformComp->setRotate({rotations[0], rotations[1], rotations[2]});
-		}
-
-		if (ImGui::DragFloat3("scale", scaleV, 0.1f)) {
-			transformComp->setScale({scaleV[0], scaleV[1], scaleV[2]});
-		}
-		transformComp->reloadTransform();
-		ImGui::TreePop();
 	}
-	
-
-
-	ImGui::End();
 }
 
 void ComponentsDebug::entitiesDebug() {
-	auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
-	static size_t selectedID = 0;
-	ecsModule::EntityInterface* currentEntity = nullptr;
+	
 	if (ImGui::Begin("Entities Editor")) {
-			
+		auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
 		
 
 		ImGui::Columns(2);
@@ -58,46 +64,68 @@ void ComponentsDebug::entitiesDebug() {
 			if (!entity) {
 				continue;
 			}
-			
-			
-			auto id = entity->getEntityID();
 
-			bool selected = selectedID == id;
+			if (entity->getParent()) {
+				continue;
+			}
 			
-			if (ImGui::Selectable((std::string(entity->getStringId()) + ":" + std::to_string(id)).c_str(), selected)) {
-				selectedID = id;
-			}
-
-			if (selected) {
-				currentEntity = entity;
-			}
+			drawTree(entity, mSelectedId);
 		}
+
+		
+
 		ImGui::EndChild();
 
-		if (currentEntity) {
+		if (auto currentEntity = entityManager->getEntity(mSelectedId)) {
 			ImGui::NextColumn();
 
 			ImGui::BeginChild("##comps");
-			ImGui::Text("entity: %s", currentEntity->getStringId().data());
-			ImGui::Text("entity id: %d", currentEntity->getEntityID());
+			ImGui::Text("entity: %s", currentEntity->getNodeId().data());
+			ImGui::Text("entity id: %zu", currentEntity->getEntityID());
+			ImGui::Separator();
 
-			if (ImGui::TreeNode("Transform Component")) {
-				auto comp = currentEntity->getComponent<TransformComponent>();
-				transformComponentInternal(comp);
+
+
+			if (auto comp = currentEntity->getComponent<TransformComponent>(); comp && ImGui::TreeNode("Transform Component")) {
+				componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
 
-			if (ImGui::TreeNode("LOD Component")) {
-				auto comp = currentEntity->getComponent<LodComponent>();
-				lodComponentInternal(comp);
+			if (auto comp = currentEntity->getComponent<LodComponent>(); comp && ImGui::TreeNode("LOD Component")) {
+				componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
 
-			if (ImGui::TreeNode("Model Component")) {
-				auto comp = currentEntity->getComponent<ModelComponent>();
-				modelComponentInternal(comp);
+			if (auto comp = currentEntity->getComponent<ModelComponent>(); comp && ImGui::TreeNode("Model Component")) {
+				componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
+
+			if (auto comp = currentEntity->getComponent<MaterialComponent>(); comp && ImGui::TreeNode("Material Component")) {
+				//componentEditorInternal(comp);
+				ImGui::TreePop();
+			}
+
+			if (auto comp = currentEntity->getComponent<LightComponent>(); comp && ImGui::TreeNode("Light Component")) {
+				componentEditorInternal(comp);
+				ImGui::TreePop();
+			}
+
+			if (auto comp = currentEntity->getComponent<ProjectionComponent>(); comp && ImGui::TreeNode("Projection Component")) {
+				//componentEditorInternal(comp);
+				ImGui::TreePop();
+			}
+
+			if (auto comp = currentEntity->getComponent<RenderComponent>(); comp && ImGui::TreeNode("Render Component")) {
+				//componentEditorInternal(comp);
+				ImGui::TreePop();
+			}
+
+			if (auto comp = currentEntity->getComponent<FrustumComponent>(); comp && ImGui::TreeNode("Frustum Component")) {
+				//componentEditorInternal(comp);
+				ImGui::TreePop();
+			}
+
 			ImGui::EndChild();
 		}
 	}
@@ -106,7 +134,7 @@ void ComponentsDebug::entitiesDebug() {
 	ImGui::End();
 }
 
-void ComponentsDebug::transformComponentInternal(TransformComponent* component) {
+void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
 	if (!component) {
 		return;
 	}
@@ -218,7 +246,7 @@ void ComponentsDebug::transformComponentInternal(TransformComponent* component) 
 
 }
 
-void ComponentsDebug::lodComponentInternal(LodComponent* component) {
+void ComponentsDebug::componentEditorInternal(LodComponent* component) {
 	if (!component) {
 		return;
 	}
@@ -240,10 +268,10 @@ void ComponentsDebug::lodComponentInternal(LodComponent* component) {
 		std::ranges::reverse(lodLevels);
 	}
 
-	if (component->getLodType() == eLodType::DISTANCE) {
+	if (component->getLodType() == ComponentsModule::eLodType::DISTANCE) {
 		ImGui::Text("Type: %s", "DISTANCE");
 	}
-	else if (component->getLodType() == eLodType::SCREEN_SPACE) {
+	else if (component->getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
 		ImGui::Text("Type: %s", "SCREEN_SPACE");
 	}
 
@@ -251,6 +279,103 @@ void ComponentsDebug::lodComponentInternal(LodComponent* component) {
 	ImGui::Text("%f", component->getCurrentLodValue());
 }
 
-void ComponentsDebug::modelComponentInternal(ComponentsModule::ModelComponent* component) {
+void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* component) {
+	if (!component) {
+		return;
+	}
+	if (!component->getModel()) {
+		ImGui::Text("no model");
+		return;
+	}
+
+	/*auto& allMeshes = component->getModel()->getAllMeshes();
+
+	
+	for (auto& [key, meshes] : allMeshes) {
+		int i = 0;
+		for (auto& mesh : meshes) {
+			auto name = "Mesh " + std::to_string(i) + "##" + std::to_string(key) + std::to_string(i);
+			if (ImGui::TreeNode(name.c_str())) {
+				name = "Diffuse##" + std::to_string(key) + std::to_string(i);
+				if (ImGui::TreeNode(name.c_str())) {
+					ImGui::Text("Path: %s", mesh.mMaterial.mDiffuse.mTexture.mPath.c_str());
+					if (mesh.mMaterial.mDiffuse.mTexture.isValid()) {
+						ImGui::Image((ImTextureID)mesh.mMaterial.mDiffuse.mTexture.mId, {100.f,100.f});
+					}
+					ImGui::TreePop();
+				}
+				name = "Normal##" + std::to_string(key) + std::to_string(i);
+				if (ImGui::TreeNode(name.c_str())) {
+					ImGui::Text("Path: %s", mesh.mMaterial.mNormal.mTexture.mPath.c_str());
+					if (mesh.mMaterial.mNormal.mTexture.isValid()) {
+						ImGui::Image((ImTextureID)mesh.mMaterial.mNormal.mTexture.mId, {100.f,100.f});
+					}
+					ImGui::TreePop();
+				}
+				name = "Specular##" + std::to_string(key) + std::to_string(i);
+				if (ImGui::TreeNode(name.c_str())) {
+					ImGui::Text("Path: %s", mesh.mMaterial.mSpecular.mTexture.mPath.c_str());
+					if (mesh.mMaterial.mSpecular.mTexture.isValid()) {
+						ImGui::Image((ImTextureID)mesh.mMaterial.mSpecular.mTexture.mId, {100.f,100.f});
+					}
+					ImGui::TreePop();
+				}
+				ImGui::TreePop();
+			}
+			i++;
+		}
+	}*/
+}
+
+void ComponentsDebug::componentEditorInternal(ComponentsModule::LightComponent* component) {
+	if (!component) {
+		return;
+	}
+	ImGui::Text("Light type: ");
+	ImGui::SameLine();
+
+	switch(component->getType()) {
+	case ComponentsModule::eLightType::DIRECTIONAL: ImGui::Text("DIRECTIONAL"); break;
+	case ComponentsModule::eLightType::POINT: ImGui::Text("POINT"); break;
+	case ComponentsModule::eLightType::PERSPECTIVE: ImGui::Text("PERSPECTIVE"); break;
+	case ComponentsModule::eLightType::NONE: ImGui::Text("NONE"); break;
+	}
+
+	ImGui::Separator();
+
+	auto intensity = component->getIntensity();
+	if (ImGui::DragFloat("intensity", &intensity, 0.01f)) {
+		component->setIntensity(intensity);
+	}
+
+	auto biasValue = component->getBias();
+	if (ImGui::DragFloat("bias", &biasValue, 0.01f)) {
+		component->setBias(biasValue);
+	}
+
+	float texelSize[2] = {component->getTexelSize().x, component->getTexelSize().y};
+	if (ImGui::DragFloat2("texel size", texelSize, 0.01f)) {
+		component->setTexelSize({texelSize[0], texelSize[1]});
+	}
+
+	auto samplesCount = component->getSamples();
+	if (ImGui::DragInt("samples", &samplesCount, 1, 1)) {
+		if (samplesCount < 1) {
+			samplesCount = 1;
+		}
+		component->setSamples(samplesCount);
+	}
+
+	float lightColor[3] = {component->getLightColor().r, component->getLightColor().g, component->getLightColor().b};
+	if (ImGui::ColorPicker3("light color", lightColor)) {
+		component->setLightColor({lightColor[0], lightColor[1], lightColor[2]});
+	}
+}
+
+void ComponentsDebug::componentEditorInternal(ComponentsModule::MeshComponent* component) {
+	if (!component) {
+		return;
+	}
+
 	
 }

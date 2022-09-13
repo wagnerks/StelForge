@@ -11,7 +11,6 @@ namespace GameEngine::ComponentsModule {
 		void updateFrustum(const glm::mat4& projection, const glm::mat4& view);
 		bool isOnFrustum(const FrustumModule::BoundingVolume& bVolume) const;
 		FrustumModule::Frustum* getFrustum();
-		void getFrustumCorners(std::vector<glm::vec3>& corners, glm::mat4 projection);
 	private:
 		FrustumModule::Frustum mFrustum;
 	};

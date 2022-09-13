@@ -11,24 +11,25 @@ using namespace GameEngine::RenderModule;
 TextureHandler* TextureHandler::getInstance() {
 	if (!instance) {
 		instance = new TextureHandler();
+		instance->mDefaultTex = instance->mLoader.loadTexture("notexture.jpg");
 	}
 
 	return instance;
 }
 
 void TextureHandler::bindTexture(unsigned slot, unsigned type, unsigned id) {
-	if (bindedTextures[slot] == id) {
+	if (mBindedTextures[slot] == id) {
 		return;
 	}
-	bindedTextures[slot] = id;
+	mBindedTextures[slot] = id;
 	glActiveTexture(slot);
 	glBindTexture(type, id);
 }
 
 Texture TextureLoader::loadTexture(const std::string& path, bool flip) {
-	if (&TextureHandler::getInstance()->loader == this) {
-		auto it = loadedTex.find(path);
-		if (it != loadedTex.end()) {
+	if (&TextureHandler::getInstance()->mLoader == this) {
+		auto it = mLoadedTex.find(path);
+		if (it != mLoadedTex.end()) {
 			return it->second;
 		}
 		stbi_set_flip_vertically_on_load(flip);
@@ -40,7 +41,7 @@ Texture TextureLoader::loadTexture(const std::string& path, bool flip) {
 		if (!data) {
 			LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
 			stbi_image_free(data);
-			return {};
+			return TextureHandler::getInstance()->mDefaultTex;
 		}
 		glGenTextures(1, &texID);
 
@@ -55,24 +56,24 @@ Texture TextureLoader::loadTexture(const std::string& path, bool flip) {
 
 		stbi_image_free(data);
 
-		Texture tex = {texID, eTextureType::TWO_D};
-		loadedTex[path] = tex;
+		Texture tex = {texID, path, eTextureType::DEFAULT};
+		mLoadedTex[path] = tex;
 		return tex;
 	}
 
-	auto it = loadedTex.find(path);
-	if (it != loadedTex.end()) {
+	auto it = mLoadedTex.find(path);
+	if (it != mLoadedTex.end()) {
 		return it->second;
 	}
-	auto id = TextureHandler::getInstance()->loader.loadTexture(path, flip);
-	loadedTex[path] = id;
+	auto id = TextureHandler::getInstance()->mLoader.loadTexture(path, flip);
+	mLoadedTex[path] = id;
 	return id;
 }
 
 Texture TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
-	if (&TextureHandler::getInstance()->loader == this) {
-		auto it = loadedTex.find(path);
-		if (it != loadedTex.end()) {
+	if (&TextureHandler::getInstance()->mLoader == this) {
+		auto it = mLoadedTex.find(path);
+		if (it != mLoadedTex.end()) {
 			return it->second;
 		}
 
@@ -110,17 +111,17 @@ Texture TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
 			stbi_image_free(data);
 		}
 
-		Texture tex = {textureID, eTextureType::CUBEMAP};
-		loadedTex[path] = tex;
+		Texture tex = {textureID, path, eTextureType::CUBEMAP};
+		mLoadedTex[path] = tex;
 		return tex;
 	}
 
-	auto it = loadedTex.find(path);
-	if (it != loadedTex.end()) {
+	auto it = mLoadedTex.find(path);
+	if (it != mLoadedTex.end()) {
 		return it->second;
 	}
-	auto id = TextureHandler::getInstance()->loader.loadCubemapTexture(path, flip);
-	loadedTex[path] = id;
+	auto id = TextureHandler::getInstance()->mLoader.loadCubemapTexture(path, flip);
+	mLoadedTex[path] = id;
 	return id;
 }
 
@@ -134,5 +135,5 @@ Texture TextureLoader::createEmpty2DTexture(const std::string& id, int w, int h,
 
 	glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, nullptr);
 
-	return {textureID, eTextureType::TWO_D};
+	return {textureID, "", eTextureType::DEFAULT};
 }

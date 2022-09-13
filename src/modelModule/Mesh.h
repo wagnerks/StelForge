@@ -4,9 +4,8 @@
 #include <vec3.hpp>
 #include <vector>
 
-#include "glad/glad.h"
+#include "ecsModule/EntityBase.h"
 #include "renderModule/TextureHandler.h"
-#include "shaderModule/Shader.h"
 
 
 namespace GameEngine {
@@ -17,10 +16,10 @@ namespace GameEngine {
 
 namespace GameEngine::ModelModule {
 	struct Vertex {
-		glm::vec3 Position;
-		glm::vec3 Normal;
-		glm::vec2 TexCoords;
-		glm::vec3 Tangent;
+		glm::vec3 mPosition;
+		glm::vec3 mNormal;
+		glm::vec2 mTexCoords;
+		glm::vec3 mTangent;
 	};
 
 	struct MaterialTexture {
@@ -34,26 +33,48 @@ namespace GameEngine::ModelModule {
 		MaterialTexture mSpecular;
 	};
 
-	class Mesh {
-	public:
-		// mesh data
+	struct MeshData {
 		std::vector<Vertex> mVertices;
 		std::vector<unsigned int> mIndices;
-		Mesh() = default;
-		void setupMesh();
+
+		unsigned int mVao = std::numeric_limits<unsigned>::max();
+		unsigned int mVbo = std::numeric_limits<unsigned>::max();
+		unsigned int mEbo = std::numeric_limits<unsigned>::max();
+	};
+
+	class Mesh {
+	public:
+		Mesh(const Mesh& other) = delete;
+		Mesh& operator=(const Mesh& other) = delete;
+
+		Mesh(Mesh&& other) noexcept;
+		Mesh& operator=(Mesh&& other) noexcept;
 
 		~Mesh();
 		Mesh(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices);
-		
-		unsigned int getVAO() const { return VAO;}
-		void draw(ShaderModule::ShaderBase* shader, bool ignoreTex = false);
+		Mesh() = default;
 
-		FrustumModule::AABB* bounds = nullptr;
+		void bindMesh();
+		void unbindMesh();
+
+		unsigned int getVAO() const { return mData.mVao;}
+
+		FrustumModule::AABB* mBounds = nullptr;
 		Material mMaterial;
+		MeshData mData;
 	private:
-		
-		//  render data
-		unsigned int VAO = -1, VBO = -1, EBO = -1;
-		const GLuint type = GL_TRIANGLES;
+		bool mBinded = false;
+	};
+
+	class MeshHandle {
+	public:
+		MeshHandle() = default;
+
+		MeshHandle(const Mesh& mesh) : mMaterial(mesh.mMaterial), mData(mesh.mData), mBounds(mesh.mBounds) {}
+
+		Material mMaterial;
+		MeshData mData;
+		FrustumModule::AABB* mBounds = nullptr;
+
 	};
 }

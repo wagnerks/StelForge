@@ -158,7 +158,7 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& rende
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAO->use();
-	shaderSSAO->setMat4("projection", renderDataHandle.projection);
+	shaderSSAO->setMat4("projection", renderDataHandle.mProjection);
 
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
 	TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);

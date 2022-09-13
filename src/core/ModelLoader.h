@@ -36,11 +36,11 @@ namespace GameEngine::CoreModule {
 		ModelLoader() = default;
 		~ModelLoader() = default;
 
-		std::unordered_map<std::string, std::unique_ptr<ModelModule::Model>> models;
+		std::vector<std::pair<std::string, ModelModule::Model*>> models;
 
-		static ModelModule::RawModel loadModel(const std::string& path);
-		static void processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::RawModel& rawModel);
-		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::RawModel& rawModel);
+		static ModelModule::MeshNode loadModel(const std::string& path);
+		static void processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::MeshNode& rawModel);
+		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::MeshNode& rawModel);
 		static std::vector<ModelModule::MaterialTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory);
 	};
 }

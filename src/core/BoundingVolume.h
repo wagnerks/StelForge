@@ -217,15 +217,15 @@ namespace GameEngine::FrustumModule {
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
 
 		
-		for (auto&& vertex : mesh.mVertices)
+		for (auto&& vertex : mesh.mData.mVertices)
 		{
-			minAABB.x = std::min(minAABB.x, vertex.Position.x);
-			minAABB.y = std::min(minAABB.y, vertex.Position.y);
-			minAABB.z = std::min(minAABB.z, vertex.Position.z);
+			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
+			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
+			minAABB.z = std::min(minAABB.z, vertex.mPosition.z);
 
-			maxAABB.x = std::max(maxAABB.x, vertex.Position.x);
-			maxAABB.y = std::max(maxAABB.y, vertex.Position.y);
-			maxAABB.z = std::max(maxAABB.z, vertex.Position.z);
+			maxAABB.x = std::max(maxAABB.x, vertex.mPosition.x);
+			maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
+			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
 		}
 		
 		return AABB(minAABB, maxAABB);
@@ -236,15 +236,15 @@ namespace GameEngine::FrustumModule {
 		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
 
-		for (auto& vertex : mesh.mVertices)
+		for (auto& vertex : mesh.mData.mVertices)
 		{
-			minAABB.x = std::min(minAABB.x, vertex.Position.x);
-			minAABB.y = std::min(minAABB.y, vertex.Position.y);
-			minAABB.z = std::min(minAABB.z, vertex.Position.z);
+			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
+			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
+			minAABB.z = std::min(minAABB.z, vertex.mPosition.z);
 
-			maxAABB.x = std::max(maxAABB.x, vertex.Position.x);
-			maxAABB.y = std::max(maxAABB.y, vertex.Position.y);
-			maxAABB.z = std::max(maxAABB.z, vertex.Position.z);
+			maxAABB.x = std::max(maxAABB.x, vertex.mPosition.x);
+			maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
+			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
 		}
 		
 

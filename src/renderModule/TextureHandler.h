@@ -6,23 +6,23 @@
 namespace GameEngine::RenderModule {
 
 	enum class eTextureType {
-		NONE,
-		TWO_D,
+		DEFAULT,
 		CUBEMAP,
 		TEXTURE_ARRAY
 	};
 
 	struct Texture {
 		unsigned mId = std::numeric_limits<unsigned>::max();
+		std::string mPath;
 		bool isValid() const {
 			return mId != std::numeric_limits<unsigned>::max();
 		}
-		eTextureType mType = eTextureType::NONE;
+		eTextureType mType = eTextureType::DEFAULT;
 	};
 
 	class TextureLoader {
 	public:
-		std::unordered_map<std::string, Texture> loadedTex;
+		std::unordered_map<std::string, Texture> mLoadedTex;
 		Texture loadTexture(const std::string& path, bool flip = false);
 		Texture loadCubemapTexture(const std::string& path, bool flip = false);
 		Texture createEmpty2DTexture(const std::string& id, int w, int h, int format);
@@ -32,10 +32,12 @@ namespace GameEngine::RenderModule {
 	public:
 		static TextureHandler* getInstance();
 		void bindTexture(unsigned slot, unsigned type, unsigned int id);
-		TextureLoader loader;
-		unsigned getCurentTexture(unsigned slot) { return bindedTextures[slot];}
+		TextureLoader mLoader;
+		unsigned getCurentTexture(unsigned slot) { return mBindedTextures[slot];}
+		Texture mDefaultTex;
 	private:
-		std::unordered_map<unsigned, unsigned> bindedTextures;
+		std::unordered_map<unsigned, unsigned> mBindedTextures;
 		inline static TextureHandler* instance = nullptr;
+		
 	};
 }

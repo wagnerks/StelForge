@@ -37,7 +37,7 @@ void Skybox::init() {
 	skyboxShader->setInt("skybox", 16);
 	skyboxShader->setMat4("projection", Engine::getInstance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix());
 
-	cubemapTex = TextureHandler::getInstance()->loader.loadCubemapTexture(skyboxPath).mId;
+	cubemapTex = TextureHandler::getInstance()->mLoader.loadCubemapTexture(skyboxPath).mId;
 	if (cubemapTex == 0) {
 		assert(false && "can't load skybox texture");
 		return;

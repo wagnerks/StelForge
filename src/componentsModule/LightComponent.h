@@ -26,13 +26,13 @@ namespace GameEngine::ComponentsModule {
 		float getIntensity() const;
 
 		void setTexelSize(const glm::vec2& texelSize);
-		glm::vec2 getTexelSize() const;
+		const glm::vec2& getTexelSize() const;
 
 		void setSamples(int samples);
 		int getSamples() const;
 
 		void setLightColor(const glm::vec3& lightColor);
-		glm::vec3 getLightColor();
+		const glm::vec3& getLightColor() const;
 
 	private:
 		eLightType mType = eLightType::NONE;

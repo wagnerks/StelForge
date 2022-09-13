@@ -2,12 +2,6 @@
 #include "ecsModule/SystemBase.h"
 
 namespace GameEngine {
-	namespace NodeModule {
-		class Node;
-	}
-}
-
-namespace GameEngine {
 	namespace ComponentsModule {
 		class TransformComponent;
 	}

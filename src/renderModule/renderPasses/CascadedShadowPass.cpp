@@ -44,29 +44,25 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	//cull meshes
 	for (auto entityId : drawableEntities) {
 		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>()){
-			if (auto model = modelComp->getModel()) {
-				size_t LODLevel = 0;
-				if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
-					LODLevel = lodComp->getLodLevel();
-				}
-				for (auto& mesh : model->getMeshes(LODLevel)) {
-					bool pass = false;
-					for (auto shadow : mShadowSource->shadows) {
-						if (mesh->bounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform)) {
-							pass = true;
-							break;
-						}
-					}
-
-					if (pass) {
-						renderer->getBatcher()->addToDrawList(mesh->getVAO(), mesh->mVertices.size(), mesh->mIndices.size(),mesh->mMaterial, transform->getTransform(), false);
-					}
+		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<MeshComponent>()){
+			
+			size_t LODLevel = 0;
+			if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
+				LODLevel = lodComp->getLodLevel();
+			}
+		
+			auto& mesh = modelComp->getMesh(LODLevel);
+			bool pass = false;
+			for (auto shadow : mShadowSource->shadows) {
+				if (mesh.mBounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform)) {
+					pass = true;
+					break;
 				}
 			}
-		}
-		else {
-			renderer->getBatcher()->addToDrawList(Utils::cubeVAO, 36, 0,{}, transform->getTransform(), false);
+
+			if (pass) {
+				renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
+			}
 		}
 	}
 

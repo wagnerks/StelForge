@@ -13,7 +13,7 @@ Camera::Camera(size_t entID, GameEngine::ProjectionModule::Projection view, glm:
 	auto projectionComp = addComponent<ProjectionComponent>();
 	projectionComp->initProjection(view);
 
-	setStringId("mainCamera");
+	setNodeId("mainCamera");
 }
 
 

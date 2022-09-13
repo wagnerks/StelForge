@@ -59,11 +59,11 @@ void Scene::init() {
 }
 
 void Scene::updateScene(float dt) {
-	/*GameEngine::Debug::ComponentsDebug::transformComponentDebug(rootNode->getStringId(), rootNode->getComponent<TransformComponent>());
+	/*GameEngine::Debug::ComponentsDebug::transformComponentDebug(rootNode->getNodeId(), rootNode->getComponent<TransformComponent>());
 	for (auto node : rootNode->getAllNodes()) {
 		auto nodeTC = node->getComponent<TransformComponent>();
 		
-		GameEngine::Debug::ComponentsDebug::transformComponentDebug(node->getStringId(), nodeTC);
+		GameEngine::Debug::ComponentsDebug::transformComponentDebug(node->getNodeId(), nodeTC);
 		nodeTC->reloadTransform();
 	}*/
 
