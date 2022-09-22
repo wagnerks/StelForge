@@ -22,5 +22,5 @@ void main()
     vertexPosition = vec3((position.x+3.0)*PLANE_SCALE+coordShift.x, position.y, (position.z+3.0)*PLANE_SCALE+coordShift.y);
 
     // position data for the OpenGL vertex drawing
-    gl_Position = PVM * vec4(position, 0.95);
+    gl_Position = PVM * vec4(position, 0.0);
 }

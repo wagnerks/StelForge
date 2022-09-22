@@ -20,8 +20,8 @@ public:
 	// Tune this parameter according to the scene
 	float mZMult = 2000.0f;
 
-	float mBiasMultiplier = 0.0f;
-	float mTexelsMultiplier = 0.05f;
+	float mBiasMultiplier = 10.f;
+	float mTexelsMultiplier = 0.1f;
 	glm::mat4 proj = {};
 private:
 

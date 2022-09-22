@@ -24,7 +24,6 @@ namespace GameEngine::Debug {
 		static void entitiesDebug();
 		static void componentEditorInternal(ComponentsModule::TransformComponent* component);
 		static void componentEditorInternal(ComponentsModule::LodComponent* component);
-		static void componentEditorInternal(ComponentsModule::ModelComponent* component);
 		static void componentEditorInternal(ComponentsModule::LightComponent* component);
 		static void componentEditorInternal(ComponentsModule::MeshComponent* component);
 		

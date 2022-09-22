@@ -7,7 +7,7 @@
 #include "componentsModule/LightComponent.h"
 #include "componentsModule/LodComponent.h"
 #include "componentsModule/MaterialComponent.h"
-#include "componentsModule/ModelComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/ProjectionComponent.h"
 #include "componentsModule/RenderComponent.h"
 #include "componentsModule/TransformComponent.h"
@@ -96,7 +96,7 @@ void ComponentsDebug::entitiesDebug() {
 				ImGui::TreePop();
 			}
 
-			if (auto comp = currentEntity->getComponent<ModelComponent>(); comp && ImGui::TreeNode("Model Component")) {
+			if (auto comp = currentEntity->getComponent<MeshComponent>(); comp && ImGui::TreeNode("Mesh Component")) {
 				componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
@@ -279,54 +279,6 @@ void ComponentsDebug::componentEditorInternal(LodComponent* component) {
 	ImGui::Text("%f", component->getCurrentLodValue());
 }
 
-void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* component) {
-	if (!component) {
-		return;
-	}
-	if (!component->getModel()) {
-		ImGui::Text("no model");
-		return;
-	}
-
-	/*auto& allMeshes = component->getModel()->getAllMeshes();
-
-	
-	for (auto& [key, meshes] : allMeshes) {
-		int i = 0;
-		for (auto& mesh : meshes) {
-			auto name = "Mesh " + std::to_string(i) + "##" + std::to_string(key) + std::to_string(i);
-			if (ImGui::TreeNode(name.c_str())) {
-				name = "Diffuse##" + std::to_string(key) + std::to_string(i);
-				if (ImGui::TreeNode(name.c_str())) {
-					ImGui::Text("Path: %s", mesh.mMaterial.mDiffuse.mTexture.mPath.c_str());
-					if (mesh.mMaterial.mDiffuse.mTexture.isValid()) {
-						ImGui::Image((ImTextureID)mesh.mMaterial.mDiffuse.mTexture.mId, {100.f,100.f});
-					}
-					ImGui::TreePop();
-				}
-				name = "Normal##" + std::to_string(key) + std::to_string(i);
-				if (ImGui::TreeNode(name.c_str())) {
-					ImGui::Text("Path: %s", mesh.mMaterial.mNormal.mTexture.mPath.c_str());
-					if (mesh.mMaterial.mNormal.mTexture.isValid()) {
-						ImGui::Image((ImTextureID)mesh.mMaterial.mNormal.mTexture.mId, {100.f,100.f});
-					}
-					ImGui::TreePop();
-				}
-				name = "Specular##" + std::to_string(key) + std::to_string(i);
-				if (ImGui::TreeNode(name.c_str())) {
-					ImGui::Text("Path: %s", mesh.mMaterial.mSpecular.mTexture.mPath.c_str());
-					if (mesh.mMaterial.mSpecular.mTexture.isValid()) {
-						ImGui::Image((ImTextureID)mesh.mMaterial.mSpecular.mTexture.mId, {100.f,100.f});
-					}
-					ImGui::TreePop();
-				}
-				ImGui::TreePop();
-			}
-			i++;
-		}
-	}*/
-}
-
 void ComponentsDebug::componentEditorInternal(ComponentsModule::LightComponent* component) {
 	if (!component) {
 		return;
@@ -377,5 +329,50 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::MeshComponent* c
 		return;
 	}
 
+	auto lods = component->getMeshes();
+	ImGui::Text("LODS: %d", lods.size());
+	int i = 0;
+	for (auto& lod : lods) {
+		auto treeLabel = "LOD " + std::to_string(i) + "##meshLod";
+		if (ImGui::TreeNode(std::to_string(i).c_str())) {
+
+			ImGui::Text("vertices: %d", lod.mData.mVertices.size());
+			ImGui::Text("indices: %d", lod.mData.mIndices.size());
+			ImGui::Spacing();
+
+			ImGui::Text("diffuse:");
+			if (lod.mMaterial.mDiffuse.mTexture.isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mDiffuse.mTexture.mId), { 200.f,200.f });
+			}
+			else {
+				ImGui::SameLine();
+				ImGui::Text("none");
+			}
+
+			ImGui::Text("specular:");
+			if (lod.mMaterial.mSpecular.mTexture.isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mSpecular.mTexture.mId), { 200.f,200.f });
+			}
+			else {
+				ImGui::SameLine();
+				ImGui::Text("none");
+			}
+
+			ImGui::Text("normal:");
+			if (lod.mMaterial.mNormal.mTexture.isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mNormal.mTexture.mId), { 200.f,200.f });
+			}
+			else {
+				ImGui::SameLine();
+				ImGui::Text("none");
+			}
+			
+
+			ImGui::TreePop();
+		}
+		i++;
+		
+
+	}
 	
 }

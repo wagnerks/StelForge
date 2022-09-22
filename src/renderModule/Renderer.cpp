@@ -6,7 +6,7 @@
 #include <gtc/type_ptr.hpp>
 #include "imgui.h"
 #include "Utils.h"
-#include "componentsModule/ModelComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Engine.h"
 #include "logsModule/logger.h"
@@ -48,7 +48,6 @@ void Renderer::init() {
 	cube->setNodeId("floor");
 	cube->getComponent<TransformComponent>()->setScale({50.f,0.01f,50.f});
 	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
-	cube->getComponent<ModelComponent>()->setModel(cubeModel);
 	cube->init(cubeModel->mMeshTree);
 	node->addElement(cube);
 
@@ -56,7 +55,6 @@ void Renderer::init() {
 	cube2->setNodeId("wall");
 	cube2->getComponent<TransformComponent>()->setScale({0.01f,0.1f,5.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
-	cube2->getComponent<ModelComponent>()->setModel(cubeModel);
 	cube2->init(cubeModel->mMeshTree);
 	node->addElement(cube2);
 
@@ -66,7 +64,6 @@ void Renderer::init() {
 	sponzaModel->getComponent<TransformComponent>()->setScale({1.f,1.f,1.f});
 	sponzaModel->getComponent<TransformComponent>()->setPos({-25.f,25.f,0.f});
 	sponzaModel->getComponent<TransformComponent>()->setRotate({0.f,0.f,180.f});
-	sponzaModel->getComponent<ModelComponent>()->setModel(sponza);
 	sponzaModel->init(sponza->mMeshTree);
 	node->addElement(sponzaModel);
 
@@ -75,7 +72,6 @@ void Renderer::init() {
 		for (auto j = 0; j < count; j++) {
 			for (auto k = 1; k < count + 1; k++) {
 				auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
-				trainNode->getComponent<ModelComponent>()->setModel(cubeModel);
 				trainNode->getComponent<TransformComponent>()->setRotateX(0.f);
 				trainNode->getComponent<TransformComponent>()->setScale({0.01f,0.01f,0.01f});
 

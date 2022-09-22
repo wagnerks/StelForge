@@ -1,7 +1,7 @@
 #include "ModelEntity.h"
 
 #include "componentsModule/LodComponent.h"
-#include "componentsModule/ModelComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/RenderComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "ecsModule/EntityManager.h"
@@ -10,9 +10,7 @@ using namespace GameEngine::EntitiesModule;
 
 Model::Model(size_t entId) : Entity<Model>(entId) {
 	setNodeId("model");
-	auto tc = addComponent<TransformComponent>();
-	auto mc = addComponent<ModelComponent>();
-	
+	auto tc = addComponent<TransformComponent>();	
 	auto lc = addComponent<LodComponent>();
 	auto rc = addComponent<RenderComponent>();
 }

@@ -20,7 +20,8 @@ CascadeShadow::CascadeShadow(size_t entID) : Entity(entID) {
 	addComponent<TransformComponent>();
 	addComponent<FrustumComponent>();
 	addComponent<ProjectionComponent>();
-	addComponent<LightComponent>(GameEngine::ComponentsModule::eLightType::DIRECTIONAL);
+	auto light = addComponent<LightComponent>(GameEngine::ComponentsModule::eLightType::DIRECTIONAL);
+	light->setBias(0.001f);
 
 	setNodeId("cascade");
 }
@@ -110,14 +111,12 @@ void CascadeShadows::preDraw() {
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, lightDepthMaps, 0);
 	glViewport(0, 0, static_cast<int>(resolution.x), static_cast<int>(resolution.y));
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glCullFace(GL_FRONT);  // peter panning
 
 	auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
 	simpleDepthShader->use();
 }
 
 void CascadeShadows::postDraw() {
-	glCullFace(GL_BACK);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, GameEngine::RenderModule::Renderer::SCR_WIDTH, GameEngine::RenderModule::Renderer::SCR_HEIGHT);
 }
@@ -221,7 +220,7 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 	auto lightComp = getComponent<LightComponent>();
 	
 	lightComp->setTexelSize(glm::vec2(1.f / std::fabs(maxX - minX), 1.f / std::fabs(maxY - minY)) * mTexelsMultiplier);
-	lightComp->setBias(-1.f / size * mBiasMultiplier);
+	//lightComp->setBias(0.001f);//1.f / size * mBiasMultiplier);
 
 	
 	return projComp->getProjection().getProjectionsMatrix() * lightView;

@@ -1,7 +1,7 @@
 ﻿#include "GeometryPass.h"
 
 #include "componentsModule/LodComponent.h"
-#include "componentsModule/ModelComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "ecsModule/EntityManager.h"
 #include "renderModule/Renderer.h"
 #include "renderModule/TextureHandler.h"

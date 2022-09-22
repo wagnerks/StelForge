@@ -1,17 +1,9 @@
-﻿#include "ModelComponent.h"
+﻿#include "MeshComponent.h"
 
 #include "modelModule/Model.h"
 
 
 using namespace GameEngine::ComponentsModule;
-
-void ModelComponent::setModel(ModelModule::Model* aModel) {
-	mModel = aModel;
-}
-
-GameEngine::ModelModule::Model* ModelComponent::getModel() const {
-	return mModel;
-}
 
 MeshComponent::MeshComponent(std::vector<ModelModule::MeshHandle> meshData)
 	: mMeshData(std::move(meshData))
@@ -29,4 +21,8 @@ const GameEngine::ModelModule::MeshHandle& MeshComponent::getMesh(size_t LOD) {
 	}
 
 	return mMeshData[LOD];
+}
+
+const std::vector<GameEngine::ModelModule::MeshHandle>& MeshComponent::getMeshes() {
+	return mMeshData;
 }

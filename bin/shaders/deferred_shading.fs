@@ -121,6 +121,7 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
     float koef = 1 - (vertexNormalToLight + 1.0) * 0.5; //1 when parallel, 0.5 if normal, 0 if divergent
     
     if (koef <= 0.5){
+        return 1.0;
         return 1 - koef * 2.0;
     }
 
@@ -149,8 +150,11 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
         return koef;
     }
 
-    float bias = cascadedShadow.bias[layer] * tan(acos(dot(Normal, cascadedShadow.direction)));;
-    return TechniqueVogelCascaded(layer, bias, projCoords);
+    float bias = cascadedShadow.bias[layer] * tan(acos(dot(Normal, cascadedShadow.direction)));
+
+    float kek = koef * 2.0 - 1;
+
+    return max(1 - kek, TechniqueVogelCascaded(layer, bias, projCoords));
 }
 
 

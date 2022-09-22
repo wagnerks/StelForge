@@ -3,7 +3,7 @@
 #include "imgui.h"
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/LodComponent.h"
-#include "componentsModule/ModelComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "core/Engine.h"
 #include "ecsModule/ECSHandler.h"
 #include "ecsModule/EntityManager.h"
