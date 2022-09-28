@@ -12,17 +12,7 @@
 class CascadeShadow : public ecsModule::Entity<CascadeShadow> {
 public:
 	CascadeShadow(size_t entID);
-
-	static std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
-	static std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& projView);
 	glm::mat4 getLightSpaceMatrix(const std::vector<glm::vec4>& corners);
-
-	// Tune this parameter according to the scene
-	float mZMult = 2000.0f;
-
-	float mBiasMultiplier = 10.f;
-	float mTexelsMultiplier = 0.1f;
-	glm::mat4 proj = {};
 private:
 
 };

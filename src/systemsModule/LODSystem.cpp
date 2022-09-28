@@ -3,7 +3,7 @@
 #include <ext/scalar_constants.hpp>
 
 #include "componentsModule/LodComponent.h"
-#include "componentsModule/ModelComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/ProjectionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
@@ -27,13 +27,13 @@ void LODSystem::update(float_t dt) {
 
 		float value = 0.f;
 		if (lodObject.getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
-			if (const auto modelComponent = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ModelComponent>(lodObject.getOwnerId())) {
-				if (const auto model = modelComponent->getModel()) {
-					/*for (auto& mesh : model->getMeshes()){
-						value = std::max(value, calculateScreenSpaceArea(&mesh, playerCamera, transform));
-					}*/
-				}
-			}
+			//if (const auto modelComponent = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ModelComponent>(lodObject.getOwnerId())) {
+			//	if (const auto model = modelComponent->getModel()) {
+			//		/*for (auto& mesh : model->getMeshes()){
+			//			value = std::max(value, calculateScreenSpaceArea(&mesh, playerCamera, transform));
+			//		}*/
+			//	}
+			//}
 		}
 		else if (lodObject.getLodType() == ComponentsModule::eLodType::DISTANCE) {
 			value = calculateDistanceToMesh(playerCamera, transform);

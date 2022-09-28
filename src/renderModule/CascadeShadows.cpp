@@ -5,6 +5,7 @@
 #include <ext/matrix_transform.hpp>
 
 #include "imgui.h"
+#include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/LightComponent.h"
 #include "componentsModule/ProjectionComponent.h"
@@ -22,7 +23,7 @@ CascadeShadow::CascadeShadow(size_t entID) : Entity(entID) {
 	addComponent<ProjectionComponent>();
 	auto light = addComponent<LightComponent>(GameEngine::ComponentsModule::eLightType::DIRECTIONAL);
 	light->setBias(0.001f);
-
+	addComponent<CascadeShadowComponent>();
 	setNodeId("cascade");
 }
 
@@ -51,12 +52,9 @@ void CascadeShadows::init() {
 
 	for (size_t i = 1; i < shadowCascadeLevels.size(); ++i) {
 		shadows.emplace_back(ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadow>());
-		shadows.back()->proj = glm::perspective(fov, aspect, shadowCascadeLevels[i - 1], shadowCascadeLevels[i]); //todo this should be some cascaded system part
+		shadows.back()->getComponent<CascadeShadowComponent>()->projectionFromCamera = glm::perspective(fov, aspect, shadowCascadeLevels[i - 1], shadowCascadeLevels[i]); //todo this should be some cascaded system part
 		addElement(shadows.back());
 	}
-
-
-	
 
 	glGenFramebuffers(1, &lightFBO);
     
@@ -136,33 +134,6 @@ void CascadeShadows::debugDraw() {
 	}
 }
 
-
-std::vector<glm::vec4> CascadeShadow::getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {
-	return getFrustumCornersWorldSpace(proj * view);
-}
-
-std::vector<glm::vec4> CascadeShadow::getFrustumCornersWorldSpace(const glm::mat4& projView) {
-	const auto inv = glm::inverse(projView);
-
-	std::vector<glm::vec4> frustumCorners;
-	for (unsigned int x = 0; x < 2; ++x) {
-		for (unsigned int y = 0; y < 2; ++y) {
-			for (unsigned int z = 0; z < 2; ++z) {
-				const glm::vec4 pt = inv * glm::vec4(
-					2.0f * static_cast<float>(x) - 1.0f, 
-					2.0f * static_cast<float>(y) - 1.0f, 
-					2.0f * static_cast<float>(z) - 1.0f, 
-					1.0f
-				);
-
-				frustumCorners.push_back(pt / pt.w);
-			}
-		}
-	}
-
-	return frustumCorners;
-}
-
 glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corners) {
 	glm::vec3 center = glm::vec3(0, 0, 0);
 	for (const auto& v : corners) {
@@ -173,6 +144,7 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 
 	getComponent<TransformComponent>()->setPos(center);
 	getComponent<TransformComponent>()->reloadTransform();
+	auto kek = getComponent<CascadeShadowComponent>();
 
 	const auto lightView = getComponent<TransformComponent>()->getViewMatrix();
 	
@@ -199,31 +171,30 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 	}
 
 	if (minZ < 0) {
-		minZ *= mZMult;
+		minZ *= kek->mZMult;
 	}
 	else {
-		minZ /= mZMult;
+		minZ /= kek->mZMult;
 	}
 
 	if (maxZ < 0) {
-		maxZ /= mZMult;
+		maxZ /= kek->mZMult;
 	}
 	else {
-		maxZ *= mZMult;
+		maxZ *= kek->mZMult;
 	}
 
-	auto projComp = getComponent<ProjectionComponent>();
-	projComp->initProjection({minX, minY}, {maxX, maxY}, minZ, maxZ);
 	
+	getComponent<ProjectionComponent>()->initProjection({ minX, minY }, { maxX, maxY },minZ, maxZ);
 
 	auto size = std::fabs(std::max((maxX - minX), (maxY - minY)));
 	auto lightComp = getComponent<LightComponent>();
 	
-	lightComp->setTexelSize(glm::vec2(1.f / std::fabs(maxX - minX), 1.f / std::fabs(maxY - minY)) * mTexelsMultiplier);
-	//lightComp->setBias(0.001f);//1.f / size * mBiasMultiplier);
+	lightComp->setTexelSize(glm::vec2(1.f / std::fabs(maxX - minX), 1.f / std::fabs(maxY - minY)) * kek->mTexelsMultiplier);
+	lightComp->setBias(size * kek->mBiasMultiplier);
 
 	
-	return projComp->getProjection().getProjectionsMatrix() * lightView;
+	return getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix() * lightView;
 }
 
 std::vector<glm::mat4> CascadeShadows::getLightSpaceMatrices() {
@@ -236,7 +207,7 @@ std::vector<glm::mat4> CascadeShadows::getLightSpaceMatrices() {
 	std::vector<glm::mat4> ret;
 
 	for (auto shadowCascade : shadows) {
-		const auto corners = shadowCascade->getFrustumCornersWorldSpace(shadowCascade->proj, view);
+		const auto corners = CascadeShadowsHolderComponent::getFrustumCornersWorldSpace(shadowCascade->getComponent<CascadeShadowComponent>()->projectionFromCamera, view);
 		auto projViewMatrix = shadowCascade->getLightSpaceMatrix(corners);
 		ret.push_back(projViewMatrix);
 
@@ -307,7 +278,7 @@ void CascadeShadows::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& 
 	};
 
 	for (int i = 0; i < lightMatrices.size(); ++i) {
-		const auto corners = CascadeShadow::getFrustumCornersWorldSpace(lightMatrices[i]);
+		const auto corners = CascadeShadowsHolderComponent::getFrustumCornersWorldSpace(lightMatrices[i]);
 		std::vector<glm::vec3> vec3s;
 		for (const auto& v : corners) {
 			vec3s.push_back(glm::vec3(v));
