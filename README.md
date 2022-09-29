@@ -12,7 +12,7 @@ there is just some piece of pet project, you can find a lot of draft and junk co
 - [x] directional ortho light shadows
 - [ ] perspective ortho light
 - [ ] point light
-- [ ] sky (doesn't like current realisation) 
+- [ ] sky (don't like current realisation) 
 - [ ] invent engine name (KillReallGameEngine not bad, but is the best?)
 - [x] frustum culling
 - [ ] depth culling
