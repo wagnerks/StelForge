@@ -1,6 +1,10 @@
 # KillRealGameEngine
 
-there is just some piece of pet project, you can find a lot of draft and junk code here, but i will fix module after finishing working on it
+there is just some piece of pet project, you can find a lot of draft and junk code here, but i will fix every module after finishing working on it
+
+The main goal is to create and to try modern fast game engine included draw and physics parts, with dod ecs, with high quality light system. Thinking about doing it specifically for some piece of open world space survival game.   
+
+Which means really big open world, atmospheres, stars, lights, may be some procedural algorithm for planets and star systems, and I want it looks as much as possible.
 
 # GOALS  
 
@@ -47,5 +51,6 @@ there is just some piece of pet project, you can find a lot of draft and junk co
 - [ ] vulkan 
 - [ ] directx
 - [ ] ray tracing
+- [ ] grass  
 
 I will add new goals as soon as find somenew
