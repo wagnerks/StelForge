@@ -12,6 +12,8 @@
 #include "renderModule/Utils.h"
 #include "systemsModule/RenderSystem.h"
 #include "core/BoundingVolume.h"
+#include "ecsModule/SystemManager.h"
+#include "systemsModule/CameraSystem.h"
 
 using namespace Engine::RenderModule::RenderPasses;
 
@@ -87,7 +89,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	renderDataHandle.mCascadedShadowsPassData = mData;
 
 	if (ImGui::Begin("lightSpaceMatrix")) {
-		ImGui::DragFloat("camera speed", &UnnamedEngine::instance()->getCamera()->MovementSpeed, 0.1f);
+		ImGui::DragFloat("camera speed", &ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->MovementSpeed, 0.1f);
 
 		if (mShadowSource) {
 			if (ImGui::Button("cache")) {

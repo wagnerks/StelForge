@@ -8,19 +8,20 @@
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/LightComponent.h"
-#include "componentsModule/ProjectionComponent.h"
+#include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
 #include "ecsModule/EntityManager.h"
+#include "ecsModule/SystemManager.h"
 #include "glad/glad.h"
 #include "logsModule/logger.h"
 #include "shaderModule/ShaderController.h"
+#include "systemsModule/CameraSystem.h"
 
 CascadeShadow::CascadeShadow(size_t entID) : Entity(entID) {
 	addComponent<TransformComponent>();
 	addComponent<FrustumComponent>();
-	addComponent<ProjectionComponent>();
 	auto light = addComponent<LightComponent>(Engine::ComponentsModule::eLightType::DIRECTIONAL);
 	light->setBias(0.001f);
 	addComponent<CascadeShadowComponent>();
@@ -39,8 +40,8 @@ CascadeShadows::~CascadeShadows() {
 }
 
 void CascadeShadows::init() {
-	auto camera = Engine::UnnamedEngine::instance()->getCamera();
-	auto cameraProjection = camera->getComponent<ProjectionComponent>();
+	auto camera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto cameraProjection = camera->getComponent<CameraComponent>();
 
 	auto zNear = cameraProjection->getProjection().getNear();
 	auto zFar = cameraProjection->getProjection().getFar();
@@ -126,8 +127,8 @@ void CascadeShadows::debugDraw() {
 		glDisable(GL_CULL_FACE);
 		auto debugCascadeShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugCascadeShader.vs", "shaders/debugCascadeShader.fs");
 		debugCascadeShader->use();
-		debugCascadeShader->setMat4("projection", Engine::UnnamedEngine::instance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix());
-		debugCascadeShader->setMat4("view", Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix());
+		debugCascadeShader->setMat4("projection", ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix());
+		debugCascadeShader->setMat4("view", ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getViewMatrix());
 		drawCascadeVolumeVisualizers(lightMatricesCache, debugCascadeShader);
 		glEnable(GL_CULL_FACE);
 		glDisable(GL_BLEND);
@@ -184,8 +185,7 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 		maxZ *= kek->mZMult;
 	}
 
-
-	getComponent<ProjectionComponent>()->initProjection({ minX, minY }, { maxX, maxY }, minZ, maxZ);
+	auto ortho = Engine::ProjectionModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ, maxZ);
 
 	auto size = std::fabs(std::max((maxX - minX), (maxY - minY)));
 	auto lightComp = getComponent<LightComponent>();
@@ -194,7 +194,7 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 	lightComp->setBias(size * kek->mBiasMultiplier);
 
 
-	return getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix() * lightView;
+	return ortho.getProjectionsMatrix() * lightView;
 }
 
 std::vector<glm::mat4> CascadeShadows::getLightSpaceMatrices() {
@@ -202,7 +202,7 @@ std::vector<glm::mat4> CascadeShadows::getLightSpaceMatrices() {
 		return lightMatricesCache;
 	}
 
-	const auto view = Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();
+	const auto view = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getViewMatrix();
 
 	std::vector<glm::mat4> ret;
 

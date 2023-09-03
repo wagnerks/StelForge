@@ -4,13 +4,10 @@
 #include "InputHandler.h"
 #include "Singleton.h"
 
-#include "debugModule/DebugMenu.h"
-
-
 class Camera;
 
 namespace Engine {
-	class UnnamedEngine : public Singleton<UnnamedEngine> {
+	class UnnamedEngine : public Singleton<UnnamedEngine>, public CoreModule::InputObserver {
 		friend Singleton;
 	public:
 		void init() override;
@@ -19,32 +16,26 @@ namespace Engine {
 		float getDeltaTime() const;
 		int getFPS() const;
 
-		bool isAlive();
+		bool isAlive() const;
 
-		GLFWwindow* getMainWindow();
-		Camera* getCamera();
-		RenderModule::Renderer* getRenderer() const;
+		GLFWwindow* getMainWindow() const;
 	private:
-		UnnamedEngine();
-		~UnnamedEngine();
+		UnnamedEngine() = default;
+		~UnnamedEngine() override;
 		void updateDelta();
-		bool checkNeedClose();
+		void checkNeedClose();
 
-		float lastFrame = 0.f;
-		float deltaTime = 0.f;
-		float fpsTimer = 0.f;
-		int framesPerSecond = 0;
-		int fps = 0;
+		float mLastFrame = 0.f;
+		float mDeltaTime = 0.f;
+		float mFramesTimer = 0.f;
+		int mFramesCounter = 0;
+		int mFPS = 0;
 
-		bool alive = true;
+		bool mAlive = false;
 
-		CoreModule::Core* core = nullptr;
-		RenderModule::Renderer* render = nullptr;
+		CoreModule::Core* mCore = nullptr;
 
-		GLFWwindow* window = nullptr;
-
-		Camera* camera = nullptr;
-		Debug::DebugMenu debugMenu;
+		GLFWwindow* mMainWindow = nullptr;
 	};
 }
 

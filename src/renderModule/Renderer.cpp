@@ -32,7 +32,7 @@ using namespace ::Engine::CoreModule;
 Renderer::~Renderer() {
 	delete mBatcher;
 	ModelLoader::terminate();
-	terminate();
+	glfwTerminate();
 }
 
 void Renderer::draw() {
@@ -103,9 +103,6 @@ void Renderer::init() {
 	mBatcher = new Batcher();
 }
 
-void Renderer::terminate() const {
-	glfwTerminate();
-}
 
 void Renderer::drawArrays(GLenum mode, GLsizei size, GLint first) {
 	glDrawArrays(mode, first, size);

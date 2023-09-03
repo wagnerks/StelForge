@@ -4,120 +4,83 @@
 #include <chrono>
 #include <thread>
 
-#include "Camera.h"
 #include "Core.h"
 #include "InputHandler.h"
-#include "debugModule/ComponentsDebug.h"
-#include "ecsModule/EntityManager.h"
 #include "ecsModule/SystemManager.h"
-#include "logsModule/logger.h"
 #include "shaderModule/ShaderController.h"
 
 namespace Engine {
 	void UnnamedEngine::init() {
-		window = RenderModule::Renderer::initGLFW();
-		if (!window) {
-			alive = false;
+		mMainWindow = RenderModule::Renderer::initGLFW();
+		if (!mMainWindow) {
 			return;
 		}
 
-		core = new CoreModule::Core();
-		core->init();
-		render = new RenderModule::Renderer();
-		camera = ecsModule::ECSHandler::entityManagerInstance()->createEntity<Camera>(::Engine::ProjectionModule::Projection{45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), 0.1f, 5000.f});
+		mAlive = true;
 
-		render->init();
-		ecsModule::ECSHandler::instance()->initSystems();
-
-		CoreModule::InputHandler::init();
+		mCore = new CoreModule::Core();
+		mCore->init();
 
 		Debug::ImGuiDecorator::init(getMainWindow());
+
+		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
+			if (type != CoreModule::InputEventType::PRESS) {
+				return;
+			}
+
+			if (key == CoreModule::InputKey::KEY_ESCAPE) {
+				glfwSetWindowShouldClose(mMainWindow, true);
+			}
+		};
 	}
 
 	void UnnamedEngine::update() {
-		if (!alive) {
+		if (!mAlive) {
 			return;
 		}
 
-		CoreModule::InputHandler::processInput(getMainWindow());
+		checkNeedClose();
 
 		updateDelta();
-
-		core->update(deltaTime);
-
-		Debug::ImGuiDecorator::preDraw();
-
-		ecsModule::ECSHandler::entityManagerInstance()->destroyEntities();
-		ecsModule::ECSHandler::systemManagerInstance()->update(deltaTime);
-
-		debugMenu.draw();
-
-		render->draw();
-
-		Debug::ComponentsDebug::entitiesDebug();
-		Debug::ImGuiDecorator::draw();
-
-		render->postDraw();
-
-		alive = checkNeedClose();
+		mCore->update(mDeltaTime);
 	}
 
 	float UnnamedEngine::getDeltaTime() const {
-		return deltaTime;
+		return mDeltaTime;
 	}
 
 	int UnnamedEngine::getFPS() const {
-		return fps;
+		return mFPS;
 	}
 
 	void UnnamedEngine::updateDelta() {
 		const auto currentFrame = static_cast<float>(glfwGetTime());
-		deltaTime = currentFrame - lastFrame;
-		lastFrame = currentFrame;
+		mDeltaTime = currentFrame - mLastFrame;
+		mLastFrame = currentFrame;
 
-		framesPerSecond++;
-		fpsTimer += deltaTime;
-		if (fpsTimer > 1.f) {
-			fps = framesPerSecond;
-			framesPerSecond = 0;
-			fpsTimer = 0.f;
+		mFramesCounter++;
+		mFramesTimer += mDeltaTime;
+		if (mFramesTimer > 1.f) {
+			mFPS = mFramesCounter;
+			mFramesCounter = 0;
+			mFramesTimer = 0.f;
 		}
 	}
 
-	bool UnnamedEngine::isAlive() {
-		return alive;
+	bool UnnamedEngine::isAlive() const {
+		return mAlive;
 	}
 
-	bool UnnamedEngine::checkNeedClose() {
-		return !glfwWindowShouldClose(window);
+	void UnnamedEngine::checkNeedClose() {
+		mAlive = !glfwWindowShouldClose(mMainWindow);
 	}
 
-	GLFWwindow* UnnamedEngine::getMainWindow() {
-		return window;
-	}
-
-	Camera* UnnamedEngine::getCamera() {
-		return camera;
-	}
-
-	RenderModule::Renderer* UnnamedEngine::getRenderer() const {
-		return render;
-	}
-
-	UnnamedEngine::UnnamedEngine() {
-
+	GLFWwindow* UnnamedEngine::getMainWindow() const {
+		return mMainWindow;
 	}
 
 	UnnamedEngine::~UnnamedEngine() {
-		delete core;
+		delete mCore;
 		glfwDestroyWindow(getMainWindow());
-		delete render;
-		//delete camera;
-
-
-		Engine::ShaderModule::ShaderController::terminate();
-		RenderModule::TextureHandler::terminate();
-
-		ecsModule::ECSHandler::terminate();
 	}
 }

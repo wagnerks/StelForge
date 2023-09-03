@@ -11,9 +11,9 @@ namespace Engine::LightsModule {
 		void postDraw();
 		unsigned getDepthMapTexture() const;
 		const glm::mat4& getProjectionViewMatrix() const;
-		const ProjectionModule::Projection& getProjection();
+		const ProjectionModule::OrthoProjection& getProjection();
 	private:
-		ProjectionModule::Projection lightProjection;
+		ProjectionModule::OrthoProjection lightProjection;
 		int shadowWidthResolution;
 		int shadowHeightResolution;
 

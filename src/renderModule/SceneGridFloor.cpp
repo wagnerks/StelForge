@@ -1,11 +1,13 @@
 ﻿#include "SceneGridFloor.h"
 
-#include "componentsModule/ProjectionComponent.h"
+#include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
+#include "ecsModule/SystemManager.h"
 #include "modelModule/Mesh.h"
 #include "shaderModule/ShaderController.h"
+#include "systemsModule/CameraSystem.h"
 
 using namespace Engine::RenderModule;
 
@@ -55,8 +57,8 @@ void SceneGridFloor::draw() {
 		return;
 	}
 	floorShader->use();
-
-	floorShader->setMat4("PVM", UnnamedEngine::instance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix() * Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix() * transform);
+	auto camera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	floorShader->setMat4("PVM", camera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix() * camera->getComponent<TransformComponent>()->getViewMatrix() * transform);
 
 	glBindVertexArray(VAO);
 	glDisable(GL_CULL_FACE);

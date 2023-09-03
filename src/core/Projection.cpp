@@ -4,32 +4,16 @@
 
 using namespace Engine::ProjectionModule;
 
-Projection::Projection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar) : mNear(zNear), mFar(zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
-	mType = eProjectionType::ORTHO;
-	initProjection();
-	
+OrthoProjection::OrthoProjection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar) : Projection(zNear, zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
+	OrthoProjection::initProjection();
 }
 
-Projection::Projection(float FOV, float aspect, float zNear, float zFar) : mNear(zNear), mFar(zFar), mFOV(FOV), mAspect(aspect) {
-	mType = eProjectionType::PERSPECTIVE;
-	initProjection();
+PerspectiveProjection::PerspectiveProjection(float FOV, float aspect, float zNear, float zFar) : Projection(zNear, zFar), mFOV(FOV), mAspect(aspect) {
+	PerspectiveProjection::initProjection();
 }
 
 const glm::mat4& Projection::getProjectionsMatrix() const {
 	return mProjectionMatrix;
-}
-
-void Projection::initProjection() {
-	switch(mType) {
-	case ORTHO:
-		mProjectionMatrix = glm::ortho(mLeftBtm.x, mRightTop.x, mLeftBtm.y, mRightTop.y, mNear, mFar);
-		break;
-	case PERSPECTIVE:
-		mProjectionMatrix = glm::perspective(glm::radians(mFOV), mAspect, mNear, mFar);
-		break;
-	case NONE:
-		break;
-	}
 }
 
 float Projection::getNear() const {
@@ -56,8 +40,7 @@ void Projection::setFar(float far) {
 }
 
 
-void Projection::setLeftBtm(glm::vec2 point) {
-	assert(mType == ORTHO);
+void OrthoProjection::setLeftBtm(glm::vec2 point) {
 	if (mLeftBtm == point) {
 		return;
 	}
@@ -66,8 +49,7 @@ void Projection::setLeftBtm(glm::vec2 point) {
 	initProjection();
 
 }
-void Projection::setRightTop(glm::vec2 point) {
-	assert(mType == ORTHO);
+void OrthoProjection::setRightTop(glm::vec2 point) {
 	if (mRightTop == point) {
 		return;
 	}
@@ -76,18 +58,11 @@ void Projection::setRightTop(glm::vec2 point) {
 	initProjection();
 }
 
-void Projection::setProjection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar) {
-	mType = ORTHO;
-	mLeftBtm = leftBtm;
-	mRightTop = rightTop;
-	mNear = zNear;
-	mFar = zFar;
-	initProjection();
+void OrthoProjection::initProjection() {
+	mProjectionMatrix = glm::ortho(mLeftBtm.x, mRightTop.x, mLeftBtm.y, mRightTop.y, getNear(), getFar());
 }
 
-void Projection::setFOV(float FOV) {
-	assert(mType == PERSPECTIVE);
-
+void PerspectiveProjection::setFOV(float FOV) {
 	if (std::fabs(mFOV - FOV) < std::numeric_limits<float>::epsilon()) {
 		return;
 	}
@@ -95,13 +70,11 @@ void Projection::setFOV(float FOV) {
 	initProjection();
 }
 
-float Projection::getFOV() const {
-	assert(mType == PERSPECTIVE);
+float PerspectiveProjection::getFOV() const {
 	return mFOV;
 }
 
-void Projection::setAspect(float aspect) {
-	assert(mType == PERSPECTIVE);
+void PerspectiveProjection::setAspect(float aspect) {
 	if (std::fabs(mAspect - aspect) < std::numeric_limits<float>::epsilon()) {
 		return;
 	}
@@ -109,16 +82,10 @@ void Projection::setAspect(float aspect) {
 	initProjection();
 }
 
-float Projection::getAspect() const {
-	assert(mType == PERSPECTIVE);
+float PerspectiveProjection::getAspect() const {
 	return mAspect;
 }
 
-void Projection::setProjection(float FOV, float aspect, float zNear, float zFar) {
-	mType = PERSPECTIVE;
-	mFOV = FOV;
-	mAspect = aspect;
-	mNear = zNear;
-	mFar = zFar;
-	initProjection();
+void PerspectiveProjection::initProjection() {
+	mProjectionMatrix = glm::perspective(glm::radians(mFOV), mAspect, getNear(), getFar());
 }

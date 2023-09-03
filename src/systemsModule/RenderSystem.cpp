@@ -3,14 +3,16 @@
 
 #include <algorithm>
 
+#include "CameraSystem.h"
 #include "imgui.h"
 #include "SystemsPriority.h"
-#include "componentsModule/ProjectionComponent.h"
+#include "componentsModule/CameraComponent.h"
 #include "componentsModule/RenderComponent.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/EntityBase.h"
 #include "ecsModule/EntityManager.h"
+#include "ecsModule/SystemManager.h"
 #include "renderModule/Renderer.h"
 #include "renderModule/Utils.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
@@ -46,7 +48,6 @@ RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(rendere
 }
 
 void RenderSystem::preUpdate(float_t dt) {
-
 }
 
 void RenderSystem::update(float_t dt) {
@@ -57,10 +58,10 @@ void RenderSystem::update(float_t dt) {
 	const auto compManager = ecsModule::ECSHandler::componentManagerInstance();
 	const auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
 	auto renderComponents = compManager->getComponentContainer<RenderComponent>();
-	auto playerCamera = UnnamedEngine::instance()->getCamera(); //todo entity player should have camera component
+	auto playerCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
-	mRenderData.mProjection = playerCamera->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix();
+	mRenderData.mProjection = playerCamera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix();
 	mRenderData.mView = playerCamera->getComponent<TransformComponent>()->getViewMatrix();
 	mRenderData.mCameraPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
@@ -78,7 +79,7 @@ void RenderSystem::update(float_t dt) {
 	for (const auto& renderComp : *renderComponents) {
 		if (renderComp.isDrawable()) {
 			if (auto transform = compManager->getComponent<TransformComponent>(renderComp.getOwnerId())) {
-				if (::Engine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar() * playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar()) {
+				if (::Engine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->getComponent<CameraComponent>()->getProjection().getFar() * playerCamera->getComponent<CameraComponent>()->getProjection().getFar()) {
 					continue;
 				}
 			}
@@ -110,7 +111,6 @@ void RenderSystem::update(float_t dt) {
 }
 
 void RenderSystem::postUpdate(float_t dt) {
-
 }
 
 const std::vector<Engine::RenderModule::RenderPass*>& RenderSystem::getRenderPasses() {

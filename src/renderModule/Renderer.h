@@ -6,14 +6,14 @@
 #include "Batcher.h"
 
 namespace Engine::RenderModule {
-	class Renderer {
+	class Renderer : public Singleton<Renderer> {
+		friend Renderer;
 	public:
 
 		~Renderer();
 		void draw();
 		void postDraw();
 		void init();
-		void terminate() const;
 
 		Batcher* getBatcher() { return mBatcher; };
 

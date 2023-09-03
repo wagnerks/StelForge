@@ -2,19 +2,21 @@
 
 #include <ext/scalar_constants.hpp>
 
+#include "CameraSystem.h"
 #include "componentsModule/LodComponent.h"
 #include "componentsModule/MeshComponent.h"
-#include "componentsModule/ProjectionComponent.h"
+#include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/ECSHandler.h"
+#include "ecsModule/SystemManager.h"
 
 using namespace Engine::SystemsModule;
 
 void LODSystem::update(float_t dt) {
-	const auto playerCamera = UnnamedEngine::instance()->getCamera(); //todo entity player should have camera component
+	const auto playerCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 	if (!playerCamera) {
 		return;
 	}
@@ -57,8 +59,8 @@ float LODSystem::calculateScreenSpaceArea(const ModelModule::Mesh* mesh, const C
 		return 0.f;
 	}
 
-	auto t = meshTransform->getTransform();
-	t = camera->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix() * camera->getComponent<TransformComponent>()->getViewMatrix() * t;
+	/*auto t = meshTransform->getTransform();
+	t = camera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix() * camera->getComponent<TransformComponent>()->getViewMatrix() * t;*/
 	auto d = glm::distance(camera->getComponent<TransformComponent>()->getPos(true), meshTransform->getPos(true));
 
 

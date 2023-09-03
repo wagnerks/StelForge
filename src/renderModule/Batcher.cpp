@@ -8,9 +8,11 @@
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
+#include "ecsModule/SystemManager.h"
 #include "glad/glad.h"
 #include "shaderModule/ShaderController.h"
 #include "mathModule/MathUtils.h"
+#include "systemsModule/CameraSystem.h"
 
 void DrawObject::sortTransformAccordingToView(const glm::vec3& viewPos) {
 	if (sortedPos == viewPos) {
@@ -32,7 +34,7 @@ Batcher::Batcher() {
 
 void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, Engine::ModelModule::Material textures, glm::mat4 transform, bool transparentForShadow) {
 	auto apos = glm::vec3(transform[3]);
-	if (Engine::Math::distanceSqr(apos, Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f * 500000.f) {
+	if (Engine::Math::distanceSqr(apos, ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f * 500000.f) {
 		return;
 	}
 
@@ -52,7 +54,7 @@ void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, Engin
 void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 	for (auto& drawObjects : drawList) {
 		if (viewPos == glm::vec3{}) {
-			drawObjects.sortTransformAccordingToView(Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getPos());
+			drawObjects.sortTransformAccordingToView(ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
 		}
 		else {
 			drawObjects.sortTransformAccordingToView(viewPos);
@@ -63,7 +65,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 		auto apos = glm::vec3(a.transforms.front()[3]);
 		auto bpos = glm::vec3(b.transforms.front()[3]);
 		if (viewPos == glm::vec3{}) {
-			auto cameraPos = Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getPos();
+			auto cameraPos = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos();
 
 			return Engine::Math::distanceSqr(cameraPos, apos) < Engine::Math::distanceSqr(cameraPos, bpos);
 

@@ -8,7 +8,7 @@
 #include "componentsModule/LodComponent.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
-#include "componentsModule/ProjectionComponent.h"
+#include "componentsModule/CameraComponent.h"
 #include "componentsModule/RenderComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Engine.h"
@@ -111,7 +111,7 @@ void ComponentsDebug::entitiesDebug() {
 				ImGui::TreePop();
 			}
 
-			if (auto comp = currentEntity->getComponent<ProjectionComponent>(); comp && ImGui::TreeNode("Projection Component")) {
+			if (auto comp = currentEntity->getComponent<CameraComponent>(); comp && ImGui::TreeNode("Camera Component")) {
 				//componentEditorInternal(comp);
 				ImGui::TreePop();
 			}

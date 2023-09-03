@@ -4,6 +4,7 @@
 #include "EntityManager.h"
 #include "SystemManager.h"
 #include "core/Engine.h"
+#include "systemsModule/CameraSystem.h"
 #include "systemsModule/LODSystem.h"
 #include "systemsModule/RenderSystem.h"
 #include "systemsModule/SystemsPriority.h"
@@ -36,6 +37,8 @@ void ECSHandler::initSystems() {
 		return;
 	}
 
+	systemManager->addSystem<Engine::SystemsModule::CameraSystem>();
+
 	systemManager->addSystem<Engine::SystemsModule::TransformSystem>();
 	systemManager->setSystemPriority<Engine::SystemsModule::TransformSystem>(eSystemsPriority::TRANSFORM_SYSTEM);
 	systemManager->setSystemUpdateInterval<Engine::SystemsModule::TransformSystem>(1 / 60.f);
@@ -44,7 +47,7 @@ void ECSHandler::initSystems() {
 	systemManager->setSystemPriority<Engine::SystemsModule::LODSystem>(eSystemsPriority::LOD_SYSTEM);
 	systemManager->setSystemUpdateInterval<Engine::SystemsModule::LODSystem>(1 / 60.f);
 
-	systemManager->addSystem<Engine::SystemsModule::RenderSystem>(Engine::UnnamedEngine::instance()->getRenderer());
+	systemManager->addSystem<Engine::SystemsModule::RenderSystem>(Engine::RenderModule::Renderer::instance());
 	systemManager->setSystemPriority<Engine::SystemsModule::RenderSystem>(eSystemsPriority::RENDER_SYSTEM);
 }
 

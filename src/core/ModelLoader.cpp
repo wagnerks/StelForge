@@ -40,7 +40,7 @@ void ModelLoader::releaseModel(const std::string& path) {
 }
 
 ModelLoader::~ModelLoader() {
-	for (auto model : models) {
+	for (auto& model : models) {
 		delete model.second;
 	}
 }
