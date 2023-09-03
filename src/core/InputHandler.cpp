@@ -2,25 +2,30 @@
 
 #include "Camera.h"
 #include "Engine.h"
+#include "ecsModule/SystemManager.h"
+#include "systemsModule/CameraSystem.h"
 
 using namespace Engine::CoreModule;
 
-void InputHandler::processInput(GLFWwindow* window) {
-	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-		glfwSetWindowShouldClose(window, true);
+void InputProvider::subscribe(InputObserver* observer) {
+	unsubscribe(observer);
+	mKeyObservers.push_back(observer);
+}
 
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		UnnamedEngine::instance()->getCamera()->ProcessKeyboard(FORWARD, UnnamedEngine::instance()->getDeltaTime());
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		UnnamedEngine::instance()->getCamera()->ProcessKeyboard(BACKWARD, UnnamedEngine::instance()->getDeltaTime());
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		UnnamedEngine::instance()->getCamera()->ProcessKeyboard(LEFT, UnnamedEngine::instance()->getDeltaTime());
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		UnnamedEngine::instance()->getCamera()->ProcessKeyboard(RIGHT, UnnamedEngine::instance()->getDeltaTime());
-	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-		UnnamedEngine::instance()->getCamera()->ProcessKeyboard(TOP, UnnamedEngine::instance()->getDeltaTime());
-	if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
-		UnnamedEngine::instance()->getCamera()->ProcessKeyboard(BOTTOM, UnnamedEngine::instance()->getDeltaTime());
+void InputProvider::unsubscribe(InputObserver* observer) {
+	erase_if(mKeyObservers, [observer](auto obs) {
+		return obs == observer;
+	});
+}
+
+void InputProvider::fireEvent(InputKey key, InputEventType type) {
+	for (const auto observer : mKeyObservers) {
+		observer->onKeyEvent(key, type);
+	}
+}
+
+void InputHandler::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+	InputProvider::instance()->fireEvent(static_cast<InputKey>(key), static_cast<InputEventType>(action));
 }
 
 void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposIn) {
@@ -36,20 +41,20 @@ void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposI
 	lastX = xpos;
 	lastY = ypos;
 
-	UnnamedEngine::instance()->getCamera()->ProcessMouseMovement(xoffset, yoffset);
+	ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->ProcessMouseMovement(xoffset, yoffset);
 }
 
 void InputHandler::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
-	UnnamedEngine::instance()->getCamera()->ProcessMouseScroll(static_cast<float>(yoffset));
+	ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
 void InputHandler::mouseBtnInput(GLFWwindow* w, int btn, int act, int mode) {
 	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_PRESS) {
-		UnnamedEngine::instance()->getCamera()->processMouse = true;
+		ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->processMouse = true;
 		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_RELEASE) {
-		UnnamedEngine::instance()->getCamera()->processMouse = false;
+		ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->processMouse = false;
 		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 	}
 
@@ -58,6 +63,7 @@ void InputHandler::mouseBtnInput(GLFWwindow* w, int btn, int act, int mode) {
 void InputHandler::init() {
 	glfwSetInputMode(UnnamedEngine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
+	glfwSetKeyCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::keyCallback);
 	glfwSetMouseButtonCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseBtnInput);
 	glfwSetCursorPosCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseCallback);
 	glfwSetScrollCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::scrollCallback);
