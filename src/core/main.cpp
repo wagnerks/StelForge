@@ -1,6 +1,5 @@
 ﻿#include "Engine.h"
 #include "debugModule/imguiDecorator.h"
-#include "shaderModule/ShaderController.h"
 
 int main() {
 	const auto engine = Engine::UnnamedEngine::instance();
