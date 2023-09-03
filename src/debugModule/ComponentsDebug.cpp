@@ -16,27 +16,27 @@
 #include "ecsModule/EntityBase.h"
 #include "ecsModule/EntityManager.h"
 
-using namespace GameEngine::Debug;
+using namespace Engine::Debug;
 
 void ComponentsDebug::drawTree(ecsModule::EntityInterface* entity, size_t& selectedID) {
 	auto id = entity->getEntityID();
 	auto& children = entity->getElements();
 
 	if (!children.empty()) {
-		int flag = ImGuiTreeNodeFlags_OpenOnDoubleClick  | ImGuiTreeNodeFlags_OpenOnArrow;
+		int flag = ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_OpenOnArrow;
 		if (selectedID == id) {
 			flag = flag | ImGuiTreeNodeFlags_Selected;
 		}
-		
+
 		if (ImGui::TreeNodeEx((std::string(entity->getNodeId()) + ":" + std::to_string(id)).c_str(), flag)) {
 			if (ImGui::IsItemClicked()) {
 				selectedID = id;
 			}
-			
+
 			for (auto child : children) {
 				drawTree(child, selectedID);
 			}
-			
+
 			ImGui::TreePop();
 		}
 		else {
@@ -53,10 +53,10 @@ void ComponentsDebug::drawTree(ecsModule::EntityInterface* entity, size_t& selec
 }
 
 void ComponentsDebug::entitiesDebug() {
-	
+
 	if (ImGui::Begin("Entities Editor")) {
 		auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
-		
+
 
 		ImGui::Columns(2);
 		ImGui::BeginChild("##entities");
@@ -68,11 +68,11 @@ void ComponentsDebug::entitiesDebug() {
 			if (entity->getParent()) {
 				continue;
 			}
-			
+
 			drawTree(entity, mSelectedId);
 		}
 
-		
+
 
 		ImGui::EndChild();
 
@@ -142,48 +142,48 @@ void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
 	auto pos = component->getPos();
 	auto scale = component->getScale();
 
-	float posV[] = {pos.x, pos.y, pos.z};
-	float scaleV[] = {scale.x, scale.y, scale.z};
+	float posV[] = { pos.x, pos.y, pos.z };
+	float scaleV[] = { scale.x, scale.y, scale.z };
 
 	if (ImGui::DragFloat3("Pos", posV, 0.001f)) {
-		component->setPos({posV[0], posV[1], posV[2]});
+		component->setPos({ posV[0], posV[1], posV[2] });
 	}
 
-	float rotations[] = {component->getRotate().x, component->getRotate().y, component->getRotate().z};
+	float rotations[] = { component->getRotate().x, component->getRotate().y, component->getRotate().z };
 	if (ImGui::DragFloat3("Rotate", rotations)) {
-		component->setRotate({rotations[0], rotations[1], rotations[2]});
+		component->setRotate({ rotations[0], rotations[1], rotations[2] });
 	}
 
 	if (ImGui::DragFloat3("Scale", scaleV, 0.1f)) {
-		component->setScale({scaleV[0], scaleV[1], scaleV[2]});
+		component->setScale({ scaleV[0], scaleV[1], scaleV[2] });
 	}
 
 	auto t = component->getTransform();
-	
-	float line1[4] = {t[0][0], t[0][1], t[0][2], t[0][3]};
-	float line2[4] = {t[1][0], t[1][1], t[1][2], t[1][3]};
-	float line3[4] = {t[2][0], t[2][1], t[2][2], t[2][3]};
-	float line4[4] = {t[3][0], t[3][1], t[3][2], t[3][3]};
 
-	if (ImGui::DragFloat4("1", line1)){
+	float line1[4] = { t[0][0], t[0][1], t[0][2], t[0][3] };
+	float line2[4] = { t[1][0], t[1][1], t[1][2], t[1][3] };
+	float line3[4] = { t[2][0], t[2][1], t[2][2], t[2][3] };
+	float line4[4] = { t[3][0], t[3][1], t[3][2], t[3][3] };
+
+	if (ImGui::DragFloat4("1", line1)) {
 		t[0][0] = line1[0];
 		t[0][1] = line1[1];
 		t[0][2] = line1[2];
 		t[0][3] = line1[3];
 	}
-	if (ImGui::DragFloat4("2", line2)){
+	if (ImGui::DragFloat4("2", line2)) {
 		t[1][0] = line2[0];
 		t[1][1] = line2[1];
 		t[1][2] = line2[2];
 		t[1][3] = line2[3];
 	}
-	if (ImGui::DragFloat4("3", line3)){
+	if (ImGui::DragFloat4("3", line3)) {
 		t[2][0] = line3[0];
 		t[2][1] = line3[1];
 		t[2][2] = line3[2];
 		t[2][3] = line3[3];
 	}
-	if (ImGui::DragFloat4("4", line4)){
+	if (ImGui::DragFloat4("4", line4)) {
 		t[3][0] = line4[0];
 		t[3][1] = line4[1];
 		t[3][2] = line4[2];
@@ -206,42 +206,42 @@ void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
 	rotation[2][1] = t[2][1] / globalScale.z;
 	rotation[2][2] = t[2][2] / globalScale.z;
 	auto& r = rotation;
-	float rline1[4] = {r[0][0], r[0][1], r[0][2], r[0][3]};
-	float rline2[4] = {r[1][0], r[1][1], r[1][2], r[1][3]};
-	float rline3[4] = {r[2][0], r[2][1], r[2][2], r[2][3]};
-	float rline4[4] = {r[3][0], r[3][1], r[3][2], r[3][3]};
+	float rline1[4] = { r[0][0], r[0][1], r[0][2], r[0][3] };
+	float rline2[4] = { r[1][0], r[1][1], r[1][2], r[1][3] };
+	float rline3[4] = { r[2][0], r[2][1], r[2][2], r[2][3] };
+	float rline4[4] = { r[3][0], r[3][1], r[3][2], r[3][3] };
 
-	if (ImGui::DragFloat4("r1", rline1)){
+	if (ImGui::DragFloat4("r1", rline1)) {
 	}
-	if (ImGui::DragFloat4("r2", rline2)){
+	if (ImGui::DragFloat4("r2", rline2)) {
 	}
-	if (ImGui::DragFloat4("r3", rline3)){
+	if (ImGui::DragFloat4("r3", rline3)) {
 	}
-	if (ImGui::DragFloat4("r4", rline4)){
+	if (ImGui::DragFloat4("r4", rline4)) {
 	}
 
-	float rX = -glm::degrees(glm::atan(r[2][1],r[2][2]));
-	float rY = -glm::degrees(glm::atan(-r[2][0],glm::sqrt(r[2][1]*r[2][1] + r[2][2]*r[2][2])));
-	float rZ = -glm::degrees(glm::atan(r[1][0],r[0][0]));
+	float rX = -glm::degrees(glm::atan(r[2][1], r[2][2]));
+	float rY = -glm::degrees(glm::atan(-r[2][0], glm::sqrt(r[2][1] * r[2][1] + r[2][2] * r[2][2])));
+	float rZ = -glm::degrees(glm::atan(r[1][0], r[0][0]));
 
 	auto& view = component->getViewMatrix();
-	float viewline1[4] = {view[0][0], view[0][1], view[0][2], view[0][3]};
-	float viewline2[4] = {view[1][0], view[1][1], view[1][2], view[1][3]};
-	float viewline3[4] = {view[2][0], view[2][1], view[2][2], view[2][3]};
-	float viewline4[4] = {view[3][0], view[3][1], view[3][2], r[3][3]};
+	float viewline1[4] = { view[0][0], view[0][1], view[0][2], view[0][3] };
+	float viewline2[4] = { view[1][0], view[1][1], view[1][2], view[1][3] };
+	float viewline3[4] = { view[2][0], view[2][1], view[2][2], view[2][3] };
+	float viewline4[4] = { view[3][0], view[3][1], view[3][2], r[3][3] };
 
-	if (ImGui::DragFloat4("view1", viewline1)){
+	if (ImGui::DragFloat4("view1", viewline1)) {
 	}
-	if (ImGui::DragFloat4("view1", viewline2)){
+	if (ImGui::DragFloat4("view1", viewline2)) {
 	}
-	if (ImGui::DragFloat4("view1", viewline3)){
+	if (ImGui::DragFloat4("view1", viewline3)) {
 	}
-	if (ImGui::DragFloat4("view1", viewline4)){
+	if (ImGui::DragFloat4("view1", viewline4)) {
 	}
 
-	float globalRot[] = {rX, rY, rZ};
+	float globalRot[] = { rX, rY, rZ };
 	if (ImGui::DragFloat3("RotateGlobal", globalRot)) {
-		component->setRotate({globalRot[0], globalRot[1], globalRot[2]});
+		component->setRotate({ globalRot[0], globalRot[1], globalRot[2] });
 	}
 
 }
@@ -286,7 +286,7 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightComponent* 
 	ImGui::Text("Light type: ");
 	ImGui::SameLine();
 
-	switch(component->getType()) {
+	switch (component->getType()) {
 	case ComponentsModule::eLightType::DIRECTIONAL: ImGui::Text("DIRECTIONAL"); break;
 	case ComponentsModule::eLightType::POINT: ImGui::Text("POINT"); break;
 	case ComponentsModule::eLightType::PERSPECTIVE: ImGui::Text("PERSPECTIVE"); break;
@@ -305,9 +305,9 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightComponent* 
 		component->setBias(biasValue);
 	}
 
-	float texelSize[2] = {component->getTexelSize().x, component->getTexelSize().y};
+	float texelSize[2] = { component->getTexelSize().x, component->getTexelSize().y };
 	if (ImGui::DragFloat2("texel size", texelSize, 0.01f)) {
-		component->setTexelSize({texelSize[0], texelSize[1]});
+		component->setTexelSize({ texelSize[0], texelSize[1] });
 	}
 
 	auto samplesCount = component->getSamples();
@@ -318,9 +318,9 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightComponent* 
 		component->setSamples(samplesCount);
 	}
 
-	float lightColor[3] = {component->getLightColor().r, component->getLightColor().g, component->getLightColor().b};
+	float lightColor[3] = { component->getLightColor().r, component->getLightColor().g, component->getLightColor().b };
 	if (ImGui::ColorPicker3("light color", lightColor)) {
-		component->setLightColor({lightColor[0], lightColor[1], lightColor[2]});
+		component->setLightColor({ lightColor[0], lightColor[1], lightColor[2] });
 	}
 }
 
@@ -366,13 +366,13 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::MeshComponent* c
 				ImGui::SameLine();
 				ImGui::Text("none");
 			}
-			
+
 
 			ImGui::TreePop();
 		}
 		i++;
-		
+
 
 	}
-	
+
 }

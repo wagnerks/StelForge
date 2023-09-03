@@ -8,17 +8,17 @@
 
 
 
-using namespace GameEngine::Debug;
+using namespace Engine::Debug;
 
 void DebugInfo::drawInfo() {
 	ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
-	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->Pos, 0, {0.f,0.f});
+	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->Pos, 0, { 0.f,0.f });
 	ImGui::SetNextWindowBgAlpha(0.3f);
-	const auto& camera = Engine::getInstance()->getCamera();
+	const auto& camera = UnnamedEngine::instance()->getCamera();
 
 	ImGui::Begin("Perf", &opened, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize);
-	ImGui::Text("FPS: %d", Engine::getInstance()->getFPS());
-	ImGui::Text("dt: %.4f", static_cast<double>(Engine::getInstance()->getDeltaTime()));
+	ImGui::Text("FPS: %d", UnnamedEngine::instance()->getFPS());
+	ImGui::Text("dt: %.4f", static_cast<double>(UnnamedEngine::instance()->getDeltaTime()));
 	ImGui::Separator();
 	ImGui::Text("camera:");
 	ImGui::Text("FOV: %.2f", camera->getComponent<ProjectionComponent>()->getProjection().getFOV());

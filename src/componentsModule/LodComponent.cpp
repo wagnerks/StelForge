@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-using namespace GameEngine::ComponentsModule;
+using namespace Engine::ComponentsModule;
 
 LodComponent::LodComponent(eLodType type): mLodType(type) {
 }

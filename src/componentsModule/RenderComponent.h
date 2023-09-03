@@ -4,7 +4,7 @@
 #include "ecsModule/ComponentBase.h"
 
 
-namespace GameEngine::ComponentsModule{
+namespace Engine::ComponentsModule{
 	class RenderComponent : public ecsModule::Component<RenderComponent>{
 	public:
 		bool isDrawable() const;
@@ -14,4 +14,4 @@ namespace GameEngine::ComponentsModule{
 	};
 }
 
-using GameEngine::ComponentsModule::RenderComponent;
+using Engine::ComponentsModule::RenderComponent;

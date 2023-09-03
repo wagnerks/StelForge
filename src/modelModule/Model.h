@@ -5,26 +5,32 @@
 #include "Mesh.h"
 
 
-namespace GameEngine::ModelModule {
-	struct MeshNode : NodeModule::Node<MeshNode> {
+namespace Engine::ModelModule {
+	struct MeshNode : NodeModule::TreeNode<MeshNode> {
 		MeshNode() = default;
 		MeshNode(MeshNode&& other) noexcept
-			: NodeModule::Node<MeshNode>(std::move(other)),
-			  mMeshes(std::move(other.mMeshes)) {
+			: NodeModule::TreeNode<MeshNode>(std::move(other)),
+			mMeshes(std::move(other.mMeshes))
+		{
+
+
 			auto elements = other.getElements();
 			for (auto element : elements) {
-				other.removeElement(element);
+				addElement(element);
 			}
+
+
+
 		}
 
 		MeshNode& operator=(MeshNode&& other) noexcept {
 			if (this == &other)
 				return *this;
-			NodeModule::Node<MeshNode>::operator =(std::move(other));
+			NodeModule::TreeNode<MeshNode>::operator =(std::move(other));
 			mMeshes = std::move(other.mMeshes);
-			auto elements  = other.getElements();
+			auto elements = other.getElements();
 			for (auto element : elements) {
-				other.removeElement(element);
+				addElement(element);
 			}
 			return *this;
 		}
@@ -40,6 +46,6 @@ namespace GameEngine::ModelModule {
 
 		MeshNode mMeshTree;
 	private:
-		
+
 	};
 }

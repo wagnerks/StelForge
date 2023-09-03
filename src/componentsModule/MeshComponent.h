@@ -6,7 +6,7 @@
 #include "modelModule/Mesh.h"
 
 
-namespace GameEngine::ComponentsModule{
+namespace Engine::ComponentsModule{
 	class MeshComponent : public ecsModule::Component<MeshComponent> {
 	public:
 		MeshComponent(std::vector<ModelModule::MeshHandle> meshData);
@@ -18,4 +18,4 @@ namespace GameEngine::ComponentsModule{
 
 }
 
-using GameEngine::ComponentsModule::MeshComponent;
+using Engine::ComponentsModule::MeshComponent;

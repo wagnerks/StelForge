@@ -1,6 +1,6 @@
 ﻿#include "RenderPass.h"
 
-using namespace GameEngine::RenderModule;
+using namespace Engine::RenderModule;
 
 void RenderPass::setPriority(size_t priority) {
 	mPriority = priority;

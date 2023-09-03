@@ -1,6 +1,6 @@
 ﻿#include "Allocator.h"
 
-using namespace GameEngine::MemoryModule;
+using namespace Engine::MemoryModule;
 
 size_t Allocator::getMemorySize() const {
 	return totalSize;

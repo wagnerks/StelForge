@@ -1,7 +1,7 @@
 ﻿#include "Core.h"
 
-using namespace GameEngine;
-using namespace GameEngine::CoreModule;
+using namespace Engine;
+using namespace Engine::CoreModule;
 
 void Core::update(float dt) {
 

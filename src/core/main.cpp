@@ -1,17 +1,16 @@
-﻿#include "main.h"
-
-#include "Engine.h"
+﻿#include "Engine.h"
+#include "debugModule/imguiDecorator.h"
+#include "shaderModule/ShaderController.h"
 
 int main() {
-	const auto engine = GameEngine::Engine::getInstance();
-	engine->init();
+	const auto engine = Engine::UnnamedEngine::instance();
 
-
-	while(engine->isAlive()) {
+	while (engine->isAlive()) {
 		engine->update();
 	}
 
-	GameEngine::Engine::terminate();
+	Engine::Debug::ImGuiDecorator::terminate();
+	Engine::UnnamedEngine::terminate();
 
 	return 0;
 }

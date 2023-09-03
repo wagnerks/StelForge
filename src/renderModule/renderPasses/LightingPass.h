@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "renderModule/RenderPass.h"
 
-namespace GameEngine::RenderModule::RenderPasses {
+namespace Engine::RenderModule::RenderPasses {
 	class LightingPass : public RenderPass {
 	public:
 		void init();

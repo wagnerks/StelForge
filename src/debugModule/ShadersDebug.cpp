@@ -7,7 +7,7 @@
 #include "shaderModule/ShaderController.h"
 #include "shaderModule/GeometryShader.h"
 
-using namespace GameEngine::Debug;
+using namespace Engine::Debug;
 
 void ShadersDebug::shadersDebugDraw(bool& opened) {
 	if (!opened) {

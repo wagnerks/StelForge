@@ -5,7 +5,7 @@
 #include "Mesh.h"
 #include "Model.h"
 
-using namespace GameEngine::ModelModule;
+using namespace Engine::ModelModule;
 
 Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 	Mesh* res = nullptr;

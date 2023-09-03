@@ -13,15 +13,15 @@ namespace GameModule::CoreModule {
 		~Scene();
 	private:
 		//GameEngine::NodeModule::Node* rootNode = nullptr;
-		GameEngine::RenderModule::Skybox* skybox = nullptr;
-		GameEngine::RenderModule::SceneGridFloor* gridFloor = nullptr;
-		GameEngine::LightsModule::DirectionalOrthoLight* sunLight = nullptr;
+		Engine::RenderModule::Skybox* skybox = nullptr;
+		Engine::RenderModule::SceneGridFloor* gridFloor = nullptr;
+		Engine::LightsModule::DirectionalOrthoLight* sunLight = nullptr;
 
 		std::vector<glm::vec3> objectPositions;
 
 		std::vector<glm::vec3> randomLightSpeeds;
 
-		GameEngine::ModelModule::Model* modelObj = nullptr;
+		Engine::ModelModule::Model* modelObj = nullptr;
 	};
 }
 

@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "Shader.h"
 
-namespace GameEngine::ShaderModule {
+namespace Engine::ShaderModule {
 	class GeometryShader : public ShaderBase {
 		friend class ShaderController;
 	public:

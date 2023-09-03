@@ -7,7 +7,7 @@
 #include "modelModule/Mesh.h"
 #include "shaderModule/ShaderController.h"
 
-using namespace GameEngine::RenderModule;
+using namespace Engine::RenderModule;
 
 SceneGridFloor::SceneGridFloor(float size) : size(size) {}
 SceneGridFloor::~SceneGridFloor() {
@@ -28,7 +28,7 @@ void SceneGridFloor::init() {
 	}
 
 	floorShader->use();
-	floorShader->setVec2("coordShift", {size, size});
+	floorShader->setVec2("coordShift", { size, size });
 
 	float vertices[] = {
 		size, 0.f, -size, //far right
@@ -37,9 +37,9 @@ void SceneGridFloor::init() {
 		size, 0.f, -size, //far right
 		-size, 0.f, size,//near left
 		size, 0.f, size, //near right
-    };
+	};
 
-	
+
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
 	glBindVertexArray(VAO);
@@ -56,7 +56,7 @@ void SceneGridFloor::draw() {
 	}
 	floorShader->use();
 
-	floorShader->setMat4("PVM", Engine::getInstance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix()  * GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix() * transform);
+	floorShader->setMat4("PVM", UnnamedEngine::instance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix() * Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix() * transform);
 
 	glBindVertexArray(VAO);
 	glDisable(GL_CULL_FACE);

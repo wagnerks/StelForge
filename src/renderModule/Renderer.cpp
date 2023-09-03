@@ -24,10 +24,16 @@ constexpr int GLFW_CONTEXT_VER_MAJ = 4;
 constexpr int GLFW_CONTEXT_VER_MIN = 6;
 
 
-using namespace GameEngine;
-using namespace GameEngine::RenderModule;
-using namespace GameEngine::CoreModule;
+using namespace Engine;
+using namespace ::Engine::RenderModule;
+using namespace ::Engine::CoreModule;
 
+
+Renderer::~Renderer() {
+	delete mBatcher;
+	ModelLoader::terminate();
+	terminate();
+}
 
 void Renderer::draw() {
 	RenderModule::Renderer::mDrawCallsCount = 0;
@@ -36,49 +42,61 @@ void Renderer::draw() {
 }
 
 void Renderer::postDraw() {
-	glfwSwapBuffers(Engine::getInstance()->getMainWindow());
+	glfwSwapBuffers(UnnamedEngine::instance()->getMainWindow());
 	glfwPollEvents();
 }
 
 void Renderer::init() {
-	auto cubeModel = ModelLoader::getInstance()->load("models/cube.fbx");
+	auto cubeModel = ModelLoader::instance()->load("models/cube.fbx");
 	auto node = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
 	auto cube = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
 
 	cube->setNodeId("floor");
-	cube->getComponent<TransformComponent>()->setScale({50.f,0.01f,50.f});
-	cube->getComponent<TransformComponent>()->setPos({0.f,-1.f,0.f});
+	cube->getComponent<TransformComponent>()->setScale({ 50.f,0.01f,50.f });
+	cube->getComponent<TransformComponent>()->setPos({ 0.f,-1.f,0.f });
 	cube->init(cubeModel->mMeshTree);
 	node->addElement(cube);
 
-	auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+	/*auto cube2 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
 	cube2->setNodeId("wall");
 	cube2->getComponent<TransformComponent>()->setScale({0.01f,0.1f,5.f});
 	cube2->getComponent<TransformComponent>()->setPos({-10.f,0.f,0.f});
 	cube2->init(cubeModel->mMeshTree);
 	node->addElement(cube2);
+	auto cube3 = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+	cube3->setNodeId("wall");
+	cube3->getComponent<TransformComponent>()->setScale({ 0.01f,0.1f,5.f });
+	cube3->getComponent<TransformComponent>()->setPos({ -10.f,0.f,0.f });
+	cube3->getComponent<TransformComponent>()->setRotateY(90.f);
+	cube3->init(cubeModel->mMeshTree);
+	node->addElement(cube3);*/
 
-	auto sponza = ModelLoader::getInstance()->load("models/sponza/scene.gltf");
+	//auto suzanne = ModelLoader::instance()->load("models/suzanne/scene.gltf");
+	auto sponza = ModelLoader::instance()->load("models/peasant_mesh.fbx");
+
 	auto sponzaModel = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+
 	sponzaModel->setNodeId("sponza");
-	sponzaModel->getComponent<TransformComponent>()->setScale({1.f,1.f,1.f});
-	sponzaModel->getComponent<TransformComponent>()->setPos({-25.f,25.f,0.f});
-	sponzaModel->getComponent<TransformComponent>()->setRotate({0.f,0.f,180.f});
+	sponzaModel->getComponent<TransformComponent>()->setScale({ 1.f,1.f,1.f });
+	sponzaModel->getComponent<TransformComponent>()->setPos({ -25.f,25.f,0.f });
+	sponzaModel->getComponent<TransformComponent>()->setRotate({ 0.f,0.f,180.f });
 	sponzaModel->init(sponza->mMeshTree);
 	node->addElement(sponzaModel);
 
-	auto count = 3;
-	for (auto i = 0; i < count; i++) {
-		for (auto j = 0; j < count; j++) {
-			for (auto k = 1; k < count + 1; k++) {
+	auto count = 10;
+	int i = 0;
+	int j = 0;
+	int k = 1;
+	for (i = 0; i < count; i++) {
+		for (j = 0; j < count; j++) {
+			for (k = 1; k < count; k++) {
 				auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
-				trainNode->getComponent<TransformComponent>()->setRotateX(0.f);
-				trainNode->getComponent<TransformComponent>()->setScale({0.01f,0.01f,0.01f});
-
-				trainNode->getComponent<TransformComponent>()->setPos(glm::vec3(i * 10.f * glm::linearRand(2.3f,4.f), k * 10.f * glm::linearRand(2.3f,4.f), j * 10.f * glm::linearRand(2.3f,4.f)));
-				node->addElement(trainNode);
+				trainNode->getComponent<TransformComponent>()->setRotateX(-90.f);
+				trainNode->getComponent<TransformComponent>()->setScale({ 0.01f,0.01f,0.01f });
+				trainNode->init(cubeModel->mMeshTree);
+				trainNode->getComponent<TransformComponent>()->setPos(glm::vec3(i * 10.f, k * 10.f, j * 10.f));
+				trainNode->setNodeId("suzanne" + std::to_string(i + j + k));
 			}
-			
 		}
 	}
 
@@ -126,7 +144,7 @@ GLFWwindow* Renderer::initGLFW() {
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
 	auto window = glfwCreateWindow(Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, "GameEngine", nullptr, nullptr);

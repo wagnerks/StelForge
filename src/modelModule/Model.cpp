@@ -2,5 +2,5 @@
 
 #include <ranges>
 
-using namespace GameEngine::ModelModule;
+using namespace Engine::ModelModule;
 

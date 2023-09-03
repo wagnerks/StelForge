@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-using namespace GameEngine::MemoryModule;
+using namespace Engine::MemoryModule;
 
 size_t MemoryManager::getMemoryCapacity() const {
 	return mMemoryCapacity;
@@ -15,7 +15,7 @@ MemoryManager::MemoryManager(size_t memoryCapacity) : mMemoryCapacity(memoryCapa
 		LogsModule::Logger::LOG_FATAL(globalMemoryAddress, "Failed to allocate %d bytes of memory!", mMemoryCapacity);
 		return;
 	}
-	LogsModule::Logger::LOG_INFO("%d bytes of memory allocated.", mMemoryCapacity);
+	LogsModule::Logger::LOG_INFO("%u bytes of memory allocated.", mMemoryCapacity);
 
 	allocator = new StackAllocator(mMemoryCapacity, globalMemoryAddress);
 	LogsModule::Logger::LOG_FATAL(allocator, "Failed to create memory allocator!");
@@ -23,7 +23,11 @@ MemoryManager::MemoryManager(size_t memoryCapacity) : mMemoryCapacity(memoryCapa
 
 MemoryManager::~MemoryManager() {
 	checkMemoryLeaks();
+
 	delete allocator;
+
+	std::free(globalMemoryAddress);
+	globalMemoryAddress = nullptr;
 }
 
 void MemoryManager::checkMemoryLeaks() {

@@ -1,6 +1,7 @@
 ﻿#pragma once
+#include "core/Singleton.h"
 
-namespace GameEngine {
+namespace Engine {
 	namespace MemoryModule {
 		class MemoryManager;
 	}
@@ -11,22 +12,18 @@ namespace ecsModule {
 	class SystemManager;
 	class EntityManager;
 
-	class ECSHandler {
+	class ECSHandler : public Engine::Singleton<ECSHandler> {
+		friend Singleton;
 	public:
 		static SystemManager* systemManagerInstance();
 		static EntityManager* entityManagerInstance();
 		static ComponentManager* componentManagerInstance();
 
-		static ECSHandler* getInstance();
-
-		static void terminate();
-
-		void init();
+		void init() override;
 		void initSystems();
 		~ECSHandler();
 	private:
-		inline static ECSHandler* instance = nullptr;
-		GameEngine::MemoryModule::MemoryManager* memoryManager = nullptr;
+		Engine::MemoryModule::MemoryManager* memoryManager = nullptr;
 		SystemManager* systemManager = nullptr;
 		EntityManager* entityManager = nullptr;
 		ComponentManager* componentManager = nullptr;

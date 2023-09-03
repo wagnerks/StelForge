@@ -9,13 +9,13 @@
 namespace ecsModule {
 	class SystemInterface;
 
-	class SystemManager : GameEngine::MemoryModule::GlobalMemoryUser {
+	class SystemManager : Engine::MemoryModule::GlobalMemoryUser {
 	public:
 		void update(float_t dt) const;
 		SystemManager(const SystemManager&) = delete;
 		SystemManager& operator=(SystemManager&) = delete;
 
-		SystemManager(GameEngine::MemoryModule::MemoryManager* memoryManager);
+		SystemManager(Engine::MemoryModule::MemoryManager* memoryManager);
 		~SystemManager() override;
 
 		void sortWorkQueue();
@@ -51,7 +51,7 @@ namespace ecsModule {
 
 			return system;
 		}
-				
+
 		template <class T>
 		void setSystemEnabled(bool enabled) {
 			if (auto system = getSystem<T>()) {
@@ -62,7 +62,7 @@ namespace ecsModule {
 				system->mEnabled = enabled;
 			}
 		}
-		
+
 		template <class T>
 		void setSystemUpdateInterval(float_t updateInterval) {
 			if (auto system = getSystem<T>()) {
@@ -83,7 +83,7 @@ namespace ecsModule {
 			}
 		}
 	private:
-		GameEngine::MemoryModule::LinearAllocator* mSystemAllocator;
+		Engine::MemoryModule::LinearAllocator* mSystemAllocator;
 
 		std::unordered_map<uint64_t, SystemInterface*> mSystemsMap;
 		std::vector<SystemInterface*> mWorkQueue;

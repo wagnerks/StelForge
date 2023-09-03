@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-using namespace GameEngine::MemoryModule;
+using namespace Engine::MemoryModule;
 
 LinearAllocator::LinearAllocator(size_t memSize, const void* mem) : Allocator(memSize, mem) {}
 

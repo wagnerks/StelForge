@@ -9,7 +9,7 @@
 #include "shaderModule/ShaderController.h"
 #include "systemsModule/RenderSystem.h"
 
-using namespace GameEngine::RenderModule::RenderPasses;
+using namespace Engine::RenderModule::RenderPasses;
 
 float lerp(float a, float b, float f) {
 	return a + f * (b - a);
@@ -85,7 +85,7 @@ void SSAOPass::init() {
 	shaderSSAO->setInt("kernelSize", mData.mKernelSize);
 	shaderSSAO->setFloat("radius", mData.mRadius);
 	shaderSSAO->setFloat("bias", mData.mBias);
-	shaderSSAO->setVec2("noiseScale", glm::vec2(static_cast<float>(Renderer::SCR_WIDTH)/4.f, static_cast<float>(Renderer::SCR_WIDTH)/4.f));
+	shaderSSAO->setVec2("noiseScale", glm::vec2(static_cast<float>(Renderer::SCR_WIDTH) / 4.f, static_cast<float>(Renderer::SCR_WIDTH) / 4.f));
 	for (unsigned int i = 0; i < 64; ++i) {
 		shaderSSAO->setVec3(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
 	}
@@ -94,11 +94,11 @@ void SSAOPass::init() {
 	shaderSSAOBlur->use();
 	shaderSSAOBlur->setInt("ssaoInput", 0);
 
-	float facL = -1.f/(2.f*mData.sigmaL*mData.sigmaL);
+	float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
 	shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
 	shaderSSAOBlur->setFloat("facL", facL);
 
-	float facS = -1.f/(2.f*mData.sigmaS*mData.sigmaS);
+	float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
 	shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
 	shaderSSAOBlur->setFloat("facS", facS);
 
@@ -140,38 +140,37 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& rende
 
 		if (ImGui::DragFloat("sigmaS", &mData.sigmaS, 0.01f, 0.000001f)) {
 			shaderSSAOBlur->use();
-			float facS = -1.f/(2.f*mData.sigmaS*mData.sigmaS);
-  
+			float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
+
 			shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
 			shaderSSAOBlur->setFloat("facS", facS);
 		}
 		if (ImGui::DragFloat("sigmaL", &mData.sigmaL, 0.01f, 0.000001f)) {
 			shaderSSAOBlur->use();
-			float facL = -1.f/(2.f*mData.sigmaL*mData.sigmaL);
+			float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
 			shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
 			shaderSSAOBlur->setFloat("facL", facL);
 		}
 	}
 	ImGui::End();
 
-	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAO->use();
 	shaderSSAO->setMat4("projection", renderDataHandle.mProjection);
 
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, mData.mNoiseTexture);
+	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
+	TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
+	TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, mData.mNoiseTexture);
 	Utils::renderQuad();
-	
+
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAOBlur->use();
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.mSsaoColorBuffer);
+	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.mSsaoColorBuffer);
 	Utils::renderQuad();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	
+
 	renderDataHandle.mSSAOPassData = mData;
 }

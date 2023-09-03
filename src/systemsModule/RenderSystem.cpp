@@ -19,7 +19,7 @@
 #include "mathModule/MathUtils.h"
 #include "renderModule/CascadeShadows.h"
 
-using namespace GameEngine::SystemsModule;
+using namespace Engine::SystemsModule;
 
 RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(renderer) {
 	auto shadowPass = new RenderModule::RenderPasses::CascadedShadowPass();
@@ -37,10 +37,10 @@ RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(rendere
 	lightingPass->setPriority(LIGHTING);
 	mRenderPasses.emplace_back(lightingPass);
 
-	/*auto ssaoPass = new RenderModule::RenderPasses::SSAOPass();
+	auto ssaoPass = new RenderModule::RenderPasses::SSAOPass();
 	ssaoPass->setPriority(SSAO);
 	ssaoPass->init();
-	mRenderPasses.emplace_back(ssaoPass);*/
+	mRenderPasses.emplace_back(ssaoPass);
 
 	std::ranges::sort(mRenderPasses);
 }
@@ -57,7 +57,7 @@ void RenderSystem::update(float_t dt) {
 	const auto compManager = ecsModule::ECSHandler::componentManagerInstance();
 	const auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
 	auto renderComponents = compManager->getComponentContainer<RenderComponent>();
-	auto playerCamera = Engine::getInstance()->getCamera(); //todo entity player should have camera component
+	auto playerCamera = UnnamedEngine::instance()->getCamera(); //todo entity player should have camera component
 	auto playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
 	mRenderData.mProjection = playerCamera->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix();
@@ -78,7 +78,7 @@ void RenderSystem::update(float_t dt) {
 	for (const auto& renderComp : *renderComponents) {
 		if (renderComp.isDrawable()) {
 			if (auto transform = compManager->getComponent<TransformComponent>(renderComp.getOwnerId())) {
-				if (GameEngine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar()*playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar()) {
+				if (::Engine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar() * playerCamera->getComponent<ProjectionComponent>()->getProjection().getFar()) {
 					continue;
 				}
 			}
@@ -99,12 +99,12 @@ void RenderSystem::update(float_t dt) {
 
 	ImGui::Begin("geometry pass data");
 	float size = 500.f;
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gAlbedoSpec), {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gPosition), {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gNormal), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gAlbedoSpec), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gPosition), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gNormal), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBuffer), {size,size}, {0.f, 1.f}, {1.f,0.f});
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBufferBlur), {size,size}, {0.f, 1.f}, {1.f,0.f});
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBuffer), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBufferBlur), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 
 	ImGui::End();
 }
@@ -113,6 +113,12 @@ void RenderSystem::postUpdate(float_t dt) {
 
 }
 
-const std::vector<GameEngine::RenderModule::RenderPass*>& RenderSystem::getRenderPasses() {
+const std::vector<Engine::RenderModule::RenderPass*>& RenderSystem::getRenderPasses() {
 	return mRenderPasses;
+}
+
+RenderSystem::~RenderSystem() {
+	for (auto renderPass : mRenderPasses) {
+		delete renderPass;
+	}
 }

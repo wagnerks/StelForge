@@ -2,10 +2,10 @@
 
 using namespace ecsModule;
 
-ComponentManager::ComponentManager(GameEngine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
-	GameEngine::LogsModule::Logger::LOG_INFO("Initialize ComponentManager");
+ComponentManager::ComponentManager(Engine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
+	Engine::LogsModule::Logger::LOG_INFO("Initialize ComponentManager");
 
-	const size_t NUM_COMPONENTS{FamilySize<ComponentInterface>::Get()};
+	const size_t NUM_COMPONENTS{ FamilySize<ComponentInterface>::Get() };
 
 	entityComponentMap.resize(COMPONENTS_GROW);
 	for (auto i = 0; i < COMPONENTS_GROW; ++i) {
@@ -16,13 +16,13 @@ ComponentManager::ComponentManager(GameEngine::MemoryModule::MemoryManager* memo
 ComponentManager::~ComponentManager() {
 	for (auto& cc : componentContainerRegistry) {
 		if (cc.second) {
-			GameEngine::LogsModule::Logger::LOG_INFO("Releasing remaining entities of type '%s' ...", cc.second->getComponentContainerTypeName());
+			Engine::LogsModule::Logger::LOG_INFO("Releasing remaining entities of type '%s' ...", cc.second->getComponentContainerTypeName());
 		}
-		
+
 		delete cc.second;
 	}
 
-	GameEngine::LogsModule::Logger::LOG_INFO("Release ComponentManager");
+	Engine::LogsModule::Logger::LOG_INFO("Release ComponentManager");
 }
 
 void ComponentManager::removeAllComponents(const size_t entityId) {
@@ -68,14 +68,14 @@ void ComponentManager::releaseComponentId(size_t id) {
 		assert(false && "Invalid component id");
 		return;
 	}
-	
+
 	componentLookupTable[id] = nullptr;
 }
 
 void ComponentManager::mapEntityComponent(size_t entityId, size_t componentId, size_t componentSize) {
 	static const size_t NUM_COMPONENTS{FamilySize<ComponentInterface>::Get()};
 	if (NUM_COMPONENTS == 0) {
-		GameEngine::LogsModule::Logger::LOG_FATAL(false, "no components but try to allocate");
+		Engine::LogsModule::Logger::LOG_FATAL(false, "no components but try to allocate");
 		return;
 	}
 

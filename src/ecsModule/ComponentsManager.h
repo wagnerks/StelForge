@@ -10,12 +10,12 @@
 
 
 namespace ecsModule {
-	class ComponentManager : GameEngine::MemoryModule::GlobalMemoryUser {
+	class ComponentManager : Engine::MemoryModule::GlobalMemoryUser {
 	public:
 		template <class T>
 		Container<T>* getComponentContainer();
 		
-		ComponentManager(GameEngine::MemoryModule::MemoryManager* memoryManager);
+		ComponentManager(Engine::MemoryModule::MemoryManager* memoryManager);
 		~ComponentManager() override;
 
 		template <class T>
@@ -53,7 +53,7 @@ namespace ecsModule {
 			compContainer = static_cast<Container<T>*>(it->second);
 		}
 
-		GameEngine::LogsModule::Logger::LOG_FATAL(compContainer, "Failed to create ComponentContainer<T>!");
+		Engine::LogsModule::Logger::LOG_FATAL(compContainer, "Failed to create ComponentContainer<T>!");
 
 		return compContainer;
 	}
@@ -96,7 +96,7 @@ namespace ecsModule {
 
 		ComponentInterface* component = componentLookupTable[componentId];
 		if (!component ) {
-			GameEngine::LogsModule::Logger::LOG_FATAL(false, "Trying to remove a component which is not used by this entity!");
+			Engine::LogsModule::Logger::LOG_FATAL(false, "Trying to remove a component which is not used by this entity!");
 			return;
 		}
 

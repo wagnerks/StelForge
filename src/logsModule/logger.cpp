@@ -3,7 +3,7 @@
 #include <cassert>
 #include <REND.h>
 
-using namespace GameEngine::LogsModule;
+using namespace Engine::LogsModule;
 
 void Logger::logMessage(const eLogLevel level, const char* msg) {
 	switch (level) {

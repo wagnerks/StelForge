@@ -13,17 +13,40 @@ void EntityInterface::setId(size_t id) {
 	mId = id;
 }
 
-void EntityInterface::operator delete(void* ptr){
+void EntityInterface::operator delete(void* ptr) {
 	ECSHandler::entityManagerInstance()->destroyEntity(static_cast<EntityInterface*>(ptr)->getEntityID());
 }
 
 EntityInterface::~EntityInterface() {
 	releaseComponents();
-
-	for (const auto node : getElements()) {
-		if (const auto comp = node->getComponent<TransformComponent>()){
-			comp->setParentTransform(nullptr);
-			//getComponent<TransformComponent>()->removeChildTransform(comp);
-		}
-	}
 }
+
+EntityInterface::EntityInterface(size_t entityID) : mId(entityID) {
+	mOnElementRemove = [this](EntityInterface* entity) {
+		const auto childComponent = entity->getComponent<TransformComponent>();
+		const auto currentCmp = getComponent<TransformComponent>();
+
+		if (childComponent) {
+			childComponent->setParentTransform(nullptr);
+		}
+
+		if (currentCmp) {
+			currentCmp->removeChildTransform(childComponent);
+		}
+	};
+
+	mOnElementAdd = [this](EntityInterface* entity) {
+		const auto childComponent = entity->getComponent<TransformComponent>();
+		const auto currentCmp = getComponent<TransformComponent>();
+
+		if (childComponent) {
+			childComponent->setParentTransform(currentCmp);
+		}
+
+		if (currentCmp) {
+			currentCmp->addChildTransform(childComponent);
+		}
+	};
+}
+
+

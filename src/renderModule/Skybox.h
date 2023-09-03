@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "shaderModule/Shader.h"
 
-namespace GameEngine::RenderModule {
+namespace Engine::RenderModule {
 	class Skybox {
 	public:
 		Skybox(std::string_view path);

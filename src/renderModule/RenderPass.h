@@ -1,13 +1,13 @@
 ﻿#pragma once
 
-namespace GameEngine {
+namespace Engine {
 	namespace SystemsModule {
 		struct RenderDataHandle;
 		class RenderSystem;
 	}
 }
 
-namespace GameEngine::RenderModule {
+namespace Engine::RenderModule {
 	class Renderer;
 
 	class RenderPass {

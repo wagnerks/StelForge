@@ -1,6 +1,6 @@
 ﻿#include "StackAllocator.h"
 
-using namespace GameEngine::MemoryModule;
+using namespace Engine::MemoryModule;
 
 StackAllocator::StackAllocator(size_t memSize, const void* mem) : Allocator(memSize, mem) {}
 

@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace GameEngine::ModelModule {
+namespace Engine::ModelModule {
 	class Mesh;
 
 	enum class eDrawObjectType {

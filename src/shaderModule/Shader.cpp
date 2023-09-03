@@ -5,8 +5,8 @@
 #include <string>
 #include "logsModule/logger.h"
 
-using namespace GameEngine;
-using namespace GameEngine::ShaderModule;
+using namespace Engine;
+using namespace Engine::ShaderModule;
 
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath, size_t hash) : ShaderBase(hash), vertexPath(vertexPath), fragmentPath(fragmentPath) {

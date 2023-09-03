@@ -21,7 +21,7 @@ CascadeShadow::CascadeShadow(size_t entID) : Entity(entID) {
 	addComponent<TransformComponent>();
 	addComponent<FrustumComponent>();
 	addComponent<ProjectionComponent>();
-	auto light = addComponent<LightComponent>(GameEngine::ComponentsModule::eLightType::DIRECTIONAL);
+	auto light = addComponent<LightComponent>(Engine::ComponentsModule::eLightType::DIRECTIONAL);
 	light->setBias(0.001f);
 	addComponent<CascadeShadowComponent>();
 	setNodeId("cascade");
@@ -39,7 +39,7 @@ CascadeShadows::~CascadeShadows() {
 }
 
 void CascadeShadows::init() {
-	auto camera = GameEngine::Engine::getInstance()->getCamera();
+	auto camera = Engine::UnnamedEngine::instance()->getCamera();
 	auto cameraProjection = camera->getComponent<ProjectionComponent>();
 
 	auto zNear = cameraProjection->getProjection().getNear();
@@ -47,8 +47,8 @@ void CascadeShadows::init() {
 
 	auto fov = cameraProjection->getProjection().getFOV();
 	auto aspect = cameraProjection->getProjection().getAspect();
-	
-	shadowCascadeLevels = {zNear, 25.f, 75.f, 150.f, 500.f, zFar};
+
+	shadowCascadeLevels = { zNear, 25.f, 75.f, 150.f, 500.f, zFar };
 
 	for (size_t i = 1; i < shadowCascadeLevels.size(); ++i) {
 		shadows.emplace_back(ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadow>());
@@ -57,49 +57,49 @@ void CascadeShadows::init() {
 	}
 
 	glGenFramebuffers(1, &lightFBO);
-    
+
 	glGenTextures(1, &lightDepthMaps);
 	glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
 	glTexImage3D(
-	    GL_TEXTURE_2D_ARRAY,
-	    0,
-	    GL_DEPTH_COMPONENT32,
-	    static_cast<int>(resolution.x),
-	    static_cast<int>(resolution.y),
-	    int(shadowCascadeLevels.size()) - 1,
-	    0,
-	    GL_DEPTH_COMPONENT,
-	    GL_FLOAT,
-	    nullptr);
-    
+		GL_TEXTURE_2D_ARRAY,
+		0,
+		GL_DEPTH_COMPONENT32,
+		static_cast<int>(resolution.x),
+		static_cast<int>(resolution.y),
+		int(shadowCascadeLevels.size()) - 1,
+		0,
+		GL_DEPTH_COMPONENT,
+		GL_FLOAT,
+		nullptr);
+
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
-	    
+
 	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-		GameEngine::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
+		Engine::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
 	}
-	    
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    glGenBuffers(1, &matricesUBO);
-    glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	glGenBuffers(1, &matricesUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
 void CascadeShadows::preDraw() {
 	const auto lightMatrices = getLightSpaceMatrices();
-	if (!lightMatrices.empty()){
+	if (!lightMatrices.empty()) {
 		glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4x4) * lightMatrices.size(), &lightMatrices[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
@@ -116,18 +116,18 @@ void CascadeShadows::preDraw() {
 
 void CascadeShadows::postDraw() {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, GameEngine::RenderModule::Renderer::SCR_WIDTH, GameEngine::RenderModule::Renderer::SCR_HEIGHT);
+	glViewport(0, 0, Engine::RenderModule::Renderer::SCR_WIDTH, Engine::RenderModule::Renderer::SCR_HEIGHT);
 }
 
 void CascadeShadows::debugDraw() {
-	if (!lightMatricesCache.empty()){
+	if (!lightMatricesCache.empty()) {
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDisable(GL_CULL_FACE);
 		auto debugCascadeShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugCascadeShader.vs", "shaders/debugCascadeShader.fs");
 		debugCascadeShader->use();
-		debugCascadeShader->setMat4("projection", GameEngine::Engine::getInstance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix());
-		debugCascadeShader->setMat4("view", GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix());
+		debugCascadeShader->setMat4("projection", Engine::UnnamedEngine::instance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix());
+		debugCascadeShader->setMat4("view", Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix());
 		drawCascadeVolumeVisualizers(lightMatricesCache, debugCascadeShader);
 		glEnable(GL_CULL_FACE);
 		glDisable(GL_BLEND);
@@ -147,7 +147,7 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 	auto kek = getComponent<CascadeShadowComponent>();
 
 	const auto lightView = getComponent<TransformComponent>()->getViewMatrix();
-	
+
 	float minX = std::numeric_limits<float>::max();
 	float maxX = std::numeric_limits<float>::min();
 
@@ -156,7 +156,7 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 
 	float minZ = std::numeric_limits<float>::max();
 	float maxZ = std::numeric_limits<float>::min();
-	
+
 	for (const auto& v : corners) {
 		const auto transform = lightView * v;
 
@@ -184,16 +184,16 @@ glm::mat4 CascadeShadow::getLightSpaceMatrix(const std::vector<glm::vec4>& corne
 		maxZ *= kek->mZMult;
 	}
 
-	
-	getComponent<ProjectionComponent>()->initProjection({ minX, minY }, { maxX, maxY },minZ, maxZ);
+
+	getComponent<ProjectionComponent>()->initProjection({ minX, minY }, { maxX, maxY }, minZ, maxZ);
 
 	auto size = std::fabs(std::max((maxX - minX), (maxY - minY)));
 	auto lightComp = getComponent<LightComponent>();
-	
+
 	lightComp->setTexelSize(glm::vec2(1.f / std::fabs(maxX - minX), 1.f / std::fabs(maxY - minY)) * kek->mTexelsMultiplier);
 	lightComp->setBias(size * kek->mBiasMultiplier);
 
-	
+
 	return getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix() * lightView;
 }
 
@@ -202,7 +202,7 @@ std::vector<glm::mat4> CascadeShadows::getLightSpaceMatrices() {
 		return lightMatricesCache;
 	}
 
-	const auto view = GameEngine::Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();
+	const auto view = Engine::UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();
 
 	std::vector<glm::mat4> ret;
 
@@ -251,7 +251,7 @@ void CascadeShadows::clearCacheMatrices() {
 
 
 
-void CascadeShadows::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, GameEngine::ShaderModule::ShaderBase* shader) {
+void CascadeShadows::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader) {
 	visualizerVAOs.resize(8);
 	visualizerEBOs.resize(8);
 	visualizerVBOs.resize(8);

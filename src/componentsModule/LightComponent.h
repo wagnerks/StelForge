@@ -5,7 +5,7 @@
 #include "ecsModule/ComponentBase.h"
 
 
-namespace GameEngine::ComponentsModule {
+namespace Engine::ComponentsModule {
 	enum class eLightType {
 		NONE = 0,
 		DIRECTIONAL,
@@ -45,4 +45,4 @@ namespace GameEngine::ComponentsModule {
 	};
 }
 
-using GameEngine::ComponentsModule::LightComponent;
+using Engine::ComponentsModule::LightComponent;

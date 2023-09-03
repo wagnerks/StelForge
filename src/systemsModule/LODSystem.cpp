@@ -11,10 +11,10 @@
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/ECSHandler.h"
 
-using namespace GameEngine::SystemsModule;
+using namespace Engine::SystemsModule;
 
 void LODSystem::update(float_t dt) {
-	const auto playerCamera = Engine::getInstance()->getCamera(); //todo entity player should have camera component
+	const auto playerCamera = UnnamedEngine::instance()->getCamera(); //todo entity player should have camera component
 	if (!playerCamera) {
 		return;
 	}

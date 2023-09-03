@@ -8,7 +8,7 @@
 class CascadeShadow;
 class CascadeShadows;
 
-namespace GameEngine::RenderModule::RenderPasses {
+namespace Engine::RenderModule::RenderPasses {
 	class CascadedShadowPass : public RenderPass {
 	public:
 		struct Data {

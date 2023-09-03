@@ -3,7 +3,7 @@
 
 #include "ecsModule/ComponentBase.h"
 
-namespace GameEngine::ComponentsModule {
+namespace Engine::ComponentsModule {
 	enum eLodType {
 		NONE = 0,
 		DISTANCE,
@@ -33,4 +33,4 @@ namespace GameEngine::ComponentsModule {
 	};
 }
 
-using GameEngine::ComponentsModule::LodComponent;
+using Engine::ComponentsModule::LodComponent;

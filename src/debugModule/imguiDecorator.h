@@ -2,7 +2,7 @@
 
 struct GLFWwindow;
 
-namespace GameEngine::Debug {
+namespace Engine::Debug {
 	class ImGuiDecorator {
 	public:
 		static void init(GLFWwindow*);

@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "Allocator.h"
 
-namespace GameEngine::MemoryModule {
+namespace Engine::MemoryModule {
 	class LinearAllocator : public Allocator {
 		size_t mOffset = 0;
 	public:

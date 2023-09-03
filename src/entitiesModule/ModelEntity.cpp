@@ -6,17 +6,17 @@
 #include "componentsModule/TransformComponent.h"
 #include "ecsModule/EntityManager.h"
 
-using namespace GameEngine::EntitiesModule;
+using namespace Engine::EntitiesModule;
 
 Model::Model(size_t entId) : Entity<Model>(entId) {
 	setNodeId("model");
-	auto tc = addComponent<TransformComponent>();	
+	auto tc = addComponent<TransformComponent>();
 	auto lc = addComponent<LodComponent>();
 	auto rc = addComponent<RenderComponent>();
 }
 
 void Model::init(ModelModule::MeshNode& model) {
-	
+
 	std::vector<std::vector<ModelModule::MeshHandle>> meshes;
 
 
@@ -38,8 +38,8 @@ void Model::init(ModelModule::MeshNode& model) {
 		addElement(childModel);
 		childModel->addComponent<MeshComponent>(lods);
 	}
-	
-	
+
+
 
 	//auto mec = addComponent<MeshComponent>(meshesLods);
 

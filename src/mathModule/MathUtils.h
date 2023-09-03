@@ -2,7 +2,7 @@
 
 #include "glm.hpp"
 
-namespace GameEngine::Math {
+namespace Engine::Math {
 	inline static float fastSqrt(float val){
 		return glm::inversesqrt(val);
 	}

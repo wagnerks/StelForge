@@ -5,7 +5,7 @@
 #include "ecsModule/EntityBase.h"
 #include "ecsModule/EntityManager.h"
 
-using namespace GameEngine::SystemsModule;
+using namespace Engine::SystemsModule;
 
 void TransformSystem::update(float_t dt) {
 	auto transforms = ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<TransformComponent>();

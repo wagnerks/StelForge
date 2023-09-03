@@ -5,15 +5,17 @@
 
 #include "Batcher.h"
 
-namespace GameEngine::RenderModule {
+namespace Engine::RenderModule {
 	class Renderer {
 	public:
+
+		~Renderer();
 		void draw();
 		void postDraw();
 		void init();
 		void terminate() const;
 
-		Batcher* getBatcher() { return mBatcher;};
+		Batcher* getBatcher() { return mBatcher; };
 
 		static void drawArrays(GLenum mode, GLsizei size, GLint first = 0);
 		static void drawElements(GLenum mode, GLsizei size, GLenum type, const void* place = nullptr);

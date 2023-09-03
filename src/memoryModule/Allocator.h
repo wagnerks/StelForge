@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace GameEngine::MemoryModule {
+namespace Engine::MemoryModule {
 	static inline uint8_t getAdjustment(const void* address, uint8_t alignment) {
 		const uint8_t adjustment = alignment - (reinterpret_cast<uintptr_t>(address)& static_cast<uintptr_t>(alignment - 1));
 	

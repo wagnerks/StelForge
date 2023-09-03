@@ -4,7 +4,7 @@
 
 #include "logsModule/logger.h"
 
-using namespace GameEngine::MemoryModule;
+using namespace Engine::MemoryModule;
 
 PoolAllocator::PoolAllocator(size_t memSize, const void* mem, size_t chunkSize, uint8_t chunkAlignment) :
 	Allocator(memSize, mem),

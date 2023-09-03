@@ -3,7 +3,7 @@
 #include "mat4x4.hpp"
 #include "Renderer.h"
 
-using namespace GameEngine::RenderModule;
+using namespace Engine::RenderModule;
 
 void Utils::CalculateEulerAnglesFromView(const glm::mat4& view, float& yaw, float& pitch, float& roll) {
 	if (view[0][0] == 1.0f || view[0][0] == -1.0f) {

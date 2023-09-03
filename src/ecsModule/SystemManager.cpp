@@ -8,8 +8,8 @@
 
 using namespace ecsModule;
 
-SystemManager::SystemManager(GameEngine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
-	mSystemAllocator = new GameEngine::MemoryModule::LinearAllocator(ecsModule::ECS_SYSTEM_MEMORY_BUFFER_SIZE, allocate(ecsModule::ECS_SYSTEM_MEMORY_BUFFER_SIZE, std::type_index(typeid(this)).hash_code()));
+SystemManager::SystemManager(Engine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
+	mSystemAllocator = new Engine::MemoryModule::LinearAllocator(ecsModule::ECS_SYSTEM_MEMORY_BUFFER_SIZE, allocate(ecsModule::ECS_SYSTEM_MEMORY_BUFFER_SIZE, std::type_index(typeid(this)).hash_code()));
 }
 
 SystemManager::~SystemManager() {

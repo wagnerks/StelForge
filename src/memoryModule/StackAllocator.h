@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "Allocator.h"
 
-namespace GameEngine::MemoryModule {
+namespace Engine::MemoryModule {
 	class StackAllocator : public Allocator {
 	public:
 		StackAllocator(size_t memSize, const void* mem);

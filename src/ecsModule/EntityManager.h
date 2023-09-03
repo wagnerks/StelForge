@@ -6,9 +6,9 @@
 namespace ecsModule {
 	class EntityInterface;
 
-	class EntityManager : GameEngine::MemoryModule::GlobalMemoryUser {
+	class EntityManager : Engine::MemoryModule::GlobalMemoryUser {
 	public:
-		EntityManager(GameEngine::MemoryModule::MemoryManager* memoryManager);
+		EntityManager(Engine::MemoryModule::MemoryManager* memoryManager);
 		~EntityManager() override;
 
 		template <class T, class... ARGS>

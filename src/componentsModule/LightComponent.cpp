@@ -3,7 +3,7 @@
 LightComponent::LightComponent(eLightType type) : mType(type) {
 }
 
-GameEngine::ComponentsModule::eLightType LightComponent::getType() const {
+Engine::ComponentsModule::eLightType LightComponent::getType() const {
 	return mType;
 }
 

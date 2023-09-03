@@ -6,7 +6,7 @@ namespace ecsModule {
 	class EntityInterface;
 }
 
-namespace GameEngine {
+namespace Engine {
 	namespace ComponentsModule {
 		class MeshComponent;
 		class LightComponent;
@@ -17,7 +17,7 @@ namespace GameEngine {
 }
 
 
-namespace GameEngine::Debug {
+namespace Engine::Debug {
 	class ComponentsDebug {
 	public:
 		static void drawTree(ecsModule::EntityInterface* entity, size_t& selectedID);

@@ -8,7 +8,7 @@
 #include "ecsModule/ComponentBase.h"
 
 
-namespace GameEngine::ComponentsModule {
+namespace Engine::ComponentsModule {
 	
 	class TransformComponent : public ecsModule::Component<TransformComponent> {
 	public:
@@ -73,4 +73,4 @@ namespace GameEngine::ComponentsModule {
 
 }
 
-using GameEngine::ComponentsModule::TransformComponent;
+using Engine::ComponentsModule::TransformComponent;

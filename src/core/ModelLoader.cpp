@@ -8,9 +8,9 @@
 #include "logsModule/logger.h"
 #include "renderModule/TextureHandler.h"
 
-using namespace GameEngine::CoreModule;
+using namespace Engine::CoreModule;
 
-GameEngine::ModelModule::Model* ModelLoader::load(const std::string& path) {
+Engine::ModelModule::Model* ModelLoader::load(const std::string& path) {
 	const auto it = std::ranges::find_if(models, [path](const std::pair<std::string, ModelModule::Model*>& a) {
 		return a.first == path;
 	});
@@ -22,7 +22,7 @@ GameEngine::ModelModule::Model* ModelLoader::load(const std::string& path) {
 	/*if (modelData.mMeshes.empty()) {
 		return nullptr;
 	}*/
-	
+
 	models.emplace_back(path, ecsModule::ECSHandler::entityManagerInstance()->createEntity<ModelModule::Model>(modelData));
 	return models.back().second;
 }
@@ -39,7 +39,13 @@ void ModelLoader::releaseModel(const std::string& path) {
 	models.erase(it);
 }
 
-GameEngine::ModelModule::MeshNode ModelLoader::loadModel(const std::string& path) {
+ModelLoader::~ModelLoader() {
+	for (auto model : models) {
+		delete model.second;
+	}
+}
+
+Engine::ModelModule::MeshNode ModelLoader::loadModel(const std::string& path) {
 	RenderModule::TextureLoader loader;
 	Assimp::Importer import;
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
@@ -63,12 +69,12 @@ void ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::
 		node->mTransformation *= parent->mTransformation;
 		parent = parent->mParent;
 	}
-	
+
 	for (unsigned int i = 0; i < node->mNumMeshes; i++) {
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		processMesh( mesh, scene, node, loader, directory, rawModel);
+		processMesh(mesh, scene, node, loader, directory, rawModel);
 	}
-		
+
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
 		ModelModule::MeshNode* child = new ModelModule::MeshNode();
 		rawModel.addElement(child);
@@ -90,8 +96,7 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 		auto nameString = std::string(parent->mName.C_Str());
 		lodLevel = std::atoi(nameString.substr(i + 4, parent->mName.length - i).c_str());
 	}
-	
-	
+
 	rawModel.mMeshes[lodLevel].emplace_back();
 
 	auto& modelMesh = rawModel.mMeshes[lodLevel].back();
@@ -106,13 +111,13 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 		vertex.mPosition.x = newPos.x;
 		vertex.mPosition.y = newPos.y;
 		vertex.mPosition.z = newPos.z;
-		
+
 		if (mesh->mNormals) {
 			vertex.mNormal.x = mesh->mNormals[i].x;
 			vertex.mNormal.y = mesh->mNormals[i].y;
 			vertex.mNormal.z = mesh->mNormals[i].z;
 		}
-		
+
 
 		if (mesh->mTextureCoords[0]) {
 			vertex.mTexCoords.x = mesh->mTextureCoords[0][i].x;
@@ -135,7 +140,7 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 
 	// process material
 	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-	
+
 	std::vector<ModelModule::MaterialTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
 	assert(diffuseMaps.size() < 2);
 	if (!diffuseMaps.empty()) {
@@ -155,18 +160,18 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 	modelMesh.bindMesh();
 }
 
-std::vector<GameEngine::ModelModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
+std::vector<Engine::ModelModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
 	std::vector<ModelModule::MaterialTexture> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
 		//if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
-			ModelModule::MaterialTexture texture;
-			texture.mTexture = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
-			texture.mType = typeName;
-			
-			textures.push_back(texture);
+		ModelModule::MaterialTexture texture;
+		texture.mTexture = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
+		texture.mType = typeName;
+
+		textures.push_back(texture);
 		//}
 	}
 	return textures;

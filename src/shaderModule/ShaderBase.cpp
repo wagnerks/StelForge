@@ -8,7 +8,7 @@
 #include "ShaderController.h"
 #include "logsModule/logger.h"
 
-using namespace GameEngine::ShaderModule;
+using namespace Engine::ShaderModule;
 
 bool ShaderBase::compileShader(const char* shaderCode, unsigned type) {
 	const auto shader = glCreateShader(type);

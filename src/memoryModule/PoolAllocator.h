@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "Allocator.h"
 
-namespace GameEngine::MemoryModule {
+namespace Engine::MemoryModule {
 	class PoolAllocator : public Allocator {
 	public:
 		PoolAllocator(size_t memSize, const void* mem, size_t chunkSize, uint8_t chunkAlignment);

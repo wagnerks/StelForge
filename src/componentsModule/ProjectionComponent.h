@@ -2,7 +2,7 @@
 #include "core/Projection.h"
 #include "ecsModule/ComponentBase.h"
 
-namespace GameEngine::ComponentsModule {
+namespace Engine::ComponentsModule {
 	class ProjectionComponent : public ecsModule::Component<ProjectionComponent> {
 	public:
 		ProjectionComponent();
@@ -15,4 +15,4 @@ namespace GameEngine::ComponentsModule {
 	};
 }
 
-using GameEngine::ComponentsModule::ProjectionComponent;
+using Engine::ComponentsModule::ProjectionComponent;

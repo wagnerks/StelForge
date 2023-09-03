@@ -4,7 +4,7 @@
 #include "MemoryManager.h"
 #include "PoolAllocator.h"
 
-namespace GameEngine::MemoryModule {
+namespace Engine::MemoryModule {
 
 	class GlobalMemoryUser {
 	protected:

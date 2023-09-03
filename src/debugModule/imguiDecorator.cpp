@@ -8,8 +8,8 @@
 
 #define IMGUI_ENABLED 1
 
-using namespace GameEngine;
-using namespace GameEngine::Debug;
+using namespace Engine;
+using namespace Engine::Debug;
 
 void ImGuiDecorator::init(GLFWwindow* window) {
 #if not IMGUI_ENABLED

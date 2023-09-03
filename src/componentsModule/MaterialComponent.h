@@ -4,7 +4,7 @@
 #include "ecsModule/ComponentBase.h"
 #include "modelModule/Model.h"
 
-namespace GameEngine::ComponentsModule{
+namespace Engine::ComponentsModule{
 	class MaterialComponent : public ecsModule::Component<MaterialComponent> {
 	public:
 		void addTexture(const ModelModule::Material& texture);
@@ -14,4 +14,4 @@ namespace GameEngine::ComponentsModule{
 	};
 }
 
-using GameEngine::ComponentsModule::MaterialComponent;
+using Engine::ComponentsModule::MaterialComponent;

@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace GameEngine::LogsModule {
+namespace Engine::LogsModule {
 	enum class eLogLevel {
 		INFO,
 		WARNING,

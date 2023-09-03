@@ -2,7 +2,7 @@
 #include "core/BoundingVolume.h"
 #include "ecsModule/ComponentBase.h"
 
-namespace GameEngine::ComponentsModule {
+namespace Engine::ComponentsModule {
 	class FrustumComponent : public ecsModule::Component<FrustumComponent> {
 	public:
 		FrustumComponent();
@@ -16,4 +16,4 @@ namespace GameEngine::ComponentsModule {
 	};
 }
 
-using GameEngine::ComponentsModule::FrustumComponent;
+using Engine::ComponentsModule::FrustumComponent;

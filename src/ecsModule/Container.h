@@ -12,9 +12,9 @@ public:
 };
 
 template <class interfaceType, size_t Capacity = 1024>
-class Container : public GameEngine::MemoryModule::MemoryChunkAllocator<interfaceType, Capacity>, public ContainerInterface {
+class Container : public Engine::MemoryModule::MemoryChunkAllocator<interfaceType, Capacity>, public ContainerInterface {
 public:
-	Container(size_t userId, GameEngine::MemoryModule::MemoryManager* memoryManager) : GameEngine::MemoryModule::MemoryChunkAllocator<interfaceType, Capacity>(userId, memoryManager) {}
+	Container(size_t userId, Engine::MemoryModule::MemoryManager* memoryManager) : Engine::MemoryModule::MemoryChunkAllocator<interfaceType, Capacity>(userId, memoryManager) {}
 
 	const char* getComponentContainerTypeName() const override;
 	void destroyElement(void* object) override;

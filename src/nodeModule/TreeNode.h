@@ -3,49 +3,56 @@
 #include <string_view>
 #include <vector>
 
-namespace GameEngine::NodeModule {
+namespace Engine::NodeModule {
 	template<class T>
-	class Node {
+	class TreeNode {
 	public:
-		virtual ~Node();;
+		virtual ~TreeNode();
 
 		void addElement(T* child);
 		void removeElement(std::string_view childId);
 		void removeElement(T* child);
-		
+
 
 		T* getParent() const;
 		T* findElement(std::string_view elementId);
 		std::vector<T*> getAllNodes();
 		const std::vector<T*>& getElements();
 		T* getElement(std::string_view elementId);
+
 		std::string_view getNodeId();
 		void setNodeId(std::string_view id);
-		void setParent(T* parentNode);
+
 	protected:
 		std::function<void(T*)> mOnElementRemove = nullptr;
 		std::function<void(T*)> mOnElementAdd = nullptr;
 
 	private:
+		void setParent(T* parentNode);
 		void getAllNodesHelper(std::vector<T*>& res);
-		
+
 
 		T* mParent = nullptr;
 		std::vector<T*> mElements;
 
 		std::string mNodeId;
-		
+
 	};
 
 	template <class T>
-	Node<T>::~Node() {
-		for (auto& element : getElements()) {
+	TreeNode<T>::~TreeNode() {
+		if (auto parent = getParent()) {
+			parent->removeElement(static_cast<T*>(this));
+		}
+
+		auto elements = getElements();
+		for (auto element : elements) {
 			delete element;
 		}
 	}
 
 	template <class T>
-	void Node<T>::addElement(T* child) {
+	void TreeNode<T>::addElement(T* child) {
 		if (auto childParent = child->getParent()) {
 			childParent->removeElement(child);
 		}
@@ -55,33 +62,32 @@ namespace GameEngine::NodeModule {
 		if (mOnElementAdd) {
 			mOnElementAdd(child);
 		}
-		
+
 	}
 
 	template <class T>
-	void Node<T>::removeElement(std::string_view childId) {
+	void TreeNode<T>::removeElement(std::string_view childId) {
 		if (const auto child = getElement(childId)) {
 			removeElement(child);
 		}
 	}
 
 	template <class T>
-	void Node<T>::removeElement(T* child) {
+	void TreeNode<T>::removeElement(T* child) {
 		std::erase(mElements, child);
 		child->setParent(nullptr);
 		if (mOnElementRemove) {
 			mOnElementRemove(child);
 		}
-		
 	}
 
 	template <class T>
-	T* Node<T>::getParent() const {
+	T* TreeNode<T>::getParent() const {
 		return mParent;
 	}
 
 	template <class T>
-	T* Node<T>::findElement(std::string_view elementId) {
+	T* TreeNode<T>::findElement(std::string_view elementId) {
 		if (auto foundElement = getElement(elementId)) {
 			return foundElement;
 		}
@@ -96,21 +102,21 @@ namespace GameEngine::NodeModule {
 	}
 
 	template <class T>
-	std::vector<T*> Node<T>::getAllNodes() {
+	std::vector<T*> TreeNode<T>::getAllNodes() {
 		std::vector<T*> res;
 		getAllNodesHelper(res);
 		return res;
 	}
 
 	template <class T>
-	const std::vector<T*>& Node<T>::getElements() {
+	const std::vector<T*>& TreeNode<T>::getElements() {
 		return mElements;
 	}
 
 	template <class T>
-	T* Node<T>::getElement(std::string_view elementId) {
+	T* TreeNode<T>::getElement(std::string_view elementId) {
 		auto it = std::ranges::find_if(mElements, [elementId](T* child) {
-			return elementId == child->getStringId();
+			return elementId == child->getNodeId();
 		});
 		if (it != mElements.end()) {
 			return *it;
@@ -119,17 +125,17 @@ namespace GameEngine::NodeModule {
 	}
 
 	template <class T>
-	std::string_view Node<T>::getNodeId() {
+	std::string_view TreeNode<T>::getNodeId() {
 		return mNodeId;
 	}
 
 	template <class T>
-	void Node<T>::setNodeId(std::string_view id) {
+	void TreeNode<T>::setNodeId(std::string_view id) {
 		mNodeId = id;
 	}
 
 	template <class T>
-	void Node<T>::getAllNodesHelper(std::vector<T*>& res) {
+	void TreeNode<T>::getAllNodesHelper(std::vector<T*>& res) {
 		res.insert(res.end(), mElements.begin(), mElements.end());
 		for (auto element : mElements) {
 			element->getAllNodesHelper(res);
@@ -137,7 +143,7 @@ namespace GameEngine::NodeModule {
 	}
 
 	template <class T>
-	void Node<T>::setParent(T* parentNode) {
+	void TreeNode<T>::setParent(T* parentNode) {
 		mParent = parentNode;
 	}
 }

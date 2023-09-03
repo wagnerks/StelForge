@@ -6,7 +6,7 @@
 #include "StackAllocator.h"
 #include "logsModule/logger.h"
 
-namespace GameEngine::MemoryModule {
+namespace Engine::MemoryModule {
 
 	class StackAllocator;
 
@@ -24,7 +24,7 @@ namespace GameEngine::MemoryModule {
 		std::list<void*> freedMemory;
 	public:
 		size_t getMemoryCapacity() const;;
-		
+
 
 		MemoryManager(const MemoryManager&) = delete;
 		MemoryManager& operator=(MemoryManager&) = delete;
@@ -47,9 +47,9 @@ namespace GameEngine::MemoryModule {
 				pendingMemory.pop_back();
 
 
-				for (auto it  = freedMemory.begin(); it != freedMemory.end(); ) {
+				for (auto it = freedMemory.begin(); it != freedMemory.end(); ) {
 					if (*it == pendingMemory.back().second) {
-						allocator->free(pMem);
+						allocator->free(*it);
 						pendingMemory.pop_back();
 						freedMemory.erase(it);
 						it = freedMemory.begin();

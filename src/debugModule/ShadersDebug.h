@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace GameEngine::Debug {
+namespace Engine::Debug {
 	class ShadersDebug {
 	public:
 		static void shadersDebugDraw(bool& opened);

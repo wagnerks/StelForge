@@ -2,7 +2,7 @@
 #include <vec3.hpp>
 #include <mat4x4.hpp>
 
-namespace GameEngine::ProjectionModule {
+namespace Engine::ProjectionModule {
 	enum eProjectionType {
 		NONE,
 		ORTHO,

@@ -14,13 +14,13 @@
 #include "renderModule/renderPasses/GeometryPass.h"
 #include "renderModule/renderPasses/SSAOPass.h"
 
-namespace GameEngine {
+namespace Engine {
 	namespace RenderModule {
 		class Renderer;
 	}
 }
 
-namespace GameEngine::SystemsModule{
+namespace Engine::SystemsModule {
 	struct RenderDataHandle {
 		std::vector<size_t> mDrawableEntities;
 		FrustumModule::Frustum mCamFrustum;
@@ -43,10 +43,13 @@ namespace GameEngine::SystemsModule{
 		void update(float_t dt) override;
 		void postUpdate(float_t dt) override;
 		const std::vector<RenderModule::RenderPass*>& getRenderPasses();
+		~RenderSystem() override;
 	private:
 		RenderModule::Renderer* mRenderer = nullptr;
 		std::vector<RenderModule::RenderPass*> mRenderPasses;
-		
+
 		RenderDataHandle mRenderData;
+
+		bool mDebugShadowsDraw = false;
 	};
 }

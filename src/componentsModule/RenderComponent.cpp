@@ -1,7 +1,7 @@
 ﻿#include "RenderComponent.h"
 
 
-using namespace GameEngine::ComponentsModule;
+using namespace Engine::ComponentsModule;
 
 bool RenderComponent::isDrawable() const {
 	return mIsDrawable;

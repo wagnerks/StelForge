@@ -4,7 +4,7 @@
 
 #include "renderModule/RenderPass.h"
 
-namespace GameEngine::RenderModule::RenderPasses {
+namespace Engine::RenderModule::RenderPasses {
 	class SSAOPass : public RenderPass {
 	public:
 		struct Data {
@@ -14,10 +14,10 @@ namespace GameEngine::RenderModule::RenderPasses {
 			unsigned int mSsaoBlurFbo = 0;
 			unsigned int mSsaoColorBuffer = 0;
 			unsigned int mSsaoColorBufferBlur = 0;
-			int mKernelSize = 64;
-			float mRadius = 0.5f;
-			float mBias = 0.1f;
-			int samples = 64;
+			int mKernelSize = 10;
+			float mRadius = 1.0f;
+			float mBias = 0.7f;
+			int samples = 16;
 			float intencity = 1.f;
 			float scale = 2.5f;
 			float sample_rad = 0.2f;

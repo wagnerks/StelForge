@@ -2,7 +2,7 @@
 #include "shaderModule/Shader.h"
 #include "mat4x4.hpp"
 
-namespace GameEngine::RenderModule {
+namespace Engine::RenderModule {
 	class SceneGridFloor {
 	public:
 		SceneGridFloor(float size);
@@ -10,7 +10,7 @@ namespace GameEngine::RenderModule {
 		void init();
 		void draw();
 	private:
-		GameEngine::ShaderModule::ShaderBase* floorShader = nullptr;
+		Engine::ShaderModule::ShaderBase* floorShader = nullptr;
 		unsigned VAO = 0;
 		unsigned VBO = 0;
 		float size = 0;

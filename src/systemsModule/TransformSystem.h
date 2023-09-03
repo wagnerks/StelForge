@@ -1,13 +1,13 @@
 ﻿#pragma once
 #include "ecsModule/SystemBase.h"
 
-namespace GameEngine {
+namespace Engine {
 	namespace ComponentsModule {
 		class TransformComponent;
 	}
 }
 
-namespace GameEngine::SystemsModule {
+namespace Engine::SystemsModule {
 	class TransformSystem : public ecsModule::System<TransformSystem> {
 	public:
 		void preUpdate(float_t dt) override {}

@@ -8,7 +8,7 @@
 #include "modelModule/Mesh.h"
 #include "shaderModule/ShaderController.h"
 
-using namespace GameEngine::RenderModule;
+using namespace Engine::RenderModule;
 
 Skybox::Skybox(std::string_view path) : skyboxPath(path) {}
 
@@ -35,60 +35,60 @@ void Skybox::init() {
 
 	skyboxShader->use();
 	skyboxShader->setInt("skybox", 16);
-	skyboxShader->setMat4("projection", Engine::getInstance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix());
+	skyboxShader->setMat4("projection", UnnamedEngine::instance()->getCamera()->getComponent<ProjectionComponent>()->getProjection().getProjectionsMatrix());
 
-	cubemapTex = TextureHandler::getInstance()->mLoader.loadCubemapTexture(skyboxPath).mId;
+	cubemapTex = TextureHandler::instance()->mLoader.loadCubemapTexture(skyboxPath).mId;
 	if (cubemapTex == 0) {
 		assert(false && "can't load skybox texture");
 		return;
 	}
 
 	float skyboxVertices[] = {
-	    // positions          
-	    -1.0f,  1.0f, -1.0f,
-	    -1.0f, -1.0f, -1.0f,
-	     1.0f, -1.0f, -1.0f,
-	     1.0f, -1.0f, -1.0f,
-	     1.0f,  1.0f, -1.0f,
-	    -1.0f,  1.0f, -1.0f,
+		// positions          
+		-1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
 
-	    -1.0f, -1.0f,  1.0f,
-	    -1.0f, -1.0f, -1.0f,
-	    -1.0f,  1.0f, -1.0f,
-	    -1.0f,  1.0f, -1.0f,
-	    -1.0f,  1.0f,  1.0f,
-	    -1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
 
-	     1.0f, -1.0f, -1.0f,
-	     1.0f, -1.0f,  1.0f,
-	     1.0f,  1.0f,  1.0f,
-	     1.0f,  1.0f,  1.0f,
-	     1.0f,  1.0f, -1.0f,
-	     1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
 
-	    -1.0f, -1.0f,  1.0f,
-	    -1.0f,  1.0f,  1.0f,
-	     1.0f,  1.0f,  1.0f,
-	     1.0f,  1.0f,  1.0f,
-	     1.0f, -1.0f,  1.0f,
-	    -1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
 
-	    -1.0f,  1.0f, -1.0f,
-	     1.0f,  1.0f, -1.0f,
-	     1.0f,  1.0f,  1.0f,
-	     1.0f,  1.0f,  1.0f,
-	    -1.0f,  1.0f,  1.0f,
-	    -1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f, -1.0f,
 
-	    -1.0f, -1.0f, -1.0f,
-	    -1.0f, -1.0f,  1.0f,
-	     1.0f, -1.0f, -1.0f,
-	     1.0f, -1.0f, -1.0f,
-	    -1.0f, -1.0f,  1.0f,
-	     1.0f, -1.0f,  1.0f
+		-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		 1.0f, -1.0f,  1.0f
 	};
 
-	
+
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
 	glBindVertexArray(VAO);
@@ -105,13 +105,13 @@ void Skybox::draw() {
 	}
 	skyboxShader->use();
 
-	auto view = Engine::getInstance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();;
+	auto view = UnnamedEngine::instance()->getCamera()->getComponent<TransformComponent>()->getViewMatrix();;
 	skyboxShader->setMat4("view", glm::mat4(glm::mat3(view)));
 
 	glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
 
-	TextureHandler::getInstance()->bindTexture(GL_TEXTURE16, GL_TEXTURE_CUBE_MAP, cubemapTex);
-   
+	TextureHandler::instance()->bindTexture(GL_TEXTURE16, GL_TEXTURE_CUBE_MAP, cubemapTex);
+
 	glBindVertexArray(VAO);
 	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 36);
 

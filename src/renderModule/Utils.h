@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <fwd.hpp>
 
-namespace GameEngine::RenderModule {
+namespace Engine::RenderModule {
 	class Utils {
 	public:
 		//angles in radians

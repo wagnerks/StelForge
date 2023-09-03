@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "ecsModule/SystemBase.h"
 
-namespace GameEngine {
+namespace Engine {
 	namespace ComponentsModule {
 		class TransformComponent;
 	}
@@ -9,13 +9,13 @@ namespace GameEngine {
 
 class Camera;
 
-namespace GameEngine {
+namespace Engine {
 	namespace ModelModule {
 		class Mesh;
 	}
 }
 
-namespace GameEngine::SystemsModule {
+namespace Engine::SystemsModule {
 	class LODSystem : public ecsModule::System<LODSystem> {
 	public:
 		void preUpdate(float_t dt) override {}

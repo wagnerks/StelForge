@@ -5,12 +5,16 @@
 #include "GeometryShader.h"
 #include "Shader.h"
 
-using namespace GameEngine;
-using namespace GameEngine::ShaderModule;
+using namespace Engine;
+using namespace Engine::ShaderModule;
 
 ShaderController::ShaderController() = default;
 
 ShaderController::~ShaderController() {
+	for (auto& [hash, shader] : shaders) {
+		delete shader;
+	}
+
 	shaders.clear();
 }
 
@@ -18,7 +22,7 @@ void ShaderController::init() {
 }
 
 ShaderBase* ShaderController::loadVertexFragmentShader(const std::string& vertexPath, const std::string& fragmentPath) {
-	size_t hash = hasher(vertexPath +  fragmentPath);
+	size_t hash = hasher(vertexPath + fragmentPath);
 	const auto it = shaders.find(hash);
 	if (it != shaders.end()) {
 		return it->second;
@@ -42,19 +46,6 @@ ShaderBase* ShaderController::loadGeometryShader(const std::string& vertexPath, 
 void ShaderController::recompileShader(ShaderBase* shader) {
 	deleteShaderGL(shader->getID());
 	shader->compile();
-}
-
-ShaderController* ShaderController::getInstance() {
-	if (!instance) {
-		instance = new ShaderController();
-		instance->init();
-	}
-	return instance;
-}
-
-void ShaderController::terminate() {
-	delete instance;
-	instance = nullptr;
 }
 
 void ShaderController::initDefaultShader() {

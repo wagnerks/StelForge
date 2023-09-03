@@ -3,7 +3,7 @@
 #include "glad/glad.h"
 #include "logsModule/logger.h"
 
-using namespace GameEngine::ShaderModule;
+using namespace Engine::ShaderModule;
 
 bool GeometryShader::compile() {
 	cachedUniforms.clear();

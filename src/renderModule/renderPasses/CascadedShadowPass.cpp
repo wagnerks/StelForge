@@ -13,7 +13,7 @@
 #include "systemsModule/RenderSystem.h"
 #include "core/BoundingVolume.h"
 
-using namespace GameEngine::RenderModule::RenderPasses;
+using namespace Engine::RenderModule::RenderPasses;
 
 CascadedShadowPass::CascadedShadowPass() : mShadowSource(nullptr) {
 }
@@ -24,7 +24,7 @@ void CascadedShadowPass::init() {
 	}
 	mInited = true;
 
-	mShadowSource = ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadows>(glm::vec2{4096.f,4096.f});
+	mShadowSource = ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadows>(glm::vec2{4096.f, 4096.f});
 	mShadowSource->init();
 }
 
@@ -44,13 +44,13 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	//cull meshes
 	for (auto entityId : drawableEntities) {
 		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<MeshComponent>()){
-			
+		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<MeshComponent>()) {
+
 			size_t LODLevel = 0;
 			if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
 				LODLevel = lodComp->getLodLevel();
 			}
-		
+
 			auto& mesh = modelComp->getMesh(LODLevel);
 			bool pass = false;
 			for (auto shadow : mShadowSource->shadows) {
@@ -71,7 +71,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	//draw meshes which should cast shadow
 
 	mShadowSource->postDraw();
-	
+
 	mData = {
 		mShadowSource->getShadowMapTextureArray(),
 		mShadowSource->getLightDirection(),
@@ -87,14 +87,14 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	renderDataHandle.mCascadedShadowsPassData = mData;
 
 	if (ImGui::Begin("lightSpaceMatrix")) {
-		ImGui::DragFloat("camera speed", &Engine::getInstance()->getCamera()->MovementSpeed, 0.1f);
+		ImGui::DragFloat("camera speed", &UnnamedEngine::instance()->getCamera()->MovementSpeed, 0.1f);
 
 		if (mShadowSource) {
-			if(ImGui::Button("cache")) {
+			if (ImGui::Button("cache")) {
 				mShadowSource->cacheMatrices();
 			}
 
-			if(ImGui::Button("clear")) {
+			if (ImGui::Button("clear")) {
 				mShadowSource->clearCacheMatrices();
 			}
 
@@ -102,7 +102,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 				auto x = glm::cos(glm::radians(-mShadowSource->sunProgress * 180.f));
 				auto y = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
 				auto z = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
-				mShadowSource->getComponent<TransformComponent>()->setRotate({-mShadowSource->sunProgress * 180.f,0.f, mShadowSource->sunProgress * 5.f});
+				mShadowSource->getComponent<TransformComponent>()->setRotate({ -mShadowSource->sunProgress * 180.f,0.f, mShadowSource->sunProgress * 5.f });
 				mShadowSource->getComponent<TransformComponent>()->reloadTransform();
 			}
 

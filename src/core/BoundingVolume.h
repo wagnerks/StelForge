@@ -5,11 +5,11 @@
 #include "componentsModule/TransformComponent.h"
 #include "modelModule/Model.h"
 
-namespace GameEngine::FrustumModule {
+namespace Engine::FrustumModule {
 	struct Plane
 	{
-		glm::vec3 normal	= { 0.f, 1.f, 0.f }; // unit vector
-		float     distance  = 0.f;					      // Distance with origin
+		glm::vec3 normal = { 0.f, 1.f, 0.f }; // unit vector
+		float     distance = 0.f;					      // Distance with origin
 
 		Plane() = default;
 
@@ -91,47 +91,47 @@ namespace GameEngine::FrustumModule {
 				globalSphere.isOnOrForwardPlan(camFrustum.bottomFace));
 		};
 	};
-	
+
 	struct SquareAABB : public BoundingVolume
 	{
 		glm::vec3 center{ 0.f, 0.f, 0.f };
 		float extent{ 0.f };
-	
+
 		SquareAABB(const glm::vec3& inCenter, float inExtent)
 			: BoundingVolume{}, center{ inCenter }, extent{ inExtent }
 		{}
-	
+
 		bool isOnOrForwardPlan(const Plane& plan) const final
 		{
 			// Compute the projection interval radius of b onto L(t) = b.c + t * p.n
 			const float r = extent * (std::abs(plan.normal.x) + std::abs(plan.normal.y) + std::abs(plan.normal.z));
 			return -r <= plan.getSignedDistanceToPlan(center);
 		}
-	
+
 		bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const final
 		{
 			//Get global scale thanks to our transform
-			const glm::vec3 globalCenter{ transform.getTransform() * glm::vec4(center, 1.f) };
-	
+			const glm::vec3 globalCenter{ transform.getTransform()* glm::vec4(center, 1.f) };
+
 			// Scaled orientation
 			const glm::vec3 right = transform.getTransform()[0] * extent; //right
 			const glm::vec3 up = transform.getTransform()[1] * extent; //up
 			const glm::vec3 forward = -transform.getTransform()[2] * extent; //forward
-	
+
 			const float newIi = std::abs(glm::dot(glm::vec3{ 1.f, 0.f, 0.f }, right)) +
 				std::abs(glm::dot(glm::vec3{ 1.f, 0.f, 0.f }, up)) +
 				std::abs(glm::dot(glm::vec3{ 1.f, 0.f, 0.f }, forward));
-	
+
 			const float newIj = std::abs(glm::dot(glm::vec3{ 0.f, 1.f, 0.f }, right)) +
 				std::abs(glm::dot(glm::vec3{ 0.f, 1.f, 0.f }, up)) +
 				std::abs(glm::dot(glm::vec3{ 0.f, 1.f, 0.f }, forward));
-	
+
 			const float newIk = std::abs(glm::dot(glm::vec3{ 0.f, 0.f, 1.f }, right)) +
 				std::abs(glm::dot(glm::vec3{ 0.f, 0.f, 1.f }, up)) +
 				std::abs(glm::dot(glm::vec3{ 0.f, 0.f, 1.f }, forward));
-	
+
 			const SquareAABB globalAABB(globalCenter, std::max(std::max(newIi, newIj), newIk));
-	
+
 			return (globalAABB.isOnOrForwardPlan(camFrustum.leftFace) &&
 				globalAABB.isOnOrForwardPlan(camFrustum.rightFace) &&
 				globalAABB.isOnOrForwardPlan(camFrustum.topFace) &&
@@ -180,7 +180,7 @@ namespace GameEngine::FrustumModule {
 		bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const final
 		{
 			//Get global scale thanks to our transform
-			const glm::vec3 globalCenter{ transform.getTransform() * glm::vec4(center, 1.f) };
+			const glm::vec3 globalCenter{ transform.getTransform()* glm::vec4(center, 1.f) };
 
 			// Scaled orientation
 			const glm::vec3 right = transform.getTransform()[0] * extents.x; //right
@@ -216,7 +216,7 @@ namespace GameEngine::FrustumModule {
 		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
 
-		
+
 		for (auto&& vertex : mesh.mData.mVertices)
 		{
 			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
@@ -227,11 +227,11 @@ namespace GameEngine::FrustumModule {
 			maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
 			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
 		}
-		
+
 		return AABB(minAABB, maxAABB);
 	}
 
-	inline Sphere generateSphereBV(const GameEngine::ModelModule::Mesh& mesh)
+	inline Sphere generateSphereBV(const ::Engine::ModelModule::Mesh& mesh)
 	{
 		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
@@ -246,16 +246,16 @@ namespace GameEngine::FrustumModule {
 			maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
 			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
 		}
-		
+
 
 		return Sphere((maxAABB + minAABB) * 0.5f, glm::length(minAABB - maxAABB));
 	}
 
 	inline void normalizePlane(glm::vec4& planeVec) {
-		auto mag = glm::sqrt(planeVec.x * planeVec.x + planeVec.y * planeVec.y + planeVec.z * planeVec.z );
-		planeVec.x /= mag; 
-		planeVec.y /= mag; 
-		planeVec.z /= mag; 
+		auto mag = glm::sqrt(planeVec.x * planeVec.x + planeVec.y * planeVec.y + planeVec.z * planeVec.z);
+		planeVec.x /= mag;
+		planeVec.y /= mag;
+		planeVec.z /= mag;
 		planeVec.w /= mag;
 	}
 

@@ -2,7 +2,7 @@
 
 #include <ext/matrix_clip_space.hpp>
 
-using namespace GameEngine::ProjectionModule;
+using namespace Engine::ProjectionModule;
 
 Projection::Projection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar) : mNear(zNear), mFar(zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
 	mType = eProjectionType::ORTHO;

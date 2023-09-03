@@ -4,7 +4,7 @@
 #include "imgui.h"
 #include "ShadersDebug.h"
 
-using namespace GameEngine::Debug;
+using namespace Engine::Debug;
 
 void DebugMenu::draw() {
 	ImGui::Begin("DebugMenu", &opened);

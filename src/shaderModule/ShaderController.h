@@ -2,20 +2,20 @@
 
 #include "renderModule/Renderer.h"
 #include "Shader.h"
+#include "core/Singleton.h"
 
-#define SHADER_CONTROLLER GameEngine::ShaderModule::ShaderController::getInstance()
+#define SHADER_CONTROLLER ::Engine::ShaderModule::ShaderController::instance()
 
-namespace GameEngine::ShaderModule {
-	class ShaderController {
+namespace Engine::ShaderModule {
+	class ShaderController : public Singleton<ShaderController> {
+		friend Singleton;
 	public:
 		ShaderController();
 		~ShaderController();
-		void init();
+		void init() override;
 		ShaderBase* loadVertexFragmentShader(const std::string& vertexPath, const std::string& fragmentPath);
 		ShaderBase* loadGeometryShader(const std::string& vertexPath, const std::string& fragmentPath, const std::string& geometryPath);
 		void recompileShader(ShaderBase* shader);
-		static ShaderController* getInstance();
-		static void terminate();
 
 		void initDefaultShader();
 		void useShader(unsigned int ID);
@@ -31,9 +31,6 @@ namespace GameEngine::ShaderModule {
 		std::hash<std::string> hasher;
 
 		GLuint currentShader = 0;
-
-		inline static ShaderController* instance = nullptr;
-		
 	};
 }
 

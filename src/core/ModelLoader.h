@@ -3,13 +3,14 @@
 #include <unordered_map>
 #include <assimp/material.h>
 
+#include "Singleton.h"
 #include "modelModule/Model.h"
 
 
 struct aiMaterial;
 struct aiMesh;
 
-namespace GameEngine {
+namespace Engine {
 	namespace RenderModule {
 		class TextureLoader;
 	}
@@ -18,23 +19,15 @@ namespace GameEngine {
 struct aiScene;
 struct aiNode;
 
-namespace GameEngine::CoreModule {
-	class ModelLoader {
+namespace Engine::CoreModule {
+	class ModelLoader : public Singleton<ModelLoader> {
+		friend Singleton;
 	public:
-		static ModelLoader* getInstance() {
-			if (!instance) {
-				instance = new ModelLoader();
-			}
-			return instance;
-		}
-
 		ModelModule::Model* load(const std::string& path);
-
 		void releaseModel(const std::string& path);
 	private:
-		inline static ModelLoader* instance = nullptr;
 		ModelLoader() = default;
-		~ModelLoader() = default;
+		~ModelLoader() override;
 
 		std::vector<std::pair<std::string, ModelModule::Model*>> models;
 

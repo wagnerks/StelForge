@@ -8,13 +8,13 @@
 #include "renderModule/TextureHandler.h"
 
 
-namespace GameEngine {
+namespace Engine {
 	namespace FrustumModule {
 		struct AABB;
 	}
 }
 
-namespace GameEngine::ModelModule {
+namespace Engine::ModelModule {
 	struct Vertex {
 		glm::vec3 mPosition;
 		glm::vec3 mNormal;

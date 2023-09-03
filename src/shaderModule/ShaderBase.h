@@ -1,8 +1,9 @@
 ﻿#pragma once
 #include <fwd.hpp>
+#include <string>
 #include <unordered_map>
 
-namespace GameEngine::ShaderModule {
+namespace Engine::ShaderModule {
 	class ShaderBase {
 		friend class ShaderController;
 	public:

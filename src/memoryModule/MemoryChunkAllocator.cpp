@@ -1,6 +1,6 @@
 ﻿#include "MemoryChunkAllocator.h"
 
-using namespace GameEngine::MemoryModule;
+using namespace Engine::MemoryModule;
 
 GlobalMemoryUser::GlobalMemoryUser(MemoryManager* memoryManager) : globalMemoryManager(memoryManager) {}
 

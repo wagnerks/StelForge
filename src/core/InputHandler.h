@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "renderModule/Renderer.h"
 
-namespace GameEngine::CoreModule {
+namespace Engine::CoreModule {
 	class InputHandler {
 	public:
 		static void processInput(GLFWwindow* window);

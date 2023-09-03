@@ -7,7 +7,7 @@
 
 #include "mathModule/MathUtils.h"
 
-using namespace GameEngine::ComponentsModule;
+using namespace Engine::ComponentsModule;
 
 void TransformComponent::addChildTransform(TransformComponent* comp) {
 	if (std::ranges::find(childTransforms, comp) != childTransforms.end()) {

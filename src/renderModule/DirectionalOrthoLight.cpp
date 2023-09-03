@@ -5,7 +5,7 @@
 #include "componentsModule/TransformComponent.h"
 #include "glad/glad.h"
 #include "shaderModule/ShaderController.h"
-using namespace GameEngine::LightsModule;
+using namespace Engine::LightsModule;
 
 DirectionalOrthoLight::DirectionalOrthoLight(size_t entID, int aShadowWidth, int aShadowHeight, float zNear, float zFar) : Light(entID), shadowWidthResolution(aShadowWidth), shadowHeightResolution(aShadowHeight) {
 
@@ -64,6 +64,6 @@ const glm::mat4& DirectionalOrthoLight::getProjectionViewMatrix() const {
 	return lightPV;
 }
 
-const GameEngine::ProjectionModule::Projection& DirectionalOrthoLight::getProjection() {
+const Engine::ProjectionModule::Projection& DirectionalOrthoLight::getProjection() {
 	return lightProjection;
 }

@@ -2,7 +2,7 @@
 #include "Light.h"
 #include "core/Projection.h"
 
-namespace GameEngine::LightsModule {
+namespace Engine::LightsModule {
 	class DirectionalOrthoLight : public Light {
 	public:
 		DirectionalOrthoLight(size_t entID, int aShadowWidth = 2048, int aShadowHeight = 2048, float zNear = 1.f, float zFar = 30.f);

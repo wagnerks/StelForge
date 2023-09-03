@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace GameEngine::Debug {
+namespace Engine::Debug {
 	class DebugMenu {
 	public:
 		void draw();

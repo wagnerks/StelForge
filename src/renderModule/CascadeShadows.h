@@ -51,7 +51,7 @@ private:
 	std::vector<unsigned> visualizerVBOs;
 	std::vector<unsigned> visualizerEBOs;
 
-	void drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, GameEngine::ShaderModule::ShaderBase* shader);
+	void drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader);
 
 	std::vector<glm::mat4> lightMatricesCache;
 	std::vector<float> shadowCascadeLevels;

@@ -4,7 +4,7 @@
 
 #include "ecsModule/ComponentBase.h"
 
-namespace GameEngine::ComponentsModule {
+namespace Engine::ComponentsModule {
 	class CascadeShadowsHolderComponent : public ecsModule::Component<CascadeShadowsHolderComponent> {
 	public:
 		CascadeShadowsHolderComponent() = default;
@@ -26,5 +26,5 @@ namespace GameEngine::ComponentsModule {
 	};
 }
 
-using GameEngine::ComponentsModule::CascadeShadowsHolderComponent;
-using GameEngine::ComponentsModule::CascadeShadowComponent;
+using Engine::ComponentsModule::CascadeShadowsHolderComponent;
+using Engine::ComponentsModule::CascadeShadowComponent;

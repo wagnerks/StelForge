@@ -12,32 +12,19 @@
 using namespace ecsModule;
 
 SystemManager* ECSHandler::systemManagerInstance() {
-	return getInstance()->systemManager;
+	return instance()->systemManager;
 }
 
 EntityManager* ECSHandler::entityManagerInstance() {
-	return getInstance()->entityManager;
+	return instance()->entityManager;
 }
 
 ComponentManager* ECSHandler::componentManagerInstance() {
-	return getInstance()->componentManager;
-}
-
-ECSHandler* ECSHandler::getInstance() {
-	if (!instance) {
-		instance = new ECSHandler();
-		instance->init();
-	}
-
-	return instance;
-}
-
-void ECSHandler::terminate() {
-	delete instance;
+	return instance()->componentManager;
 }
 
 void ECSHandler::init() {
-	memoryManager = new GameEngine::MemoryModule::MemoryManager(ECS_GLOBAL_MEMORY_CAPACITY);
+	memoryManager = new Engine::MemoryModule::MemoryManager(ECS_GLOBAL_MEMORY_CAPACITY);
 
 	systemManager = new SystemManager(memoryManager);
 	componentManager = new ComponentManager(memoryManager);
@@ -45,20 +32,20 @@ void ECSHandler::init() {
 }
 
 void ECSHandler::initSystems() {
-	if(!systemManager) {
+	if (!systemManager) {
 		return;
 	}
 
-	systemManager->addSystem<GameEngine::SystemsModule::TransformSystem>();
-	systemManager->setSystemPriority<GameEngine::SystemsModule::TransformSystem>(eSystemsPriority::TRANSFORM_SYSTEM);
-	systemManager->setSystemUpdateInterval<GameEngine::SystemsModule::TransformSystem>(1/60.f);
+	systemManager->addSystem<Engine::SystemsModule::TransformSystem>();
+	systemManager->setSystemPriority<Engine::SystemsModule::TransformSystem>(eSystemsPriority::TRANSFORM_SYSTEM);
+	systemManager->setSystemUpdateInterval<Engine::SystemsModule::TransformSystem>(1 / 60.f);
 
-	systemManager->addSystem<GameEngine::SystemsModule::LODSystem>();
-	systemManager->setSystemPriority<GameEngine::SystemsModule::LODSystem>(eSystemsPriority::LOD_SYSTEM);
-	systemManager->setSystemUpdateInterval<GameEngine::SystemsModule::LODSystem>(1/60.f);
+	systemManager->addSystem<Engine::SystemsModule::LODSystem>();
+	systemManager->setSystemPriority<Engine::SystemsModule::LODSystem>(eSystemsPriority::LOD_SYSTEM);
+	systemManager->setSystemUpdateInterval<Engine::SystemsModule::LODSystem>(1 / 60.f);
 
-	systemManager->addSystem<GameEngine::SystemsModule::RenderSystem>(GameEngine::Engine::getInstance()->getRenderer());
-	systemManager->setSystemPriority<GameEngine::SystemsModule::RenderSystem>(eSystemsPriority::RENDER_SYSTEM);
+	systemManager->addSystem<Engine::SystemsModule::RenderSystem>(Engine::UnnamedEngine::instance()->getRenderer());
+	systemManager->setSystemPriority<Engine::SystemsModule::RenderSystem>(eSystemsPriority::RENDER_SYSTEM);
 }
 
 ECSHandler::~ECSHandler() {

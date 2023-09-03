@@ -5,7 +5,7 @@
 using namespace ecsModule;
 
 
-EntityManager::EntityManager(GameEngine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {}
+EntityManager::EntityManager(Engine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {}
 
 EntityManager::~EntityManager() {
 	for (auto& ec : mEntityContainers) {
@@ -46,7 +46,7 @@ void EntityManager::releaseEntityId(size_t id) {
 void EntityManager::destroyEntities() {
 	for (const auto entityId : mEntitiesToDelete) {
 		EntityInterface* entity = mEntities[entityId];
-		
+
 		if (auto it = mEntityContainers.find(entity->getStaticTypeID()); it != mEntityContainers.end()) {
 			it->second->destroyElement(entity);
 		}

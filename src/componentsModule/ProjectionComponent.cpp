@@ -3,7 +3,7 @@
 ProjectionComponent::ProjectionComponent() {
 }
 
-GameEngine::ProjectionModule::Projection& ProjectionComponent::getProjection() {
+Engine::ProjectionModule::Projection& ProjectionComponent::getProjection() {
 	return mProjection;
 }
 
