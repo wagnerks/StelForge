@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "ecsModule/EntityBase.h"
-#include "renderModule/TextureHandler.h"
+#include "assetsModule/TextureHandler.h"
 
 
 namespace Engine {

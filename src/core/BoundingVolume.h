@@ -3,7 +3,7 @@
 
 #include "Camera.h"
 #include "componentsModule/TransformComponent.h"
-#include "modelModule/Model.h"
+#include "assetsModule/modelModule/Model.h"
 
 namespace Engine::FrustumModule {
 	struct Plane

@@ -7,7 +7,7 @@
 #include "assetsModule/AssetsManager.h"
 #include "ecsModule/EntityManager.h"
 #include "memoryModule/LinearAllocator.h"
-#include "modelModule/Model.h"
+#include "assetsModule/modelModule/Model.h"
 
 
 struct aiMaterial;

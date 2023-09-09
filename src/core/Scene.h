@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "modelModule/Model.h"
+#include "assetsModule/modelModule/Model.h"
 #include "renderModule/DirectionalOrthoLight.h"
 #include "renderModule/SceneGridFloor.h"
 #include "renderModule/Skybox.h"

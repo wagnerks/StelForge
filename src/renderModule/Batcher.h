@@ -5,8 +5,8 @@
 #include <unordered_set>
 #include <vector>
 
-#include "modelModule/Mesh.h"
-#include "modelModule/Model.h"
+#include "assetsModule/modelModule/Mesh.h"
+#include "assetsModule/modelModule/Model.h"
 
 struct DrawObject {
 	friend bool operator==(const DrawObject& lhs, unsigned VAO) {

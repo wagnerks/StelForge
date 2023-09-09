@@ -4,7 +4,7 @@
 
 #include "core/ModelLoader.h"
 #include "ecsModule/EntityManager.h"
-#include "modelModule/Model.h"
+#include "assetsModule/modelModule/Model.h"
 
 
 using namespace Engine::ComponentsModule;

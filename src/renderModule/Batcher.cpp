@@ -4,7 +4,7 @@
 
 #include "imgui.h"
 #include "Renderer.h"
-#include "TextureHandler.h"
+#include "assetsModule/TextureHandler.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"

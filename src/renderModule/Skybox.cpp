@@ -1,12 +1,12 @@
 ﻿#include "Skybox.h"
 
-#include "TextureHandler.h"
+#include "assetsModule/TextureHandler.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
 #include "ecsModule/SystemManager.h"
-#include "modelModule/Mesh.h"
+#include "assetsModule/modelModule/Mesh.h"
 #include "shaderModule/ShaderController.h"
 #include "systemsModule/CameraSystem.h"
 

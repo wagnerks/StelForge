@@ -3,9 +3,9 @@
 #include "Camera.h"
 #include "Engine.h"
 #include "debugModule/ComponentsDebug.h"
-#include "modelModule/MeshFactory.h"
+#include "assetsModule/modelModule/MeshFactory.h"
 #include "shaderModule/ShaderController.h"
-#include "renderModule/TextureHandler.h"
+#include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 
 #include <ext/quaternion_trigonometric.hpp>

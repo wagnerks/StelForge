@@ -20,11 +20,11 @@ namespace AssetsModule {
 		{}
 
 		MeshNode& operator=(MeshNode&& other) noexcept {
+			TreeNode<MeshNode>::operator =(std::move(other));
 			if (this == &other) {
 				return *this;
 			}
 
-			TreeNode<MeshNode>::operator =(std::move(other));
 			mMeshes = std::move(other.mMeshes);
 			return *this;
 		}

@@ -6,7 +6,7 @@
 
 #include "ecsModule/EntityManager.h"
 #include "logsModule/logger.h"
-#include "renderModule/TextureHandler.h"
+#include "assetsModule/TextureHandler.h"
 
 using namespace AssetsModule;
 

@@ -5,7 +5,7 @@
 #include "core/Camera.h"
 #include "core/Engine.h"
 #include "ecsModule/SystemManager.h"
-#include "modelModule/Mesh.h"
+#include "assetsModule/modelModule/Mesh.h"
 #include "shaderModule/ShaderController.h"
 #include "systemsModule/CameraSystem.h"
 
