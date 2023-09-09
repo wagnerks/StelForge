@@ -7,7 +7,7 @@ namespace Engine::ShaderModule {
 	class ShaderBase {
 		friend class ShaderController;
 	public:
-		static std::string loadShaderCode(const char* path);
+		static std::string loadShaderCode(std::string_view path);
 
 		virtual bool compile() = 0;
 		void use() const;
@@ -29,7 +29,7 @@ namespace Engine::ShaderModule {
 	protected:
 		virtual ~ShaderBase();
 		ShaderBase() = default;
-		ShaderBase(size_t hash) : hash(hash){};
+		ShaderBase(size_t hash) : hash(hash) {};
 		unsigned int ID = 0;
 		std::unordered_map<std::string, int> cachedUniforms;
 
@@ -39,6 +39,6 @@ namespace Engine::ShaderModule {
 
 		static bool checkCompileErrors(unsigned int shader, std::string_view type);
 		int getUniformLocation(const std::string& name);
-		
+
 	};
 }

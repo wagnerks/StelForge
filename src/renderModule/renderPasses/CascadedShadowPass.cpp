@@ -2,8 +2,7 @@
 
 #include "imgui.h"
 #include "componentsModule/FrustumComponent.h"
-#include "componentsModule/LodComponent.h"
-#include "componentsModule/MeshComponent.h"
+#include "componentsModule/ModelComponent.h"
 #include "core/Engine.h"
 #include "ecsModule/ECSHandler.h"
 #include "ecsModule/EntityManager.h"
@@ -46,25 +45,24 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	//cull meshes
 	for (auto entityId : drawableEntities) {
 		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<MeshComponent>()) {
+		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>()) {
 
-			size_t LODLevel = 0;
-			if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
-				LODLevel = lodComp->getLodLevel();
-			}
 
-			auto& mesh = modelComp->getMesh(LODLevel);
-			bool pass = false;
-			for (auto shadow : mShadowSource->shadows) {
-				if (mesh.mBounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform)) {
-					pass = true;
-					break;
+			auto& model = modelComp->getModelLowestDetails();
+			for (auto& mesh : model.mMeshHandles) {
+				bool pass = false;
+				for (auto shadow : mShadowSource->shadows) {
+					if (mesh.mBounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform)) {
+						pass = true;
+						break;
+					}
+				}
+
+				if (pass) {
+					renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
 				}
 			}
 
-			if (pass) {
-				renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
-			}
 		}
 	}
 

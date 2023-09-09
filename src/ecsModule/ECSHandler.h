@@ -22,6 +22,9 @@ namespace ecsModule {
 		void init() override;
 		void initSystems();
 		~ECSHandler();
+
+		Engine::MemoryModule::MemoryManager* getMemoryManager() const;
+
 	private:
 		Engine::MemoryModule::MemoryManager* memoryManager = nullptr;
 		SystemManager* systemManager = nullptr;

@@ -1,6 +1,8 @@
 ﻿#include "Engine.h"
 #include "debugModule/imguiDecorator.h"
 
+//#include "vld.h"
+
 int main() {
 	const auto engine = Engine::UnnamedEngine::instance();
 

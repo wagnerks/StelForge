@@ -8,62 +8,62 @@
 #include "logsModule/logger.h"
 #include "renderModule/TextureHandler.h"
 
-using namespace Engine::CoreModule;
+using namespace AssetsModule;
 
-Engine::ModelModule::Model* ModelLoader::load(const std::string& path) {
-	const auto it = std::ranges::find_if(models, [path](const std::pair<std::string, ModelModule::Model*>& a) {
-		return a.first == path;
-	});
+AssetsModule::Model* ModelLoader::load(const std::string& path) {
+	auto asset = mModelsHolder->getAsset<Model>(path);
 
-	if (it != models.end()) {
-		return it->second;
+	if (asset) {
+		return asset;
 	}
-	auto modelData = loadModel(path);
-	/*if (modelData.mMeshes.empty()) {
-		return nullptr;
-	}*/
 
-	models.emplace_back(path, ecsModule::ECSHandler::entityManagerInstance()->createEntity<ModelModule::Model>(modelData));
-	return models.back().second;
+	auto meshNode = loadModel(path);
+	return mModelsHolder->createAsset<Model>(path, meshNode, path);
 }
 
 void ModelLoader::releaseModel(const std::string& path) {
-	const auto it = std::ranges::find_if(models, [path](const std::pair<std::string, ModelModule::Model*>& a) {
-		return a.first == path;
-	});
+	//const auto it = std::ranges::find_if(models, [path](const std::pair<std::string, ModelModule::Model*>& a) {
+	//	return a.first == path;
+	//});
 
-	if (it == models.end()) {
-		return;
-	}
+	//if (it == models.end()) {
+	//	return;
+	//}
 
-	models.erase(it);
+	//models.erase(it);
+}
+
+AssetsManager* ModelLoader::getModelsHolder() const {
+	return mModelsHolder;
 }
 
 ModelLoader::~ModelLoader() {
-	for (auto& model : models) {
-		delete model.second;
-	}
+	delete mModelsHolder;
 }
 
-Engine::ModelModule::MeshNode ModelLoader::loadModel(const std::string& path) {
-	RenderModule::TextureLoader loader;
+void ModelLoader::init() {
+	mModelsHolder = new AssetsManager(ecsModule::ECSHandler::instance()->getMemoryManager());
+}
+
+AssetsModule::MeshNode ModelLoader::loadModel(const std::string& path) {
+	AssetsModule::TextureLoader loader;
 	Assimp::Importer import;
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-		LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
+		Engine::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
 		return {};
 	}
 
 	auto directory = path.substr(0, path.find_last_of('/'));
 
-	ModelModule::MeshNode rawModel;
+	AssetsModule::MeshNode rawModel;
 	processNode(scene->mRootNode, scene, &loader, directory, rawModel);
 
 	return rawModel;
 }
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::MeshNode& rawModel) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel) {
 	auto parent = node->mParent;
 	while (parent) {
 		node->mTransformation *= parent->mTransformation;
@@ -76,14 +76,14 @@ void ModelLoader::processNode(aiNode* node, const aiScene* scene, RenderModule::
 	}
 
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
-		ModelModule::MeshNode* child = new ModelModule::MeshNode();
+		AssetsModule::MeshNode* child = new AssetsModule::MeshNode();
 		rawModel.addElement(child);
 
 		processNode(node->mChildren[i], scene, loader, directory, *child);
 	}
 }
 
-void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::MeshNode& rawModel) {
+void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel) {
 	auto lodLevel = 0;
 	auto i = parent->mName.length - 4;
 	for (; i > 0; i--) {
@@ -97,10 +97,14 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 		lodLevel = std::atoi(nameString.substr(i + 4, parent->mName.length - i).c_str());
 	}
 
+	while (rawModel.mMeshes.size() <= lodLevel) {
+		rawModel.mMeshes.emplace_back();
+	}
+
 	rawModel.mMeshes[lodLevel].emplace_back();
 
 	auto& modelMesh = rawModel.mMeshes[lodLevel].back();
-	modelMesh = ModelModule::Mesh();
+	modelMesh = AssetsModule::Mesh();
 	modelMesh.mData.mVertices.resize(mesh->mNumVertices);
 
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
@@ -141,18 +145,18 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 	// process material
 	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
 
-	std::vector<ModelModule::MaterialTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
+	std::vector<AssetsModule::MaterialTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
 	assert(diffuseMaps.size() < 2);
 	if (!diffuseMaps.empty()) {
 		modelMesh.mMaterial.mDiffuse = diffuseMaps.front();
 	}
 
-	std::vector<ModelModule::MaterialTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader, directory);
+	std::vector<AssetsModule::MaterialTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader, directory);
 	if (!specularMaps.empty()) {
 		modelMesh.mMaterial.mSpecular = specularMaps.front();
 	}
 
-	std::vector<ModelModule::MaterialTexture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", loader, directory);
+	std::vector<AssetsModule::MaterialTexture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", loader, directory);
 	if (!normalMaps.empty()) {
 		modelMesh.mMaterial.mNormal = normalMaps.front();
 	}
@@ -160,14 +164,14 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 	modelMesh.bindMesh();
 }
 
-std::vector<Engine::ModelModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory) {
-	std::vector<ModelModule::MaterialTexture> textures;
+std::vector<AssetsModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureLoader* loader, const std::string& directory) {
+	std::vector<AssetsModule::MaterialTexture> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
 		//if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
-		ModelModule::MaterialTexture texture;
+		AssetsModule::MaterialTexture texture;
 		texture.mTexture = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
 		texture.mType = typeName;
 

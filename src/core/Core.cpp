@@ -37,9 +37,10 @@ void Core::init() {
 
 Core::~Core() {
 	Engine::ShaderModule::ShaderController::terminate();
-	RenderModule::TextureHandler::terminate();
+	AssetsModule::TextureHandler::terminate();
 	RenderModule::Renderer::terminate();
 	ecsModule::ECSHandler::terminate();
+	CoreModule::InputHandler::terminate();
 }
 
 Core::Core() {}

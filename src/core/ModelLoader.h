@@ -4,6 +4,9 @@
 #include <assimp/material.h>
 
 #include "Singleton.h"
+#include "assetsModule/AssetsManager.h"
+#include "ecsModule/EntityManager.h"
+#include "memoryModule/LinearAllocator.h"
 #include "modelModule/Model.h"
 
 
@@ -19,21 +22,27 @@ namespace Engine {
 struct aiScene;
 struct aiNode;
 
-namespace Engine::CoreModule {
-	class ModelLoader : public Singleton<ModelLoader> {
+namespace AssetsModule {
+
+
+
+	class ModelLoader : public Engine::Singleton<ModelLoader> {
 		friend Singleton;
 	public:
-		ModelModule::Model* load(const std::string& path);
+		AssetsModule::Model* load(const std::string& path);
 		void releaseModel(const std::string& path);
+		AssetsModule::AssetsManager* getModelsHolder() const;
+
 	private:
 		ModelLoader() = default;
 		~ModelLoader() override;
+		void init() override;
 
-		std::vector<std::pair<std::string, ModelModule::Model*>> models;
+		AssetsModule::AssetsManager* mModelsHolder = nullptr;
 
-		static ModelModule::MeshNode loadModel(const std::string& path);
-		static void processNode(aiNode* node, const aiScene* scene, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::MeshNode& rawModel);
-		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, RenderModule::TextureLoader* loader, const std::string& directory, ModelModule::MeshNode& rawModel);
-		static std::vector<ModelModule::MaterialTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, RenderModule::TextureLoader* loader, const std::string& directory);
+		static AssetsModule::MeshNode loadModel(const std::string& path);
+		static void processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
+		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
+		static std::vector<AssetsModule::MaterialTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureLoader* loader, const std::string& directory);
 	};
 }

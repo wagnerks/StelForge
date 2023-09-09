@@ -6,11 +6,12 @@
 #include "matrix.hpp"
 
 #include "ecsModule/ComponentBase.h"
+#include "propertiesModule/Serializable.h"
 
 
 namespace Engine::ComponentsModule {
-	
-	class TransformComponent : public ecsModule::Component<TransformComponent> {
+
+	class TransformComponent : public ecsModule::Component<TransformComponent>, public PropertiesModule::Serializable {
 	public:
 		void setParentTransform(TransformComponent* parentTransform);
 		void addChildTransform(TransformComponent* comp);
@@ -48,10 +49,12 @@ namespace Engine::ComponentsModule {
 		glm::vec3 getForward();
 
 		void reloadTransform();
-		
+
 		void markDirty();
 		bool isDirty() const;
-		
+
+		bool deserialize(const Json::Value& data) override;
+		bool serialize(Json::Value& data) override;
 	private:
 		glm::vec3 calculateGlobalScale();
 		TransformComponent* mParentTransform = nullptr;
@@ -66,7 +69,7 @@ namespace Engine::ComponentsModule {
 		glm::vec3 pos = glm::vec3(0.0f, 0.0f, 0.0f);
 		glm::vec3 scale = glm::vec3(1.0f, 1.0f, 1.0f);
 		glm::vec3 rotate = glm::vec3(0.0f, 0.0f, 0.0f);
-		
+
 		glm::vec3 globalScale = glm::vec3(1.0f, 1.0f, 1.0f);
 		glm::vec3 globalPos = glm::vec3(1.0f, 1.0f, 1.0f);
 	};

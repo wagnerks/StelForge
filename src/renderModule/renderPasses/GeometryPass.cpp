@@ -1,7 +1,6 @@
 ﻿#include "GeometryPass.h"
 
-#include "componentsModule/LodComponent.h"
-#include "componentsModule/MeshComponent.h"
+#include "componentsModule/ModelComponent.h"
 #include "ecsModule/EntityManager.h"
 #include "renderModule/Renderer.h"
 #include "renderModule/TextureHandler.h"
@@ -25,7 +24,7 @@ void GeometryPass::init() {
 
 	// position color buffer
 	glGenTextures(1, &mData.gPosition);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gPosition);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gPosition);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -33,7 +32,7 @@ void GeometryPass::init() {
 
 	// normal color buffer
 	glGenTextures(1, &mData.gNormal);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gNormal);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gNormal);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -41,7 +40,7 @@ void GeometryPass::init() {
 
 	// color + specular color buffer
 	glGenTextures(1, &mData.gAlbedoSpec);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gAlbedoSpec);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gAlbedoSpec);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -49,7 +48,7 @@ void GeometryPass::init() {
 
 	// color + specular color buffer
 	glGenTextures(1, &mData.gViewPosition);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gViewPosition);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gViewPosition);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -86,16 +85,14 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	auto& drawableEntities = renderDataHandle.mDrawableEntities;
 	for (auto entityId : drawableEntities) {
 		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<MeshComponent>()) {
-			size_t LODLevel = 0;
-			if (auto lodComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<LodComponent>()) {
-				LODLevel = lodComp->getLodLevel();
-			}
-			auto& mesh = modelComp->getMesh(LODLevel);
-			if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, *transform)) {
-				renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
-			}
+		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>()) {
 
+			auto& model = modelComp->getModel();
+			for (auto& mesh : model.mMeshHandles) {
+				if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, *transform)) {
+					renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
+				}
+			}
 		}
 	}
 

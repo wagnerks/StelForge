@@ -4,13 +4,13 @@
 #include "ecsModule/ComponentBase.h"
 #include "modelModule/Model.h"
 
-namespace Engine::ComponentsModule{
+namespace Engine::ComponentsModule {
 	class MaterialComponent : public ecsModule::Component<MaterialComponent> {
 	public:
-		void addTexture(const ModelModule::Material& texture);
-		void removeTexture(const ModelModule::Material& texture);
+		void addTexture(const AssetsModule::Material& texture);
+		void removeTexture(const AssetsModule::Material& texture);
 	private:
-		ModelModule::Material mMaterial;
+		AssetsModule::Material mMaterial;
 	};
 }
 

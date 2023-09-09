@@ -5,9 +5,7 @@
 #include "imgui.h"
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/LightComponent.h"
-#include "componentsModule/LodComponent.h"
 #include "componentsModule/MaterialComponent.h"
-#include "componentsModule/MeshComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/RenderComponent.h"
 #include "componentsModule/TransformComponent.h"
@@ -91,15 +89,15 @@ void ComponentsDebug::entitiesDebug() {
 				ImGui::TreePop();
 			}
 
-			if (auto comp = currentEntity->getComponent<LodComponent>(); comp && ImGui::TreeNode("LOD Component")) {
-				componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
+			/*	if (auto comp = currentEntity->getComponent<LodComponent>(); comp && ImGui::TreeNode("LOD Component")) {
+					componentEditorInternal(comp);
+					ImGui::TreePop();
+				}*/
 
-			if (auto comp = currentEntity->getComponent<MeshComponent>(); comp && ImGui::TreeNode("Mesh Component")) {
-				componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
+				/*if (auto comp = currentEntity->getComponent<MeshComponent>(); comp && ImGui::TreeNode("Mesh Component")) {
+					componentEditorInternal(comp);
+					ImGui::TreePop();
+				}*/
 
 			if (auto comp = currentEntity->getComponent<MaterialComponent>(); comp && ImGui::TreeNode("Material Component")) {
 				//componentEditorInternal(comp);
@@ -245,39 +243,39 @@ void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
 	}
 
 }
-
-void ComponentsDebug::componentEditorInternal(LodComponent* component) {
-	if (!component) {
-		return;
-	}
-
-	auto& lodLevels = const_cast<std::vector<float>&>(component->getLodLevelValues());
-	int i = 0;
-
-	bool needSort = false;
-	for (auto& level : lodLevels) {
-		std::string levelId = "level" + std::to_string(i);
-		if (ImGui::DragFloat(levelId.c_str(), &level, 0.001f)) {
-			needSort = true;
-		}
-		i++;
-	}
-
-	if (needSort) {
-		std::ranges::sort(lodLevels);
-		std::ranges::reverse(lodLevels);
-	}
-
-	if (component->getLodType() == ComponentsModule::eLodType::DISTANCE) {
-		ImGui::Text("Type: %s", "DISTANCE");
-	}
-	else if (component->getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
-		ImGui::Text("Type: %s", "SCREEN_SPACE");
-	}
-
-	ImGui::Text("%zu", component->getLodLevel());
-	ImGui::Text("%f", component->getCurrentLodValue());
-}
+//
+//void ComponentsDebug::componentEditorInternal(LodComponent* component) {
+//	if (!component) {
+//		return;
+//	}
+//
+//	auto& lodLevels = const_cast<std::vector<float>&>(component->getLodLevelValues());
+//	int i = 0;
+//
+//	bool needSort = false;
+//	for (auto& level : lodLevels) {
+//		std::string levelId = "level" + std::to_string(i);
+//		if (ImGui::DragFloat(levelId.c_str(), &level, 0.001f)) {
+//			needSort = true;
+//		}
+//		i++;
+//	}
+//
+//	if (needSort) {
+//		std::ranges::sort(lodLevels);
+//		std::ranges::reverse(lodLevels);
+//	}
+//
+//	if (component->getLodType() == ComponentsModule::eLodType::DISTANCE) {
+//		ImGui::Text("Type: %s", "DISTANCE");
+//	}
+//	else if (component->getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
+//		ImGui::Text("Type: %s", "SCREEN_SPACE");
+//	}
+//
+//	ImGui::Text("%zu", component->getLodLevel());
+//	ImGui::Text("%f", component->getCurrentLodValue());
+//}
 
 void ComponentsDebug::componentEditorInternal(ComponentsModule::LightComponent* component) {
 	if (!component) {
@@ -324,55 +322,55 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightComponent* 
 	}
 }
 
-void ComponentsDebug::componentEditorInternal(ComponentsModule::MeshComponent* component) {
-	if (!component) {
-		return;
-	}
-
-	auto lods = component->getMeshes();
-	ImGui::Text("LODS: %d", lods.size());
-	int i = 0;
-	for (auto& lod : lods) {
-		auto treeLabel = "LOD " + std::to_string(i) + "##meshLod";
-		if (ImGui::TreeNode(std::to_string(i).c_str())) {
-
-			ImGui::Text("vertices: %d", lod.mData.mVertices.size());
-			ImGui::Text("indices: %d", lod.mData.mIndices.size());
-			ImGui::Spacing();
-
-			ImGui::Text("diffuse:");
-			if (lod.mMaterial.mDiffuse.mTexture.isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mDiffuse.mTexture.mId), { 200.f,200.f });
-			}
-			else {
-				ImGui::SameLine();
-				ImGui::Text("none");
-			}
-
-			ImGui::Text("specular:");
-			if (lod.mMaterial.mSpecular.mTexture.isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mSpecular.mTexture.mId), { 200.f,200.f });
-			}
-			else {
-				ImGui::SameLine();
-				ImGui::Text("none");
-			}
-
-			ImGui::Text("normal:");
-			if (lod.mMaterial.mNormal.mTexture.isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mNormal.mTexture.mId), { 200.f,200.f });
-			}
-			else {
-				ImGui::SameLine();
-				ImGui::Text("none");
-			}
-
-
-			ImGui::TreePop();
-		}
-		i++;
-
-
-	}
-
-}
+//void ComponentsDebug::componentEditorInternal(ComponentsModule::MeshComponent* component) {
+//	if (!component) {
+//		return;
+//	}
+//
+//	auto lods = component->getMeshes();
+//	ImGui::Text("LODS: %d", lods.size());
+//	int i = 0;
+//	for (auto& lod : lods) {
+//		auto treeLabel = "LOD " + std::to_string(i) + "##meshLod";
+//		if (ImGui::TreeNode(std::to_string(i).c_str())) {
+//
+//			ImGui::Text("vertices: %d", lod.mData.mVertices.size());
+//			ImGui::Text("indices: %d", lod.mData.mIndices.size());
+//			ImGui::Spacing();
+//
+//			ImGui::Text("diffuse:");
+//			if (lod.mMaterial.mDiffuse.mTexture.isValid()) {
+//				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mDiffuse.mTexture.mId), { 200.f,200.f });
+//			}
+//			else {
+//				ImGui::SameLine();
+//				ImGui::Text("none");
+//			}
+//
+//			ImGui::Text("specular:");
+//			if (lod.mMaterial.mSpecular.mTexture.isValid()) {
+//				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mSpecular.mTexture.mId), { 200.f,200.f });
+//			}
+//			else {
+//				ImGui::SameLine();
+//				ImGui::Text("none");
+//			}
+//
+//			ImGui::Text("normal:");
+//			if (lod.mMaterial.mNormal.mTexture.isValid()) {
+//				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mNormal.mTexture.mId), { 200.f,200.f });
+//			}
+//			else {
+//				ImGui::SameLine();
+//				ImGui::Text("none");
+//			}
+//
+//
+//			ImGui::TreePop();
+//		}
+//		i++;
+//
+//
+//	}
+//
+//}

@@ -8,14 +8,20 @@
 using namespace Engine::CoreModule;
 
 void InputProvider::subscribe(InputObserver* observer) {
-	unsubscribe(observer);
-	mKeyObservers.push_back(observer);
+	auto it = std::find(mKeyObservers.cbegin(), mKeyObservers.cend(), observer);
+	if (it == mKeyObservers.cend()) {
+		mKeyObservers.push_back(observer);
+	}
 }
 
 void InputProvider::unsubscribe(InputObserver* observer) {
 	erase_if(mKeyObservers, [observer](auto obs) {
 		return obs == observer;
 	});
+
+	if (mKeyObservers.empty()) {
+		terminate();
+	}
 }
 
 void InputProvider::fireEvent(InputKey key, InputEventType type) {

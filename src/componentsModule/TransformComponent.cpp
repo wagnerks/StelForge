@@ -6,6 +6,8 @@
 #include <gtx/quaternion.hpp>
 
 #include "mathModule/MathUtils.h"
+#include "propertiesModule/PropertiesSystem.h"
+#include "propertiesModule/TypeName.h"
 
 using namespace Engine::ComponentsModule;
 
@@ -58,29 +60,29 @@ void TransformComponent::setRotateX(float x) {
 	dirty = dirty || std::fabs(x - rotate.x) > std::numeric_limits<float>::epsilon();
 
 	rotate.x = x;
-	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
+	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 void TransformComponent::setRotateY(float y) {
 	dirty = dirty || std::fabs(y - rotate.y) > std::numeric_limits<float>::epsilon();
 
 	rotate.y = y;
-	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
+	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 void TransformComponent::setRotateZ(float z) {
 	dirty = dirty || std::fabs(z - rotate.z) > std::numeric_limits<float>::epsilon();
 
 	rotate.z = z;
-	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
+	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 void TransformComponent::setRotate(const glm::vec3& rotate) {
 	dirty = dirty || this->rotate != rotate;
 
 	this->rotate = rotate;
-	rotateQuat = glm::quat({glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z)});
+	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 
 const glm::vec3& TransformComponent::getScale(bool global) const {
-	if (global){
+	if (global) {
 		return globalScale;
 	}
 
@@ -111,7 +113,7 @@ const glm::mat4& TransformComponent::getTransform() const {
 	return transform;
 }
 
-void TransformComponent::setTransform(const glm::mat4& transform){
+void TransformComponent::setTransform(const glm::mat4& transform) {
 	this->transform = transform;
 }
 
@@ -144,7 +146,7 @@ void TransformComponent::reloadTransform() {
 }
 
 glm::mat4 TransformComponent::getLocalTransform() const {
-    return glm::translate(glm::mat4(1.0f), pos) * getRotationMatrix() * glm::scale(glm::mat4(1.0f), scale);
+	return glm::translate(glm::mat4(1.0f), pos) * getRotationMatrix() * glm::scale(glm::mat4(1.0f), scale);
 }
 
 const glm::mat4& TransformComponent::getViewMatrix() const {
@@ -175,6 +177,39 @@ bool TransformComponent::isDirty() const {
 	return dirty;
 }
 
+bool TransformComponent::serialize(Json::Value& data) {
+
+	data["Scale"].append(scale.x);
+	data["Scale"].append(scale.y);
+	data["Scale"].append(scale.z);
+
+	data["Pos"].append(pos.x);
+	data["Pos"].append(pos.y);
+	data["Pos"].append(pos.z);
+
+	data["Rotate"].append(rotate.x);
+	data["Rotate"].append(rotate.y);
+	data["Rotate"].append(rotate.z);
+
+	return true;
+}
+
+bool TransformComponent::deserialize(const Json::Value& data) {
+	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Scale")) {
+		setScale(PropertiesModule::JsonUtils::getVec3(*val));
+	}
+
+	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Pos")) {
+		setPos(PropertiesModule::JsonUtils::getVec3(*val));
+	}
+
+	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Rotate")) {
+		setRotate(PropertiesModule::JsonUtils::getVec3(*val));
+	}
+
+	return true;
+}
+
 void TransformComponent::setParentTransform(TransformComponent* parentTransform) {
 	if (parentTransform == mParentTransform) {
 		return;
@@ -184,7 +219,7 @@ void TransformComponent::setParentTransform(TransformComponent* parentTransform)
 	mParentTransform = parentTransform;
 }
 
-glm::vec3 TransformComponent::calculateGlobalScale(){
+glm::vec3 TransformComponent::calculateGlobalScale() {
 	auto& t = transform;
 
 	return {

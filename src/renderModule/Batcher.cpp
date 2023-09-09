@@ -32,7 +32,7 @@ Batcher::Batcher() {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, Engine::ModelModule::Material textures, glm::mat4 transform, bool transparentForShadow) {
+void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, AssetsModule::Material textures, glm::mat4 transform, bool transparentForShadow) {
 	auto apos = glm::vec3(transform[3]);
 	if (Engine::Math::distanceSqr(apos, ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f * 500000.f) {
 		return;
@@ -81,7 +81,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 	ImGui::End();
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
-	auto defaultTex = Engine::RenderModule::TextureHandler::instance()->mLoader.loadTexture("white.png").mId;
+	auto defaultTex = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("white.png").mId;
 	for (auto& drawObjects : drawList) {
 		if (shadowMap) {
 			if (drawObjects.transparentForShadow) {
@@ -94,17 +94,17 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 
 
 		if (drawObjects.material.mDiffuse.mTexture.isValid()) {
-			Engine::RenderModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture.mId);
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture.mId);
 		}
 		else {
-			Engine::RenderModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, defaultTex);
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, defaultTex);
 		}
 
 		if (drawObjects.material.mNormal.mTexture.isValid()) {
-			Engine::RenderModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, drawObjects.material.mNormal.mTexture.mId);
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, drawObjects.material.mNormal.mTexture.mId);
 		}
 		else {
-			Engine::RenderModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultTex);
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultTex);
 		}
 
 		if (drawObjects.indicesCount) {

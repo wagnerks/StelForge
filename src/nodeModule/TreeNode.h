@@ -7,6 +7,48 @@ namespace Engine::NodeModule {
 	template<class T>
 	class TreeNode {
 	public:
+		TreeNode(const TreeNode& other) = delete;
+		TreeNode& operator=(const TreeNode& other) = delete;
+
+		TreeNode(TreeNode&& other) noexcept
+			: mOnElementRemove(std::move(other.mOnElementRemove)),
+			mOnElementAdd(std::move(other.mOnElementAdd)),
+			mParent(other.mParent),
+			mElements(std::move(other.mElements)),
+			mNodeId(std::move(other.mNodeId)) {
+
+			for (auto element : mElements) {
+				other.removeElement(element);
+				element->setParent(static_cast<T*>(this));
+
+				if (mOnElementAdd) {
+					mOnElementAdd(element);
+				}
+			}
+		}
+
+		TreeNode& operator=(TreeNode&& other) noexcept {
+			if (this == &other)
+				return *this;
+
+			mOnElementRemove = std::move(other.mOnElementRemove);
+			mOnElementAdd = std::move(other.mOnElementAdd);
+			mParent = other.mParent;
+			mElements = std::move(other.mElements);
+			mNodeId = std::move(other.mNodeId);
+
+			for (auto element : mElements) {
+				other.removeElement(element);
+				element->setParent(static_cast<T*>(this));
+
+				if (mOnElementAdd) {
+					mOnElementAdd(element);
+				}
+			}
+			return *this;
+		}
+
+		TreeNode() = default;
 		virtual ~TreeNode();
 
 		void addElement(T* child);

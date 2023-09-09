@@ -3,7 +3,7 @@
 #include "core/BoundingVolume.h"
 #include "renderModule/Renderer.h"
 
-using namespace Engine::ModelModule;
+using namespace AssetsModule;
 
 Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices) {
 	mData.mVertices = std::move(vertices);
@@ -13,9 +13,9 @@ Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices) {
 }
 
 Mesh::Mesh(Mesh&& other) noexcept : mBounds(other.mBounds),
-									mMaterial(std::move(other.mMaterial)),
-									mData(std::move(other.mData)),
-									mBinded(other.mBinded) {
+mMaterial(std::move(other.mMaterial)),
+mData(std::move(other.mData)),
+mBinded(other.mBinded) {
 	other.mBinded = false;
 }
 
@@ -88,7 +88,7 @@ void Mesh::bindMesh() {
 		maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
 	}
 
-	mBounds = new FrustumModule::AABB(minAABB, maxAABB);
+	mBounds = new Engine::FrustumModule::AABB(minAABB, maxAABB);
 }
 
 void Mesh::unbindMesh() {

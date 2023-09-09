@@ -14,7 +14,7 @@ namespace Engine {
 	}
 }
 
-namespace Engine::ModelModule {
+namespace AssetsModule {
 	struct Vertex {
 		glm::vec3 mPosition;
 		glm::vec3 mNormal;
@@ -23,7 +23,7 @@ namespace Engine::ModelModule {
 	};
 
 	struct MaterialTexture {
-		RenderModule::Texture mTexture;
+		Texture mTexture;
 		std::string mType;
 	};
 
@@ -57,9 +57,9 @@ namespace Engine::ModelModule {
 		void bindMesh();
 		void unbindMesh();
 
-		unsigned int getVAO() const { return mData.mVao;}
+		unsigned int getVAO() const { return mData.mVao; }
 
-		FrustumModule::AABB* mBounds = nullptr;
+		Engine::FrustumModule::AABB* mBounds = nullptr;
 		Material mMaterial;
 		MeshData mData;
 	private:
@@ -74,7 +74,7 @@ namespace Engine::ModelModule {
 
 		Material mMaterial;
 		MeshData mData;
-		FrustumModule::AABB* mBounds = nullptr;
+		Engine::FrustumModule::AABB* mBounds = nullptr;
 
 	};
 }

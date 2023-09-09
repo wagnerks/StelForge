@@ -211,7 +211,7 @@ namespace Engine::FrustumModule {
 	};
 
 
-	inline AABB generateAABB(const ModelModule::Mesh& mesh)
+	inline AABB generateAABB(const AssetsModule::Mesh& mesh)
 	{
 		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
@@ -231,7 +231,7 @@ namespace Engine::FrustumModule {
 		return AABB(minAABB, maxAABB);
 	}
 
-	inline Sphere generateSphereBV(const ::Engine::ModelModule::Mesh& mesh)
+	inline Sphere generateSphereBV(const AssetsModule::Mesh& mesh)
 	{
 		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
 		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());

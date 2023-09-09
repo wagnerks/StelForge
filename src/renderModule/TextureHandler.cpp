@@ -6,7 +6,7 @@
 #include "glad/glad.h"
 #include "logsModule/logger.h"
 
-using namespace Engine::RenderModule;
+using namespace AssetsModule;
 
 void TextureHandler::bindTexture(unsigned slot, unsigned type, unsigned id) {
 	if (mBindedTextures[slot] == id) {
@@ -30,7 +30,7 @@ Texture TextureLoader::loadTexture(const std::string& path, bool flip) {
 
 		auto data = stbi_load(path.data(), &texWidth, &texHeight, &nrChannels, 4);
 		if (!data) {
-			LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
+			Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
 			stbi_image_free(data);
 			return TextureHandler::instance()->mDefaultTex;
 		}
@@ -93,7 +93,7 @@ Texture TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
 		for (unsigned int i = 0; i < faces.size(); i++) {
 			auto data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
 			if (!data) {
-				LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
+				Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
 				stbi_image_free(data);
 				glDeleteTextures(1, &textureID);
 				return {};

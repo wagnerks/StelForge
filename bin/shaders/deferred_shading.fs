@@ -235,7 +235,7 @@ void main() {
     }
 
     lighting *= (1 - (0.9 * shadow));
-    lighting *= AmbientOcclusion;
+    //lighting *= AmbientOcclusion;
     const float gamma = 1.0;
     float exposure = 1.2;
   

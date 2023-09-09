@@ -27,7 +27,7 @@ struct DrawObject {
 	unsigned VAO;
 	size_t verticesCount;
 	size_t indicesCount;
-	Engine::ModelModule::Material material;
+	AssetsModule::Material material;
 	std::vector<glm::mat4> transforms;
 
 	bool transparentForShadow = false;
@@ -39,7 +39,7 @@ struct DrawObject {
 class Batcher {
 public:
 	Batcher();
-	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, Engine::ModelModule::Material material, glm::mat4 transform, bool transparentForShadow);
+	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, AssetsModule::Material material, glm::mat4 transform, bool transparentForShadow);
 	void flushAll(bool clear = false, const glm::vec3& viewPos = {}, bool shadowMap = false);
 
 	std::vector<DrawObject> drawList;

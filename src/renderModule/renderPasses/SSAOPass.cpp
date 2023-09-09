@@ -159,16 +159,16 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& rende
 	shaderSSAO->use();
 	shaderSSAO->setMat4("projection", renderDataHandle.mProjection);
 
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, mData.mNoiseTexture);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, mData.mNoiseTexture);
 	Utils::renderQuad();
 
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAOBlur->use();
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.mSsaoColorBuffer);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.mSsaoColorBuffer);
 	Utils::renderQuad();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

@@ -23,9 +23,9 @@ namespace ecsModule {
 
 		EntityInterface* getEntity(size_t entityId) const;
 
-		template<class entityType>
-		inline EntityInterface* getEntity(size_t entityId) {
-			return static_cast<entityType*>(mEntities[entityId]);
+		template<class EntityType>
+		inline EntityType* getEntity(size_t entityId) {
+			return static_cast<EntityType*>(mEntities[entityId]);
 		}
 
 		const std::vector<EntityInterface*>& getAllEntities() {

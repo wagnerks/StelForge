@@ -143,14 +143,14 @@ namespace Engine::CoreModule {
 
 	class InputProvider : public Singleton<InputProvider> {
 		friend Singleton;
+		friend InputObserver;
 	public:
-		using EventCallback = std::function<void(InputKey, InputEventType)>;
+		void fireEvent(InputKey key, InputEventType type);
 
+	private:
 		void subscribe(InputObserver* observer);
 		void unsubscribe(InputObserver* observer);
 
-		void fireEvent(InputKey key, InputEventType type);
-	private:
 		InputProvider() = default;
 		~InputProvider() override = default;
 

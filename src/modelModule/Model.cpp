@@ -2,5 +2,5 @@
 
 #include <ranges>
 
-using namespace Engine::ModelModule;
+using namespace AssetsModule;
 

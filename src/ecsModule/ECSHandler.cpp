@@ -58,3 +58,7 @@ ECSHandler::~ECSHandler() {
 
 	delete memoryManager;
 }
+
+Engine::MemoryModule::MemoryManager* ECSHandler::getMemoryManager() const {
+	return memoryManager;
+}

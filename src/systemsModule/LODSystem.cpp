@@ -3,9 +3,8 @@
 #include <ext/scalar_constants.hpp>
 
 #include "CameraSystem.h"
-#include "componentsModule/LodComponent.h"
-#include "componentsModule/MeshComponent.h"
 #include "componentsModule/CameraComponent.h"
+#include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
@@ -21,40 +20,40 @@ void LODSystem::update(float_t dt) {
 		return;
 	}
 
-	for (auto& lodObject : *ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<LodComponent>()) {
+	for (auto& lodObject : *ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<ModelComponent>()) {
 		auto transform = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ComponentsModule::TransformComponent>(lodObject.getOwnerId());
 		if (!transform) {
 			continue;
 		}
 
 		float value = 0.f;
-		if (lodObject.getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
-			//if (const auto modelComponent = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ModelComponent>(lodObject.getOwnerId())) {
-			//	if (const auto model = modelComponent->getModel()) {
-			//		/*for (auto& mesh : model->getMeshes()){
-			//			value = std::max(value, calculateScreenSpaceArea(&mesh, playerCamera, transform));
-			//		}*/
-			//	}
-			//}
-		}
-		else if (lodObject.getLodType() == ComponentsModule::eLodType::DISTANCE) {
-			value = calculateDistanceToMesh(playerCamera, transform);
-		}
+		//if (lodObject.getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
+		//	//if (const auto modelComponent = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ModelComponent>(lodObject.getOwnerId())) {
+		//	//	if (const auto model = modelComponent->getModel()) {
+		//	//		/*for (auto& mesh : model->getMeshes()){
+		//	//			value = std::max(value, calculateScreenSpaceArea(&mesh, playerCamera, transform));
+		//	//		}*/
+		//	//	}
+		//	//}
+		//}
+		//else if (lodObject.getLodType() == ComponentsModule::eLodType::DISTANCE) {
+		value = calculateDistanceToMesh(playerCamera, transform);
+		//}
 
 		int lodLevel = 0;
-		for (auto level : lodObject.getLodLevelValues()) {
+		for (auto level : lodObject.mLOD.getLodLevelValues()) {
 			if (level < value) {
 				break;
 			}
 			lodLevel++;
 		}
 
-		lodObject.setCurrentLodValue(value);
-		lodObject.setLodLevel(lodLevel);
+		lodObject.mLOD.setLodLevel(lodLevel);
+		lodObject.mLOD.setCurrentLodValue(value);
 	}
 }
 
-float LODSystem::calculateScreenSpaceArea(const ModelModule::Mesh* mesh, const Camera* camera, TransformComponent* meshTransform) {
+float LODSystem::calculateScreenSpaceArea(const AssetsModule::Mesh* mesh, const Camera* camera, TransformComponent* meshTransform) {
 	if (!mesh || !camera || !meshTransform) {
 		return 0.f;
 	}

@@ -1,8 +1,10 @@
 ﻿#pragma once
 
-namespace Engine::ModelModule {
+namespace AssetsModule {
 	class Mesh;
+}
 
+namespace Engine::ModelModule {
 	enum class eDrawObjectType {
 		CUBE = 0,
 		TRIANGLE,
@@ -13,7 +15,7 @@ namespace Engine::ModelModule {
 
 	class MeshFactory {
 	public:
-		static Mesh* createPrimitiveMesh(eDrawObjectType type);
+		static AssetsModule::Mesh* createPrimitiveMesh(eDrawObjectType type);
 	};
 
 

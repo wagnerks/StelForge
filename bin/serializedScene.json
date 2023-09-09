@@ -1,0 +1,142 @@
+{
+	"Children" : 
+	[
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : null,
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						0.0,
+						-1.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						50.0,
+						0.0099999997764825821,
+						50.0
+					]
+				}
+			},
+			"id" : "floor"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : null,
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "model"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : null,
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						10.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "model1"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : null,
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						20.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "model2"
+		}
+	],
+	"Properties" : 
+	{
+		"TransformComponent" : 
+		{
+			"Pos" : 
+			[
+				0.0,
+				0.0,
+				0.0
+			],
+			"Rotate" : 
+			[
+				0.0,
+				0.0,
+				0.0
+			],
+			"Scale" : 
+			[
+				1.0,
+				1.0,
+				1.0
+			]
+		}
+	},
+	"id" : "root"
+}

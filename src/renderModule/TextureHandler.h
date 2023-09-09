@@ -6,7 +6,7 @@
 
 #include "core/Singleton.h"
 
-namespace Engine::RenderModule {
+namespace AssetsModule {
 
 	enum class eTextureType {
 		DEFAULT,
@@ -31,7 +31,7 @@ namespace Engine::RenderModule {
 		Texture createEmpty2DTexture(const std::string& id, int w, int h, int format);
 	};
 
-	class TextureHandler : public Singleton<TextureHandler> {
+	class TextureHandler : public Engine::Singleton<TextureHandler> {
 		friend Singleton;
 	public:
 		void bindTexture(unsigned slot, unsigned type, unsigned int id);

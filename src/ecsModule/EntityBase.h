@@ -9,7 +9,7 @@
 
 namespace ecsModule {
 	class EntityInterface : public Engine::NodeModule::TreeNode<EntityInterface> {
-		friend class EntityManager;
+		friend class EntityManagerInterface;
 		friend class TreeNode;
 	public:
 		virtual size_t getStaticTypeID() const = 0;

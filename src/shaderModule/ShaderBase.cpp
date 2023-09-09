@@ -6,6 +6,7 @@
 #include <gtc/type_ptr.hpp>
 
 #include "ShaderController.h"
+#include "core/FileSystem.h"
 #include "logsModule/logger.h"
 
 using namespace Engine::ShaderModule;
@@ -27,27 +28,11 @@ bool ShaderBase::compileShader(const char* shaderCode, unsigned type) {
 	return success;
 }
 
-std::string ShaderBase::loadShaderCode(const char* path) {
-	std::ifstream shaderFile;
+std::string ShaderBase::loadShaderCode(std::string_view path) {
 
 	std::string shaderCode;
 
-	shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-	try {
-		shaderFile.open(path);
-		std::stringstream shaderStream;
-
-		shaderStream << shaderFile.rdbuf();
-
-		shaderFile.close();
-
-		shaderCode = shaderStream.str();
-	}
-	catch (std::ifstream::failure& e) {
-		assert(false);
-		LogsModule::Logger::LOG_ERROR("SHADER::FILE_NOT_SUCCESSFULLY_READ: %s, \npath: %s", e.what(), path);
-		return {};
-	}
+	FileSystem::readFile(path, shaderCode);
 
 	return shaderCode;
 }
@@ -149,5 +134,5 @@ int ShaderBase::getUniformLocation(const std::string& name) {
 		return found->second;
 	}
 
-	return cachedUniforms.insert({name, glGetUniformLocation(ID, name.c_str())}).first->second;
+	return cachedUniforms.insert({ name, glGetUniformLocation(ID, name.c_str()) }).first->second;
 }

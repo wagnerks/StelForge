@@ -39,7 +39,7 @@ void Skybox::init() {
 	skyboxShader->setInt("skybox", 16);
 	skyboxShader->setMat4("projection", ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix());
 
-	cubemapTex = TextureHandler::instance()->mLoader.loadCubemapTexture(skyboxPath).mId;
+	cubemapTex = AssetsModule::TextureHandler::instance()->mLoader.loadCubemapTexture(skyboxPath).mId;
 	if (cubemapTex == 0) {
 		assert(false && "can't load skybox texture");
 		return;
@@ -112,7 +112,7 @@ void Skybox::draw() {
 
 	glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
 
-	TextureHandler::instance()->bindTexture(GL_TEXTURE16, GL_TEXTURE_CUBE_MAP, cubemapTex);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE16, GL_TEXTURE_CUBE_MAP, cubemapTex);
 
 	glBindVertexArray(VAO);
 	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 36);
