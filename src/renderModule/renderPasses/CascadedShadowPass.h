@@ -30,6 +30,9 @@ namespace Engine::RenderModule::RenderPasses {
 		CascadeShadows* mShadowSource;
 		bool mInited = false;
 		Data mData;
+
+		float mUpdateDelta = 0.03f; //update shadows time, rerender objects with shadow not every frame for optimization purposes
+		float mUpdateTimer = std::numeric_limits<float>::max(); //guarantee first frame rendering
 	};
 }
 

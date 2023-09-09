@@ -4,7 +4,7 @@
 #include "Engine.h"
 #include "debugModule/ComponentsDebug.h"
 #include "assetsModule/modelModule/MeshFactory.h"
-#include "shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/ShaderController.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 

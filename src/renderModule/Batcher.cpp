@@ -10,7 +10,7 @@
 #include "core/Engine.h"
 #include "ecsModule/SystemManager.h"
 #include "glad/glad.h"
-#include "shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/ShaderController.h"
 #include "mathModule/MathUtils.h"
 #include "systemsModule/CameraSystem.h"
 

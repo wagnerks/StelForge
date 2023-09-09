@@ -1,10 +1,9 @@
 ﻿#pragma once
-#include <functional>
 
 #include "ECSHandler.h"
 #include "helper.h"
+
 #include "ComponentsManager.h"
-#include "componentsModule/TransformComponent.h"
 #include "nodeModule/TreeNode.h"
 
 namespace ecsModule {

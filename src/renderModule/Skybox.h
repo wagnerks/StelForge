@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "shaderModule/Shader.h"
+#include "assetsModule/shaderModule/Shader.h"
 
 namespace Engine::RenderModule {
 	class Skybox {

@@ -2,19 +2,11 @@
 
 #include <deque>
 
-#include <gtc/type_ptr.hpp>
-#include "imgui.h"
-#include "Utils.h"
 #include "core/Engine.h"
-#include "core/FileSystem.h"
 #include "logsModule/logger.h"
-
 
 #include "gtc/random.hpp"
 
-#include "core/ModelLoader.h"
-#include "ecsModule/EntityManager.h"
-#include "entitiesModule/ModelEntity.h"
 #include "propertiesModule/PropertiesSystem.h"
 
 constexpr int GLFW_CONTEXT_VER_MAJ = 4;
@@ -28,14 +20,12 @@ using namespace ::Engine::CoreModule;
 
 Renderer::~Renderer() {
 	delete mBatcher;
-	AssetsModule::ModelLoader::terminate();
 	glfwTerminate();
 }
 
 void Renderer::draw() {
 	RenderModule::Renderer::mDrawCallsCount = 0;
 	RenderModule::Renderer::mDrawVerticesCount = 0;
-	Utils::initCubeVAO();
 }
 
 void Renderer::postDraw() {
@@ -46,23 +36,6 @@ void Renderer::postDraw() {
 void Renderer::init() {
 
 	auto root = PropertiesModule::PropertiesSystem::loadScene("scene.json");
-	FileSystem::writeJson("serializedScene.json", PropertiesModule::PropertiesSystem::serializeEntity(root));
-	//auto count = 10;
-	//int i = 0;
-	//int j = 0;
-	//int k = 1;
-	//for (i = 0; i < count; i++) {
-	//	for (j = 0; j < count; j++) {
-	//		for (k = 1; k < count; k++) {
-	//			auto trainNode = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
-	//			trainNode->getComponent<TransformComponent>()->setRotateX(-90.f);
-	//			trainNode->getComponent<TransformComponent>()->setScale({ 0.01f,0.01f,0.01f });
-	//			trainNode->addComponent<ModelComponent>()->addMeshData(cubeModel->getAllLODs());
-	//			trainNode->getComponent<TransformComponent>()->setPos(glm::vec3(i * 10.f, k * 10.f, j * 10.f));
-	//			trainNode->setNodeId("suzanne" + std::to_string(i + j + k));
-	//		}
-	//	}
-	//}
 
 	mBatcher = new Batcher();
 }

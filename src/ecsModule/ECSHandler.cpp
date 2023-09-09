@@ -3,7 +3,7 @@
 #include "ComponentsManager.h"
 #include "EntityManager.h"
 #include "SystemManager.h"
-#include "core/Engine.h"
+
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/LODSystem.h"
 #include "systemsModule/RenderSystem.h"

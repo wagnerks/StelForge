@@ -45,8 +45,8 @@ void ModelLoader::init() {
 	mModelsHolder = new AssetsManager(ecsModule::ECSHandler::instance()->getMemoryManager());
 }
 
-AssetsModule::MeshNode ModelLoader::loadModel(const std::string& path) {
-	AssetsModule::TextureLoader loader;
+MeshNode ModelLoader::loadModel(const std::string& path) {
+	TextureLoader loader;
 	Assimp::Importer import;
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
 
@@ -57,13 +57,13 @@ AssetsModule::MeshNode ModelLoader::loadModel(const std::string& path) {
 
 	auto directory = path.substr(0, path.find_last_of('/'));
 
-	AssetsModule::MeshNode rawModel;
+	MeshNode rawModel;
 	processNode(scene->mRootNode, scene, &loader, directory, rawModel);
 
 	return rawModel;
 }
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureLoader* loader, const std::string& directory, MeshNode& rawModel) {
 	auto parent = node->mParent;
 	while (parent) {
 		node->mTransformation *= parent->mTransformation;

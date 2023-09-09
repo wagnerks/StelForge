@@ -4,7 +4,7 @@
 
 #include "TypeName.h"
 #include "ecsModule/EntityManager.h"
-#include "entitiesModule/ModelEntity.h"
+#include "..\entitiesModule\Object.h"
 
 namespace Engine::PropertiesModule {
 	ecsModule::EntityInterface* PropertiesSystem::loadScene(std::string_view path) {
@@ -12,7 +12,7 @@ namespace Engine::PropertiesModule {
 			return nullptr;
 		}
 
-		auto scene = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+		auto scene = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Object>();
 		fillTree(scene, FileSystem::readJson(path));
 
 		return scene;
@@ -43,7 +43,7 @@ namespace Engine::PropertiesModule {
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
-				auto child = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Model>();
+				auto child = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Object>();
 				entity->addElement(child);
 				fillTree(child, element);
 			}

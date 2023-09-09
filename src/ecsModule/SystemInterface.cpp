@@ -1,7 +1,5 @@
 ﻿#include "SystemInterface.h"
 
-#include "ECSHandler.h"
-#include "SystemManager.h"
 
 using namespace ecsModule;
 

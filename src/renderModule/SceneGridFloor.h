@@ -1,6 +1,6 @@
 ﻿#pragma once
-#include "shaderModule/Shader.h"
 #include "mat4x4.hpp"
+#include "assetsModule/shaderModule/ShaderBase.h"
 
 namespace Engine::RenderModule {
 	class SceneGridFloor {

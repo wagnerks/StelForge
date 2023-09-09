@@ -6,7 +6,7 @@
 #include <vector>
 #include "ecsModule/EntityBase.h"
 #include "core/BoundingVolume.h"
-#include "shaderModule/ShaderBase.h"
+#include "assetsModule/shaderModule/ShaderBase.h"
 #include "core/Projection.h"
 
 class CascadeShadow : public ecsModule::Entity<CascadeShadow> {
@@ -35,16 +35,16 @@ public:
 	unsigned getShadowMapTextureArray();
 	void cacheMatrices();
 	void clearCacheMatrices();
-	
-	
+
+
 	std::vector<CascadeShadow*> shadows;
 
-	float sunProgress = 0.f;
+	float sunProgress = 0.4f;
 private:
 	unsigned lightFBO;
 	unsigned lightDepthMaps;
 	unsigned matricesUBO;
-	
+
 	glm::vec2 resolution;
 
 	std::vector<unsigned> visualizerVAOs;
@@ -56,5 +56,5 @@ private:
 	std::vector<glm::mat4> lightMatricesCache;
 	std::vector<float> shadowCascadeLevels;
 
-	
+
 };

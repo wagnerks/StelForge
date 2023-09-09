@@ -27,6 +27,9 @@ void CascadedShadowPass::init() {
 
 	mShadowSource = ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadows>(glm::vec2{4096.f, 4096.f});
 	mShadowSource->init();
+
+	mShadowSource->getComponent<TransformComponent>()->setRotate({ -mShadowSource->sunProgress * 180.f,0.f, mShadowSource->sunProgress * 5.f });
+	mShadowSource->getComponent<TransformComponent>()->reloadTransform();
 }
 
 void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
@@ -38,56 +41,9 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 		return;
 	}
 
-	auto& drawableEntities = renderDataHandle.mDrawableEntities;
-
-	mShadowSource->preDraw();
-
-	//cull meshes
-	for (auto entityId : drawableEntities) {
-		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>()) {
-
-
-			auto& model = modelComp->getModelLowestDetails();
-			for (auto& mesh : model.mMeshHandles) {
-				bool pass = false;
-				for (auto shadow : mShadowSource->shadows) {
-					if (mesh.mBounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform)) {
-						pass = true;
-						break;
-					}
-				}
-
-				if (pass) {
-					renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
-				}
-			}
-
-		}
-	}
-
-	renderer->getBatcher()->flushAll(true, mShadowSource->getLightPosition(), true);
-
-	//draw meshes which should cast shadow
-
-	mShadowSource->postDraw();
-
-	mData = {
-		mShadowSource->getShadowMapTextureArray(),
-		mShadowSource->getLightDirection(),
-		glm::vec3{1.f},
-		mShadowSource->getResolution(),
-		mShadowSource->getLightPosition(),
-		mShadowSource->getCameraFarPlane(),
-		mShadowSource->getShadowCascadeLevels(),
-		mShadowSource,
-		mShadowSource->shadows
-	};
-
-	renderDataHandle.mCascadedShadowsPassData = mData;
-
 	if (ImGui::Begin("lightSpaceMatrix")) {
 		ImGui::DragFloat("camera speed", &ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->MovementSpeed, 0.1f);
+		ImGui::DragFloat("shadows update delta", &mUpdateDelta, 0.1f);
 
 		if (mShadowSource) {
 			if (ImGui::Button("cache")) {
@@ -114,4 +70,63 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 		}
 	}
 	ImGui::End();
+
+	if (mUpdateTimer <= mUpdateDelta) {
+		mUpdateTimer += UnnamedEngine::instance()->getDeltaTime();
+
+		renderDataHandle.mCascadedShadowsPassData = {
+			mShadowSource->getShadowMapTextureArray(),
+			mShadowSource->getLightDirection(),
+			glm::vec3{1.f},
+			mShadowSource->getResolution(),
+			mShadowSource->getLightPosition(),
+			mShadowSource->getCameraFarPlane(),
+			mShadowSource->getShadowCascadeLevels(),
+			mShadowSource,
+			mShadowSource->shadows
+		};
+
+		return;
+	}
+
+	mUpdateTimer = 0.f;
+
+	auto& drawableEntities = renderDataHandle.mDrawableEntities;
+
+	mShadowSource->preDraw();
+
+	//cull meshes
+	for (auto entityId : drawableEntities) {
+		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
+		auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>();
+		if (transform && modelComp) {
+			for (auto& mesh : modelComp->getModelLowestDetails().mMeshHandles) {
+				auto it = std::ranges::find_if(std::as_const(mShadowSource->shadows), [&mesh, &transform](const CascadeShadow* shadow) {
+					return mesh.mBounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform);
+				});
+
+				if (it != mShadowSource->shadows.cend()) {
+					renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
+				}
+			}
+		}
+	}
+
+	renderer->getBatcher()->flushAll(true, mShadowSource->getLightPosition(), true);
+
+	//draw meshes which should cast shadow
+
+	mShadowSource->postDraw();
+
+	renderDataHandle.mCascadedShadowsPassData = {
+			mShadowSource->getShadowMapTextureArray(),
+			mShadowSource->getLightDirection(),
+			glm::vec3{1.f},
+			mShadowSource->getResolution(),
+			mShadowSource->getLightPosition(),
+			mShadowSource->getCameraFarPlane(),
+			mShadowSource->getShadowCascadeLevels(),
+			mShadowSource,
+			mShadowSource->shadows
+	};
 }

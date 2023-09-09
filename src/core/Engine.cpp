@@ -7,7 +7,7 @@
 #include "Core.h"
 #include "InputHandler.h"
 #include "ecsModule/SystemManager.h"
-#include "shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/ShaderController.h"
 
 namespace Engine {
 	void UnnamedEngine::init() {

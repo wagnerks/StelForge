@@ -4,8 +4,8 @@
 
 #include "imgui.h"
 
-#include "shaderModule/ShaderController.h"
-#include "shaderModule/GeometryShader.h"
+#include "assetsModule/shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/GeometryShader.h"
 
 using namespace Engine::Debug;
 
@@ -31,9 +31,9 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 				ImGui::Text("fragmentPath: %s", gShader->getFragmentPath().data());
 				ImGui::Text("geometryPath: %s", gShader->getGeometryPath().data());
 			}
-			
+
 			auto btnId = "reCompile##" + std::to_string(shader->getID());
-			if(ImGui::Button(btnId.c_str())) {
+			if (ImGui::Button(btnId.c_str())) {
 				SHADER_CONTROLLER->recompileShader(shader);
 			}
 			ImGui::TreePop();

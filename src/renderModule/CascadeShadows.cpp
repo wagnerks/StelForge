@@ -16,7 +16,7 @@
 #include "ecsModule/SystemManager.h"
 #include "glad/glad.h"
 #include "logsModule/logger.h"
-#include "shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/ShaderController.h"
 #include "systemsModule/CameraSystem.h"
 
 CascadeShadow::CascadeShadow(size_t entID) : Entity(entID) {

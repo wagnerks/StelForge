@@ -65,10 +65,9 @@ void RenderSystem::update(float_t dt) {
 	mRenderData.mView = playerCamera->getComponent<TransformComponent>()->getViewMatrix();
 	mRenderData.mCameraPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
-	ImGui::Begin("keklol");
+
 	static bool updateFrustum = true;
-	ImGui::Checkbox("update cam frustum", &updateFrustum);
-	ImGui::End();
+
 
 	if (updateFrustum) {
 		mRenderData.mCamFrustum = FrustumModule::createFrustum(mRenderData.mProjection * mRenderData.mView);
@@ -95,6 +94,7 @@ void RenderSystem::update(float_t dt) {
 	mRenderData.mCascadedShadowsPassData.shadows->debugDraw();
 
 	ImGui::Begin("render mode");
+	ImGui::Checkbox("update cam frustum", &updateFrustum);
 	ImGui::Checkbox("wireframe", &mRenderData.mWireframeMode);
 	ImGui::End();
 

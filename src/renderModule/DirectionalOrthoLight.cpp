@@ -4,7 +4,7 @@
 #include "Utils.h"
 #include "componentsModule/TransformComponent.h"
 #include "glad/glad.h"
-#include "shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/ShaderController.h"
 using namespace Engine::LightsModule;
 
 DirectionalOrthoLight::DirectionalOrthoLight(size_t entID, int aShadowWidth, int aShadowHeight, float zNear, float zFar) : Light(entID), shadowWidthResolution(aShadowWidth), shadowHeightResolution(aShadowHeight) {

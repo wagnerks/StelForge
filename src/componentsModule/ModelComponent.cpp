@@ -72,11 +72,7 @@ void ModelComponent::setModel(std::vector<AssetsModule::ModelObj> data) {
 }
 
 bool ModelComponent::serialize(Json::Value& data) {
-	if (modelId != ecsModule::INVALID_ID) {
-		/*if (auto modelEntity = CoreModule::ModelLoader::instance()->getModelsHolder()->getAsset<ModelModule::Model>()) {
-			data["ModelPath"] = modelEntity->getModelPath().data();
-		}*/
-	}
+	data["ModelPath"] = mPath;
 
 	return true;
 }
@@ -84,8 +80,8 @@ bool ModelComponent::serialize(Json::Value& data) {
 bool ModelComponent::deserialize(const Json::Value& data) {
 	AssetsModule::Model* model = nullptr;
 	if (data.isMember("ModelPath")) {
-		model = AssetsModule::ModelLoader::instance()->load(data["ModelPath"].asString());
-		//modelId = model->getEntityID();
+		mPath = data["ModelPath"].asString();
+		model = AssetsModule::ModelLoader::instance()->load(mPath);
 	}
 
 	if (model) {

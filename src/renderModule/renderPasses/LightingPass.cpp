@@ -2,7 +2,7 @@
 #include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
-#include "shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/ShaderController.h"
 #include "systemsModule/RenderSystem.h"
 #include "imgui.h"
 #include "componentsModule/LightComponent.h"
@@ -97,7 +97,14 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	glBlitFramebuffer(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
+	static bool showDebugCascade = false;
+	if (ImGui::Begin("shadows")) {
+		ImGui::Checkbox("cascade debug depths", &showDebugCascade);
+	}
+	ImGui::End();
+
+
+	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty() && showDebugCascade) {
 		auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
 		sh->use();
 		sh->setInt("depthMap", 31);
@@ -119,7 +126,9 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		Utils::renderQuad(0.70f, 0.10f, 1.f, 0.4f);
 	}
 
-	auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
+
+
+
 	static glm::vec3 sunDir;
 	static float time = 0.f;
 	static float Br = 0.005f;
@@ -127,6 +136,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	static float g = 0.9900f;
 	static float cirrus = 0.0f;
 	static float cumulus = 0.0f;
+	static bool enableSky = 0.0f;
 	time += 0.01f;
 
 	if (ImGui::Begin("sky params")) {
@@ -136,7 +146,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 			sunDir.y = sunDirCont[1];
 			sunDir.z = sunDirCont[2];
 		}
-
+		ImGui::Checkbox("skyEnabled", &enableSky);
 		ImGui::DragFloat("time", &time, 0.01f);
 		ImGui::DragFloat("Br", &Br, 0.0001f);
 		ImGui::DragFloat("Bm", &Bm, 0.0001f);
@@ -146,19 +156,22 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 	}
 	ImGui::End();
+	if (enableSky) {
+		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
+		sky->use();
+		sky->setMat4("view", renderDataHandle.mView);
+		sky->setMat4("projection", renderDataHandle.mProjection);
+		sky->setVec3("sun_direction", -renderDataHandle.mCascadedShadowsPassData.lightDirection);
+		sky->setFloat("time", time);
 
-	sky->use();
-	sky->setMat4("view", renderDataHandle.mView);
-	sky->setMat4("projection", renderDataHandle.mProjection);
-	sky->setVec3("sun_direction", -renderDataHandle.mCascadedShadowsPassData.lightDirection);
-	sky->setFloat("time", time);
+		sky->setFloat("Br", Br);
+		sky->setFloat("Bm", Bm);
+		sky->setFloat("g", g);
 
-	sky->setFloat("Br", Br);
-	sky->setFloat("Bm", Bm);
-	sky->setFloat("g", g);
+		sky->setFloat("cirrus", cirrus);
+		sky->setFloat("cumulus", cumulus);
 
-	sky->setFloat("cirrus", cirrus);
-	sky->setFloat("cumulus", cumulus);
+		Utils::renderQuad();
+	}
 
-	Utils::renderQuad();
 }

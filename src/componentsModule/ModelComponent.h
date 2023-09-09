@@ -1,10 +1,12 @@
 ﻿#pragma once
 
 #include <vector>
+#include <json/value.h>
 
 #include "ecsModule/ComponentBase.h"
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/modelModule/Model.h"
+#include "propertiesModule/Serializable.h"
 
 
 namespace Engine::ComponentsModule {
@@ -27,18 +29,26 @@ namespace Engine::ComponentsModule {
 	class ModelComponent : public ecsModule::Component<ModelComponent>, public PropertiesModule::Serializable {
 	public:
 		ModelComponent();
-		void addMeshData(std::vector<AssetsModule::ModelObj> meshData);
+		void init(AssetsModule::Model* model) {
+			mPath = model->getModelPath();
+			addMeshData(model->getAllLODs());
+		}
+
 		const AssetsModule::ModelObj& getModel();
 		const AssetsModule::ModelObj& getModel(size_t LOD);
 		const AssetsModule::ModelObj& getModelLowestDetails();
+
 		void setModel(std::vector<AssetsModule::ModelObj> data);
 		LODData mLOD;
 
 		bool serialize(Json::Value& data) override;
 		bool deserialize(const Json::Value& data) override;
 	private:
+		void addMeshData(std::vector<AssetsModule::ModelObj> meshData);
+
 		size_t modelId = ecsModule::INVALID_ID;
 		std::vector<AssetsModule::ModelObj> mModel;
+		std::string mPath = "";
 	};
 }
 

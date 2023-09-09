@@ -7,7 +7,7 @@
 #include "core/Engine.h"
 #include "ecsModule/SystemManager.h"
 #include "assetsModule/modelModule/Mesh.h"
-#include "shaderModule/ShaderController.h"
+#include "assetsModule/shaderModule/ShaderController.h"
 #include "systemsModule/CameraSystem.h"
 
 using namespace Engine::RenderModule;

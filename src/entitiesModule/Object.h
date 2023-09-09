@@ -2,9 +2,8 @@
 #include "ecsModule/EntityBase.h"
 
 namespace Engine::EntitiesModule {
-	class Model : public ecsModule::Entity<Model> {
+	class Object : public ecsModule::Entity<Object> {
 	public:
-		Model(size_t entId);
-	private:
+		Object(size_t entId);
 	};
 }

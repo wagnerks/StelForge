@@ -1,5 +1,6 @@
 ﻿#include "CameraSystem.h"
 
+#include "componentsModule/TransformComponent.h"
 #include "ecsModule/EntityManager.h"
 
 namespace Engine::SystemsModule {
