@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "Asset.h"
 #include "core/Singleton.h"
 
 namespace AssetsModule {
@@ -14,21 +15,27 @@ namespace AssetsModule {
 		TEXTURE_ARRAY
 	};
 
-	struct Texture {
+	class Texture : public Asset {
+	public:
+		Texture() = default;
+		Texture(unsigned id, std::string_view path, eTextureType type) : mId(id), mPath(path), mType(type) {}
+
 		unsigned mId = std::numeric_limits<unsigned>::max();
 		std::string mPath;
+		eTextureType mType = eTextureType::DEFAULT;
+
 		bool isValid() const {
 			return mId != std::numeric_limits<unsigned>::max();
 		}
-		eTextureType mType = eTextureType::DEFAULT;
 	};
 
 	class TextureLoader {
 	public:
-		std::unordered_map<std::string, Texture> mLoadedTex;
 		Texture loadTexture(const std::string& path, bool flip = false);
 		Texture loadCubemapTexture(const std::string& path, bool flip = false);
 		Texture createEmpty2DTexture(const std::string& id, int w, int h, int format);
+	private:
+		std::unordered_map<std::string, Texture> mLoadedTex;
 	};
 
 	class TextureHandler : public Engine::Singleton<TextureHandler> {

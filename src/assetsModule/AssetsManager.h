@@ -5,8 +5,7 @@
 #include <unordered_map>
 
 #include "Asset.h"
-
-#include "memoryModule/MemoryChunkAllocator.h"
+#include "modelModule/Model.h"
 
 namespace AssetsModule {
 
