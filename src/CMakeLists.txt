@@ -52,6 +52,7 @@ add_custom_command(TARGET ${CMAKE_PROJECT_NAME}
 POST_BUILD
 COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/assimp/Release/assimp-vc143-mt.dll ${CMAKE_SOURCE_DIR}/.
 COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/assimp/Debug/assimp-vc143-mtd.dll ${CMAKE_SOURCE_DIR}/.
-COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsoncpp.dll ${CMAKE_SOURCE_DIR}/.
+COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsoncpp_d.dll ${CMAKE_SOURCE_DIR}/.
+COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/release/jsoncpp.dll ${CMAKE_SOURCE_DIR}/.
 )
 
