@@ -66,7 +66,7 @@ void Utils::renderQuad(float x1, float y1, float x2, float y2) {
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-	
+
 	glBindVertexArray(quadVAO);
 	RenderModule::Renderer::drawArrays(GL_TRIANGLE_STRIP, 4);
 	glBindVertexArray(0);
@@ -77,7 +77,7 @@ void Utils::renderQuad(float x1, float y1, float x2, float y2) {
 
 void Utils::renderCube() {
 	initCubeVAO();
-	
+
 	glBindVertexArray(cubeVAO);
 	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 36);
 	glBindVertexArray(0);
@@ -86,94 +86,210 @@ void Utils::renderCube() {
 void Utils::initCubeVAO() {
 	if (cubeVAO == 0) {
 		float vertices[] = {
-            // back face
-            -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
-             1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
-             1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
-             1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
-            -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
-            -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
-            // front face
-            -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
-             1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
-             1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
-             1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
-            -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
-            -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
-            // left face
-            -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
-            -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
-            -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
-            -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
-            -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
-            -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
-            // right face
-             1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
-             1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
-             1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
-             1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
-             1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
-             1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
-            // bottom face
-            -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
-             1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
-             1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
-             1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
-            -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
-            -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
-            // top face
-            -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
-             1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
-             1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
-             1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
-            -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
-            -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left        
-        };
-        glGenVertexArrays(1, &cubeVAO);
-        glGenBuffers(1, &cubeVBO);
-        // fill buffer
-        glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-        // link vertex attributes
-        glBindVertexArray(cubeVAO);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
+			// back face
+			-1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+			 1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+			 1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
+			 1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+			-1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+			-1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
+			// front face
+			-1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+			 1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
+			 1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+			 1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+			-1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
+			-1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+			// left face
+			-1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+			-1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
+			-1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+			-1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+			-1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+			-1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+			// right face
+			 1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+			 1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+			 1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
+			 1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+			 1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+			 1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
+			 // bottom face
+			 -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+			  1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
+			  1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+			  1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+			 -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+			 -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+			 // top face
+			 -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+			  1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+			  1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
+			  1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+			 -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+			 -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left        
+		};
+		glGenVertexArrays(1, &cubeVAO);
+		glGenBuffers(1, &cubeVBO);
+		// fill buffer
+		glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+		// link vertex attributes
+		glBindVertexArray(cubeVAO);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindVertexArray(0);
 
 	}
 }
 
-void Utils::renderXYZ(float length) {
+void Utils::renderLine(float length) {
 	static unsigned linesVAO = 0;
-	if (linesVAO == 0) {
-		float vertices[] = {
-			0.f,0.f,0.f,
-			0.f,0.f,length,
 
-			0.f,0.f,0.f,
-			0.f,length,0.f,
+	float vertices[] = {
+		0.f,0.f,0.f,
+		0.f,0.f,-length,
 
-			0.f,0.f,0.f,
-			length,0.f,0.f,
-		};
+		0.f,0.f,0.f,
+		0.f,0.f,0.f,
 
-		// setup plane VAO
-		unsigned cubeVBO;
-		glGenVertexArrays(1, &linesVAO);
-		glGenBuffers(1, &cubeVBO);
-		glBindVertexArray(linesVAO);
-		glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+		0.f,0.f,0.f,
+		0.f,0.f,0.f,
+	};
 
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-	}
+	// setup plane VAO
+	unsigned cubeVBO;
+	glGenVertexArrays(1, &linesVAO);
+	glGenBuffers(1, &cubeVBO);
+	glBindVertexArray(linesVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
 	glBindVertexArray(linesVAO);
 	RenderModule::Renderer::drawArrays(GL_LINES, 6);
 	glBindVertexArray(0);
+
+	glDeleteVertexArrays(1, &linesVAO);
+	glDeleteBuffers(1, &cubeVBO);
+}
+
+void Utils::renderCamera() {
+	static unsigned linesVAO = 0;
+	float w = 15.f;
+	float h = 10.f;
+	float l = 10.f;
+
+	glm::vec3 A = { -w, -h, -l };
+	glm::vec3 B = { w, -h, -l };
+	glm::vec3 C = { -w, h, -l };
+	glm::vec3 D = { w, h, -l };
+
+	w = 5.f;
+	h = 5.f;
+	l = 0.f;
+
+	glm::vec3 E = { -w, h, l };
+	glm::vec3 F = { w, h, l };
+	glm::vec3 G = { w, -h, l };
+	glm::vec3 H = { -w, -h, l };
+
+	float vertices[] = {
+		A.x, A.y, A.z, //start
+		B.x, B.y, B.z, //end
+
+		B.x, B.y, B.z, //start
+		D.x, D.y, D.z, //end
+
+		C.x, C.y, C.z, //start
+		D.x, D.y, D.z, //end
+
+		A.x, A.y, A.z, //start
+		C.x, C.y, C.z, //end
+
+		C.x, C.y, C.z, //start
+		E.x, E.y, E.z, //end
+
+		A.x, A.y, A.z, //start
+		H.x, H.y, H.z, //end
+
+		D.x, D.y, D.z, //start
+		F.x, F.y, F.z, //end
+
+		B.x, B.y, B.z, //start
+		G.x, G.y, G.z, //end
+
+		H.x, H.y, H.z, //end
+		E.x, E.y, E.z, //start
+
+		H.x, H.y, H.z, //start
+		G.x, G.y, G.z, //end
+
+		F.x, F.y, F.z, //end
+		E.x, E.y, E.z, //start
+
+		G.x, G.y, G.z, //start
+		F.x, F.y, F.z, //end
+
+		0.f, C.y, C.z,
+		0.f, C.y + 5.f, C.z
+	};
+
+	// setup plane VAO
+	unsigned cubeVBO;
+	glGenVertexArrays(1, &linesVAO);
+	glGenBuffers(1, &cubeVBO);
+	glBindVertexArray(linesVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+	glBindVertexArray(linesVAO);
+	RenderModule::Renderer::drawArrays(GL_LINES, 26);
+	glBindVertexArray(0);
+
+	glDeleteVertexArrays(1, &linesVAO);
+	glDeleteBuffers(1, &cubeVBO);
+}
+
+void Utils::renderXYZ(float length) {
+	static unsigned linesVAO = 0;
+
+	float vertices[] = {
+		0.f,0.f,0.f,
+		0.f,0.f,length, //+z
+
+		0.f,0.f,0.f,
+		0.f,length,0.f,//+y
+
+		0.f,0.f,0.f,
+		length,0.f,0.f,//+x
+	};
+
+	// setup plane VAO
+	unsigned cubeVBO;
+	glGenVertexArrays(1, &linesVAO);
+	glGenBuffers(1, &cubeVBO);
+	glBindVertexArray(linesVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+	glBindVertexArray(linesVAO);
+	RenderModule::Renderer::drawArrays(GL_LINES, 6);
+	glBindVertexArray(0);
+
+	glDeleteVertexArrays(1, &linesVAO);
+	glDeleteBuffers(1, &cubeVBO);
 }

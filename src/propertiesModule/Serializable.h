@@ -7,7 +7,7 @@ namespace Engine::PropertiesModule {
 	public:
 		virtual ~Serializable() = default;
 
-		virtual bool serialize(Json::Value& data) = 0;
-		virtual bool deserialize(const Json::Value& data) = 0;
+		virtual void serialize(Json::Value& data) = 0;
+		virtual void deserialize(const Json::Value& data) = 0;
 	};
 }

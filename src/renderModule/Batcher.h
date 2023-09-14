@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "glm.hpp"
 #include <map>
+#include <mutex>
 #include <set>
 #include <unordered_set>
 #include <vector>
@@ -31,7 +32,7 @@ struct DrawObject {
 	std::vector<glm::mat4> transforms;
 
 	bool transparentForShadow = false;
-	glm::vec3 sortedPos;
+	glm::vec3 sortedPos = {};
 	void sortTransformAccordingToView(const glm::vec3& viewPos);
 };
 
@@ -40,7 +41,7 @@ class Batcher {
 public:
 	Batcher();
 	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, AssetsModule::Material material, glm::mat4 transform, bool transparentForShadow);
-	void flushAll(bool clear = false, const glm::vec3& viewPos = {}, bool shadowMap = false);
+	void flushAll(bool clear = false, const glm::vec3& viewPos = {});
 
 	std::vector<DrawObject> drawList;
 

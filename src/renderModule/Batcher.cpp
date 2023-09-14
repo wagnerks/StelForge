@@ -33,11 +33,6 @@ Batcher::Batcher() {
 }
 
 void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, AssetsModule::Material textures, glm::mat4 transform, bool transparentForShadow) {
-	auto apos = glm::vec3(transform[3]);
-	if (Engine::Math::distanceSqr(apos, ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos()) > 500000.f * 500000.f) {
-		return;
-	}
-
 	auto it = std::find_if(drawList.rbegin(), drawList.rend(), [transparentForShadow, VAO, maxDrawSize = maxDrawSize](const DrawObject& obj) {
 		return obj == VAO && obj.transforms.size() < maxDrawSize && obj.transparentForShadow == transparentForShadow;
 	});
@@ -51,43 +46,23 @@ void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, Asset
 	}
 }
 
-void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
+void Batcher::flushAll(bool clear, const glm::vec3& viewPos) {
 	for (auto& drawObjects : drawList) {
-		if (viewPos == glm::vec3{}) {
-			drawObjects.sortTransformAccordingToView(ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
-		}
-		else {
-			drawObjects.sortTransformAccordingToView(viewPos);
-		}
+		drawObjects.sortTransformAccordingToView(viewPos);
 	}
 
 	std::ranges::sort(drawList, [&viewPos](const DrawObject& a, const DrawObject& b) {
 		auto apos = glm::vec3(a.transforms.front()[3]);
 		auto bpos = glm::vec3(b.transforms.front()[3]);
-		if (viewPos == glm::vec3{}) {
-			auto cameraPos = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos();
-
-			return Engine::Math::distanceSqr(cameraPos, apos) < Engine::Math::distanceSqr(cameraPos, bpos);
-
-		}
 
 		return Engine::Math::distanceSqr(viewPos, apos) < Engine::Math::distanceSqr(viewPos, bpos);
 	});
 
 	ImGui::Begin("draw order");
-	for (auto& drawObjects : drawList) {
-		ImGui::Text("%d", drawObjects.indicesCount);
-	}
-	ImGui::End();
-
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
 	auto defaultTex = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("white.png").mId;
 	for (auto& drawObjects : drawList) {
-		if (shadowMap) {
-			if (drawObjects.transparentForShadow) {
-				continue;
-			}
-		}
+		ImGui::Text("%d", drawObjects.indicesCount);
 		glBindVertexArray(drawObjects.VAO);
 
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::mat4x4) * drawObjects.transforms.size(), &drawObjects.transforms[0]);
@@ -114,7 +89,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos, bool shadowMap) {
 			Engine::RenderModule::Renderer::drawArraysInstancing(GL_TRIANGLES, static_cast<int>(drawObjects.verticesCount), static_cast<int>(drawObjects.transforms.size()));
 		}
 	}
-
+	ImGui::End();
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	glBindVertexArray(0);
 

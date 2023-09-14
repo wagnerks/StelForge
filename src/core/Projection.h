@@ -10,6 +10,14 @@ namespace Engine::ProjectionModule {
 	};
 
 	struct Projection {
+		friend bool operator==(const Projection& lhs, const Projection& rhs) {
+			return lhs.mProjectionMatrix == rhs.mProjectionMatrix;
+		}
+
+		friend bool operator!=(const Projection& lhs, const Projection& rhs) {
+			return !(lhs == rhs);
+		}
+
 		Projection() = default;
 		Projection(float near, float far) : mNear(near), mFar(far) {}
 		virtual ~Projection() = default;

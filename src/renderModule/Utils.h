@@ -11,6 +11,11 @@ namespace Engine::RenderModule {
 		static void renderCube();
 		static void initCubeVAO();
 		static void renderXYZ(float length);
+
+		static void renderLine(float length);
+
+		static void renderCamera();
+
 		inline static unsigned cubeVAO = 0;
 		inline static unsigned cubeVBO = 0;
 	};

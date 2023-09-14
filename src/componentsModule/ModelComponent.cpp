@@ -45,7 +45,7 @@ const AssetsModule::ModelObj& ModelComponent::getModel() {
 	return getModel(mLOD.getLodLevel());
 }
 
-const AssetsModule::ModelObj& ModelComponent::getModel(size_t LOD) {
+AssetsModule::ModelObj& ModelComponent::getModel(size_t LOD) {
 	if (mModel.empty()) {
 		static AssetsModule::ModelObj empty;
 		return empty;
@@ -71,13 +71,11 @@ void ModelComponent::setModel(std::vector<AssetsModule::ModelObj> data) {
 	mModel = std::move(data);
 }
 
-bool ModelComponent::serialize(Json::Value& data) {
+void ModelComponent::serialize(Json::Value& data) {
 	data["ModelPath"] = mPath;
-
-	return true;
 }
 
-bool ModelComponent::deserialize(const Json::Value& data) {
+void ModelComponent::deserialize(const Json::Value& data) {
 	AssetsModule::Model* model = nullptr;
 	if (data.isMember("ModelPath")) {
 		mPath = data["ModelPath"].asString();
@@ -87,6 +85,4 @@ bool ModelComponent::deserialize(const Json::Value& data) {
 	if (model) {
 		addMeshData(model->getAllLODs());
 	}
-
-	return true;
 }

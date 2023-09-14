@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <string>
 
+#include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 
@@ -26,6 +27,13 @@ namespace Engine::PropertiesModule {
 	struct TypeName<ModelComponent> {
 		static std::string_view name() {
 			return "ModelComponent";
+		}
+	};
+
+	template <>
+	struct TypeName<CascadeShadowComponent> {
+		static std::string_view name() {
+			return "CascadeShadowComponent";
 		}
 	};
 }

@@ -5,6 +5,7 @@
 #include "TypeName.h"
 #include "ecsModule/EntityManager.h"
 #include "..\entitiesModule\Object.h"
+#include "componentsModule/CascadeShadowComponent.h"
 
 namespace Engine::PropertiesModule {
 	ecsModule::EntityInterface* PropertiesSystem::loadScene(std::string_view path) {
@@ -60,6 +61,7 @@ namespace Engine::PropertiesModule {
 
 		serializeProperty<TransformComponent>(entity, result["Properties"]);
 		serializeProperty<ModelComponent>(entity, result["Properties"]);
+		serializeProperty<CascadeShadowComponent>(entity, result["Properties"]);
 
 		auto children = entity->getElements();
 		if (!children.empty()) {

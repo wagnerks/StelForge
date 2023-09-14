@@ -5,7 +5,10 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "systemsModule/RenderSystem.h"
 #include "imgui.h"
-#include "componentsModule/LightComponent.h"
+#include "componentsModule/LightSourceComponent.h"
+#include "componentsModule/ModelComponent.h"
+#include "ecsModule/EntityManager.h"
+#include "entitiesModule/Object.h"
 #include "renderModule/CascadeShadows.h"
 #include "renderModule/SceneGridFloor.h"
 
@@ -29,7 +32,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	shaderLightingPass->setInt("shadows", 4);
 
 	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
-		shaderLightingPass->setFloat("ambientColor", std::max((glm::sin(glm::radians(renderDataHandle.mCascadedShadowsPassData.shadows->sunProgress * 180.f))) * 1.f, 0.1f));
+		shaderLightingPass->setFloat("ambientColor", 1.f);//todo 0 for night and 1 for day, some time system
 		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE31, GL_TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData.shadowMapTexture);
 		shaderLightingPass->setInt("cascadedShadow.shadowMap", 31);
 		shaderLightingPass->setVec3("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData.lightDirection);
@@ -41,9 +44,9 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		}
 
 		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData.shadowCascades.size(); ++i) {
-			shaderLightingPass->setVec2(("cascadedShadow.texelSize[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i]->getComponent<LightComponent>()->getTexelSize());
-			shaderLightingPass->setFloat(("cascadedShadow.bias[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i]->getComponent<LightComponent>()->getBias());
-			shaderLightingPass->setInt(("cascadedShadow.samples[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i]->getComponent<LightComponent>()->getSamples());
+			shaderLightingPass->setVec2(("cascadedShadow.texelSize[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].texelSize);
+			shaderLightingPass->setFloat(("cascadedShadow.bias[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].bias);
+			shaderLightingPass->setInt(("cascadedShadow.samples[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].samples);
 		}
 
 		shaderLightingPass->setFloat("farPlane", renderDataHandle.mCascadedShadowsPassData.cameraFarPlane);
@@ -112,18 +115,20 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		sh->setFloat("far_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[1]);
 		sh->setInt("layer", 0);
 
-		Utils::renderQuad(0.70f, 0.70f, 1.f, 1.f);
+		auto a = 250 / 1920.f;
+		auto b = 250 / 1080.f;
+		Utils::renderQuad(1 - a, 1 - b, 1.f, 1.f);
 		sh->setFloat("near_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[1]);
 		sh->setFloat("far_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[2]);
 		sh->setInt("layer", 1);
 
-		Utils::renderQuad(0.70f, 0.40f, 1.f, 0.7f);
+		Utils::renderQuad(1 - a, 1 - 2 * b, 1.f, 1 - b);
 
 		sh->setFloat("near_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[2]);
 		sh->setFloat("far_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[3]);
 		sh->setInt("layer", 2);
 
-		Utils::renderQuad(0.70f, 0.10f, 1.f, 0.4f);
+		Utils::renderQuad(1 - a, 1 - 3 * b, 1.f, 1 - 2 * b);
 	}
 
 
@@ -173,5 +178,5 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 		Utils::renderQuad();
 	}
-
+	
 }

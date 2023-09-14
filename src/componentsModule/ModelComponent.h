@@ -35,20 +35,21 @@ namespace Engine::ComponentsModule {
 		}
 
 		const AssetsModule::ModelObj& getModel();
-		const AssetsModule::ModelObj& getModel(size_t LOD);
+		AssetsModule::ModelObj& getModel(size_t LOD);
 		const AssetsModule::ModelObj& getModelLowestDetails();
 
 		void setModel(std::vector<AssetsModule::ModelObj> data);
 		LODData mLOD;
 
-		bool serialize(Json::Value& data) override;
-		bool deserialize(const Json::Value& data) override;
+		void serialize(Json::Value& data) override;
+		void deserialize(const Json::Value& data) override;
+		std::string mPath = "";
 	private:
 		void addMeshData(std::vector<AssetsModule::ModelObj> meshData);
 
 		size_t modelId = ecsModule::INVALID_ID;
 		std::vector<AssetsModule::ModelObj> mModel;
-		std::string mPath = "";
+
 	};
 }
 

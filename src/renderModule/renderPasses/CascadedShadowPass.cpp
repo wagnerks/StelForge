@@ -14,9 +14,23 @@
 #include "ecsModule/SystemManager.h"
 #include "systemsModule/CameraSystem.h"
 
+#include <thread>
+
+#include "assetsModule/shaderModule/ShaderController.h"
+#include "componentsModule/CameraComponent.h"
+#include "componentsModule/CascadeShadowComponent.h"
+#include "componentsModule/CascadeShadowComponent.h"
+#include "componentsModule/LightSourceComponent.h"
+#include "core/FileSystem.h"
+#include "propertiesModule/PropertiesSystem.h"
+
 using namespace Engine::RenderModule::RenderPasses;
 
 CascadedShadowPass::CascadedShadowPass() : mShadowSource(nullptr) {
+}
+
+CascadedShadowPass::~CascadedShadowPass() {
+	freeBuffers();
 }
 
 void CascadedShadowPass::init() {
@@ -26,10 +40,70 @@ void CascadedShadowPass::init() {
 	mInited = true;
 
 	mShadowSource = ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadows>(glm::vec2{4096.f, 4096.f});
-	mShadowSource->init();
+	auto shadow = FileSystem::readJson("cascadedShadows.json");
 
-	mShadowSource->getComponent<TransformComponent>()->setRotate({ -mShadowSource->sunProgress * 180.f,0.f, mShadowSource->sunProgress * 5.f });
+	PropertiesModule::PropertiesSystem::deserializeProperty<CascadeShadowComponent>(mShadowSource, shadow["Properties"]);
+
+
+	mShadowSource->getComponent<TransformComponent>()->setRotate({ -0.4f * 180.f,0.f, 0.4f * 5.f });
 	mShadowSource->getComponent<TransformComponent>()->reloadTransform();
+
+	initRender();
+}
+
+void CascadedShadowPass::initRender() {
+	freeBuffers();
+
+	auto cmp = mShadowSource->getComponent<CascadeShadowComponent>();
+	auto& cameraProjection = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection();
+
+	cmp->updateCascades(cameraProjection);
+
+	glGenFramebuffers(1, &lightFBO);
+
+	glGenTextures(1, &lightDepthMaps);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+	glTexImage3D(
+		GL_TEXTURE_2D_ARRAY,
+		0,
+		GL_DEPTH_COMPONENT32,
+		static_cast<int>(cmp->resolution.x),
+		static_cast<int>(cmp->resolution.y),
+		static_cast<int>(cmp->cascades.size()),
+		0,
+		GL_DEPTH_COMPONENT,
+		GL_FLOAT,
+		nullptr);
+
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		Engine::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glGenBuffers(1, &matricesUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void CascadedShadowPass::freeBuffers() const {
+	glDeleteFramebuffers(1, &lightFBO);
+	glDeleteTextures(1, &lightDepthMaps);
+	glDeleteBuffers(1, &matricesUBO);
 }
 
 void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
@@ -53,20 +127,14 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 			if (ImGui::Button("clear")) {
 				mShadowSource->clearCacheMatrices();
 			}
-
-			if (ImGui::DragFloat("sun pos", &mShadowSource->sunProgress, 0.001f, 0.f)) {
-				auto x = glm::cos(glm::radians(-mShadowSource->sunProgress * 180.f));
-				auto y = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
-				auto z = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
-				mShadowSource->getComponent<TransformComponent>()->setRotate({ -mShadowSource->sunProgress * 180.f,0.f, mShadowSource->sunProgress * 5.f });
+			static float sunProgress = 0.4f;
+			if (ImGui::DragFloat("sun pos", &sunProgress, 0.001f, 0.f)) {
+				auto x = glm::cos(glm::radians(-sunProgress * 180.f));
+				auto y = glm::sin(glm::radians(sunProgress * 180.f));
+				auto z = glm::sin(glm::radians(sunProgress * 180.f));
+				mShadowSource->getComponent<TransformComponent>()->setRotate({ -sunProgress * 180.f,0.f, sunProgress * 5.f });
 				mShadowSource->getComponent<TransformComponent>()->reloadTransform();
 			}
-
-			/*mShadowSource->sunProgress += 0.00001f;
-			auto x = glm::cos(glm::radians(-mShadowSource->sunProgress * 180.f));
-			auto y = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
-			auto z = glm::sin(glm::radians(mShadowSource->sunProgress * 180.f));
-			mShadowSource->setLightPosition({x * 80.f, y * 30.f, z * 10.f + 0.001f});*/
 		}
 	}
 	ImGui::End();
@@ -75,15 +143,14 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 		mUpdateTimer += UnnamedEngine::instance()->getDeltaTime();
 
 		renderDataHandle.mCascadedShadowsPassData = {
-			mShadowSource->getShadowMapTextureArray(),
-			mShadowSource->getLightDirection(),
-			glm::vec3{1.f},
-			mShadowSource->getResolution(),
-			mShadowSource->getLightPosition(),
-			mShadowSource->getCameraFarPlane(),
-			mShadowSource->getShadowCascadeLevels(),
+			lightDepthMaps,
+			mShadowSource->getComponent<TransformComponent>()->getForward(),
+			mShadowSource->getComponent<LightSourceComponent>()->getLightColor(),
+			mShadowSource->getComponent<CascadeShadowComponent>()->resolution,
+			mShadowSource->getComponent<CascadeShadowComponent>()->cascades.back().viewProjection.getFar(),
+			mShadowSource->getComponent<CascadeShadowComponent>()->shadowCascadeLevels,
 			mShadowSource,
-			mShadowSource->shadows
+			mShadowSource->getComponent<CascadeShadowComponent>()->cascades
 		};
 
 		return;
@@ -91,42 +158,84 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 
 	mUpdateTimer = 0.f;
 
-	auto& drawableEntities = renderDataHandle.mDrawableEntities;
 
-	mShadowSource->preDraw();
+	auto batcher = renderer->getBatcher();
 
-	//cull meshes
-	for (auto entityId : drawableEntities) {
-		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>();
-		if (transform && modelComp) {
-			for (auto& mesh : modelComp->getModelLowestDetails().mMeshHandles) {
-				auto it = std::ranges::find_if(std::as_const(mShadowSource->shadows), [&mesh, &transform](const CascadeShadow* shadow) {
-					return mesh.mBounds->isOnFrustum(*shadow->getComponent<FrustumComponent>()->getFrustum(), *transform);
-				});
+	const auto& drawableEntities = renderDataHandle.mDrawableEntities;
 
-				if (it != mShadowSource->shadows.cend()) {
-					renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
+	auto addToDraw = [batcher, &drawableEntities, this](size_t chunkBegin, size_t chunkEnd) {
+		for (size_t i = chunkBegin; i < chunkEnd; i++) {
+			auto entityId = drawableEntities[i];
+			auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
+			auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>();
+			if (transform && modelComp) {
+				const auto& transformMatrix = transform->getTransform();
+				for (auto& mesh : modelComp->getModelLowestDetails().mMeshHandles) {
+					auto it = std::ranges::find_if(std::as_const(mShadowSource->getComponent<CascadeShadowComponent>()->cascades), [&mesh, &transformMatrix](const ComponentsModule::ShadowCascade& shadow) {
+						return mesh.mBounds->isOnFrustum(shadow.frustum, transformMatrix);
+					});
+
+					if (it != mShadowSource->getComponent<CascadeShadowComponent>()->cascades.cend()) {
+
+						mtx.lock();
+						batcher->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transformMatrix, false);
+						mtx.unlock();
+					}
 				}
 			}
 		}
+	};
+
+	auto size = drawableEntities.size();
+	size_t chunk = 0;
+	size_t growSpeed = 500;
+
+	threads.reserve(size / growSpeed);
+
+	while (chunk < size) {
+		threads.emplace_back(addToDraw, chunk, std::min(chunk + growSpeed, size));
+		chunk += growSpeed;
 	}
 
-	renderer->getBatcher()->flushAll(true, mShadowSource->getLightPosition(), true);
+	auto cmp = mShadowSource->getComponent<CascadeShadowComponent>();
 
+	const auto& lightMatrices = mShadowSource->getLightSpaceMatrices();
+	if (!lightMatrices.empty()) {
+		glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4x4) * lightMatrices.size(), &lightMatrices[0]);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, lightDepthMaps, 0);
+	glViewport(0, 0, static_cast<int>(cmp->resolution.x), static_cast<int>(cmp->resolution.y));
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
+	simpleDepthShader->use();
+
+	for (auto& thread : threads) {
+		thread.join();
+	}
+	threads.clear();
+
+	//glEnable(GL_DEPTH_CLAMP);
+	renderer->getBatcher()->flushAll(true, mShadowSource->getComponent<TransformComponent>()->getPos(true));
+	//glDisable(GL_DEPTH_CLAMP);
 	//draw meshes which should cast shadow
 
-	mShadowSource->postDraw();
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, Engine::RenderModule::Renderer::SCR_WIDTH, Engine::RenderModule::Renderer::SCR_HEIGHT);
 
 	renderDataHandle.mCascadedShadowsPassData = {
-			mShadowSource->getShadowMapTextureArray(),
-			mShadowSource->getLightDirection(),
-			glm::vec3{1.f},
-			mShadowSource->getResolution(),
-			mShadowSource->getLightPosition(),
-			mShadowSource->getCameraFarPlane(),
-			mShadowSource->getShadowCascadeLevels(),
+			lightDepthMaps,
+			mShadowSource->getComponent<TransformComponent>()->getForward(),
+			mShadowSource->getComponent<LightSourceComponent>()->getLightColor(),
+			mShadowSource->getComponent<CascadeShadowComponent>()->resolution,
+			mShadowSource->getComponent<CascadeShadowComponent>()->cascades.back().viewProjection.getFar(),
+			mShadowSource->getComponent<CascadeShadowComponent>()->shadowCascadeLevels,
 			mShadowSource,
-			mShadowSource->shadows
+			mShadowSource->getComponent<CascadeShadowComponent>()->cascades
 	};
 }

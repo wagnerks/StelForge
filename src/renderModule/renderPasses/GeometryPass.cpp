@@ -6,6 +6,8 @@
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "ecsModule/SystemManager.h"
+#include "systemsModule/CameraSystem.h"
 #include "systemsModule/RenderSystem.h"
 
 using namespace Engine::RenderModule::RenderPasses;
@@ -81,19 +83,38 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 
 	renderDataHandle.mGeometryPassData = mData;
+	auto batcher = renderer->getBatcher();
 
-	auto& drawableEntities = renderDataHandle.mDrawableEntities;
-	for (auto entityId : drawableEntities) {
-		auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-		if (auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>()) {
+	const auto& drawableEntities = renderDataHandle.mDrawableEntities;
 
-			auto& model = modelComp->getModel();
-			for (auto& mesh : model.mMeshHandles) {
-				if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, *transform)) {
-					renderer->getBatcher()->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform->getTransform(), false);
+	auto addToDraw = [batcher, &drawableEntities, this, &renderDataHandle](size_t chunkBegin, size_t chunkEnd) {
+		for (size_t i = chunkBegin; i < chunkEnd; i++) {
+			auto entityId = drawableEntities[i];
+			auto entity = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId);
+			if (auto modelComp = entity->getComponent<ModelComponent>()) {
+				auto& transform = entity->getComponent<TransformComponent>()->getTransform();
+				auto& model = modelComp->getModel();
+				for (auto& mesh : model.mMeshHandles) {
+					if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform)) {
+
+						mtx.lock();
+						batcher->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform, false);
+						mtx.unlock();
+					}
 				}
 			}
 		}
+	};
+
+	auto size = drawableEntities.size();
+	size_t chunk = 0;
+	size_t growSpeed = 500;
+
+
+	threads.reserve(size / growSpeed);
+	while (chunk < size) {
+		threads.emplace_back(addToDraw, chunk, std::min(chunk + growSpeed, size));
+		chunk += growSpeed;
 	}
 
 	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
@@ -101,6 +122,9 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mGBuffer);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+
 	auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 	shaderGeometryPass->use();
 	shaderGeometryPass->setMat4("P", renderDataHandle.mProjection);
@@ -109,7 +133,13 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	shaderGeometryPass->setInt("texture_diffuse1", 0);
 	shaderGeometryPass->setInt("normalMap", 1);
 
-	renderer->getBatcher()->flushAll(true);
+	for (auto& thread : threads) {
+		thread.join();
+	}
+
+	threads.clear();
+
+	batcher->flushAll(true, ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

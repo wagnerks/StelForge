@@ -7,7 +7,7 @@
 #include "imgui.h"
 #include "SystemsPriority.h"
 #include "componentsModule/CameraComponent.h"
-#include "componentsModule/RenderComponent.h"
+#include "componentsModule/IsDrawableComponent.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/EntityBase.h"
@@ -57,55 +57,55 @@ void RenderSystem::update(float_t dt) {
 
 	const auto compManager = ecsModule::ECSHandler::componentManagerInstance();
 	const auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
-	auto renderComponents = compManager->getComponentContainer<RenderComponent>();
+	auto renderComponents = compManager->getComponentContainer<IsDrawableComponent>();
 	auto playerCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
-	auto playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
+	auto& playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
 	mRenderData.mProjection = playerCamera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix();
 	mRenderData.mView = playerCamera->getComponent<TransformComponent>()->getViewMatrix();
 	mRenderData.mCameraPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
-
 	static bool updateFrustum = true;
-
-
 	if (updateFrustum) {
 		mRenderData.mCamFrustum = FrustumModule::createFrustum(mRenderData.mProjection * mRenderData.mView);
 	}
 
 	mRenderData.mDrawableEntities.clear();
 	mRenderData.mDrawableEntities.reserve(renderComponents->size());
-	for (const auto& renderComp : *renderComponents) {
-		if (renderComp.isDrawable()) {
-			if (auto transform = compManager->getComponent<TransformComponent>(renderComp.getOwnerId())) {
-				if (::Engine::Math::distanceSqr(playerPos, transform->getPos(true)) > playerCamera->getComponent<CameraComponent>()->getProjection().getFar() * playerCamera->getComponent<CameraComponent>()->getProjection().getFar()) {
-					continue;
-				}
-			}
 
-			mRenderData.mDrawableEntities.push_back(renderComp.getOwnerId());
+	const auto farSqr = playerCamera->getComponent<CameraComponent>()->getProjection().getFar() * playerCamera->getComponent<CameraComponent>()->getProjection().getFar();
+
+	for (const auto& renderComp : *renderComponents) {
+		if (Math::distanceSqr(playerPos, compManager->getComponent<TransformComponent>(renderComp.getOwnerId())->getPos(true)) > farSqr) {
+			continue;
 		}
+
+		mRenderData.mDrawableEntities.emplace_back(renderComp.getOwnerId());
 	}
 
 	for (const auto renderPass : mRenderPasses) {
 		renderPass->render(mRenderer, mRenderData);
 	}
 
-	mRenderData.mCascadedShadowsPassData.shadows->debugDraw();
+	auto curCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	CascadeShadows::debugDraw(mRenderData.mCascadedShadowsPassData.shadows->getCacheLightSpaceMatrices(), curCamera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix(), curCamera->getComponent<TransformComponent>()->getViewMatrix());
 
 	ImGui::Begin("render mode");
 	ImGui::Checkbox("update cam frustum", &updateFrustum);
 	ImGui::Checkbox("wireframe", &mRenderData.mWireframeMode);
 	ImGui::End();
 
-	ImGui::Begin("geometry pass data");
-	float size = 500.f;
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gAlbedoSpec), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gPosition), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gNormal), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+	if (ImGui::Begin("geometry pass data")) {
+		float size = 500.f;
+		ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gAlbedoSpec), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+		ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gPosition), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+		ImGui::Image((void*)static_cast<size_t>(mRenderData.mGeometryPassData.gNormal), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBuffer), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-	ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBufferBlur), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+		ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBuffer), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+		ImGui::Image((void*)static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBufferBlur), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+	}
+
+
 
 	ImGui::End();
 }

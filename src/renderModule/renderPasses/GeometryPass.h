@@ -1,4 +1,8 @@
 ﻿#pragma once
+#include <mutex>
+#include <thread>
+#include <vector>
+
 #include "renderModule/RenderPass.h"
 
 namespace Engine::RenderModule::RenderPasses {
@@ -18,5 +22,7 @@ namespace Engine::RenderModule::RenderPasses {
 	private:
 		bool mInited = false;
 		Data mData;
+		std::vector<std::thread> threads;
+		std::mutex mtx;
 	};
 }

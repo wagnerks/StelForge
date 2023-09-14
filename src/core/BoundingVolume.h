@@ -39,7 +39,7 @@ namespace Engine::FrustumModule {
 
 	struct BoundingVolume
 	{
-		virtual bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const = 0;
+		virtual bool isOnFrustum(const Frustum& camFrustum, const glm::mat4& transform) const = 0;
 
 		virtual bool isOnOrForwardPlan(const Plane& plan) const = 0;
 
@@ -68,13 +68,19 @@ namespace Engine::FrustumModule {
 			return plan.getSignedDistanceToPlan(center) > -radius;
 		}
 
-		bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const final
+		bool isOnFrustum(const Frustum& camFrustum, const glm::mat4& transform) const final
 		{
+			auto& t = transform;
+
 			//Get global scale thanks to our transform
-			const glm::vec3& globalScale = transform.getScale(true);
+			const glm::vec3& globalScale = {
+				sqrt(t[0][0] * t[0][0] + t[0][1] * t[0][1] + t[0][2] * t[0][2]),
+				sqrt(t[1][0] * t[1][0] + t[1][1] * t[1][1] + t[1][2] * t[1][2]),
+				sqrt(t[2][0] * t[2][0] + t[2][1] * t[2][1] + t[2][2] * t[2][2])
+			};
 
 			//Get our global center with process it with the global model matrix of our transform
-			const glm::vec3& globalCenter = transform.getPos(true);
+			const glm::vec3& globalCenter = glm::vec3(t[3]);
 
 			//To wrap correctly our shape, we need the maximum scale scalar.
 			const float maxScale = std::max(std::max(globalScale.x, globalScale.y), globalScale.z);
@@ -108,15 +114,15 @@ namespace Engine::FrustumModule {
 			return -r <= plan.getSignedDistanceToPlan(center);
 		}
 
-		bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const final
+		bool isOnFrustum(const Frustum& camFrustum, const glm::mat4& transform) const final
 		{
 			//Get global scale thanks to our transform
-			const glm::vec3 globalCenter{ transform.getTransform()* glm::vec4(center, 1.f) };
+			const glm::vec3 globalCenter{ transform* glm::vec4(center, 1.f) };
 
 			// Scaled orientation
-			const glm::vec3 right = transform.getTransform()[0] * extent; //right
-			const glm::vec3 up = transform.getTransform()[1] * extent; //up
-			const glm::vec3 forward = -transform.getTransform()[2] * extent; //forward
+			const glm::vec3 right = transform[0] * extent; //right
+			const glm::vec3 up = transform[1] * extent; //up
+			const glm::vec3 forward = -transform[2] * extent; //forward
 
 			const float newIi = std::abs(glm::dot(glm::vec3{ 1.f, 0.f, 0.f }, right)) +
 				std::abs(glm::dot(glm::vec3{ 1.f, 0.f, 0.f }, up)) +
@@ -177,15 +183,15 @@ namespace Engine::FrustumModule {
 			return -r <= plan.getSignedDistanceToPlan(center);
 		}
 
-		bool isOnFrustum(const Frustum& camFrustum, const TransformComponent& transform) const final
+		bool isOnFrustum(const Frustum& camFrustum, const glm::mat4& transform) const final
 		{
 			//Get global scale thanks to our transform
-			const glm::vec3 globalCenter{ transform.getTransform()* glm::vec4(center, 1.f) };
+			const glm::vec3 globalCenter{ transform* glm::vec4(center, 1.f) };
 
 			// Scaled orientation
-			const glm::vec3 right = transform.getTransform()[0] * extents.x; //right
-			const glm::vec3 up = transform.getTransform()[1] * extents.y; //up
-			const glm::vec3 forward = -transform.getTransform()[2] * extents.z; //forward
+			const glm::vec3 right = transform[0] * extents.x; //right
+			const glm::vec3 up = transform[1] * extents.y; //up
+			const glm::vec3 forward = -transform[2] * extents.z; //forward
 
 			const float newIi = std::abs(glm::dot(glm::vec3{ 1.f, 0.f, 0.f }, right)) +
 				std::abs(glm::dot(glm::vec3{ 1.f, 0.f, 0.f }, up)) +

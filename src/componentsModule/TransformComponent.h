@@ -40,6 +40,7 @@ namespace Engine::ComponentsModule {
 		void setTransform(const glm::mat4& transform);
 
 		glm::mat4 getRotationMatrix() const;
+		glm::quat getRotationMatrixQuaternion() const;
 		glm::mat4 getLocalTransform() const;
 		const glm::mat4& getViewMatrix() const;
 
@@ -53,8 +54,8 @@ namespace Engine::ComponentsModule {
 		void markDirty();
 		bool isDirty() const;
 
-		bool deserialize(const Json::Value& data) override;
-		bool serialize(Json::Value& data) override;
+		void deserialize(const Json::Value& data) override;
+		void serialize(Json::Value& data) override;
 	private:
 		glm::vec3 calculateGlobalScale();
 		TransformComponent* mParentTransform = nullptr;

@@ -121,6 +121,10 @@ glm::mat4 TransformComponent::getRotationMatrix() const {
 	return glm::toMat4(rotateQuat);
 }
 
+glm::quat TransformComponent::getRotationMatrixQuaternion() const {
+	return rotateQuat;
+}
+
 void TransformComponent::reloadTransform() {
 	if (!dirty) {
 		return;
@@ -131,8 +135,7 @@ void TransformComponent::reloadTransform() {
 
 	if (mParentTransform) {
 		mParentTransform->reloadTransform();
-		transform = Math::matrixMultiplication(mParentTransform->getTransform(), transform);
-		//transform = mParentTransform->getTransform() * transform;
+		transform = mParentTransform->getTransform() * transform;
 	}
 
 	view = glm::inverse(transform);
@@ -177,7 +180,7 @@ bool TransformComponent::isDirty() const {
 	return dirty;
 }
 
-bool TransformComponent::serialize(Json::Value& data) {
+void TransformComponent::serialize(Json::Value& data) {
 
 	data["Scale"].append(scale.x);
 	data["Scale"].append(scale.y);
@@ -190,11 +193,9 @@ bool TransformComponent::serialize(Json::Value& data) {
 	data["Rotate"].append(rotate.x);
 	data["Rotate"].append(rotate.y);
 	data["Rotate"].append(rotate.z);
-
-	return true;
 }
 
-bool TransformComponent::deserialize(const Json::Value& data) {
+void TransformComponent::deserialize(const Json::Value& data) {
 	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Scale")) {
 		setScale(PropertiesModule::JsonUtils::getVec3(*val));
 	}
@@ -206,8 +207,6 @@ bool TransformComponent::deserialize(const Json::Value& data) {
 	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Rotate")) {
 		setRotate(PropertiesModule::JsonUtils::getVec3(*val));
 	}
-
-	return true;
 }
 
 void TransformComponent::setParentTransform(TransformComponent* parentTransform) {
