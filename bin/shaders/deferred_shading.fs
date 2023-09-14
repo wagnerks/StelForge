@@ -75,19 +75,19 @@ vec2 vogel_disk_sample(uint sample_index, int sample_count, float angle)
 float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
     float shadow = 0.f; 
 
-    float penumbra        = 1.0f;
+    const float penumbra        = 1.0f;
     
-    float temporal_offset = 0.0;
-    float temporal_angle  = temporal_offset * 3.14 * 2;
-    float g_shadow_filter_size = 1.0;
-    float g_shadow_samples_rpc = 1.0 / cascadedShadow.samples[layer];
+    const float temporal_offset = 0.0;
+    const float temporal_angle  = temporal_offset * 3.14 * 2;
+    const float g_shadow_filter_size = 1.0;
+    const float g_shadow_samples_rpc = 1.0 / cascadedShadow.samples[layer];
 
     
 
     for (uint i = 0; i < cascadedShadow.samples[layer]; i++) {
-        vec2 offset = vogel_disk_sample(i, cascadedShadow.samples[layer], temporal_angle) * (cascadedShadow.texelSize[layer]) *  g_shadow_filter_size * penumbra;
+        const vec2 offset = vogel_disk_sample(i, cascadedShadow.samples[layer], temporal_angle) * (cascadedShadow.texelSize[layer]) *  g_shadow_filter_size * penumbra;
         
-        float depth = texture(cascadedShadow.shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z));
+        const float depth = texture(cascadedShadow.shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z));
         shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
     } 
 
@@ -97,19 +97,19 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
 float TechniqueVogel(DirectionalLight light, float bias, vec3 projCoords) {
     float shadow = 0.f; 
 
-    float penumbra        = 1.0f;
+    const float penumbra        = 1.0f;
     
-    float temporal_offset = 0.0;
-    float temporal_angle  = temporal_offset * 3.14 * 2;
-    float g_shadow_filter_size = 1.0;
-    float g_shadow_samples_rpc = 1.0 / light.samples;
+    const float temporal_offset = 0.0;
+    const float temporal_angle  = temporal_offset * 3.14 * 2;
+    const float g_shadow_filter_size = 1.0;
+    const float g_shadow_samples_rpc = 1.0 / light.samples;
 
     
 
     for (uint i = 0; i < light.samples; i++) {
-        vec2 offset = vogel_disk_sample(i, light.samples, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
+        const vec2 offset = vogel_disk_sample(i, light.samples, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
         
-        float depth = texture(light.shadowMap, vec3(projCoords.xy + offset, projCoords.z));
+        const float depth = texture(light.shadowMap, vec3(projCoords.xy + offset, projCoords.z));
         shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
     } 
 
@@ -117,60 +117,62 @@ float TechniqueVogel(DirectionalLight light, float bias, vec3 projCoords) {
 }
 
 float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
-    float vertexNormalToLight = dot(Normal, cascadedShadow.direction);
+    const float vertexNormalToLight = dot(Normal, cascadedShadow.direction);
+    
     float koef = 1 - (vertexNormalToLight + 1.0) * 0.5; //1 when parallel, 0.5 if normal, 0 if divergent
     
-    if (koef <= 0.5){
+    if (koef <= 0.52){
         return 1.0;
-        return 1 - koef * 2.0;
     }
 
     // select cascade layer
 
     vec4 fragPosLightSpace;
     vec3 projCoords;
-    float minX = 0.0;
-    float maxX = 1.0;
+
     int layer = 0;
     for (; layer < cascadeCount + 1; ++layer) {
         fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
         projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w; // perform perspective divide
         projCoords = projCoords * 0.5 + 0.5; // transform to [0,1] range
-        projCoords.z -= cascadedShadow.bias[layer] * cascadedShadow.texelSize[layer].x;
-        if (projCoords.x > minX && projCoords.x < maxX && projCoords.y > minX && projCoords.y < maxX && projCoords.z > minX && projCoords.z < maxX) {
+        projCoords.z -= cascadedShadow.bias[layer] * cascadedShadow.texelSize[layer].x; //fix light line on corners
+        if (projCoords.x > 0.0 && projCoords.x < 1.0 && projCoords.y > 0.0 && projCoords.y < 1.0 && projCoords.z > 0.0 && projCoords.z < 1.0) {
             break;
         }
     }
    
+    //return 0.1f * layer;
+    
     if (layer  > cascadeCount){
-        return koef;
+        return 0.0;
     }
     
     if (projCoords.z > 1.0){
-        return koef;
+        return 0.0;
     }
 
-    float bias = cascadedShadow.bias[layer] * tan(acos(dot(Normal, cascadedShadow.direction)));
+    float bias = cascadedShadow.bias[layer] * tan(acos(vertexNormalToLight));
+   
+    float kek = koef * 2.0 - 1; //chagne koef from (0.5, 1.0] to (0.0, 1.0]
 
-    float kek = koef * 2.0 - 1;
-
-    return max(1 - kek, TechniqueVogelCascaded(layer, bias, projCoords));
+    return max(0.0, TechniqueVogelCascaded(layer, bias, projCoords));
 }
 
 
 float ShadowCalculation(DirectionalLight light, vec3 projCoords, vec3 lightDir, vec3 normal) {
-    float vertexNormalToLight = dot(normal, lightDir);
-    float koef = 1 - (vertexNormalToLight + 1.0) * 0.5; //1 when parallel, 0.5 if normal, 0 if divergent
+    const float vertexNormalToLight = dot(normal, lightDir);
+    const float koef = 1 - (vertexNormalToLight + 1.0) * 0.5; //1 when parallel, 0.5 if normal, 0 if divergent
     
-    if (koef <= 0.5){
+    if (koef >= 0.5){
+        return 1.0;
         return 1 - koef * 2.0;
     }
 
     if (projCoords.z > 1.0){
-        return koef;
+        return 1 - koef * 2.0;
     }
 
-    float bias = light.bias * tan(acos(dot(normal, lightDir)));;
+    const float bias = light.bias * tan(acos(dot(normal, lightDir)));;
     return TechniqueVogel(light, bias, projCoords);
 }
 
@@ -188,29 +190,29 @@ vec3 calculateLighting(vec3 Normal, vec3 lightDirection, vec3 viewDirection, vec
 
 void main() {
     // retrieve data from gbuffer
-    vec3 FragPos = texture(gPosition, TexCoords).rgb;
-    vec3 Normal = texture(gNormal, TexCoords).rgb;
+    const vec3 FragPos = texture(gPosition, TexCoords).rgb;
+    const vec3 Normal = texture(gNormal, TexCoords).rgb;
     vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
-    float Specular = texture(gAlbedoSpec, TexCoords).a;
-    float AmbientOcclusion = texture(ssao, TexCoords).r;
-    
-    
+    const float Specular = texture(gAlbedoSpec, TexCoords).a;
+    const float AmbientOcclusion = texture(ssao, TexCoords).r;
+
 
 
     float shadow = 0.f;
     vec3 lighting = vec3(Diffuse * ambientColor);
     
-    vec3 viewDir  = normalize(viewPos - FragPos);
+    const vec3 viewDir  = normalize(viewPos - FragPos);
 
     shadow += ShadowCascadedCalculation(FragPos, Normal);
+    
 
 
     lighting += calculateLighting(Normal, cascadedShadow.direction, viewDir, Diffuse, cascadedShadow.color, Specular) * 0.5f; 
  
     for (int i = 0; i < shadowsCount; i++) {
-        vec4 shadowCoord = DirLights[i].PV * vec4(FragPos,1.0);
-        vec3 projCoords = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;        
-        vec3 lightDir = normalize(FragPos - DirLights[i].Position);
+        const vec4 shadowCoord = DirLights[i].PV * vec4(FragPos,1.0);
+        const vec3 projCoords = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;        
+        const vec3 lightDir = normalize(FragPos - DirLights[i].Position);
         lighting += calculateLighting(Normal, lightDir, viewDir, Diffuse, cascadedShadow.color, Specular) * 0.1; 
         if (lighting.x == 0.f && lighting.y == 0.f && lighting.z == 0.f){
             continue; //if here is fully shadowed object, why need i calculate shadow?
@@ -219,35 +221,30 @@ void main() {
 
     }
 
-    int lightsCount = lightsCount > NR_LIGHTS ? NR_LIGHTS : lightsCount;
-    if (lightsCount > 0){
-        for(int i = 0; i < lightsCount; ++i) {
-            // calculate distance between light source and current fragment
-            float distance = length(lights[i].Position - FragPos);
-            if(distance < lights[i].Radius) {
-                vec3 lightDir = normalize(lights[i].Position - FragPos);
+    const int lightsCount = lightsCount > NR_LIGHTS ? NR_LIGHTS : lightsCount;
 
-                float attenuation = 1.0 / (1.0 + lights[i].Linear * distance + lights[i].Quadratic * distance * distance);
-                
-                lighting += (calculateLightDiffuse(Normal, lightDir, Diffuse, lights[i].Color) + calculateSpecular(Normal, lightDir, viewDir, lights[i].Color, Specular)) * attenuation;
-            }
+    for(int i = 0; i < lightsCount; ++i) {
+        // calculate distance between light source and current fragment
+        const float distance = length(lights[i].Position - FragPos);
+        if(distance < lights[i].Radius) {
+            const vec3 lightDir = normalize(lights[i].Position - FragPos);
+
+            const float attenuation = 1.0 / (1.0 + lights[i].Linear * distance + lights[i].Quadratic * distance * distance);
+            
+            lighting += (calculateLightDiffuse(Normal, lightDir, Diffuse, lights[i].Color) + calculateSpecular(Normal, lightDir, viewDir, lights[i].Color, Specular)) * attenuation;
         }
     }
+    
 
-    lighting *= (1 - (0.9 * shadow));
+    lighting *= (1 - (0.2 * shadow));
     //lighting *= AmbientOcclusion;
     const float gamma = 1.0;
-    float exposure = 1.2;
+    const float exposure = 1.2;
   
     // exposure tone mapping
     vec3 mapped = vec3(1.0) - exp(-lighting * exposure);
     // gamma correction 
     mapped = pow(mapped, vec3(1.0 / gamma));
     
-    
-    
-    
-    
-
     FragColor = vec4(mapped , 1.0);
 }
