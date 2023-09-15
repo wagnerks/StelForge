@@ -42,7 +42,8 @@ namespace AssetsModule {
 
 		std::string_view getModelPath();
 
-	private:
+		void normalizeModel();
+
 		int mLODs = 0;
 
 		void calculateLODs();

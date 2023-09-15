@@ -1,4 +1,5 @@
 ﻿#pragma once
+
 #include <string>
 #include <vec2.hpp>
 #include <vec3.hpp>
@@ -6,6 +7,7 @@
 
 #include "ecsModule/EntityBase.h"
 #include "assetsModule/TextureHandler.h"
+#include "mathModule/MathUtils.h"
 
 
 namespace Engine {
@@ -20,6 +22,7 @@ namespace AssetsModule {
 		glm::vec3 mNormal;
 		glm::vec2 mTexCoords;
 		glm::vec3 mTangent;
+		glm::vec3 mBiTangent;
 	};
 
 	struct MaterialTexture {

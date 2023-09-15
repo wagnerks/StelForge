@@ -77,7 +77,7 @@ namespace Engine::ComponentsModule {
 
 			data["cascades"].append(cascadeData);
 		}
-
+		data["shadow_intensity"] = shadowIntensity;
 	}
 
 	void CascadeShadowComponent::deserialize(const Json::Value& data) {
@@ -100,6 +100,8 @@ namespace Engine::ComponentsModule {
 			cascade.texelSize = { cascadeData["texel_size"][0].asFloat(), cascadeData["texel_size"][1].asFloat() };
 			cascade.zMult = { cascadeData["z_mult"][0].asFloat(), cascadeData["z_mult"][1].asFloat() };
 		}
+
+		shadowIntensity = data["shadow_intensity"].asFloat();
 	}
 
 	void CascadeShadowComponent::updateCascades(const ProjectionModule::PerspectiveProjection& cameraProjection) {

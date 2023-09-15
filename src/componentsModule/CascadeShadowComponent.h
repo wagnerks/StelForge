@@ -41,6 +41,7 @@ namespace Engine::ComponentsModule {
 
 		void serialize(Json::Value& data) override;
 		void deserialize(const Json::Value& data) override;
+		float shadowIntensity = 1.f;
 	private:
 		std::vector<glm::mat4> mLightSpaceMatrices;
 		bool mDirty = true;

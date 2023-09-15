@@ -24,6 +24,7 @@ namespace Engine::RenderModule::RenderPasses {
 			std::vector<float> shadowCascadeLevels;
 			CascadeShadows* shadows = nullptr;
 			std::vector<ComponentsModule::ShadowCascade> shadowCascades;
+			float shadowsIntensity = 0.f;
 		};
 
 		CascadedShadowPass();

@@ -150,7 +150,8 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 			mShadowSource->getComponent<CascadeShadowComponent>()->cascades.back().viewProjection.getFar(),
 			mShadowSource->getComponent<CascadeShadowComponent>()->shadowCascadeLevels,
 			mShadowSource,
-			mShadowSource->getComponent<CascadeShadowComponent>()->cascades
+			mShadowSource->getComponent<CascadeShadowComponent>()->cascades,
+			mShadowSource->getComponent<CascadeShadowComponent>()->shadowIntensity
 		};
 
 		return;
@@ -236,6 +237,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 			mShadowSource->getComponent<CascadeShadowComponent>()->cascades.back().viewProjection.getFar(),
 			mShadowSource->getComponent<CascadeShadowComponent>()->shadowCascadeLevels,
 			mShadowSource,
-			mShadowSource->getComponent<CascadeShadowComponent>()->cascades
+			mShadowSource->getComponent<CascadeShadowComponent>()->cascades,
+			mShadowSource->getComponent<CascadeShadowComponent>()->shadowIntensity
 	};
 }

@@ -38,6 +38,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		shaderLightingPass->setVec3("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData.lightDirection);
 		shaderLightingPass->setVec3("cascadedShadow.color", renderDataHandle.mCascadedShadowsPassData.lightColor);
 		shaderLightingPass->setInt("cascadeCount", static_cast<int>(renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.size()));
+		shaderLightingPass->setFloat("shadowIntensity", renderDataHandle.mCascadedShadowsPassData.shadowsIntensity);
 
 		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.size(); ++i) {
 			shaderLightingPass->setFloat(("cascadePlaneDistances[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[i]);
@@ -178,5 +179,5 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 		Utils::renderQuad();
 	}
-	
+
 }
