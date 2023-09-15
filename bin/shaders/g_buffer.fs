@@ -9,6 +9,8 @@ in highp vec3 FragPos;
 in vec3 Normal;
 in vec3 ViewPos;
 
+in mat3 TBN;
+
 uniform sampler2D texture_diffuse1;
 uniform sampler2D texture_specular1;
 uniform sampler2D normalMap;
@@ -31,8 +33,9 @@ void main()
     // obtain normal from normal map in range [0,1]
     vec3 normal = texture(normalMap, TexCoords).rgb;
     // transform normal vector to range [-1,1]
-    //gNormal.xyz = normal;  
-    gNormal.xyz = Normal * normalize(normal * 2.0 - 1.0);   
+    gNormal.xyz = normalize(TBN * normalize(normal * 2.0 - 1.0));
+    //gNormal.xyz = normalize((Normal * normalize(normal * 2.0 - 1.0)) * 0.5 + 0.5);   
+    //Normal.xyz = normalize(Normal * normalize(normal * 2.0 - 1.0));
 
     // and the diffuse per-fragment color
     gAlbedoSpec.rgb = texture(texture_diffuse1, TexCoords).rgb;

@@ -1,0 +1,216 @@
+{
+	"Children" : 
+	[	
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/backpack/scene.gltf"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "backpac"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/cube.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						0.0,
+						-1.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						50.0,
+						0.0099999997764825821,
+						50.0
+					]
+				}
+			},
+			"id" : "floor"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/cylinder.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						50.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "cylinder"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/sphere.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-50.0,
+						50.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "sphere"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/sponza/scene.gltf"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						50.0,
+						450.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						180.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						10.0,
+						10.0,
+						10.0
+					]
+				}
+			},
+			"id" : "sponza"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/peasant_mesh.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						300.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "peasant_mesh"
+		}
+	],
+	"Properties" : 
+	{
+		"TransformComponent" : 
+		{
+			"Pos" : 
+			[
+				0.0,
+				0.0,
+				0.0
+			],
+			"Rotate" : 
+			[
+				0.0,
+				0.0,
+				0.0
+			],
+			"Scale" : 
+			[
+				1.0,
+				1.0,
+				1.0
+			]
+		}
+	},
+	"id" : "root"
+}

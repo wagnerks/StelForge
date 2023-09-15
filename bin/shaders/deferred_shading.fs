@@ -57,6 +57,7 @@ layout (std140, binding = 0) uniform LightSpaceMatrices
 
 
 uniform float ambientColor = 1.0;
+uniform float shadowIntensity = 1.0;
 
 
 
@@ -117,14 +118,12 @@ float TechniqueVogel(DirectionalLight light, float bias, vec3 projCoords) {
 }
 
 float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
-    const float vertexNormalToLight = dot(Normal, cascadedShadow.direction);
+    const float illumination = -dot(Normal, cascadedShadow.direction); // -1 = darkest, 1 = lightest
+    const float illuminationKoef = 1.0 - illumination; // 0 - dark, 1 - light
     
-    float koef = 1 - (vertexNormalToLight + 1.0) * 0.5; //1 when parallel, 0.5 if normal, 0 if divergent
-    
-    if (koef <= 0.52){
+    if (illumination < 0.0){
         return 1.0;
     }
-
     // select cascade layer
 
     vec4 fragPosLightSpace;
@@ -140,22 +139,19 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
             break;
         }
     }
-   
-    //return 0.1f * layer;
-    
+       
     if (layer  > cascadeCount){
-        return 0.0;
+        return illuminationKoef;
     }
     
     if (projCoords.z > 1.0){
-        return 0.0;
+        return illuminationKoef;
     }
 
-    float bias = cascadedShadow.bias[layer] * tan(acos(vertexNormalToLight));
+    //float bias = cascadedShadow.bias[layer] * tan(acos(-illumination));
+    float bias = cascadedShadow.bias[layer] * (-illumination);
    
-    float kek = koef * 2.0 - 1; //chagne koef from (0.5, 1.0] to (0.0, 1.0]
-
-    return max(0.0, TechniqueVogelCascaded(layer, bias, projCoords));
+    return max(1.0 - illumination, TechniqueVogelCascaded(layer, bias, projCoords));
 }
 
 
@@ -236,7 +232,7 @@ void main() {
     }
     
 
-    lighting *= (1 - (0.2 * shadow));
+    lighting *= (1 - (shadowIntensity * shadow));
     //lighting *= AmbientOcclusion;
     const float gamma = 1.0;
     const float exposure = 1.2;
