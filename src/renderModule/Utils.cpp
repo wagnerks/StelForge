@@ -148,18 +148,12 @@ void Utils::initCubeVAO() {
 	}
 }
 
-void Utils::renderLine(float length) {
+void Utils::renderLine(glm::vec3& begin, glm::vec3& end) {
 	static unsigned linesVAO = 0;
 
 	float vertices[] = {
-		0.f,0.f,0.f,
-		0.f,0.f,-length,
-
-		0.f,0.f,0.f,
-		0.f,0.f,0.f,
-
-		0.f,0.f,0.f,
-		0.f,0.f,0.f,
+		begin.x,begin.y,begin.z,
+		end.x,end.y,end.z
 	};
 
 	// setup plane VAO
@@ -174,7 +168,7 @@ void Utils::renderLine(float length) {
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
 	glBindVertexArray(linesVAO);
-	RenderModule::Renderer::drawArrays(GL_LINES, 6);
+	RenderModule::Renderer::drawArrays(GL_LINES, 2);
 	glBindVertexArray(0);
 
 	glDeleteVertexArrays(1, &linesVAO);

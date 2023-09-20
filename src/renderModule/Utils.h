@@ -12,7 +12,7 @@ namespace Engine::RenderModule {
 		static void initCubeVAO();
 		static void renderXYZ(float length);
 
-		static void renderLine(float length);
+		static void renderLine(glm::vec3& begin, glm::vec3& end);
 
 		static void renderCamera();
 
