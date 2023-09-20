@@ -33,6 +33,21 @@ namespace Engine {
 		return true;
 	}
 
+	bool FileSystem::writeFile(std::string_view path, std::string& file) {
+		std::ofstream outputFile;
+
+		outputFile.open(path.data());
+		if (!outputFile.is_open()) {
+			LogsModule::Logger::LOG_ERROR("FileSystem::FILE_NOT_SUCCESSFULLY_WRITE: %s", path);
+			return false;
+		}
+
+		outputFile.write(file.c_str(), file.size());
+		outputFile.close();
+
+		return true;
+	}
+
 	bool FileSystem::readJson(std::string_view path, Json::Value& root, bool withComments) {
 		std::ifstream ifs;
 		ifs.open(path.data());
