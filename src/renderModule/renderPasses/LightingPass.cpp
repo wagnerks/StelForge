@@ -30,6 +30,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	shaderLightingPass->setInt("gAlbedoSpec", 2);
 	shaderLightingPass->setInt("ssao", 3);
 	shaderLightingPass->setInt("shadows", 4);
+	shaderLightingPass->setInt("gOutlines", 5);
 
 	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
 		shaderLightingPass->setFloat("ambientColor", 1.f);//todo 0 for night and 1 for day, some time system
@@ -63,6 +64,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gAlbedoSpec);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE3, GL_TEXTURE_2D, renderDataHandle.mSSAOPassData.mSsaoColorBufferBlur);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE5, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gOutlines);
 	//shaderLightingPass->setInt("shadowsCount", static_cast<int>(lightsObj.size()));
 	//for (auto i = 0u; i < lightsObj.size(); i++) {
 	//	auto lightSource = lightsObj[i];
@@ -101,38 +103,6 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	glBlitFramebuffer(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	static bool showDebugCascade = false;
-	if (ImGui::Begin("shadows")) {
-		ImGui::Checkbox("cascade debug depths", &showDebugCascade);
-	}
-	ImGui::End();
-
-
-	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty() && showDebugCascade) {
-		auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
-		sh->use();
-		sh->setInt("depthMap", 31);
-		sh->setFloat("near_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[0]);
-		sh->setFloat("far_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[1]);
-		sh->setInt("layer", 0);
-
-		auto a = 250 / 1920.f;
-		auto b = 250 / 1080.f;
-		Utils::renderQuad(1 - a, 1 - b, 1.f, 1.f);
-		sh->setFloat("near_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[1]);
-		sh->setFloat("far_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[2]);
-		sh->setInt("layer", 1);
-
-		Utils::renderQuad(1 - a, 1 - 2 * b, 1.f, 1 - b);
-
-		sh->setFloat("near_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[2]);
-		sh->setFloat("far_plane", renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[3]);
-		sh->setInt("layer", 2);
-
-		Utils::renderQuad(1 - a, 1 - 3 * b, 1.f, 1 - 2 * b);
-	}
-
-
 
 
 	static glm::vec3 sunDir;
@@ -162,6 +132,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 	}
 	ImGui::End();
+
 	if (enableSky) {
 		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
 		sky->use();

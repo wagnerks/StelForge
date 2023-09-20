@@ -115,29 +115,35 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 		return;
 	}
 
-	if (ImGui::Begin("lightSpaceMatrix")) {
-		ImGui::DragFloat("camera speed", &ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->MovementSpeed, 0.1f);
-		ImGui::DragFloat("shadows update delta", &mUpdateDelta, 0.1f);
 
-		if (mShadowSource) {
-			if (ImGui::Button("cache")) {
-				mShadowSource->cacheMatrices();
-			}
+	if (ImGui::BeginMainMenuBar()) {
+		if (ImGui::BeginMenu("Debug")) {
+			if (ImGui::BeginMenu("Shadows debug")) {
+				ImGui::DragFloat("shadows update delta", &mUpdateDelta, 0.1f);
 
-			if (ImGui::Button("clear")) {
-				mShadowSource->clearCacheMatrices();
+				if (mShadowSource) {
+					if (ImGui::Button("cache")) {
+						mShadowSource->cacheMatrices();
+					}
+
+					if (ImGui::Button("clear")) {
+						mShadowSource->clearCacheMatrices();
+					}
+					static float sunProgress = 0.4f;
+					if (ImGui::DragFloat("sun pos", &sunProgress, 0.001f, 0.f)) {
+						auto x = glm::cos(glm::radians(-sunProgress * 180.f));
+						auto y = glm::sin(glm::radians(sunProgress * 180.f));
+						auto z = glm::sin(glm::radians(sunProgress * 180.f));
+						mShadowSource->getComponent<TransformComponent>()->setRotate({ -sunProgress * 180.f,0.f, sunProgress * 5.f });
+						mShadowSource->getComponent<TransformComponent>()->reloadTransform();
+					}
+				}
+				ImGui::EndMenu();
 			}
-			static float sunProgress = 0.4f;
-			if (ImGui::DragFloat("sun pos", &sunProgress, 0.001f, 0.f)) {
-				auto x = glm::cos(glm::radians(-sunProgress * 180.f));
-				auto y = glm::sin(glm::radians(sunProgress * 180.f));
-				auto z = glm::sin(glm::radians(sunProgress * 180.f));
-				mShadowSource->getComponent<TransformComponent>()->setRotate({ -sunProgress * 180.f,0.f, sunProgress * 5.f });
-				mShadowSource->getComponent<TransformComponent>()->reloadTransform();
-			}
+			ImGui::EndMenu();
 		}
 	}
-	ImGui::End();
+	ImGui::EndMainMenuBar();
 
 	if (mUpdateTimer <= mUpdateDelta) {
 		mUpdateTimer += UnnamedEngine::instance()->getDeltaTime();
