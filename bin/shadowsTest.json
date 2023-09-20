@@ -99,7 +99,7 @@
 			{
 				"ModelComponent" : 
 				{
-					"ModelPath" : "models/sphere.fbx"
+					"ModelPath" : "models/highpoly_sphere.fbx"
 				},
 				"TransformComponent" : 
 				{
