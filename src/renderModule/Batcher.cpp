@@ -58,11 +58,10 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos) {
 		return Engine::Math::distanceSqr(viewPos, apos) < Engine::Math::distanceSqr(viewPos, bpos);
 	});
 
-	ImGui::Begin("draw order");
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
 	auto defaultTex = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("white.png").mId;
+	auto defaultNormal = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("defaultNormal.png").mId;
 	for (auto& drawObjects : drawList) {
-		ImGui::Text("%d", drawObjects.indicesCount);
 		glBindVertexArray(drawObjects.VAO);
 
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::mat4x4) * drawObjects.transforms.size(), &drawObjects.transforms[0]);
@@ -79,7 +78,7 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos) {
 			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, drawObjects.material.mNormal.mTexture.mId);
 		}
 		else {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultTex);
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultNormal);
 		}
 
 		if (drawObjects.indicesCount) {
@@ -89,7 +88,6 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos) {
 			Engine::RenderModule::Renderer::drawArraysInstancing(GL_TRIANGLES, static_cast<int>(drawObjects.verticesCount), static_cast<int>(drawObjects.transforms.size()));
 		}
 	}
-	ImGui::End();
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	glBindVertexArray(0);
 
