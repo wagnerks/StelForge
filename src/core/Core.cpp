@@ -1,7 +1,7 @@
 ﻿#include "Core.h"
 
 #include "InputHandler.h"
-#include "ModelLoader.h"
+#include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "debugModule/ComponentsDebug.h"
 #include "debugModule/imguiDecorator.h"
