@@ -35,7 +35,7 @@ void Renderer::postDraw() {
 
 void Renderer::init() {
 
-	auto root = PropertiesModule::PropertiesSystem::loadScene("scene.json");
+	auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
 
 	mBatcher = new Batcher();
 }
