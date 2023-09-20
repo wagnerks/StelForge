@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <assimp/material.h>
 
-#include "Singleton.h"
+#include "core/Singleton.h"
 #include "assetsModule/AssetsManager.h"
 #include "ecsModule/EntityManager.h"
 #include "memoryModule/LinearAllocator.h"

@@ -18,7 +18,10 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	}
 
 	auto meshNode = loadModel(path);
-	return mModelsHolder->createAsset<Model>(path, meshNode, path);
+	auto model = mModelsHolder->createAsset<Model>(path, meshNode, path);
+	model->normalizeModel();
+
+	return model;
 }
 
 void ModelLoader::releaseModel(const std::string& path) {
@@ -48,7 +51,7 @@ void ModelLoader::init() {
 MeshNode ModelLoader::loadModel(const std::string& path) {
 	TextureLoader loader;
 	Assimp::Importer import;
-	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		Engine::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
@@ -172,7 +175,10 @@ std::vector<AssetsModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiM
 
 		//if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
 		AssetsModule::MaterialTexture texture;
-		texture.mTexture = loader->loadTexture(directory + "/" + std::string(str.C_Str()));
+		std::string path = std::string(str.C_Str());
+		path.erase(0, std::string(str.C_Str()).find_last_of("\\") + 1);
+
+		texture.mTexture = loader->loadTexture(directory + "/" + path);
 		texture.mType = typeName;
 
 		textures.push_back(texture);
