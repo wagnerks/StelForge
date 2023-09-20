@@ -3,18 +3,41 @@
 #include "DebugInfo.h"
 #include "imgui.h"
 #include "ShadersDebug.h"
+#include "ecsModule/SystemManager.h"
+#include "systemsModule/CameraSystem.h"
 
 using namespace Engine::Debug;
 
 void DebugMenu::draw() {
-	ImGui::Begin("DebugMenu", &opened);
-	ImGui::Checkbox("debug info", &debugInfoOpened);
-	ImGui::Checkbox("shaders debug", &shadersDebugOpened);
-	ImGui::End();
+	if (ImGui::BeginMainMenuBar()) {
+		if (ImGui::BeginMenu("Debug")) {
+			ImGui::Separator();
+			ImGui::DragFloat("camera speed", &ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->MovementSpeed, 5.f);
+			ImGui::Separator();
+			ImGui::Checkbox("debug info", &debugInfoOpened);
+			if (ImGui::BeginMenu("Debug info type")) {
+				if (ImGui::RadioButton("small", debugInfoType == DebugInfoType::Small)) { debugInfoType = DebugInfoType::Small; }
+				if (ImGui::RadioButton("middle", debugInfoType == DebugInfoType::Middle)) { debugInfoType = DebugInfoType::Middle; }
+				if (ImGui::RadioButton("big", debugInfoType == DebugInfoType::Big)) { debugInfoType = DebugInfoType::Big; }
+				ImGui::EndMenu();
+			}
+
+			ImGui::Separator();
+			ImGui::Checkbox("shaders debug", &shadersDebugOpened);
+			ImGui::Checkbox("imgui demo", &imguiDemo);
+
+			ImGui::EndMenu();
+		}
+		ImGui::EndMainMenuBar();
+	}
+
+	if (imguiDemo) {
+		ImGui::ShowDemoWindow(&imguiDemo);
+	}
 
 	if (debugInfoOpened) {
-		DebugInfo::drawInfo();
+		DebugInfo::drawInfo(debugInfoType);
 	}
-	
-	ShadersDebug::shadersDebugDraw(shadersDebugOpened);
+
+	ShadersDebug::instance()->shadersDebugDraw(shadersDebugOpened);
 }

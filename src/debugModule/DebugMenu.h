@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "DebugInfo.h"
 
 namespace Engine::Debug {
 	class DebugMenu {
@@ -7,7 +8,11 @@ namespace Engine::Debug {
 
 		bool opened = false;
 
+		bool collapsed = true;
 		bool debugInfoOpened = true;
 		bool shadersDebugOpened = false;
+		bool imguiDemo = false;
+
+		DebugInfoType debugInfoType = DebugInfoType::Middle;
 	};
 }
