@@ -11,30 +11,6 @@ namespace Engine::RenderModule {
 	class Renderer;
 
 	class RenderPass {
-		friend bool operator<(const RenderPass& lhs, const RenderPass& rhs) {
-			return lhs.mPriority < rhs.mPriority;
-		}
-
-		friend bool operator<=(const RenderPass& lhs, const RenderPass& rhs) {
-			return !(rhs < lhs);
-		}
-
-		friend bool operator>(const RenderPass& lhs, const RenderPass& rhs) {
-			return rhs < lhs;
-		}
-
-		friend bool operator>=(const RenderPass& lhs, const RenderPass& rhs) {
-			return !(lhs < rhs);
-		}
-
-		friend bool operator==(const RenderPass& lhs, const RenderPass& rhs) {
-			return lhs.mPriority == rhs.mPriority;
-		}
-
-		friend bool operator!=(const RenderPass& lhs, const RenderPass& rhs) {
-			return !(lhs == rhs);
-		}
-
 	public:
 		virtual ~RenderPass() = default;
 		virtual void render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) = 0;
