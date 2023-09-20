@@ -91,3 +91,13 @@ void ShaderController::removeShader(ShaderBase* shader) {
 const std::unordered_map<size_t, ShaderBase*>& ShaderController::getShaders() {
 	return shaders;
 }
+
+ShaderBase* ShaderController::getShader(size_t shaderID) {
+	for (auto shader : shaders) {
+		if (shader.second->getID() == shaderID) {
+			return shader.second;
+		}
+	}
+
+	return nullptr;
+}

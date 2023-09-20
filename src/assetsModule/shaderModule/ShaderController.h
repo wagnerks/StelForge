@@ -26,6 +26,8 @@ namespace Engine::ShaderModule {
 		ShaderBase* defaultShader = nullptr;
 		void removeShader(ShaderBase* shader);
 		const std::unordered_map<size_t, ShaderBase*>& getShaders();
+		ShaderBase* getShader(size_t shaderID);
+
 	private:
 		std::unordered_map<size_t, ShaderBase*> shaders;
 		std::hash<std::string> hasher;
