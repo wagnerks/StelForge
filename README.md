@@ -1,4 +1,5 @@
 # KillRealGameEngine
+![image](https://github.com/stalker1177/KillRealGameEngine/assets/44020451/478cfff6-a3db-4673-a4a7-0b7a4c3cc3ba)
 
 there is just some piece of pet project, you can find a lot of draft and junk code here, but i will fix every module after finishing working on it
 
@@ -28,18 +29,19 @@ Which means really big open world, atmospheres, stars, lights, may be some proce
 - [x] custom allocator for ECS
 - [ ] entities actions
 - [ ] physics engine (want my own)
-- [ ] ability to draw object via custom shader which ok with deferred shading
+- [x] ability to draw object via custom shader which ok with deferred shading
 - [ ] precompile models format and faster models loading in game
 - [ ] own gui (imgui good, but not very fast)
 - [ ] add specular and other maps to the models
 - [ ] skeleton animation
 - [ ] (possible some 3d tools for converting normals in needed for me way)
+- [x] added converting normals to enginge coorinates system
 - [ ] 3d objects visual redactor utils
 - [ ] drag and drop
 - [ ] choose object by click
-- [ ] outlines
+- [x] outlines
 - [ ] multithread integration, first of all add ability to update systems in parallel
-- [ ] Shadows (don't like how it looks now, but it works)
+- [x] Shadows (don't like how it looks now, but it works) 
 - [ ] SSAO(current algorithm is not fast enough, and have some glitches while fast moving)
 - [ ] SSR
 - [x] HDR
