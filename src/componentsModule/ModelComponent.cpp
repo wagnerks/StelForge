@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "core/ModelLoader.h"
+#include "assetsModule/modelModule/ModelLoader.h"
 #include "ecsModule/EntityManager.h"
 #include "assetsModule/modelModule/Model.h"
 
