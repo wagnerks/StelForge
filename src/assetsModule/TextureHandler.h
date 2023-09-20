@@ -20,12 +20,12 @@ namespace AssetsModule {
 		Texture() = default;
 		Texture(unsigned id, std::string_view path, eTextureType type) : mId(id), mPath(path), mType(type) {}
 
-		unsigned mId = std::numeric_limits<unsigned>::max();
+		uint16_t mId = std::numeric_limits<uint16_t>::max();
 		std::string mPath;
 		eTextureType mType = eTextureType::DEFAULT;
 
 		bool isValid() const {
-			return mId != std::numeric_limits<unsigned>::max();
+			return mId != std::numeric_limits<uint16_t>::max();
 		}
 	};
 
