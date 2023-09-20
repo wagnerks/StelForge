@@ -21,6 +21,13 @@ namespace Engine {
 }
 
 namespace Engine::SystemsModule {
+
+	enum class RenderMode {
+		DEFAULT,
+		WIREFRAME,
+		NORMALS,
+	};
+
 	struct RenderDataHandle {
 		std::vector<size_t> mDrawableEntities;
 		FrustumModule::Frustum mCamFrustum;
@@ -33,11 +40,12 @@ namespace Engine::SystemsModule {
 		RenderModule::RenderPasses::GeometryPass::Data mGeometryPassData;
 		RenderModule::RenderPasses::SSAOPass::Data mSSAOPassData;
 
-		bool mWireframeMode = false;
+		RenderMode mRenderType = RenderMode::DEFAULT;
 	};
 
 	class RenderSystem : public ecsModule::System<RenderSystem> {
 	public:
+		void setRenderType(RenderMode type);
 		RenderSystem(RenderModule::Renderer* renderer);
 		void preUpdate(float_t dt) override;
 		void update(float_t dt) override;
@@ -49,7 +57,8 @@ namespace Engine::SystemsModule {
 		std::vector<RenderModule::RenderPass*> mRenderPasses;
 
 		RenderDataHandle mRenderData;
-
-		bool mDebugShadowsDraw = false;
+		
+		bool mGeometryPassDataWindow = false;
+		bool mShadowsDebugDataDraw = false;
 	};
 }
