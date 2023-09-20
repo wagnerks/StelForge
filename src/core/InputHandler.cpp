@@ -4,6 +4,8 @@
 #include "Engine.h"
 #include "ecsModule/SystemManager.h"
 #include "systemsModule/CameraSystem.h"
+#include "imgui.h"
+#include "imgui_internal.h"
 
 using namespace Engine::CoreModule;
 
@@ -25,6 +27,10 @@ void InputProvider::unsubscribe(InputObserver* observer) {
 }
 
 void InputProvider::fireEvent(InputKey key, InputEventType type) {
+	if (ImGui::GetCurrentContext()->IO.WantCaptureKeyboard) {
+		return;
+	}
+
 	for (const auto observer : mKeyObservers) {
 		observer->onKeyEvent(key, type);
 	}
@@ -35,6 +41,9 @@ void InputHandler::keyCallback(GLFWwindow* window, int key, int scancode, int ac
 }
 
 void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposIn) {
+	if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
+		return;
+	}
 	const auto xpos = static_cast<float>(xposIn);
 	const auto ypos = static_cast<float>(yposIn);
 
@@ -51,10 +60,16 @@ void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposI
 }
 
 void InputHandler::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+	if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
+		return;
+	}
 	ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
 void InputHandler::mouseBtnInput(GLFWwindow* w, int btn, int act, int mode) {
+	if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
+		return;
+	}
 	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_PRESS) {
 		ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->processMouse = true;
 		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
