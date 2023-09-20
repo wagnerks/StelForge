@@ -43,6 +43,10 @@ namespace Engine {
 
 		updateDelta();
 		mCore->update(mDeltaTime);
+
+		if (mDeltaTime < 1.f / 60.f) {
+			std::this_thread::sleep_for(std::chrono::milliseconds((int)((1 / 60.f - mDeltaTime) * 1000.f)));
+		}
 	}
 
 	float UnnamedEngine::getDeltaTime() const {
