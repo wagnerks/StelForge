@@ -8,6 +8,7 @@ uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
 uniform sampler2D ssao;
+uniform sampler2D gOutlines;
 
 struct DirectionalLight {
     mat4 PV; //proj * view from light perspective matrix
@@ -32,7 +33,7 @@ struct Light {
 };
 
 const int NR_LIGHTS = 50;
-uniform Light lights[NR_LIGHTS];
+uniform Light lights[ NR_LIGHTS ];
 uniform int lightsCount = 0;
 uniform vec3 viewPos;
 
@@ -191,6 +192,7 @@ void main() {
     vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
     const float Specular = texture(gAlbedoSpec, TexCoords).a;
     const float AmbientOcclusion = texture(ssao, TexCoords).r;
+    
 
 
 
@@ -233,14 +235,19 @@ void main() {
     
 
     lighting *= (1 - (shadowIntensity * shadow));
-    //lighting *= AmbientOcclusion;
+    lighting *= AmbientOcclusion;
     const float gamma = 1.0;
     const float exposure = 1.2;
-  
+    
+
+    const float outlines = texture(gOutlines, TexCoords).b;
+
+
     // exposure tone mapping
     vec3 mapped = vec3(1.0) - exp(-lighting * exposure);
     // gamma correction 
     mapped = pow(mapped, vec3(1.0 / gamma));
-    
-    FragColor = vec4(mapped , 1.0);
+    mapped.g += outlines;
+
+    FragColor = vec4(mapped, 1.0);
 }

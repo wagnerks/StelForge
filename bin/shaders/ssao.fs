@@ -31,11 +31,12 @@ vec2 hash22(vec2 p)
 }
 
 vec3 getPosition(vec2 uv) {
-    float fl = texture(gPosition, vec2(0.)).x; 
+    float fl = 1.0 - texture(gNormal, uv).w;
     float d = texture(gNormal, uv).w;
        
     vec2 p = uv*2.-1.;
-    mat3 ca = mat3(1.,0.,0.,0.,1.,0.,0.,0.,-1./1.5);
+    mat3 ca = mat3(1.,0.,0.,   0.,1.,0.,   0.,0.,-1./1.5);
+
     vec3 rd = normalize( ca * vec3(p,fl) );
     
 	vec3 pos = rd * d;
@@ -85,15 +86,11 @@ float spiralAO(vec2 uv, vec3 p, vec3 n, float rad)
 }
 
 void main() {
-    vec2 iResolution = vec2(1920.0, 1080.0);
-
-	vec2 uv = gl_FragCoord.xy / iResolution.xy;
-        
-    vec3 p = getPosition(uv);
-    vec3 n = getNormal(uv);
+    vec3 p = getPosition(TexCoords);
+    vec3 n = getNormal(TexCoords);
 
     float rad = SAMPLE_RAD/p.z;
-    float ao = spiralAO(uv, p, n, rad);
+    float ao = spiralAO(TexCoords, p, n, rad);
 
     ao = 1. - ao * INTENSITY;
     
