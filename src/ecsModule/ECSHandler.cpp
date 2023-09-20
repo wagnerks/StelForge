@@ -7,6 +7,7 @@
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/LODSystem.h"
 #include "systemsModule/RenderSystem.h"
+#include "systemsModule/ShaderSystem.h"
 #include "systemsModule/SystemsPriority.h"
 #include "systemsModule/TransformSystem.h"
 
@@ -46,6 +47,10 @@ void ECSHandler::initSystems() {
 	systemManager->addSystem<Engine::SystemsModule::LODSystem>();
 	systemManager->setSystemPriority<Engine::SystemsModule::LODSystem>(eSystemsPriority::LOD_SYSTEM);
 	systemManager->setSystemUpdateInterval<Engine::SystemsModule::LODSystem>(1 / 60.f);
+
+	systemManager->addSystem<Engine::SystemsModule::ShaderSystem>();
+	systemManager->setSystemPriority<Engine::SystemsModule::ShaderSystem>(eSystemsPriority::SHADERS_SYSTEM);
+	systemManager->setSystemUpdateInterval<Engine::SystemsModule::ShaderSystem>(1 / 60.f);
 
 	systemManager->addSystem<Engine::SystemsModule::RenderSystem>(Engine::RenderModule::Renderer::instance());
 	systemManager->setSystemPriority<Engine::SystemsModule::RenderSystem>(eSystemsPriority::RENDER_SYSTEM);
