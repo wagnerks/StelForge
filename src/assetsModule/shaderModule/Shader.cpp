@@ -1,6 +1,7 @@
 ﻿#include "Shader.h"
 
 #include <filesystem>
+#include <map>
 #include <glad/glad.h>
 #include <string>
 #include "logsModule/logger.h"
@@ -16,11 +17,15 @@ bool Shader::compile() {
 	cachedUniforms.clear();
 	ID = glCreateProgram();
 
-	auto success = compileShader(loadShaderCode(vertexPath.c_str()).c_str(), GL_VERTEX_SHADER);
-	success = compileShader(loadShaderCode(fragmentPath.c_str()).c_str(), GL_FRAGMENT_SHADER) && success;
-	if (!success){
+	vertexCode = loadShaderCode(vertexPath.c_str());
+	fragmentCode = loadShaderCode(fragmentPath.c_str());
+
+	auto success = compileShader(vertexCode.c_str(), GL_VERTEX_SHADER);
+	success = compileShader(fragmentCode.c_str(), GL_FRAGMENT_SHADER) && success;
+	if (!success) {
 		LogsModule::Logger::LOG_ERROR("[%s, %s] error downloading", vertexPath.c_str(), fragmentPath.c_str());
 	}
+
 	return success;
 }
 

@@ -1,8 +1,17 @@
 ﻿#pragma once
 
+#include <vector>
+
+#include "core/Singleton.h"
+
 namespace Engine::Debug {
-	class ShadersDebug {
+	class ShadersDebug : public Singleton<ShadersDebug> {
+		friend Singleton;
 	public:
-		static void shadersDebugDraw(bool& opened);
+		void shadersDebugDraw(bool& opened);
+	private:
+		~ShadersDebug() override = default;
+
+		std::vector<size_t> mOpenedShaderDebugWindows;
 	};
 }

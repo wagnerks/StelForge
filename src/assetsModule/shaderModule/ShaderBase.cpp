@@ -52,6 +52,13 @@ void ShaderBase::setInt(const char* name, int val) {
 	glUniform1i(getUniformLocation(name), val);
 }
 
+void ShaderBase::setBool(const char* name, bool val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniform1i(getUniformLocation(name), val);
+}
+
 void ShaderBase::setMat4(const char* name, const glm::mat4& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
