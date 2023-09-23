@@ -10,6 +10,18 @@ uniform sampler2D gAlbedoSpec;
 uniform sampler2D ssao;
 uniform sampler2D gOutlines;
 
+struct PointLight {
+    sampler2DArrayShadow shadowMap;
+    vec3 Position;
+    vec2 texelSize;
+    float bias;
+    int samples;
+    float radius;
+    vec3 direction[6];
+};
+
+uniform PointLight pointLight;
+
 struct DirectionalLight {
     mat4 PV; //proj * view from light perspective matrix
     sampler2DShadow shadowMap;
@@ -56,6 +68,10 @@ layout (std140, binding = 0) uniform LightSpaceMatrices
     mat4 lightSpaceMatrices[16];
 };
 
+layout (std140, binding = 3) uniform PointLightMatrices
+{
+    mat4 pointLightMatrices[16];
+};
 
 uniform float ambientColor = 1.0;
 uniform float shadowIntensity = 1.0;
@@ -96,6 +112,29 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
     return shadow * g_shadow_samples_rpc;
 }
 
+float TechniqueVogelPoint(int layer, float bias, vec3 projCoords) {
+    float shadow = 0.f; 
+
+    const float penumbra        = 1.0f;
+    
+    const float temporal_offset = 0.0;
+    const float temporal_angle  = temporal_offset * 3.14 * 2;
+    const float g_shadow_filter_size = 1.0;
+    const float g_shadow_samples_rpc = 1.0 / pointLight.samples;
+
+    
+
+    for (uint i = 0; i < pointLight.samples; i++) {
+        const vec2 offset = vogel_disk_sample(i, pointLight.samples, temporal_angle) * (pointLight.texelSize) *  g_shadow_filter_size * penumbra;
+        
+        const float depth = texture(pointLight.shadowMap, vec4(projCoords.xy + offset, layer+6, projCoords.z));
+        shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
+    } 
+
+    return shadow * g_shadow_samples_rpc;
+}
+
+
 float TechniqueVogel(DirectionalLight light, float bias, vec3 projCoords) {
     float shadow = 0.f; 
 
@@ -107,26 +146,19 @@ float TechniqueVogel(DirectionalLight light, float bias, vec3 projCoords) {
     const float g_shadow_samples_rpc = 1.0 / light.samples;
 
     
-
+    return 1.0;
     for (uint i = 0; i < light.samples; i++) {
         const vec2 offset = vogel_disk_sample(i, light.samples, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
         
         const float depth = texture(light.shadowMap, vec3(projCoords.xy + offset, projCoords.z));
-        shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
+        shadow += projCoords.z + 0.0001 > depth ? 1.0 : 0.0;   
     } 
 
     return shadow * g_shadow_samples_rpc;
 }
 
-float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
-    const float illumination = -dot(Normal, cascadedShadow.direction); // -1 = darkest, 1 = lightest
-    const float illuminationKoef = 1.0 - illumination; // 0 - dark, 1 - light
-    
-    if (illumination < 0.0){
-        return 1.0;
-    }
+float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) { //return 0.0 - light, 1.0 - dark
     // select cascade layer
-
     vec4 fragPosLightSpace;
     vec3 projCoords;
 
@@ -135,26 +167,49 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) {
         fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
         projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w; // perform perspective divide
         projCoords = projCoords * 0.5 + 0.5; // transform to [0,1] range
-        projCoords.z -= cascadedShadow.bias[layer] * cascadedShadow.texelSize[layer].x; //fix light line on corners
+        projCoords.z -= cascadedShadow.bias[layer] * cascadedShadow.texelSize[layer].x; //fix light line on corners, fix bias at the end of depth
         if (projCoords.x > 0.0 && projCoords.x < 1.0 && projCoords.y > 0.0 && projCoords.y < 1.0 && projCoords.z > 0.0 && projCoords.z < 1.0) {
             break;
         }
     }
        
-    if (layer  > cascadeCount){
-        return illuminationKoef;
-    }
-    
-    if (projCoords.z > 1.0){
-        return illuminationKoef;
+    if (layer > cascadeCount){
+        return 0.0;//light, cause all what is not under sun should be light by default
     }
 
-    //float bias = cascadedShadow.bias[layer] * tan(acos(-illumination));
+    const float illumination = -dot(Normal, cascadedShadow.direction); // -1 = darkest, 1 = lightest
+    const float illuminationKoef = 1.0 - illumination; // 0 - dark, 1 - light
+    
     float bias = cascadedShadow.bias[layer] * (-illumination);
    
-    return max(1.0 - illumination, TechniqueVogelCascaded(layer, bias, projCoords));
+    return TechniqueVogelCascaded(layer, bias, projCoords);
 }
 
+float PointLightCalculation(vec3 fragPosWorldSpace, vec3 Normal) {//return 0.0 - light, 1.0 - dark
+    vec4 fragPosLightSpace;
+    vec3 projCoords;
+
+    const vec3 lightDir  = normalize(pointLight.Position - fragPosWorldSpace);
+    const float illumination = -dot(Normal, -lightDir); // -1 = darkest, 1 = lightest
+    float bias = 0.1f * (-illumination);
+
+    int layer = 0;
+    for (; layer < 6 + 1; ++layer) {
+        fragPosLightSpace = pointLightMatrices[layer+6] * vec4(fragPosWorldSpace, 1.0);
+        projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w; // perform perspective divide
+        projCoords = projCoords * 0.5 + 0.5; // transform to [0,1] range
+        projCoords.z -= 0.0004f * pointLight.texelSize.x * illumination; //fix light line on corners
+        if (projCoords.x > 0.0 && projCoords.x < 1.0 && projCoords.y > 0.0 && projCoords.y < 1.0 && projCoords.z > 0.0 && projCoords.z < 1.0) {
+            break;
+        }
+    }
+    
+    if (layer > 6){
+        return 0.f;//it means that fragment further then light radius, so it is dark
+    }
+
+    return TechniqueVogelPoint(layer, bias, projCoords);
+}
 
 float ShadowCalculation(DirectionalLight light, vec3 projCoords, vec3 lightDir, vec3 normal) {
     const float vertexNormalToLight = dot(normal, lightDir);
@@ -185,6 +240,20 @@ vec3 calculateLighting(vec3 Normal, vec3 lightDirection, vec3 viewDirection, vec
     return calculateLightDiffuse(Normal, -lightDirection, Diffuse, lightColor) + calculateSpecular(Normal, -lightDirection, viewDirection, lightColor, Specular);
 }
 
+
+vec2 calculateIllumination(vec3 lightDir, vec3 normal){
+    const float illumination = -dot(normal, lightDir); // -1 = darkest, 1 = lightest
+    float illuminationKoef = illumination; // 0 - dark, 1 - light
+    if (illuminationKoef < 0.0){
+        illuminationKoef = 0.0;
+    }
+    return vec2(illumination, 1.0 - illuminationKoef);
+}
+
+float customMix(float x, float y, float a) {
+    return x * (1.0 - a) + y * a;
+}
+
 void main() {
     // retrieve data from gbuffer
     const vec3 FragPos = texture(gPosition, TexCoords).rgb;
@@ -193,20 +262,31 @@ void main() {
     const float Specular = texture(gAlbedoSpec, TexCoords).a;
     const float AmbientOcclusion = texture(ssao, TexCoords).r;
     
-
-
-
     float shadow = 0.f;
     vec3 lighting = vec3(Diffuse * ambientColor);
     
     const vec3 viewDir  = normalize(viewPos - FragPos);
 
-    shadow += ShadowCascadedCalculation(FragPos, Normal);
     
 
+    vec2 illuminationPoint = calculateIllumination(-normalize(pointLight.Position - FragPos), Normal);
 
+    vec2 illuminationSun = calculateIllumination(cascadedShadow.direction, Normal);
     lighting += calculateLighting(Normal, cascadedShadow.direction, viewDir, Diffuse, cascadedShadow.color, Specular) * 0.5f; 
- 
+
+    float illum = illuminationSun.y;
+    illum = max(illum, illuminationPoint.y); // 1 means light, 0 means dark
+    
+    shadow = illum;
+
+    if (illum > 0.0){
+        shadow = max(illuminationSun.y, ShadowCascadedCalculation(FragPos, Normal));
+        float k = length(pointLight.Position - FragPos) / pointLight.radius;
+        if (k <= 1.0){
+            shadow = customMix(shadow, max(illuminationPoint.y, PointLightCalculation(FragPos, Normal)), 1.0 - k);
+        }
+    }
+
     for (int i = 0; i < shadowsCount; i++) {
         const vec4 shadowCoord = DirLights[i].PV * vec4(FragPos,1.0);
         const vec3 projCoords = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;        
@@ -234,8 +314,8 @@ void main() {
     }
     
 
-    lighting *= (1 - (shadowIntensity * shadow));
-    lighting *= AmbientOcclusion;
+    lighting *= (1.0-(shadowIntensity * shadow));
+    //lighting *= AmbientOcclusion;
     const float gamma = 1.0;
     const float exposure = 1.2;
     

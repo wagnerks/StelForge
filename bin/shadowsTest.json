@@ -74,7 +74,7 @@
 				{
 					"Pos" : 
 					[
-						50.0,
+						25.0,
 						0.0,
 						0.0
 					],
@@ -86,9 +86,71 @@
 					],
 					"Scale" : 
 					[
+						0.2,
 						1.0,
+						0.2
+					]
+				}
+			},
+			"id" : "cylinder"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/cylinder.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-120.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						0.3,
 						1.0,
-						1.0
+						0.3
+					]
+				}
+			},
+			"id" : "cylinder"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/cylinder.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						0.0,
+						0.0,
+						150.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						0.1,
+						1.0,
+						0.1
 					]
 				}
 			},
