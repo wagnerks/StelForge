@@ -12,6 +12,7 @@
 #include "renderModule/RenderPass.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/GeometryPass.h"
+#include "renderModule/renderPasses/PointLightPass.h"
 #include "renderModule/renderPasses/SSAOPass.h"
 
 namespace Engine {
@@ -37,6 +38,7 @@ namespace Engine::SystemsModule {
 		glm::vec3 mCameraPos = {};
 
 		RenderModule::RenderPasses::CascadedShadowPass::Data mCascadedShadowsPassData;
+		RenderModule::RenderPasses::PointLightPass::Data mPointPassData;
 		RenderModule::RenderPasses::GeometryPass::Data mGeometryPassData;
 		RenderModule::RenderPasses::SSAOPass::Data mSSAOPassData;
 
@@ -57,7 +59,7 @@ namespace Engine::SystemsModule {
 		std::vector<RenderModule::RenderPass*> mRenderPasses;
 
 		RenderDataHandle mRenderData;
-		
+
 		bool mGeometryPassDataWindow = false;
 		bool mShadowsDebugDataDraw = false;
 	};

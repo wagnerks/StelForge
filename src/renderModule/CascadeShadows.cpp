@@ -17,18 +17,19 @@
 #include "glad/glad.h"
 #include "logsModule/logger.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "core/ECSHandler.h"
 #include "systemsModule/CameraSystem.h"
 
 
 CascadeShadows::CascadeShadows(size_t entID, glm::vec2 resolution) : Entity(entID) {
 	addComponent<TransformComponent>();
-	addComponent<LightSourceComponent>(Engine::ComponentsModule::eLightType::DIRECTIONAL);
+	addComponent<LightSourceComponent>(Engine::ComponentsModule::eLightType::WORLD);
 	auto cmp = addComponent<CascadeShadowComponent>();
 	cmp->resolution = resolution;
 
 	setNodeId("cascadeShadows");
 
-	auto& cameraProjection = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection();
+	auto& cameraProjection = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection();
 
 	cmp->shadowCascadeLevels = { cameraProjection.getNear(), 50.f, 150.f, 500.f, cameraProjection.getFar() };
 }

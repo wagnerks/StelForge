@@ -4,6 +4,7 @@
 
 #include "Mesh.h"
 #include "assetsModule/Asset.h"
+#include "nodeModule/TreeNode.h"
 
 
 namespace AssetsModule {

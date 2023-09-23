@@ -1,6 +1,7 @@
 ﻿#include "InputHandler.h"
 
 #include "Camera.h"
+#include "ECSHandler.h"
 #include "Engine.h"
 #include "ecsModule/SystemManager.h"
 #include "systemsModule/CameraSystem.h"
@@ -56,14 +57,14 @@ void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposI
 	lastX = xpos;
 	lastY = ypos;
 
-	ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->ProcessMouseMovement(xoffset, yoffset);
+	ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->ProcessMouseMovement(xoffset, yoffset);
 }
 
 void InputHandler::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
 	if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
 		return;
 	}
-	ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->ProcessMouseScroll(static_cast<float>(yoffset));
+	ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
 void InputHandler::mouseBtnInput(GLFWwindow* w, int btn, int act, int mode) {
@@ -71,11 +72,11 @@ void InputHandler::mouseBtnInput(GLFWwindow* w, int btn, int act, int mode) {
 		return;
 	}
 	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_PRESS) {
-		ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->processMouse = true;
+		ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->processMouse = true;
 		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_RELEASE) {
-		ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->processMouse = false;
+		ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->processMouse = false;
 		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 	}
 

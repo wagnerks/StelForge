@@ -1,5 +1,6 @@
 ﻿#include "Core.h"
 
+#include "ECSHandler.h"
 #include "InputHandler.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
@@ -15,8 +16,8 @@ using namespace Engine::CoreModule;
 void Core::update(float dt) {
 	Debug::ImGuiDecorator::preDraw();
 
-	ecsModule::ECSHandler::entityManagerInstance()->destroyEntities();
-	ecsModule::ECSHandler::systemManagerInstance()->update(dt);
+	ECSHandler::entityManagerInstance()->destroyEntities();
+	ECSHandler::systemManagerInstance()->update(dt);
 
 	mDebugMenu.draw();
 
@@ -31,7 +32,7 @@ void Core::update(float dt) {
 }
 
 void Core::init() {
-	ecsModule::ECSHandler::instance()->initSystems();
+	ECSHandler::instance()->initSystems();
 	CoreModule::InputHandler::instance();
 	RenderModule::Renderer::instance();
 }
@@ -41,9 +42,9 @@ Core::~Core() {
 	AssetsModule::TextureHandler::terminate();
 	AssetsModule::ModelLoader::terminate();
 	RenderModule::Renderer::terminate();
-	ecsModule::ECSHandler::terminate();
+	ECSHandler::terminate();
 	CoreModule::InputHandler::terminate();
-	
+
 }
 
 Core::Core() {}

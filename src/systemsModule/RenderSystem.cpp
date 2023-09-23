@@ -9,6 +9,7 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
+#include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/EntityBase.h"
@@ -21,6 +22,7 @@
 #include "renderModule/renderPasses/SSAOPass.h"
 #include "mathModule/MathUtils.h"
 #include "renderModule/CascadeShadows.h"
+#include "renderModule/renderPasses/PointLightPass.h"
 #include "renderModule/renderPasses/ShadersPass.h"
 
 using namespace Engine::SystemsModule;
@@ -34,6 +36,11 @@ RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(rendere
 	shadowPass->init();
 	shadowPass->setPriority(CASCADE_SHADOWS);
 	mRenderPasses.emplace_back(shadowPass);
+
+	auto pointLightPass = new RenderModule::RenderPasses::PointLightPass();
+	pointLightPass->initRender();
+	pointLightPass->setPriority(CASCADE_SHADOWS);
+	mRenderPasses.emplace_back(pointLightPass);
 
 	auto geometryPass = new RenderModule::RenderPasses::GeometryPass();
 	geometryPass->init();
@@ -67,10 +74,10 @@ void RenderSystem::update(float_t dt) {
 		return;
 	}
 
-	const auto compManager = ecsModule::ECSHandler::componentManagerInstance();
-	const auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
+	const auto compManager = ECSHandler::componentManagerInstance();
+	const auto entityManager = ECSHandler::entityManagerInstance();
 	auto renderComponents = compManager->getComponentContainer<IsDrawableComponent>();
-	auto playerCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto playerCamera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto& playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
 
 	mRenderData.mProjection = playerCamera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix();
@@ -96,7 +103,7 @@ void RenderSystem::update(float_t dt) {
 		renderPass->render(mRenderer, mRenderData);
 	}
 
-	auto curCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto curCamera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 	CascadeShadows::debugDraw(mRenderData.mCascadedShadowsPassData.shadows->getCacheLightSpaceMatrices(), curCamera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix(), curCamera->getComponent<TransformComponent>()->getViewMatrix());
 
 	{
@@ -175,6 +182,20 @@ void RenderSystem::update(float_t dt) {
 		}
 	}
 
+	auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
+	sh->use();
+	sh->setInt("depthMap", 30);
+
+	auto a = 250.f / RenderModule::Renderer::SCR_WIDTH;
+	auto b = 250.f / RenderModule::Renderer::SCR_HEIGHT;
+
+	for (auto i = 0; i < 6; i++) {
+		sh->setFloat("near_plane", 0.1f);
+		sh->setFloat("far_plane", 100.f);
+		sh->setInt("layer", i);
+
+		RenderModule::Utils::renderQuad(1.f - a, 1.f - (static_cast<float>(i) + 1.f) * b, 1.f, 1.f - static_cast<float>(i) * b);
+	}
 }
 
 void RenderSystem::postUpdate(float_t dt) {

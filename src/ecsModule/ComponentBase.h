@@ -1,7 +1,8 @@
 ﻿#pragma once
 
-#include "ECSHandler.h"
+#include "EntityComponentSystem.h"
 #include "helper.h"
+#include "core/ECSHandler.h"
 
 namespace ecsModule {
 	class ComponentInterface {

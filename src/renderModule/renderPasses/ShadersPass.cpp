@@ -5,6 +5,7 @@
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "core/ECSHandler.h"
 #include "ecsModule/SystemManager.h"
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/RenderSystem.h"
@@ -12,7 +13,7 @@
 
 
 void Engine::RenderModule::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
-	const auto& drawableEntities = ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::ShaderSystem>()->drawableEntities;
+	const auto& drawableEntities = ECSHandler::systemManagerInstance()->getSystem<SystemsModule::ShaderSystem>()->drawableEntities;
 	if (drawableEntities.empty()) {
 		return;
 	}
@@ -21,7 +22,7 @@ void Engine::RenderModule::RenderPasses::ShadersPass::render(Renderer* renderer,
 
 	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
 	glBindFramebuffer(GL_FRAMEBUFFER, renderDataHandle.mGeometryPassData.mGBuffer);
-	auto& cameraPos = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos();
+	auto& cameraPos = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos();
 
 	auto flush = [this, &renderDataHandle, &batcher, &cameraPos](size_t shaderId) {
 		const auto shader = SHADER_CONTROLLER->getShader(shaderId);
@@ -51,7 +52,7 @@ void Engine::RenderModule::RenderPasses::ShadersPass::render(Renderer* renderer,
 			curShaderId = shaderId;
 		}
 
-		auto entity = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId);
+		auto entity = ECSHandler::entityManagerInstance()->getEntity(entityId);
 
 		if (auto modelComp = entity->getComponent<ModelComponent>()) {
 			auto& transform = entity->getComponent<TransformComponent>()->getTransform();

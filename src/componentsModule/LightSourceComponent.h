@@ -11,7 +11,8 @@ namespace Engine::ComponentsModule {
 		NONE = 0,
 		DIRECTIONAL,
 		POINT,
-		PERSPECTIVE
+		PERSPECTIVE,
+		WORLD
 	};
 
 	class ShadowsComponent : public ecsModule::Component<ShadowsComponent> {
@@ -21,7 +22,7 @@ namespace Engine::ComponentsModule {
 	class LightSourceComponent : public ecsModule::Component<LightSourceComponent>, public PropertiesModule::Serializable {
 	public:
 		LightSourceComponent(eLightType type);
-
+		static int getTypeOffset(eLightType type);
 		eLightType getType() const;
 
 		void setIntensity(float intensity);
@@ -41,18 +42,21 @@ namespace Engine::ComponentsModule {
 
 		void serialize(Json::Value& data) override;
 		void deserialize(const Json::Value& data) override;
-
+		float mLinear = 0.1f;
+		float mQuadratic = 0.0001f;
+		float mRadius = 100.f;
+		bool mWithShadows = true;
 	private:
-		float mBias = 0.f;
-		glm::vec2 mTexelSize = {};
-		int mSamples = 64;
+		float mBias = 0.004f;
+		glm::vec2 mTexelSize = { 0.004f, 0.004f };
+		int mSamples = 32;
 
 		eLightType mType = eLightType::NONE;
 
 		float mIntensity = 1.f;
 		glm::vec3 mLightColor = glm::vec3{ 1.f };
 
-		bool mWithShadows = true;
+
 	};
 }
 

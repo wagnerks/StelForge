@@ -6,6 +6,7 @@
 #include "ecsModule/EntityManager.h"
 #include "..\entitiesModule\Object.h"
 #include "componentsModule/CascadeShadowComponent.h"
+#include "core/ECSHandler.h"
 
 namespace Engine::PropertiesModule {
 	ecsModule::EntityInterface* PropertiesSystem::loadScene(std::string_view path) {
@@ -13,7 +14,7 @@ namespace Engine::PropertiesModule {
 			return nullptr;
 		}
 
-		auto scene = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Object>();
+		auto scene = ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Object>();
 		fillTree(scene, FileSystem::readJson(path));
 
 		return scene;
@@ -44,7 +45,7 @@ namespace Engine::PropertiesModule {
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
-				auto child = ecsModule::ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Object>();
+				auto child = ECSHandler::entityManagerInstance()->createEntity<EntitiesModule::Object>();
 				entity->addElement(child);
 				fillTree(child, element);
 			}

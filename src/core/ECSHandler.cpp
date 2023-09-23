@@ -1,8 +1,6 @@
 ﻿#include "ECSHandler.h"
 
-#include "ComponentsManager.h"
-#include "EntityManager.h"
-#include "SystemManager.h"
+#include "ecsModule/SystemManager.h"
 
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/LODSystem.h"
@@ -11,32 +9,33 @@
 #include "systemsModule/SystemsPriority.h"
 #include "systemsModule/TransformSystem.h"
 
-using namespace ecsModule;
 
-SystemManager* ECSHandler::systemManagerInstance() {
-	return instance()->systemManager;
+ECSHandler::ECSHandler() {
+	ECSMemoryManager = new Engine::MemoryModule::MemoryManager(ecsModule::ECS_GLOBAL_MEMORY_CAPACITY);
+	ECS = new ecsModule::EntityComponentSystem(ECSMemoryManager);
 }
 
-EntityManager* ECSHandler::entityManagerInstance() {
-	return instance()->entityManager;
+ecsModule::SystemManager* ECSHandler::systemManagerInstance() {
+	return instance()->ECS->getSystemManager();
 }
 
-ComponentManager* ECSHandler::componentManagerInstance() {
-	return instance()->componentManager;
+ecsModule::EntityManager* ECSHandler::entityManagerInstance() {
+	return instance()->ECS->getEntityManager();
 }
 
-void ECSHandler::init() {
-	memoryManager = new Engine::MemoryModule::MemoryManager(ECS_GLOBAL_MEMORY_CAPACITY);
-
-	systemManager = new SystemManager(memoryManager);
-	componentManager = new ComponentManager(memoryManager);
-	entityManager = new EntityManager(memoryManager);
+ecsModule::ComponentManager* ECSHandler::componentManagerInstance() {
+	return instance()->ECS->getComponentManager();
 }
 
 void ECSHandler::initSystems() {
+	if (!ECS) {
+		return;
+	}
+	auto systemManager = ECS->getSystemManager();
 	if (!systemManager) {
 		return;
 	}
+
 
 	systemManager->addSystem<Engine::SystemsModule::CameraSystem>();
 
@@ -57,13 +56,6 @@ void ECSHandler::initSystems() {
 }
 
 ECSHandler::~ECSHandler() {
-	delete systemManager;
-	delete entityManager;
-	delete componentManager;
-
-	delete memoryManager;
-}
-
-Engine::MemoryModule::MemoryManager* ECSHandler::getMemoryManager() const {
-	return memoryManager;
+	delete ECS;
+	delete ECSMemoryManager;
 }

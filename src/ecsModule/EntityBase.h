@@ -1,9 +1,9 @@
 ﻿#pragma once
 
-#include "ECSHandler.h"
 #include "helper.h"
 
 #include "ComponentsManager.h"
+#include "core/ECSHandler.h"
 #include "nodeModule/TreeNode.h"
 
 namespace ecsModule {
@@ -16,12 +16,9 @@ namespace ecsModule {
 		size_t getEntityID() const;
 		void setId(size_t id);
 
-		template<typename E, class ... Args>
+		template<typename E>
 		E* getComponent() const {
-			if (auto cmp = ECSHandler::componentManagerInstance()->getComponent<E>(getEntityID())) {
-				return cmp;
-			}
-			return nullptr;
+			return ECSHandler::componentManagerInstance()->getComponent<E>(getEntityID());
 		}
 
 		template<typename E, class ... Args>

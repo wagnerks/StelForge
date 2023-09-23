@@ -4,14 +4,18 @@
 //#include "vld.h"
 
 int main() {
-	const auto engine = Engine::UnnamedEngine::instance();
+	std::thread renderThread = std::thread([]() {
+		const auto engine = Engine::UnnamedEngine::instance();
 
-	while (engine->isAlive()) {
-		engine->update();
-	}
+		while (engine->isAlive()) {
+			engine->update();
+		}
 
-	Engine::Debug::ImGuiDecorator::terminate();
-	Engine::UnnamedEngine::terminate();
+		Engine::Debug::ImGuiDecorator::terminate();
+		Engine::UnnamedEngine::terminate();
+	});
+
+	renderThread.join();
 
 	return 0;
 }

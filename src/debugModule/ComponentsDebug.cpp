@@ -17,7 +17,8 @@
 #include "core/FileSystem.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/OutlineComponent.h"
-#include "ecsModule/ECSHandler.h"
+#include "core/ECSHandler.h"
+#include "ecsModule/EntityComponentSystem.h"
 #include "ecsModule/EntityBase.h"
 #include "ecsModule/EntityManager.h"
 #include "ecsModule/SystemManager.h"
@@ -71,7 +72,7 @@ void ComponentsDebug::entitiesDebug() {
 		static ImVec2 mousePos = {};
 
 
-		auto entityManager = ecsModule::ECSHandler::entityManagerInstance();
+		auto entityManager = ECSHandler::entityManagerInstance();
 
 		if (auto currentEntity = entityManager->getEntity(mSelectedId)) {
 			currentEntity->removeComponent<OutlineComponent>();
@@ -166,8 +167,8 @@ void ComponentsDebug::entitiesDebug() {
 
 			ImGui::Separator();
 
-			auto& P = ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix();
-			auto& V = ecsModule::ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getViewMatrix();
+			auto& P = ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix();
+			auto& V = ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getViewMatrix();
 			auto PV = P * V;
 			auto S = glm::scale(glm::mat4(1.0f), glm::vec3(1.f, 1.f, 1.f));
 
@@ -350,12 +351,12 @@ void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
 	float posV[] = { pos.x, pos.y, pos.z };
 	float scaleV[] = { scale.x, scale.y, scale.z };
 
-	if (ImGui::DragFloat3("Pos", posV, 0.001f)) {
+	if (ImGui::DragFloat3("Pos", posV, 0.1f)) {
 		component->setPos({ posV[0], posV[1], posV[2] });
 	}
 
 	float rotations[] = { component->getRotate().x, component->getRotate().y, component->getRotate().z };
-	if (ImGui::DragFloat3("Rotate", rotations)) {
+	if (ImGui::DragFloat3("Rotate", rotations, 0.1f)) {
 		component->setRotate({ rotations[0], rotations[1], rotations[2] });
 	}
 
@@ -407,6 +408,10 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightSourceCompo
 	if (ImGui::ColorPicker3("light color", lightColor)) {
 		component->setLightColor({ lightColor[0], lightColor[1], lightColor[2] });
 	}
+
+	ImGui::DragFloat("linear", &component->mLinear, 0.1f);
+	ImGui::DragFloat("quadratic", &component->mQuadratic, 0.01f);
+	ImGui::DragFloat("radius", &component->mRadius, 0.1f);
 }
 
 void ComponentsDebug::componentEditorInternal(CascadeShadowComponent* component) {
@@ -462,7 +467,7 @@ void ComponentsDebug::componentEditorInternal(CascadeShadowComponent* component)
 
 
 	if (ImGui::Button("save to json")) {
-		FileSystem::writeJson("cascadedShadows.json", PropertiesModule::PropertiesSystem::serializeEntity(ecsModule::ECSHandler::entityManagerInstance()->getEntity(component->getOwnerId())));
+		FileSystem::writeJson("cascadedShadows.json", PropertiesModule::PropertiesSystem::serializeEntity(ECSHandler::entityManagerInstance()->getEntity(component->getOwnerId())));
 	}
 
 }

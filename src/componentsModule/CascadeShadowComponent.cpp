@@ -4,6 +4,7 @@
 
 #include "CameraComponent.h"
 #include "core/BoundingVolume.h"
+#include "core/ECSHandler.h"
 #include "debugModule/ComponentsDebug.h"
 #include "ecsModule/SystemManager.h"
 #include "systemsModule/CameraSystem.h"
@@ -40,7 +41,7 @@ namespace Engine::ComponentsModule {
 	}
 
 	const std::vector<glm::mat4>& CascadeShadowComponent::getLightSpaceMatrices() {
-		auto curCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+		auto curCamera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 
 		const auto& cameraView = curCamera->getComponent<TransformComponent>()->getViewMatrix();
 		const auto& cameraProjection = curCamera->getComponent<CameraComponent>()->getProjection();
@@ -88,7 +89,7 @@ namespace Engine::ComponentsModule {
 
 		resolution = { data["resolution"][0].asFloat(), data["resolution"][1].asFloat() };
 
-		auto& cameraProjection = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection();
+		auto& cameraProjection = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection();
 
 		updateCascades(cameraProjection);
 		int i = 0;

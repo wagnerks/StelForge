@@ -45,7 +45,7 @@ ModelLoader::~ModelLoader() {
 }
 
 void ModelLoader::init() {
-	mModelsHolder = new AssetsManager(ecsModule::ECSHandler::instance()->getMemoryManager());
+	mModelsHolder = new AssetsManager(new Engine::MemoryModule::MemoryManager(ecsModule::ECS_GLOBAL_MEMORY_CAPACITY));
 }
 
 MeshNode ModelLoader::loadModel(const std::string& path) {
@@ -164,6 +164,26 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 		modelMesh.mMaterial.mNormal = normalMaps.front();
 	}
 
+	specularMaps = loadMaterialTextures(material, aiTextureType_HEIGHT, "texture_specular", loader, directory);
+	if (!specularMaps.empty()) {
+		modelMesh.mMaterial.mSpecular = specularMaps.front();
+	}
+
+	specularMaps = loadMaterialTextures(material, aiTextureType_EMISSIVE, "texture_specular", loader, directory);
+	if (!specularMaps.empty()) {
+		modelMesh.mMaterial.mSpecular = specularMaps.front();
+	}
+
+	specularMaps = loadMaterialTextures(material, aiTextureType_AMBIENT, "texture_specular", loader, directory);
+	if (!specularMaps.empty()) {
+		modelMesh.mMaterial.mSpecular = specularMaps.front();
+	}
+	for (int i = aiTextureType_SHININESS; i <= aiTextureType_REFLECTION; i++) {
+		specularMaps = loadMaterialTextures(material, (aiTextureType)i, "texture_specular", loader, directory);
+		if (!specularMaps.empty()) {
+			modelMesh.mMaterial.mSpecular = specularMaps.front();
+		}
+	}
 	modelMesh.bindMesh();
 }
 

@@ -8,6 +8,7 @@
 #include "ecsModule/SystemManager.h"
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "core/ECSHandler.h"
 #include "systemsModule/CameraSystem.h"
 
 using namespace Engine::RenderModule;
@@ -37,7 +38,7 @@ void Skybox::init() {
 
 	skyboxShader->use();
 	skyboxShader->setInt("skybox", 16);
-	skyboxShader->setMat4("projection", ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix());
+	skyboxShader->setMat4("projection", ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix());
 
 	cubemapTex = AssetsModule::TextureHandler::instance()->mLoader.loadCubemapTexture(skyboxPath).mId;
 	if (cubemapTex == 0) {
@@ -107,7 +108,7 @@ void Skybox::draw() {
 	}
 	skyboxShader->use();
 
-	auto view = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getViewMatrix();;
+	auto view = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getViewMatrix();;
 	skyboxShader->setMat4("view", glm::mat4(glm::mat3(view)));
 
 	glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content

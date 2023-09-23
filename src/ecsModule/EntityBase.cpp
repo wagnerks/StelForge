@@ -2,6 +2,7 @@
 
 #include "EntityManager.h"
 #include "componentsModule/TransformComponent.h"
+#include "core/ECSHandler.h"
 
 using namespace ecsModule;
 

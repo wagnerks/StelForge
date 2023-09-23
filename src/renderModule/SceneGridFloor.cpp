@@ -7,6 +7,7 @@
 #include "ecsModule/SystemManager.h"
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "core/ECSHandler.h"
 #include "systemsModule/CameraSystem.h"
 
 using namespace Engine::RenderModule;
@@ -57,7 +58,7 @@ void SceneGridFloor::draw() {
 		return;
 	}
 	floorShader->use();
-	auto camera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto camera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 	floorShader->setMat4("PVM", camera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix() * camera->getComponent<TransformComponent>()->getViewMatrix() * transform);
 
 	glBindVertexArray(VAO);

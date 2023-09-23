@@ -4,6 +4,7 @@
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
+#include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "ecsModule/SystemManager.h"
 #include "systemsModule/CameraSystem.h"
@@ -17,8 +18,8 @@ void DebugInfo::drawInfo(DebugInfoType type) {
 	pos.y += 20.f;
 	ImGui::SetNextWindowPos(pos, 0, { 0.f,0.f });
 	ImGui::SetNextWindowBgAlpha(0.3f);
-	const auto& camera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
-	
+	const auto& camera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+
 	ImGui::Begin("Perf", &opened, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
 	if (type == DebugInfoType::Small || type == DebugInfoType::Middle || type == DebugInfoType::Big) {
 		ImGui::Text("FPS: %d", UnnamedEngine::instance()->getFPS());

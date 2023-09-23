@@ -3,6 +3,28 @@
 LightSourceComponent::LightSourceComponent(eLightType type) : mType(type) {
 }
 
+int LightSourceComponent::getTypeOffset(eLightType type) {
+	switch (type) {
+	case eLightType::NONE: return 0;
+		break;
+	case eLightType::DIRECTIONAL:
+		return 1;
+		break;
+	case eLightType::POINT:
+		return 6;
+		break;
+	case eLightType::PERSPECTIVE:
+		return 1;
+		break;
+	case eLightType::WORLD:
+		return -1;
+		break;
+	default: return -1;;
+	}
+
+	return -1;
+}
+
 Engine::ComponentsModule::eLightType LightSourceComponent::getType() const {
 	return mType;
 }

@@ -32,6 +32,47 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	shaderLightingPass->setInt("shadows", 4);
 	shaderLightingPass->setInt("gOutlines", 5);
 
+
+
+
+	auto lightComp = ECSHandler::entityManagerInstance()->getEntity(5)->addComponent<LightSourceComponent>(ComponentsModule::eLightType::DIRECTIONAL);
+	lightComp = ECSHandler::entityManagerInstance()->getEntity(6)->addComponent<LightSourceComponent>(ComponentsModule::eLightType::PERSPECTIVE);
+	lightComp = ECSHandler::entityManagerInstance()->getEntity(7)->addComponent<LightSourceComponent>(ComponentsModule::eLightType::POINT);
+
+	shaderLightingPass->setInt("pointLightsSize", renderDataHandle.mPointPassData.shadowEntities.size());
+	shaderLightingPass->setInt("PointLightShadowMapArray", 30);
+
+	int offsetSum = 0;
+	for (size_t i = 0; i < renderDataHandle.mPointPassData.shadowEntities.size(); i++) {
+		auto entity = ECSHandler::entityManagerInstance()->getEntity(renderDataHandle.mPointPassData.shadowEntities[i]);
+		auto tc = entity->getComponent<TransformComponent>();
+		auto lightComp = entity->getComponent<LightSourceComponent>();
+
+		shaderLightingPass->setVec3(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
+		shaderLightingPass->setVec2(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), lightComp->getTexelSize());
+		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].bias").c_str(), lightComp->getBias());
+		shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].samples").c_str(), lightComp->getSamples());
+		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].radius").c_str(), lightComp->mRadius);
+		shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].offset").c_str(), offsetSum);
+
+		shaderLightingPass->setVec3(("pointLight[" + std::to_string(i) + "].Color").c_str(), lightComp->getLightColor());
+
+		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].Linear").c_str(), lightComp->mLinear);
+		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].Quadratic").c_str(), lightComp->mQuadratic);
+
+		if (lightComp->getType() == ComponentsModule::eLightType::POINT) {
+			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Type").c_str(), 0);
+			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 6);
+		}
+		else {
+			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Type").c_str(), 1);
+			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 1);
+		}
+
+
+		offsetSum += lightComp->getTypeOffset(lightComp->getType());
+	}
+
 	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
 		shaderLightingPass->setFloat("ambientColor", 1.f);//todo 0 for night and 1 for day, some time system
 		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE31, GL_TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData.shadowMapTexture);

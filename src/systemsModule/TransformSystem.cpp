@@ -1,6 +1,7 @@
 ﻿#include "TransformSystem.h"
 
 #include "componentsModule/TransformComponent.h"
+#include "core/ECSHandler.h"
 #include "ecsModule/ComponentsManager.h"
 #include "ecsModule/EntityBase.h"
 #include "ecsModule/EntityManager.h"
@@ -8,7 +9,7 @@
 using namespace Engine::SystemsModule;
 
 void TransformSystem::update(float_t dt) {
-	auto transforms = ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<TransformComponent>();
+	auto transforms = ECSHandler::componentManagerInstance()->getComponentContainer<TransformComponent>();
 
 	for (auto& transform : *transforms) {
 		transform.reloadTransform();

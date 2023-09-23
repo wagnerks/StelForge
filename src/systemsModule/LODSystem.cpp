@@ -7,21 +7,22 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
+#include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "ecsModule/ComponentsManager.h"
-#include "ecsModule/ECSHandler.h"
+#include "ecsModule/EntityComponentSystem.h"
 #include "ecsModule/SystemManager.h"
 
 using namespace Engine::SystemsModule;
 
 void LODSystem::update(float_t dt) {
-	const auto playerCamera = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	const auto playerCamera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 	if (!playerCamera) {
 		return;
 	}
 
-	for (auto& lodObject : *ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<ModelComponent>()) {
-		auto transform = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ComponentsModule::TransformComponent>(lodObject.getOwnerId());
+	for (auto& lodObject : *ECSHandler::componentManagerInstance()->getComponentContainer<ModelComponent>()) {
+		auto transform = ECSHandler::componentManagerInstance()->getComponent<ComponentsModule::TransformComponent>(lodObject.getOwnerId());
 		if (!transform) {
 			continue;
 		}

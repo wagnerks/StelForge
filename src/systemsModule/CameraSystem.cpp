@@ -1,12 +1,13 @@
 ﻿#include "CameraSystem.h"
 
 #include "componentsModule/TransformComponent.h"
+#include "core/ECSHandler.h"
 #include "ecsModule/EntityManager.h"
 
 namespace Engine::SystemsModule {
 	CameraSystem::CameraSystem() {
 		auto aspect = static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT);
-		mDefaultCamera = ecsModule::ECSHandler::entityManagerInstance()->createEntity<Camera>(45.f, aspect, 0.1f, 5000.f);
+		mDefaultCamera = ECSHandler::entityManagerInstance()->createEntity<Camera>(45.f, aspect, 0.1f, 5000.f);
 		auto transform = mDefaultCamera->addComponent<TransformComponent>();
 		transform->setPos({ 28.f, 218.f, 265.f });
 		transform->setRotate({ -30.5f, 0.8f, 0.0f });

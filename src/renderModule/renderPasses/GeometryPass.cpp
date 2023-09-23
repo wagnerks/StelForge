@@ -8,6 +8,7 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/OutlineComponent.h"
 #include "componentsModule/ShaderComponent.h"
+#include "core/ECSHandler.h"
 #include "ecsModule/SystemManager.h"
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/RenderSystem.h"
@@ -137,7 +138,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	auto addToDraw = [batcher, &drawableEntities, this, &renderDataHandle](size_t chunkBegin, size_t chunkEnd) {
 		for (size_t i = chunkBegin; i < chunkEnd; i++) {
 			auto entityId = drawableEntities[i];
-			auto entity = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId);
+			auto entity = ECSHandler::entityManagerInstance()->getEntity(entityId);
 			if (auto modelComp = entity->getComponent<ModelComponent>()) {
 				auto& transform = entity->getComponent<TransformComponent>()->getTransform();
 				auto& model = modelComp->getModel();
@@ -184,9 +185,9 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 	threads.clear();
 
-	batcher->flushAll(true, ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
+	batcher->flushAll(true, ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
 
-	auto& outlineNodes = *ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<OutlineComponent>();
+	auto& outlineNodes = *ECSHandler::componentManagerInstance()->getComponentContainer<OutlineComponent>();
 	if (!outlineNodes.empty()) {
 		needClearOutlines = true;
 
@@ -199,7 +200,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 		for (auto& outlineEntities : outlineNodes) {
 			auto entityId = outlineEntities.getOwnerId();
-			auto entity = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId);
+			auto entity = ECSHandler::entityManagerInstance()->getEntity(entityId);
 			if (auto modelComp = entity->getComponent<ModelComponent>()) {
 				auto& transform = entity->getComponent<TransformComponent>()->getTransform();
 				auto& model = modelComp->getModel();
@@ -211,7 +212,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 			}
 		}
 
-		batcher->flushAll(true, ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
+		batcher->flushAll(true, ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);

@@ -4,15 +4,16 @@
 
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/ShaderComponent.h"
+#include "core/ECSHandler.h"
 #include "ecsModule/ComponentsManager.h"
-#include "ecsModule/ECSHandler.h"
+#include "ecsModule/EntityComponentSystem.h"
 
 namespace Engine::SystemsModule {
 	void ShaderSystem::update(float_t dt) {
 		auto shaderController = ShaderModule::ShaderController::instance();
 		drawableEntities.clear();
 
-		for (auto& shaderComponent : *ecsModule::ECSHandler::componentManagerInstance()->getComponentContainer<ComponentsModule::ShaderComponent>()) {
+		for (auto& shaderComponent : *ECSHandler::componentManagerInstance()->getComponentContainer<ComponentsModule::ShaderComponent>()) {
 			auto shader = shaderController->getShader(shaderComponent.shaderId);
 			if (!shader) {
 				continue;

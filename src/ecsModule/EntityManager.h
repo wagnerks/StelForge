@@ -24,7 +24,7 @@ namespace ecsModule {
 		EntityInterface* getEntity(size_t entityId) const;
 
 		template<class EntityType>
-		inline EntityType* getEntity(size_t entityId) {
+		EntityType* getEntity(size_t entityId) {
 			return static_cast<EntityType*>(mEntities[entityId]);
 		}
 
@@ -46,8 +46,9 @@ namespace ecsModule {
 				ec = new Container<T>(std::type_index(typeid(this)).hash_code(), globalMemoryManager);
 				mEntityContainers[entityTypeID] = ec;
 			}
-			else
+			else {
 				ec = static_cast<Container<T>*>(it->second);
+			}
 
 			assert(ec != nullptr && "Failed to create EntityContainer<T>!");
 			return ec;

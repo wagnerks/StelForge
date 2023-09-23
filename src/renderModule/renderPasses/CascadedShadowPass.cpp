@@ -4,7 +4,7 @@
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "core/Engine.h"
-#include "ecsModule/ECSHandler.h"
+#include "ecsModule/EntityComponentSystem.h"
 #include "ecsModule/EntityManager.h"
 #include "renderModule/CascadeShadows.h"
 #include "renderModule/Renderer.h"
@@ -21,6 +21,7 @@
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/LightSourceComponent.h"
+#include "core/ECSHandler.h"
 #include "core/FileSystem.h"
 #include "propertiesModule/PropertiesSystem.h"
 
@@ -39,7 +40,7 @@ void CascadedShadowPass::init() {
 	}
 	mInited = true;
 
-	mShadowSource = ecsModule::ECSHandler::entityManagerInstance()->createEntity<CascadeShadows>(glm::vec2{4096.f, 4096.f});
+	mShadowSource = ECSHandler::entityManagerInstance()->createEntity<CascadeShadows>(glm::vec2{4096.f, 4096.f});
 	auto shadow = FileSystem::readJson("cascadedShadows.json");
 
 	PropertiesModule::PropertiesSystem::deserializeProperty<CascadeShadowComponent>(mShadowSource, shadow["Properties"]);
@@ -55,7 +56,7 @@ void CascadedShadowPass::initRender() {
 	freeBuffers();
 
 	auto cmp = mShadowSource->getComponent<CascadeShadowComponent>();
-	auto& cameraProjection = ecsModule::ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection();
+	auto& cameraProjection = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection();
 
 	cmp->updateCascades(cameraProjection);
 
@@ -91,13 +92,13 @@ void CascadedShadowPass::initRender() {
 		Engine::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 	glGenBuffers(1, &matricesUBO);
 	glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
-	glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * 6, nullptr, GL_STATIC_DRAW);
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void CascadedShadowPass::freeBuffers() const {
@@ -173,8 +174,8 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	auto addToDraw = [batcher, &drawableEntities, this](size_t chunkBegin, size_t chunkEnd) {
 		for (size_t i = chunkBegin; i < chunkEnd; i++) {
 			auto entityId = drawableEntities[i];
-			auto transform = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-			auto modelComp = ecsModule::ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>();
+			auto transform = ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
+			auto modelComp = ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>();
 			if (transform && modelComp) {
 				const auto& transformMatrix = transform->getTransform();
 				for (auto& mesh : modelComp->getModelLowestDetails().mMeshHandles) {
@@ -207,13 +208,14 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderDataHan
 	auto cmp = mShadowSource->getComponent<CascadeShadowComponent>();
 
 	const auto& lightMatrices = mShadowSource->getLightSpaceMatrices();
+	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
+
 	if (!lightMatrices.empty()) {
 		glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4x4) * lightMatrices.size(), &lightMatrices[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, lightFBO);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, lightDepthMaps, 0);
 	glViewport(0, 0, static_cast<int>(cmp->resolution.x), static_cast<int>(cmp->resolution.y));
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
