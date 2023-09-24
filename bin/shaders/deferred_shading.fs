@@ -221,15 +221,15 @@ void main() {
             if (k >= 1.0){
                 continue;
             }
-
             vec3 lightDir = -normalize(pointLight[idx].Position - FragPos);
             vec2 point = calculateIllumination(lightDir, Normal);
             //if (pointLight[idx].Type == 0){
-                shadow = customMix(shadow, max(point.y, PointLightCalculation(pointLight[idx], FragPos, Normal)), 1.0 - k);
+                shadow = customMix(shadow, max(point.y, PointLightCalculation(pointLight[idx], FragPos, Normal)) * pow(1.0 - k, 0.2), 1.0 - k);
            
                 const float attenuation = 1.0 / (1.0 + pointLight[idx].Linear * distance + pointLight[idx].Quadratic * distance * distance);
             
                 lighting += (calculateLightDiffuse(Normal, -lightDir, Diffuse, pointLight[idx].Color) + calculateSpecular(Normal, -lightDir, viewDir, pointLight[idx].Color, Specular)) * attenuation;
+                
             // } 
             // else{
             //     shadow *= PointLightCalculation(pointLight[idx], FragPos, Normal);
@@ -237,30 +237,20 @@ void main() {
         }
     }
 
-    // const int lightsCount = lightsCount > NR_LIGHTS ? NR_LIGHTS : lightsCount;
-
-    // for(int i = 0; i < lightsCount; ++i) {
-    //     // calculate distance between light source and current fragment
-    //     const float distance = length(lights[i].Position - FragPos);
-    //     if(distance < lights[i].Radius) {
-    //         const vec3 lightDir = normalize(lights[i].Position - FragPos);
-
-    //         const float attenuation = 1.0 / (1.0 + lights[i].Linear * distance + lights[i].Quadratic * distance * distance);
-            
-    //         lighting += (calculateLightDiffuse(Normal, lightDir, Diffuse, lights[i].Color) + calculateSpecular(Normal, lightDir, viewDir, lights[i].Color, Specular)) * attenuation;
-    //     }
-    // }
-    
-    lighting *= (1.0 - (shadowIntensity * shadow));
+    lighting *= (1.0 - (shadowIntensity * shadow * 1.4));
     //lighting *= AmbientOcclusion;
     const float gamma = 1.0;
     const float exposure = 1.2;
     
-
     const float outlines = texture(gOutlines, TexCoords).b;
 
     // exposure tone mapping
     vec3 mapped = vec3(1.0) - exp(-lighting * exposure);
+    
+    vec3 bluredLight = vec3(texture(gOutlines, TexCoords).a);
+    mapped.rgb = mapped.rgb+ bluredLight.rgb;
+   
+    
     // gamma correction 
     mapped = pow(mapped, vec3(1.0 / gamma));
     mapped.g += outlines;

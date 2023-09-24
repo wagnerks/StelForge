@@ -6,7 +6,8 @@ out vec4 FragColor;
 in vec2 TexCoord;
 
 uniform sampler2D gDepth;//this is a normal texture where i store depth in a
-uniform sampler2D gOutlinesP;//this is a normal texture where i store depth in a
+uniform sampler2D gOutlinesP;
+uniform sampler2D gLightsP;
 
 void main()
 {    
@@ -70,4 +71,22 @@ void main()
     if (gOutlines.g > 0.0){
         gOutlines.b = 0.0;
     }
+
+    size = 16;
+    separation = 0.5;
+    for (int i = -size; i <= size; ++i) {
+        for (int j = -size; j <= size; ++j) {
+            vec2 pos = TexCoord + vec2(i, j)/texSize * separation;
+
+            if (pos.x < 0.0 || pos.x > 1.0 || pos.y < 0.0 || pos.y > 1.0){
+                continue;
+            }
+            
+            gOutlines.a += texture(gLightsP, pos).r;
+            count += 0.5;
+        }
+    }
+
+    gOutlines.a /= count;
+
 }
