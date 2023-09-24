@@ -6,6 +6,7 @@
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/OutlineComponent.h"
 #include "componentsModule/ShaderComponent.h"
 #include "core/ECSHandler.h"
@@ -66,6 +67,14 @@ void GeometryPass::init() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, mData.gOutlines, 0);
 
+	glGenTextures(1, &mData.gLights);
+	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gLights);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT5, GL_TEXTURE_2D, mData.gLights, 0);
+
+
 	// Attach a depth texture to the framebuffer
 
 	glGenTextures(1, &mData.gDepthTexture);
@@ -77,8 +86,8 @@ void GeometryPass::init() {
 
 
 	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
-	constexpr unsigned int attachments[5] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
-	glDrawBuffers(5, attachments);
+	constexpr unsigned int attachments[6] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4, GL_COLOR_ATTACHMENT5 };
+	glDrawBuffers(6, attachments);
 
 	// create and attach depth buffer (renderbuffer)
 	glGenRenderbuffers(1, &mData.rboDepth);
@@ -100,12 +109,18 @@ void GeometryPass::init() {
 	glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
 
 	// outlines buffer
-	glGenTextures(1, &mData.gOutlines);
+	//glGenTextures(1, &mData.gOutlines);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gOutlines);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.gOutlines, 0);
+
+	/*AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gLights);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, mData.gLights, 0);*/
 
 	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
 	constexpr unsigned int Oattachments[1] = { GL_COLOR_ATTACHMENT0 };
@@ -187,12 +202,32 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 	batcher->flushAll(true, ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
 
+	auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
+	lightObjectsPass->use();
+	lightObjectsPass->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
+
+	for (auto& lightSource : *ECSHandler::componentManagerInstance()->getComponentContainer<LightSourceComponent>()) {
+		auto entity = ECSHandler::entityManagerInstance()->getEntity(lightSource.getOwnerId());
+		if (auto modelComp = entity->getComponent<ModelComponent>()) {
+			auto& transform = entity->getComponent<TransformComponent>()->getTransform();
+			auto& model = modelComp->getModel();
+			for (auto& mesh : model.mMeshHandles) {
+				if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform)) {
+					batcher->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform, false);
+				}
+			}
+		}
+	}
+
+	batcher->flushAll(true, ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
+
+
 	auto& outlineNodes = *ECSHandler::componentManagerInstance()->getComponentContainer<OutlineComponent>();
 	if (!outlineNodes.empty()) {
 		needClearOutlines = true;
 
 		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
-		glClear(GL_COLOR_BUFFER_BIT);
+		//glClear(GL_COLOR_BUFFER_BIT);
 
 		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
 		g_buffer_outlines->use();
@@ -221,8 +256,10 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		outlineG->use();
 		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE26, GL_TEXTURE_2D, mData.gNormal);
 		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE27, GL_TEXTURE_2D, mData.gOutlines);
+		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE25, GL_TEXTURE_2D, mData.gLights);
 		outlineG->setInt("gDepth", 26);
 		outlineG->setInt("gOutlinesP", 27);
+		outlineG->setInt("gLightsP", 25);
 
 		Utils::renderQuad();
 	}

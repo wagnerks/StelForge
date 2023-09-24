@@ -255,6 +255,167 @@ void Utils::renderCamera() {
 	glDeleteBuffers(1, &cubeVBO);
 }
 
+void Utils::renderPointLight(float near, float far) {
+	static unsigned linesVAO = 0;
+
+	float w = 15.f;
+	float h = 10.f;
+	float l = 10.f;
+
+	//    LTF*-----------*RTF
+	//      /|          /|
+	//     / |         / |
+	// LTN*-----------*RTN
+	//    |  |        |  |
+	//    |  |        |  |
+	//    |  *LBF-----|--*RBF
+	//    | /         | /
+	//    |/          |/
+	// LBN*-----------*RBN   
+
+
+	glm::vec3 LTN = { -far,  far, far };
+	glm::vec3 RTN = { far,  far, far };
+	glm::vec3 LBN = { -far, -far, far };
+	glm::vec3 RBN = { far, -far, far };
+
+	glm::vec3 LTF = { -far,  far, -far };
+	glm::vec3 RTF = { far,  far, -far };
+	glm::vec3 LBF = { -far, -far, -far };
+	glm::vec3 RBF = { far, -far, -far };
+
+
+	//small cube inside big
+	glm::vec3 LTNs = { -near,  near, near };
+	glm::vec3 RTNs = { near,  near, near };
+	glm::vec3 LBNs = { -near, -near, near };
+	glm::vec3 RBNs = { near, -near, near };
+
+	glm::vec3 LTFs = { -near,  near, -near };
+	glm::vec3 RTFs = { near,  near,-near };
+	glm::vec3 LBFs = { -near, -near, -near };
+	glm::vec3 RBFs = { near, -near,-near };
+
+
+
+	float vertices[] = {
+		//near cube
+		//backward
+		LTNs.x, LTNs.y, LTNs.z, //start
+		RTNs.x, RTNs.y, RTNs.z, //end
+
+		LTNs.x, LTNs.y, LTNs.z, //start
+		LBNs.x, LBNs.y, LBNs.z, //end
+
+		LBNs.x, LBNs.y, LBNs.z, //start
+		RBNs.x, RBNs.y, RBNs.z, //end
+
+		RBNs.x, RBNs.y, RBNs.z, //start
+		RTNs.x, RTNs.y, RTNs.z, //end
+		//forward
+		LTFs.x, LTFs.y, LTFs.z, //start
+		RTFs.x, RTFs.y, RTFs.z, //end
+
+		LTFs.x, LTFs.y, LTFs.z, //start
+		LBFs.x, LBFs.y, LBFs.z, //end
+
+		LBFs.x, LBFs.y, LBFs.z, //start
+		RBFs.x, RBFs.y, RBFs.z, //end
+
+		RBFs.x, RBFs.y, RBFs.z, //start
+		RTFs.x, RTFs.y, RTFs.z, //end
+		//right
+		RTNs.x, RTNs.y, RTNs.z, //start
+		RTFs.x, RTFs.y, RTFs.z, //end
+
+		RBNs.x, RBNs.y, RBNs.z, //start
+		RBFs.x, RBFs.y, RBFs.z, //end
+		//left
+		LTNs.x, LTNs.y, LTNs.z, //start
+		LTFs.x, LTFs.y, LTFs.z, //end
+
+		LBNs.x, LBNs.y, LBNs.z, //start
+		LBFs.x, LBFs.y, LBFs.z, //end
+
+		//far cube
+		//backward
+		LTN.x, LTN.y, LTN.z, //start
+		RTN.x, RTN.y, RTN.z, //end
+
+		LTN.x, LTN.y, LTN.z, //start
+		LBN.x, LBN.y, LBN.z, //end
+
+		LBN.x, LBN.y, LBN.z, //start
+		RBN.x, RBN.y, RBN.z, //end
+
+		RBN.x, RBN.y, RBN.z, //start
+		RTN.x, RTN.y, RTN.z, //end
+		//forward
+		LTF.x, LTF.y, LTF.z, //start
+		RTF.x, RTF.y, RTF.z, //end
+
+		LTF.x, LTF.y, LTF.z, //start
+		LBF.x, LBF.y, LBF.z, //end
+
+		LBF.x, LBF.y, LBF.z, //start
+		RBF.x, RBF.y, RBF.z, //end
+
+		RBF.x, RBF.y, RBF.z, //start
+		RTF.x, RTF.y, RTF.z, //end
+		//right
+		RTN.x, RTN.y, RTN.z, //start
+		RTF.x, RTF.y, RTF.z, //end
+
+		RBN.x, RBN.y, RBN.z, //start
+		RBF.x, RBF.y, RBF.z, //end
+		//left
+		LTN.x, LTN.y, LTN.z, //start
+		LTF.x, LTF.y, LTF.z, //end
+
+		LBN.x, LBN.y, LBN.z, //start
+		LBF.x, LBF.y, LBF.z, //end
+
+		//diagonals
+		LTNs.x, LTNs.y, LTNs.z, //start
+		LTN.x, LTN.y, LTN.z, //end
+		LTFs.x, LTFs.y, LTFs.z, //start
+		LTF.x, LTF.y, LTF.z, //end
+
+		RTNs.x, RTNs.y, RTNs.z, //start
+		RTN.x, RTN.y, RTN.z, //end
+		RTFs.x, RTFs.y, RTFs.z, //start
+		RTF.x, RTF.y, RTF.z, //end
+
+		RBNs.x, RBNs.y, RBNs.z, //start
+		RBN.x, RBN.y, RBN.z, //end
+		RBFs.x, RBFs.y, RBFs.z, //start
+		RBF.x, RBF.y, RBF.z, //end
+
+		LBNs.x, LBNs.y, LBNs.z, //start
+		LBN.x, LBN.y, LBN.z, //end
+		LBFs.x, LBFs.y, LBFs.z, //start
+		LBF.x, LBF.y, LBF.z, //end
+	};
+
+	// setup plane VAO
+	unsigned cubeVBO;
+	glGenVertexArrays(1, &linesVAO);
+	glGenBuffers(1, &cubeVBO);
+	glBindVertexArray(linesVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+	glBindVertexArray(linesVAO);
+	RenderModule::Renderer::drawArrays(GL_LINES, sizeof(vertices) / 3);
+	glBindVertexArray(0);
+
+	glDeleteVertexArrays(1, &linesVAO);
+	glDeleteBuffers(1, &cubeVBO);
+}
+
 void Utils::renderXYZ(float length) {
 	static unsigned linesVAO = 0;
 

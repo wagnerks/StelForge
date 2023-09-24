@@ -30,6 +30,7 @@ namespace Engine::RenderModule {
 		Batcher* mBatcher = nullptr;
 	public:
 		static GLFWwindow* initGLFW();
+		inline static GLFWwindow* loadingWindow = nullptr;
 	private:
 		inline static bool mGLFWInited = false;
 	};

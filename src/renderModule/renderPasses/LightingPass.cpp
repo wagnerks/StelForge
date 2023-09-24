@@ -32,14 +32,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	shaderLightingPass->setInt("shadows", 4);
 	shaderLightingPass->setInt("gOutlines", 5);
 
-
-
-
-	auto lightComp = ECSHandler::entityManagerInstance()->getEntity(5)->addComponent<LightSourceComponent>(ComponentsModule::eLightType::DIRECTIONAL);
-	lightComp = ECSHandler::entityManagerInstance()->getEntity(6)->addComponent<LightSourceComponent>(ComponentsModule::eLightType::PERSPECTIVE);
-	lightComp = ECSHandler::entityManagerInstance()->getEntity(7)->addComponent<LightSourceComponent>(ComponentsModule::eLightType::POINT);
-
-	shaderLightingPass->setInt("pointLightsSize", renderDataHandle.mPointPassData.shadowEntities.size());
+	shaderLightingPass->setInt("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData.shadowEntities.size()));
 	shaderLightingPass->setInt("PointLightShadowMapArray", 30);
 
 	int offsetSum = 0;
@@ -91,12 +84,8 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 			shaderLightingPass->setFloat(("cascadedShadow.bias[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].bias);
 			shaderLightingPass->setInt(("cascadedShadow.samples[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].samples);
 		}
-
-		shaderLightingPass->setFloat("farPlane", renderDataHandle.mCascadedShadowsPassData.cameraFarPlane);
 	}
 
-
-	shaderLightingPass->setMat4("view", renderDataHandle.mView);
 	// set light uniforms
 	shaderLightingPass->setVec3("viewPos", renderDataHandle.mCameraPos);
 
@@ -106,33 +95,6 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gAlbedoSpec);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE3, GL_TEXTURE_2D, renderDataHandle.mSSAOPassData.mSsaoColorBufferBlur);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE5, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gOutlines);
-	//shaderLightingPass->setInt("shadowsCount", static_cast<int>(lightsObj.size()));
-	//for (auto i = 0u; i < lightsObj.size(); i++) {
-	//	auto lightSource = lightsObj[i];
-	//	shaderLightingPass->setMat4(("DirLights[" + std::to_string(i) + "].PV").c_str(), lightSource->getProjectionViewMatrix());
-	//	shaderLightingPass->setVec3(("DirLights[" + std::to_string(i) + "].Position").c_str(), lightSource->getComponent<TransformComponent>()->getPos());
-	//	shaderLightingPass->setInt(("DirLights[" + std::to_string(i) + "].shadowsMap").c_str(), i + 3);
-	//	TextureHandler::getInstance()->bindTexture(GL_TEXTURE3 + i, GL_TEXTURE_2D, lightSource->getDepthMapTexture());
-	//}
-
-	//
-	//shaderLightingPass->setInt("lightsCount", static_cast<int>(lightPositions.size()));
-
-	//for (unsigned int i = 0; i < lightPositions.size(); i++) {
-	//	shaderLightingPass->setVec3(("lights[" + std::to_string(i) + "].Position").c_str(), lightPositions[i]);
-	//	shaderLightingPass->setVec3(("lights[" + std::to_string(i) + "].Color").c_str(), lightColors[i]);
-	//	// update attenuation parameters and calculate radius
-	//	const float constant = 1.0f;
-	//	// note that we don't send this to the shader, we assume it is always 1.0 (in our case)
-	//	const float linear = 0.7f;
-	//	const float quadratic = 1.8f;
-	//	shaderLightingPass->setFloat(("lights[" + std::to_string(i) + "].Linear").c_str(), linear);
-	//	shaderLightingPass->setFloat(("lights[" + std::to_string(i) + "].Quadratic").c_str(), quadratic);
-	//	// then calculate radius of light volume/sphere
-	//	const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
-	//	float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
-	//	shaderLightingPass->setFloat(("lights[" + std::to_string(i) + "].Radius").c_str(), radius);
-	//}
 
 	// finally render quad
 	Utils::renderQuad();

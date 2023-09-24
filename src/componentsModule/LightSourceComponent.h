@@ -24,6 +24,7 @@ namespace Engine::ComponentsModule {
 		LightSourceComponent(eLightType type);
 		static int getTypeOffset(eLightType type);
 		eLightType getType() const;
+		void setType(eLightType type);
 
 		void setIntensity(float intensity);
 		float getIntensity() const;
@@ -45,6 +46,7 @@ namespace Engine::ComponentsModule {
 		float mLinear = 0.1f;
 		float mQuadratic = 0.0001f;
 		float mRadius = 100.f;
+		float mNear = 0.1f;
 		bool mWithShadows = true;
 	private:
 		float mBias = 0.004f;

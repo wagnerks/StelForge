@@ -15,6 +15,7 @@ namespace Engine::RenderModule {
 		static void renderLine(glm::vec3& begin, glm::vec3& end);
 
 		static void renderCamera();
+		static void renderPointLight(float near, float far);
 
 		inline static unsigned cubeVAO = 0;
 		inline static unsigned cubeVBO = 0;

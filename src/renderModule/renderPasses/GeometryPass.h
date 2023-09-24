@@ -13,6 +13,7 @@ namespace Engine::RenderModule::RenderPasses {
 			unsigned int gPosition = 0;
 			unsigned int gViewPosition = 0;
 			unsigned int gOutlines = 0;
+			unsigned int gLights = 0;
 			unsigned int gNormal = 0;
 			unsigned int gAlbedoSpec = 0;
 			unsigned int rboDepth = 0;

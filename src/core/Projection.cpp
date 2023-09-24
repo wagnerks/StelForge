@@ -39,6 +39,16 @@ void Projection::setFar(float far) {
 	initProjection();
 }
 
+void Projection::setNearFar(float near, float far) {
+	if (std::fabs(mFar - far) < std::numeric_limits<float>::epsilon() && std::fabs(mNear - near) < std::numeric_limits<float>::epsilon()) {
+		return;
+	}
+	mNear = near;
+	mFar = far;
+
+	initProjection();
+}
+
 
 void OrthoProjection::setLeftBtm(glm::vec2 point) {
 	if (mLeftBtm == point) {

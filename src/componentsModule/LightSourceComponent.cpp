@@ -29,6 +29,9 @@ Engine::ComponentsModule::eLightType LightSourceComponent::getType() const {
 	return mType;
 }
 
+void LightSourceComponent::setType(eLightType type) {
+	mType = type;
+}
 
 
 void LightSourceComponent::setIntensity(float intensity) {

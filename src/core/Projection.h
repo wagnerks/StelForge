@@ -30,6 +30,8 @@ namespace Engine::ProjectionModule {
 
 		void setNear(float near);
 		void setFar(float far);
+
+		void setNearFar(float near, float far);
 	protected:
 		glm::mat4 mProjectionMatrix = {};
 	private:

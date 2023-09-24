@@ -133,7 +133,7 @@ void RenderSystem::update(float_t dt) {
 
 	if (mGeometryPassDataWindow) {
 		if (ImGui::Begin("geometry pass result", &mGeometryPassDataWindow)) {
-			float size = 500.f;
+			float size = ImGui::GetWindowContentRegionWidth();
 			if (ImGui::TreeNode("gAlbedoSpec")) {
 				ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(mRenderData.mGeometryPassData.gAlbedoSpec)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 				ImGui::TreePop();
@@ -152,7 +152,10 @@ void RenderSystem::update(float_t dt) {
 				ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(mRenderData.mGeometryPassData.gOutlines)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 				ImGui::TreePop();
 			}
-
+			if (ImGui::TreeNode("gLights")) {
+				ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(mRenderData.mGeometryPassData.gLights)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+				ImGui::TreePop();
+			}
 			if (ImGui::TreeNode("ssao")) {
 				ImGui::Text("mSsaoColorBuffer");
 				ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(mRenderData.mSSAOPassData.mSsaoColorBuffer)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
@@ -182,20 +185,20 @@ void RenderSystem::update(float_t dt) {
 		}
 	}
 
-	auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
-	sh->use();
-	sh->setInt("depthMap", 30);
+	//auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
+	//sh->use();
+	//sh->setInt("depthMap", 30);
 
-	auto a = 250.f / RenderModule::Renderer::SCR_WIDTH;
-	auto b = 250.f / RenderModule::Renderer::SCR_HEIGHT;
+	//auto a = 250.f / RenderModule::Renderer::SCR_WIDTH;
+	//auto b = 250.f / RenderModule::Renderer::SCR_HEIGHT;
 
-	for (auto i = 0; i < 6; i++) {
-		sh->setFloat("near_plane", 0.1f);
-		sh->setFloat("far_plane", 100.f);
-		sh->setInt("layer", i);
+	//for (auto i = 0; i < 6; i++) {
+	//	sh->setFloat("near_plane", 0.1f);
+	//	sh->setFloat("far_plane", 100.f);
+	//	sh->setInt("layer", i);
 
-		RenderModule::Utils::renderQuad(1.f - a, 1.f - (static_cast<float>(i) + 1.f) * b, 1.f, 1.f - static_cast<float>(i) * b);
-	}
+	//	RenderModule::Utils::renderQuad(1.f - a, 1.f - (static_cast<float>(i) + 1.f) * b, 1.f, 1.f - static_cast<float>(i) * b);
+	//}
 }
 
 void RenderSystem::postUpdate(float_t dt) {

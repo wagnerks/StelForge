@@ -98,7 +98,7 @@ namespace Engine::RenderModule::RenderPasses {
 				auto owner = ECSHandler::entityManagerInstance()->getEntity(lightSource.getOwnerId());
 				renderDataHandle.mPointPassData.shadowEntities.push_back(owner->getEntityID());
 				offsets.emplace_back(owner->getEntityID(), lightSource.getTypeOffset(lightSource.getType()));
-				fillMatrix(owner->getComponent<TransformComponent>()->getPos(true), lightSource.mRadius);
+				fillMatrix(owner->getComponent<TransformComponent>()->getPos(true), lightSource.mNear, lightSource.mRadius);
 				break;
 			}
 			case ComponentsModule::eLightType::PERSPECTIVE: {
@@ -158,8 +158,8 @@ namespace Engine::RenderModule::RenderPasses {
 		glViewport(0, 0, Engine::RenderModule::Renderer::SCR_WIDTH, Engine::RenderModule::Renderer::SCR_HEIGHT);
 	}
 
-	void PointLightPass::fillMatrix(glm::vec3 globalLightPos, float lightRadius) {
-		lightProjection.setFar(lightRadius);
+	void PointLightPass::fillMatrix(glm::vec3 globalLightPos, float lightNear, float lightRadius) {
+		lightProjection.setNearFar(lightNear, lightRadius);
 
 		const auto transform = glm::translate(glm::mat4(1.0f), globalLightPos);
 

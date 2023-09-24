@@ -22,14 +22,14 @@ namespace Engine::RenderModule::RenderPasses {
 		unsigned mLightDepthMaps = 0;
 		unsigned mMatricesUBO = 0;
 
-		void fillMatrix(glm::vec3 globalLightPos, float lightRadius);
+		void fillMatrix(glm::vec3 globalLightPos, float lightNear, float lightRadius);
 		Engine::ProjectionModule::PerspectiveProjection lightProjection;
 		std::vector<glm::mat4> lightMatrices;
 		std::vector<FrustumModule::Frustum> frustums;
 		std::vector<std::pair<size_t, int>> offsets;
 
-		const int shadowResolution = 512;
-		const int maxShadowFaces = 32;
+		const int shadowResolution = 1024;
+		const int maxShadowFaces = 36;
 		const int lightMatricesBinding = 3;
 	};
 }

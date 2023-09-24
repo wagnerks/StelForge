@@ -104,6 +104,9 @@ GLFWwindow* Renderer::initGLFW() {
 
 	glfwSwapInterval(0);
 
+	loadingWindow = glfwCreateWindow(Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, "GameEngine", nullptr, nullptr);
+	//glfwMakeContextCurrent(loadingWindow);
+
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
@@ -113,7 +116,7 @@ GLFWwindow* Renderer::initGLFW() {
 	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glEnable(GL_CULL_FACE);
-	glClearDepth(50000.0);
+	glClearDepth(5000.0);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 

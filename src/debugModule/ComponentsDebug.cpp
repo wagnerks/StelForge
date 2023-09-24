@@ -22,6 +22,7 @@
 #include "ecsModule/EntityBase.h"
 #include "ecsModule/EntityManager.h"
 #include "ecsModule/SystemManager.h"
+#include "entitiesModule/Object.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "systemsModule/CameraSystem.h"
 #include "renderModule/Utils.h"
@@ -102,6 +103,44 @@ void ComponentsDebug::entitiesDebug() {
 		if (auto currentEntity = entityManager->getEntity(mSelectedId)) {
 			currentEntity->addComponent<OutlineComponent>();
 		}
+
+
+
+		if (ImGui::Button("add node")) {
+			auto createdEntity = entityManager->createEntity<EntitiesModule::Object>();
+			if (auto entity = entityManager->getEntity(mSelectedId)) {
+				entity->addElement(createdEntity);
+			}
+		}
+		ImGui::SameLine();
+		std::vector<std::string> items {"transform", "light"};
+		static std::string current_item = items.front();
+		if (ImGui::BeginCombo("##comps", "component")) {
+			for (int n = 0; n < items.size(); n++)
+			{
+				bool is_selected = (current_item == items[n]);
+				if (ImGui::Selectable(items[n].c_str(), is_selected)) {
+					current_item = items[n];
+
+					if (current_item == "light") {
+						if (auto entity = entityManager->getEntity(mSelectedId)) {
+							entity->addComponent<LightSourceComponent>(ComponentsModule::eLightType::POINT);
+						}
+					}
+
+				}
+
+				if (is_selected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		/*if (auto entity = entityManager->getEntity(mSelectedId)) {
+			entity->addComponent<LightSourceComponent>(ComponentsModule::eLightType::POINT);
+		}*/
+
 
 		ImGui::Separator();
 		ImGui::Button("--", { ImGui::GetWindowContentRegionWidth(), 5.f });
@@ -283,17 +322,34 @@ void ComponentsDebug::entitiesDebug() {
 				ImGui::TreePop();
 			}
 
+			auto& model = currentEntity->getComponent<TransformComponent>()->getTransform();
+
 			if (auto comp = currentEntity->getComponent<MaterialComponent>(); comp && ImGui::TreeNode("Material Component")) {
 				//componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
 
 			if (auto comp = currentEntity->getComponent<LightSourceComponent>(); comp && ImGui::TreeNode("Light Component")) {
+				auto lightTransform = glm::translate(glm::mat4(1.0), currentEntity->getComponent<TransformComponent>()->getPos(true));
+				auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
+				coloredLines->use();
+
+				coloredLines->setMat4("PVM", PV * lightTransform);
+
+				RenderModule::Utils::renderPointLight(comp->mNear, comp->mRadius);
+
 				componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
 
 			if (auto comp = currentEntity->getComponent<CameraComponent>(); comp && ImGui::TreeNode("Camera Component")) {
+				auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
+				coloredLines->use();
+
+				coloredLines->setMat4("PVM", PV * model);
+
+				RenderModule::Utils::renderCamera();
+
 				//componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
@@ -318,18 +374,10 @@ void ComponentsDebug::entitiesDebug() {
 			auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
 			xyzLines->use();
 
-			auto& model = currentEntity->getComponent<TransformComponent>()->getTransform();
-
 			xyzLines->setMat4("PVM", PV * model);
-
 			RenderModule::Utils::renderXYZ(50.f);
 
-			auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
-			coloredLines->use();
 
-			xyzLines->setMat4("PVM", PV * model);
-
-			RenderModule::Utils::renderCamera();
 		}
 		ImGui::EndChild();
 	}
@@ -369,16 +417,22 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightSourceCompo
 	if (!component) {
 		return;
 	}
-	ImGui::Text("Light type: ");
-	ImGui::SameLine();
 
-	switch (component->getType()) {
-	case ComponentsModule::eLightType::DIRECTIONAL: ImGui::Text("DIRECTIONAL"); break;
-	case ComponentsModule::eLightType::POINT: ImGui::Text("POINT"); break;
-	case ComponentsModule::eLightType::PERSPECTIVE: ImGui::Text("PERSPECTIVE"); break;
-	case ComponentsModule::eLightType::NONE: ImGui::Text("NONE"); break;
+	std::vector<std::string> items { "NONE", "DIRECTIONAL", "POINT", "PERSPECTIVE", "WORLD"};
+	std::string currentItem = items[static_cast<int>(component->getType())];
+	if (ImGui::BeginCombo("Light type", currentItem.c_str())) {
+		for (int n = 0; n < items.size(); n++) {
+			bool is_selected = (static_cast<int>(component->getType()) == n);
+			if (ImGui::Selectable(items[n].c_str(), is_selected)) {
+				component->setType(static_cast<ComponentsModule::eLightType>(n));
+			}
+
+			if (is_selected) {
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+		ImGui::EndCombo();
 	}
-
 	ImGui::Separator();
 
 	auto intensity = component->getIntensity();
@@ -411,6 +465,7 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightSourceCompo
 
 	ImGui::DragFloat("linear", &component->mLinear, 0.1f);
 	ImGui::DragFloat("quadratic", &component->mQuadratic, 0.01f);
+	ImGui::DragFloat("near", &component->mNear, 0.1f);
 	ImGui::DragFloat("radius", &component->mRadius, 0.1f);
 }
 
