@@ -1,57 +1,111 @@
 ﻿#include "EntityManager.h"
 
-#include "EntityBase.h"
+#include <cassert>
 
-using namespace ecsModule;
+#include "ComponentsManager.h"
+#include "EntityComponentSystem.h"
+#include "base/EntityBase.h"
+#include "memory/settings.h"
+
+using namespace ECS;
 
 
-EntityManager::EntityManager(Engine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {}
+EntityManager::EntityManager(Memory::ECSMemoryStack* memoryManager, EntityComponentSystem* ecs) : ECSMemoryUser(memoryManager), mEcsController(ecs) {
+	for (EntityId i = 0; i < MAX_ENTITIES; i++) {
+		mFreeEntities.push_back(i);
+	}
+
+	mEntitySize = sizeof(EntityHandle) + alignof(EntityHandle);
+	mEntitiesBegin = allocate(MAX_ENTITIES * mEntitySize);
+}
 
 EntityManager::~EntityManager() {
-	for (auto& ec : mEntityContainers) {
-		delete ec.second;
+	mIsTerminating = true;
+	destroyEntities();
+
+	for (auto entity : entities) {
+		destroyEntity(entity->getEntityID());
 	}
+
+	entities.clear();
 }
 
-EntityInterface* EntityManager::getEntity(size_t entityId) const {
-	if (entityId >= mEntities.size()) {
+EntityHandle* EntityManager::createEntity(EntityId id) {
+	if (mFreeEntities.empty()) {
 		return nullptr;
 	}
-	return mEntities[entityId];
-}
 
-void EntityManager::destroyEntity(size_t entityId) {
-	mEntitiesToDelete.emplace_back(entityId);
-}
-
-size_t EntityManager::acquireEntityId(EntityInterface* entity) {
-	size_t i = 0;
-	for (; i < mEntities.size(); i++) {
-		if (!mEntities[i]) {
-			mEntities[i] = entity;
-			return i;
-		}
+	if (id == INVALID_ID) {
+		id = getNewId();
+	}
+	else {
+		assert(std::find(mFreeEntities.begin(), mFreeEntities.end(), id) == mFreeEntities.end());
 	}
 
-	mEntities.resize(mEntities.size() + ENTITIES_GROW, nullptr);
-	mEntities[i] = entity;
+	const auto newEntity = new (static_cast<char*>(mEntitiesBegin) + id * mEntitySize)EntityHandle(id);
+	insertNewEntity(newEntity, id);
 
-	return i;
+	return newEntity;
 }
 
-void EntityManager::releaseEntityId(size_t id) {
-	mEntities[id] = nullptr;
+EntityHandle* EntityManager::getEntity(EntityId entityId) const {
+	if (entityId < mEntitiesMap.size() && mEntitiesMap[entityId]) {
+		return static_cast<EntityHandle*>(static_cast<void*>(static_cast<char*>(mEntitiesBegin) + entityId * mEntitySize));
+	}
+
+	return nullptr;
+}
+
+void EntityManager::destroyEntity(EntityId entityId) {
+	if (mEntitiesDeletingMap[entityId] || !mEntitiesMap[entityId]) {
+		return;
+	}
+	
+	if (mIsTerminating) {
+		auto entity = getEntity(entityId);
+		mEntitiesMap[entityId] = false;
+		entity->~EntityHandle();
+	}
+	else {
+		mEntitiesDeletingMap[entityId] = true;
+		mEntitiesToDelete.emplace_back(entityId);
+	}
 }
 
 void EntityManager::destroyEntities() {
 	for (const auto entityId : mEntitiesToDelete) {
-		EntityInterface* entity = mEntities[entityId];
-
-		if (auto it = mEntityContainers.find(entity->getStaticTypeID()); it != mEntityContainers.end()) {
-			it->second->destroyElement(entity);
+		if (auto entity = getEntity(entityId)) {
+			if (!mIsTerminating) {
+				entities.remove(entity);
+				mFreeEntities.push_front(entityId);
+			}
+			
+			mEntitiesMap[entityId] = false;
+			entity->~EntityHandle();
+			mEcsController->getComponentManager()->destroyComponents(entityId);
+			mEntitiesDeletingMap[entityId] = false;
 		}
-		releaseEntityId(entityId);
 	}
 
 	mEntitiesToDelete.clear();
+}
+
+void EntityManager::insertNewEntity(EntityHandle* entity, EntityId id) {
+	mEntitiesMap[id] = true;
+
+	if (id >= entities.size()) {
+		entities.push_back(entity);
+	}
+	else {
+		auto beg = entities.begin();
+		std::advance(beg, id);
+		entities.insert(beg, entity);
+	}
+}
+
+EntityId EntityManager::getNewId() {
+	const auto id = mFreeEntities.front();
+	mFreeEntities.pop_front();
+
+	return id;
 }

@@ -1,23 +1,21 @@
 ﻿#pragma once
-#include <algorithm>
+#include <cassert>
+#include <mutex>
 #include <unordered_map>
 
-#include "SystemBase.h"
-#include "memoryModule/LinearAllocator.h"
-#include "memoryModule/MemoryChunkAllocator.h"
+#include "memory/ECSMemoryStack.h"
 
-namespace ecsModule {
+namespace ECS {
 	class SystemInterface;
 
-	class SystemManager : Engine::MemoryModule::GlobalMemoryUser {
-	public:
-		void update(float_t dt) const;
+	class SystemManager : Memory::ECSMemoryUser {
 		SystemManager(const SystemManager&) = delete;
 		SystemManager& operator=(SystemManager&) = delete;
-
-		SystemManager(Engine::MemoryModule::MemoryManager* memoryManager);
+	public:
+		SystemManager(Memory::ECSMemoryStack* memoryManager);
 		~SystemManager() override;
 
+		void update(float_t dt);
 		void sortWorkQueue();
 
 		template <class T>
@@ -37,7 +35,7 @@ namespace ecsModule {
 				return system;
 			}
 
-			void* pSystemMem = mSystemAllocator->allocate(sizeof(T), alignof(T));
+			void* pSystemMem = mSystemAllocator.allocate(sizeof(T), alignof(T));
 			if (!pSystemMem) {
 				assert(false);
 				return nullptr;
@@ -82,8 +80,12 @@ namespace ecsModule {
 				sortWorkQueue();
 			}
 		}
+
+		std::mutex systemsMutex;
+		std::condition_variable systemsLock;
+		std::atomic_bool updating = false;
 	private:
-		Engine::MemoryModule::LinearAllocator* mSystemAllocator;
+		Memory::LinearAllocator mSystemAllocator;
 
 		std::unordered_map<uint64_t, SystemInterface*> mSystemsMap;
 		std::vector<SystemInterface*> mWorkQueue;

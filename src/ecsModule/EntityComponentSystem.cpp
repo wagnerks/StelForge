@@ -4,18 +4,24 @@
 #include "EntityManager.h"
 #include "SystemManager.h"
 
-using namespace ecsModule;
+using namespace ECS;
 
-EntityComponentSystem::EntityComponentSystem(Engine::MemoryModule::MemoryManager* memoryManager) : mMemoryManager(memoryManager) {
-	mSystemManager = new SystemManager(mMemoryManager);
-	mComponentManager = new ComponentManager(mMemoryManager);
-	mEntityManager = new EntityManager(mMemoryManager);
+EntityComponentSystem::EntityComponentSystem() {
+	mMemoryManager = new Memory::ECSMemoryStack(ECS_GLOBAL_MEMORY_CAPACITY);
+
+
+	mSystemManager = new (mMemoryManager->allocate(sizeof(SystemManager) + alignof(SystemManager)))SystemManager(mMemoryManager);
+	mComponentManager = new (mMemoryManager->allocate(sizeof(ComponentManager) + alignof(ComponentManager)))ComponentManager(mMemoryManager);
+	mEntityManager = new (mMemoryManager->allocate(sizeof(EntityManager) + alignof(EntityManager)))EntityManager(mMemoryManager, this);
 }
 
 EntityComponentSystem::~EntityComponentSystem() {
-	delete mSystemManager;
-	delete mEntityManager;
-	delete mComponentManager;
+	mSystemManager->~SystemManager();
+	mComponentManager->clearComponents();
+	mEntityManager->~EntityManager();
+	mComponentManager->~ComponentManager();
+
+	delete mMemoryManager; //will clear all the memory which was allocated by ecs
 }
 
 SystemManager* EntityComponentSystem::getSystemManager() const {

@@ -1,65 +1,44 @@
 ﻿#pragma once
 
-#include <unordered_map>
-#include "Container.h"
+#include <bitset>
+#include <list>
 
-namespace ecsModule {
-	class EntityInterface;
+#include "Types.h"
+#include "memory/ECSMemoryStack.h"
+#include "memory/settings.h"
 
-	class EntityManager : Engine::MemoryModule::GlobalMemoryUser {
+namespace ECS {
+	class EntityComponentSystem;
+	class EntityHandle;
+
+	class EntityManager final : Memory::ECSMemoryUser {
 	public:
-		EntityManager(Engine::MemoryModule::MemoryManager* memoryManager);
+		EntityManager(Memory::ECSMemoryStack* memoryManager, EntityComponentSystem* ecs);
 		~EntityManager() override;
 
-		template <class T, class... ARGS>
-		T* createEntity(ARGS&&... args) {
-			void* pObjectMemory = getEntityContainer<T>()->createObject();
+		EntityHandle* createEntity(EntityId id = INVALID_ID);
+		EntityHandle* getEntity(EntityId entityId) const;
 
-			auto entityId = acquireEntityId(static_cast<T*>(pObjectMemory));
-			auto entity = new(pObjectMemory)T(entityId, std::forward<ARGS>(args)...);
-
-			return entity;
-		}
-
-		EntityInterface* getEntity(size_t entityId) const;
-
-		template<class EntityType>
-		EntityType* getEntity(size_t entityId) {
-			return static_cast<EntityType*>(mEntities[entityId]);
-		}
-
-		const std::vector<EntityInterface*>& getAllEntities() {
-			return mEntities;
-		}
-
-		void destroyEntity(size_t entityId);
+		void destroyEntity(EntityId entityId);
 		void destroyEntities();
+
+		std::list<EntityHandle*> entities;
+		
 	private:
-		template <class T>
-		inline Container<T>* getEntityContainer() {
-			const auto entityTypeID = T::STATIC_ENTITY_TYPE_ID;
+		EntityComponentSystem* mEcsController = nullptr;
 
-			auto it = mEntityContainers.find(entityTypeID);
-			Container<T>* ec = nullptr;
+		void insertNewEntity(EntityHandle* entity, EntityId id);
+		EntityId getNewId();
+		std::bitset<MAX_ENTITIES> mEntitiesMap;
+		std::bitset<MAX_ENTITIES> mEntitiesDeletingMap;
 
-			if (it == mEntityContainers.end()) {
-				ec = new Container<T>(std::type_index(typeid(this)).hash_code(), globalMemoryManager);
-				mEntityContainers[entityTypeID] = ec;
-			}
-			else {
-				ec = static_cast<Container<T>*>(it->second);
-			}
+		std::deque<EntityId> mFreeEntities;
+		std::vector<EntityId> mEntitiesToDelete;
 
-			assert(ec != nullptr && "Failed to create EntityContainer<T>!");
-			return ec;
-		}
+		void* mEntitiesBegin = nullptr;
+		
+		size_t mEntitySize = 0;
 
-
-		size_t acquireEntityId(EntityInterface* entity);
-		void releaseEntityId(size_t id);
-
-		std::vector<EntityInterface*> mEntities; //pos == id
-		std::unordered_map<size_t, ContainerInterface*> mEntityContainers;
-		std::vector<size_t> mEntitiesToDelete;
+		bool mIsTerminating = false;
 	};
 }

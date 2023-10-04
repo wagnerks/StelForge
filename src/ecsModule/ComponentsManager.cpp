@@ -1,104 +1,46 @@
 ﻿#include "ComponentsManager.h"
 
-using namespace ecsModule;
+#include "base/ComponentBase.h"
 
-ComponentManager::ComponentManager(Engine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
-	Engine::LogsModule::Logger::LOG_INFO("Initialize ComponentManager");
+using namespace ECS;
 
-	const size_t NUM_COMPONENTS{ FamilySize<ComponentInterface>::Get() };
-
-	entityComponentMap.resize(COMPONENTS_GROW);
-	for (auto i = 0; i < COMPONENTS_GROW; ++i) {
-		entityComponentMap[i].resize(NUM_COMPONENTS, ecsModule::INVALID_ID);
-	}
+ComponentManager::ComponentManager(Memory::ECSMemoryStack* memoryManager) : ECSMemoryUser(memoryManager) {
+	mComponentsArraysMap.resize(StaticTypeCounter<ComponentInterface>::getCount(), nullptr);
 }
 
 ComponentManager::~ComponentManager() {
-	for (auto& cc : componentContainerRegistry) {
-		if (cc.second) {
-			Engine::LogsModule::Logger::LOG_INFO("Releasing remaining entities of type '%s' ...", cc.second->getComponentContainerTypeName());
-		}
+	std::unordered_map<void*, bool> deleted;
 
-		delete cc.second;
-	}
-
-	Engine::LogsModule::Logger::LOG_INFO("Release ComponentManager");
-}
-
-void ComponentManager::removeAllComponents(const size_t entityId) {
-	static const size_t NUM_COMPONENTS = entityComponentMap[0].size();
-
-	for (size_t componentType = 0; componentType < NUM_COMPONENTS; ++componentType) {
-		const size_t componentId = entityComponentMap[entityId][componentType];
-		if (componentId == ecsModule::INVALID_ID)
+	for (const auto container : mComponentsArraysMap) {
+		if (!container || deleted[container]) {//skip not created and containers of multiple components
 			continue;
-
-		auto component = componentLookupTable[componentId];
-		if (component != nullptr) {
-			auto it = componentContainerRegistry.find(componentType);
-			if (it != componentContainerRegistry.end()) {
-				it->second->destroyElement(component);
-			}
-			else {
-				assert(false && "Trying to release a component that wasn't created by ComponentManager!");
-			}
-
-			releaseEntityComponent(entityId, componentId, componentType);
 		}
+
+		container->~ComponentsArray();
+		deleted[container] = true;
 	}
 }
 
-size_t ComponentManager::acquireComponentId(ComponentInterface* component) {
-	size_t i = 0;
-	for (; i < componentLookupTable.size(); ++i) {
-		if (componentLookupTable[i] == nullptr) {
-			componentLookupTable[i] = component;
-			return i;
+void ComponentManager::clearComponents() {
+	for (const auto compContainer : mComponentsArraysMap) {
+		if (!compContainer) {
+			continue;
 		}
+		compContainer->clearAllSectors();
 	}
 
-	componentLookupTable.resize(componentLookupTable.size() + COMPONENTS_GROW, nullptr);
-
-	componentLookupTable[i] = component;
-	return i;
+	mIsTerminating = true;
 }
 
-void ComponentManager::releaseComponentId(size_t id) {
-	if (id == ecsModule::INVALID_ID || id >= componentLookupTable.size()) {
-		assert(false && "Invalid component id");
+void ComponentManager::destroyComponents(const EntityId entityId) const {
+	if (mIsTerminating) {
 		return;
 	}
 
-	componentLookupTable[id] = nullptr;
-}
-
-void ComponentManager::mapEntityComponent(size_t entityId, size_t componentId, size_t componentSize) {
-	static const size_t NUM_COMPONENTS{FamilySize<ComponentInterface>::Get()};
-	if (NUM_COMPONENTS == 0) {
-		Engine::LogsModule::Logger::LOG_FATAL(false, "no components but try to allocate");
-		return;
-	}
-
-	if (entityComponentMap.size() <= entityId) {
-		const size_t oldSize = entityComponentMap.size();
-		const size_t newSize = oldSize + COMPONENTS_GROW;
-
-		entityComponentMap.resize(newSize);
-
-		for (auto i = oldSize; i < newSize; ++i) {
-			entityComponentMap[i].resize(NUM_COMPONENTS, ecsModule::INVALID_ID);
+	for (const auto compContainer : mComponentsArraysMap) {
+		if (!compContainer) {
+			continue;
 		}
+		compContainer->destroySector(entityId);
 	}
-
-	entityComponentMap[entityId][componentSize] = componentId;
-}
-
-void ComponentManager::releaseEntityComponent(size_t entityId, size_t componentId, size_t componentType) {
-	if (entityComponentMap[entityId][componentType] != componentId) {
-		assert(false && "FATAL: Entity Component ID mapping corruption!");
-		return;
-	}
-
-	entityComponentMap[entityId][componentType] = ecsModule::INVALID_ID;
-	releaseComponentId(componentId);
 }

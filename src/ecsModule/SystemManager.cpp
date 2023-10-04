@@ -1,24 +1,18 @@
 ﻿#include "SystemManager.h"
 
-#include <functional>
-#include <ranges>
+#include "base/SystemBase.h"
+#include "memory/settings.h"
 
-#include "helper.h"
-#include "SystemInterface.h"
+using namespace ECS;
 
-using namespace ecsModule;
-
-SystemManager::SystemManager(Engine::MemoryModule::MemoryManager* memoryManager) : GlobalMemoryUser(memoryManager) {
-	mSystemAllocator = new Engine::MemoryModule::LinearAllocator(ecsModule::ECS_SYSTEM_MEMORY_BUFFER_SIZE, allocate(ecsModule::ECS_SYSTEM_MEMORY_BUFFER_SIZE, std::type_index(typeid(this)).hash_code()));
+SystemManager::SystemManager(Memory::ECSMemoryStack* memoryManager) : ECSMemoryUser(memoryManager) {
+	mSystemAllocator.init(ECS::ECS_SYSTEM_MEMORY_BUFFER_SIZE, allocate(ECS::ECS_SYSTEM_MEMORY_BUFFER_SIZE));
 }
 
 SystemManager::~SystemManager() {
-	for (auto& it : std::ranges::reverse_view(mWorkQueue)) {
-		it->~SystemInterface();
+	for (const auto system : mWorkQueue) {
+		system->~SystemInterface();
 	}
-
-	globalMemoryManager->free(const_cast<void*>(mSystemAllocator->getStartAddress())); //we allocate memory in global memory addresses, so we need to free it 
-	delete mSystemAllocator;
 }
 
 void SystemManager::sortWorkQueue() {
@@ -27,7 +21,9 @@ void SystemManager::sortWorkQueue() {
 	});
 }
 
-void SystemManager::update(float_t dt) const {
+void SystemManager::update(float_t dt) {
+	systemsMutex.lock();
+	updating = true;
 	for (SystemInterface* system : mWorkQueue) {
 		system->mTimeSinceLastUpdate += dt;
 		if (!system->mEnabled) {
@@ -60,4 +56,8 @@ void SystemManager::update(float_t dt) const {
 			system->mTimeSinceLastUpdate = 0.0f;
 		}
 	}
+	updating = false;
+
+	systemsLock.notify_all();
+	systemsMutex.unlock();
 }

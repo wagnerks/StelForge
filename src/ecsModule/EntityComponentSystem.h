@@ -1,26 +1,29 @@
 ﻿#pragma once
 
-namespace Engine {
-	namespace MemoryModule {
-		class MemoryManager;
+namespace ECS {
+	namespace Memory {
+		class ECSMemoryStack;
 	}
-}
 
-namespace ecsModule {
 	class ComponentManager;
 	class SystemManager;
 	class EntityManager;
 
 	class EntityComponentSystem {
+		EntityComponentSystem(const EntityComponentSystem& other) = delete;
+		EntityComponentSystem(EntityComponentSystem&& other) noexcept = delete;
+		EntityComponentSystem& operator=(const EntityComponentSystem& other) = delete;
+		EntityComponentSystem& operator=(EntityComponentSystem&& other) noexcept = delete;
 	public:
-		EntityComponentSystem(Engine::MemoryModule::MemoryManager* memoryManager);
+
+		EntityComponentSystem();
 		~EntityComponentSystem();
 
 		SystemManager* getSystemManager() const;
 		EntityManager* getEntityManager() const;
 		ComponentManager* getComponentManager() const;
 	private:
-		Engine::MemoryModule::MemoryManager* mMemoryManager = nullptr;
+		Memory::ECSMemoryStack* mMemoryManager = nullptr;
 
 		SystemManager* mSystemManager = nullptr;
 		EntityManager* mEntityManager = nullptr;

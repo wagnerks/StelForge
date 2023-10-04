@@ -1,129 +1,175 @@
 ﻿#pragma once
+#include <mutex>
+#include <queue>
 #include <typeindex>
 #include <unordered_map>
 
-#include "ComponentBase.h"
-#include "Container.h"
-#include "helper.h"
-#include "memoryModule/MemoryChunkAllocator.h"
+#include "base/EntityBase.h"
+#include "memory/ComponentsArray.h"
+#include "memory/settings.h"
+#include "memory/ECSMemoryStack.h"
 
 
-
-namespace ecsModule {
-	class ComponentManager : Engine::MemoryModule::GlobalMemoryUser {
+namespace ECS {
+	class ComponentManager : Memory::ECSMemoryUser {
 	public:
-		template <class T>
-		Container<T>* getComponentContainer();
-		
-		ComponentManager(Engine::MemoryModule::MemoryManager* memoryManager);
-		~ComponentManager() override;
+		template <typename T, typename ...ComponentTypes>
+		class ComponentsIterator;
 
 		template <class T>
-		T* getComponent(const size_t entityId);
+		Memory::ComponentsArray* getComponentContainer();
+
+		ComponentManager(Memory::ECSMemoryStack* memoryManager);
+		~ComponentManager() override;
+		void clearComponents();
+
+		template <class T>
+		T* getComponent(const EntityHandle* entity) {
+			if (!entity) {
+				return nullptr;
+			}
+
+			return getComponent<T>(entity->getEntityID());
+		}
+		template <class T, class ...Args>
+		T* addComponent(const EntityHandle* entity, Args&&... args) {
+			if (!entity) {
+				return nullptr;
+			}
+
+			return addComponent<T>(entity->getEntityID());
+		}
+
+		template <class T>
+		T* getComponent(const EntityId entityId);
 
 		template <class T, class ...Args>
-		T* addComponent(const size_t entityId,  Args&&... args);
+		T* addComponent(const EntityId entityId, Args&&... args);
 
 		template <class T>
-		void removeComponent(const size_t entityId);
+		void moveComponentToEntity(const EntityId entityId, T* component);
 
-		void removeAllComponents(const size_t entityId);
+		template <class T>
+		void copyComponentToEntity(const EntityId entityId, T* component);
+
+		template <class T>
+		void removeComponent(const EntityId entityId);
+
+		void destroyComponents(const EntityId entityId) const;
+
+		template<typename... Components> 
+		void createComponentsContainer();
+
+		template<typename... Components>
+		ComponentsIterator<Components...> processComponents() { return ComponentsIterator<Components...>(this); }
 	private:
-		size_t acquireComponentId(ComponentInterface* component);
-		void releaseComponentId(size_t id);
+		std::vector<Memory::ComponentsArray*> mComponentsArraysMap;
+		bool mIsTerminating = false;
 
-		void mapEntityComponent(size_t entityId, size_t componentId, size_t componentSize);
-		void releaseEntityComponent(size_t entityId, size_t componentId, size_t componentType);
+	private:
+		template <typename T, typename ...ComponentTypes>
+		class ComponentsIterator {
+			ComponentManager* mManager;
+			Memory::ComponentsArray* mMainContainer;
 
-		std::unordered_map<size_t, ContainerInterface*> componentContainerRegistry;
-		std::vector<ComponentInterface*> componentLookupTable; //pos == componentID
-		std::vector<std::vector<size_t>> entityComponentMap;
+		public:
+			class Iterator {
+				using ComponentsIt = Memory::ComponentsArray::Iterator<T>;
+				ComponentsIt mIt;
+				ComponentManager* mManager;
+
+			public:
+				Iterator(ComponentsIt listIt, ComponentManager* manager) : mIt(listIt), mManager(manager) {}
+
+				std::tuple<T&, ComponentTypes&...> operator*() {
+					return std::tie(**mIt, *mManager->getComponent<ComponentTypes>(mIt.getSectorId())...);
+				}
+
+				Iterator& operator++() {
+					++mIt;
+					return *this;
+				}
+
+				bool operator!=(const Iterator& other) const {
+					return mIt != other.mIt;
+				}
+			};
+
+			ComponentsIterator(ComponentManager* manager) : mManager(manager), mMainContainer(manager->getComponentContainer<T>()) {}
+
+			Iterator begin() {
+				return { mMainContainer->begin<T>(), mManager };
+			}
+
+			Iterator end() {
+				return { mMainContainer->end<T>(), mManager };
+			}
+		};
 	};
 
 	template <class T>
-	Container<T>* ComponentManager::getComponentContainer() {
+	Memory::ComponentsArray* ComponentManager::getComponentContainer() {
+		if (mComponentsArraysMap.empty()) {
+			return nullptr;
+		}
+
 		const size_t componentTypeID = T::STATIC_COMPONENT_TYPE_ID;
 
-		Container<T>* compContainer = nullptr;
-		if (const auto it = componentContainerRegistry.find(componentTypeID); it == componentContainerRegistry.end()) {
-			compContainer = new Container<T>(std::type_index(typeid(this)).hash_code(), globalMemoryManager);
-			componentContainerRegistry[componentTypeID] = compContainer;
-		}
-		else {
-			compContainer = static_cast<Container<T>*>(it->second);
+		if (!mComponentsArraysMap[componentTypeID]) {
+			createComponentsContainer<T>();
 		}
 
-		Engine::LogsModule::Logger::LOG_FATAL(compContainer, "Failed to create ComponentContainer<T>!");
-
-		return compContainer;
+		return mComponentsArraysMap[componentTypeID];
 	}
 
 	template <class T, class ... Args>
-	T* ComponentManager::addComponent(const size_t entityId,  Args&&... args) {
+	T* ComponentManager::addComponent(const EntityId entityId, Args&&... args) {
 		if (auto comp = getComponent<T>(entityId)) {
 			return comp;
 		}
 
-		void* pObjectMemory = getComponentContainer<T>()->createObject();
+		//mtx.lock();//this shit can lock main thread if acquireComponentId waiting synchronization
+		auto comp = new(getComponentContainer<T>()->acquireSector(T::STATIC_COMPONENT_TYPE_ID, entityId))T(std::forward<Args>(args)...);
+		comp->mOwnerId = entityId;
 
-		auto componentId = acquireComponentId(static_cast<T*>(pObjectMemory));
+		//mtx.unlock();
 
-		static_cast<T*>(pObjectMemory)->setId(componentId);
-		ComponentInterface* component = new(pObjectMemory)T(std::forward<Args>(args)...);
+		return static_cast<T*>(comp);
+	}
 
-		component->setOwnerId(entityId);
-			
-		mapEntityComponent(entityId, componentId, T::STATIC_COMPONENT_TYPE_ID);
-
-		return static_cast<T*>(component);
+	//you can create component somewhere in another thread and move it into container here
+	template <class T>
+	void ComponentManager::moveComponentToEntity(const EntityId entityId, T* component) {
+		getComponentContainer<T>()->moveToSector<T>(entityId, component);
 	}
 
 	template <class T>
-	void ComponentManager::removeComponent(const size_t entityId) {
-		if (entityId >= entityComponentMap.size()) {
-			return;
-		}
-
-		const auto CTID = T::STATIC_COMPONENT_TYPE_ID;
-		if (CTID >= entityComponentMap[entityId].size()) {
-			return;
-		}
-
-		const auto componentId = entityComponentMap[entityId][CTID];
-		if (componentId == ecsModule::INVALID_ID) {
-			return;//component not exists
-		}
-
-		ComponentInterface* component = componentLookupTable[componentId];
-		if (!component ) {
-			Engine::LogsModule::Logger::LOG_FATAL(false, "Trying to remove a component which is not used by this entity!");
-			return;
-		}
-
-		getComponentContainer<T>()->destroyObject(component);
-
-		releaseEntityComponent(entityId, componentId, CTID);
+	void ComponentManager::copyComponentToEntity(const EntityId entityId, T* component) {
+		getComponentContainer<T>()->copyToSector<T>(entityId, component);
 	}
 
 	template <class T>
-	T* ComponentManager::getComponent(const size_t entityId) {
-		if (entityId >= entityComponentMap.size()) {
-			return nullptr;
+	void ComponentManager::removeComponent(const EntityId entityId) {
+		getComponentContainer<T>()->destroyObject(T::STATIC_COMPONENT_TYPE_ID, entityId);
+	}
+
+	template <typename ... Components>
+	void ComponentManager::createComponentsContainer() {
+		bool added = false;
+		((added |= mComponentsArraysMap[Components::STATIC_COMPONENT_TYPE_ID] != nullptr), ...);
+		if (added) {
+			assert(false);
+			return;
 		}
 
-		const auto CTID = T::STATIC_COMPONENT_TYPE_ID;
-		if (CTID >= entityComponentMap[entityId].size()) {
-			return nullptr;
-		}
+		auto container = new (allocate(sizeof(Memory::ComponentsArrayInitializer<Components...>) + alignof(Memory::ComponentsArrayInitializer<Components...>)))Memory::ComponentsArrayInitializer<Components...>(MAX_ENTITIES, mStack);
 
-		const auto componentId = entityComponentMap[entityId][CTID];
+		((mComponentsArraysMap[Components::STATIC_COMPONENT_TYPE_ID] = container),...);
+	}
 
-		
-		if (componentId == ecsModule::INVALID_ID) {
-			return nullptr;
-		}
-
-		return static_cast<T*>(componentLookupTable[componentId]);
+	template <class T>
+	T* ComponentManager::getComponent(const EntityId entityId) {
+		return getComponentContainer<T>()->getComponent<T>(entityId);
 	}
 }
 
