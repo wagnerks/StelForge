@@ -3,6 +3,8 @@
 #include "../Types.h"
 
 namespace ECS {
+	class EntityComponentSystem;
+
 	class SystemInterface {
 		friend class SystemManager;
 	protected:
@@ -27,7 +29,8 @@ namespace ECS {
 	template <class T>
 	class System : public SystemInterface {
 	public:
-		inline static const ECSType STATIC_SYSTEM_TYPE_ID = StaticTypeCounter<SystemInterface>::get<T>();
+		inline static const auto STATIC_SYSTEM_TYPE_ID = StaticTypeCounter<SystemInterface>::get<T>();
+		inline static const auto STATIC_SYSTEM_SIZE = StaticTypeCounter<SystemInterface>::getSize<T>();
 
 		void preUpdate(float dt) override {}
 		void update(float dt) override {}

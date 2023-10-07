@@ -4,40 +4,40 @@
 #include <typeindex>
 #include <unordered_map>
 
+#include "Types.h"
 #include "base/EntityBase.h"
 #include "memory/ComponentsArray.h"
-#include "memory/settings.h"
-#include "memory/ECSMemoryStack.h"
 
 
 namespace ECS {
-	class ComponentManager : Memory::ECSMemoryUser {
-	public:
-		template <typename T, typename ...ComponentTypes>
-		class ComponentsIterator;
+	template <typename T, typename ...ComponentTypes>
+	class ComponentsSelector;
 
+	class ComponentManager final {
+	public:
 		template <class T>
 		Memory::ComponentsArray* getComponentContainer();
 
-		ComponentManager(Memory::ECSMemoryStack* memoryManager);
-		~ComponentManager() override;
-		void clearComponents();
+		ComponentManager();
+		~ComponentManager();
+		void clearComponents() const;
 
 		template <class T>
-		T* getComponent(const EntityHandle* entity) {
+		T* getComponent(const EntityHandle& entity) {
 			if (!entity) {
 				return nullptr;
 			}
 
-			return getComponent<T>(entity->getEntityID());
+			return getComponent<T>(entity.getID());
 		}
+
 		template <class T, class ...Args>
-		T* addComponent(const EntityHandle* entity, Args&&... args) {
+		T* addComponent(const EntityHandle& entity, Args&&... args) {
 			if (!entity) {
 				return nullptr;
 			}
 
-			return addComponent<T>(entity->getEntityID());
+			return addComponent<T>(entity.getID(), std::forward<Args>(args)...);
 		}
 
 		template <class T>
@@ -57,54 +57,44 @@ namespace ECS {
 
 		void destroyComponents(const EntityId entityId) const;
 
+/*this function allows to init container which stores multiple components in one memory sector
+ 
+ 0x..[sector info]
+ 0x..[component 1]
+ 0x..[component 2]
+ 0x..[    ...    ]
+ 0x..[component maxN]
+ 
+  maxN = 32
+ 
+  should be called before any getContainer calls
+*/
 		template<typename... Components> 
-		void createComponentsContainer();
+		void createComponentsContainer(); 
 
+/*
+this function creates an object with selected components, which provided ability to iterate through entities like it is the container of tuple<component1,component2,component3>
+first component type in template is the "main" one, because components stores in separate containers, the first component parent container chosen for iterating
+
+component1Cont		component2Cont		component3Cont
+0 [	data	]	[	data	]	[	data	]
+- [	null	]	[	data	]	[	data	]
+1 [	data	]	[	data	]	[	data	]
+2 [	data	]	[	data	]	[	null	]
+- [	null	]	[	null	]	[	data	]
+3 [	data	]	[	null	]	[	data	]
+
+it will iterate through first 0,1,2,3... container elements
+
+ATTENTION
+
+if componentContainer has multiple components in it, it will iterate through sectors, and may return nullptr for "main" component type
+so better, if you want to merge multiple types in one sector, always create all components for sector
+*/
 		template<typename... Components>
-		ComponentsIterator<Components...> processComponents() { return ComponentsIterator<Components...>(this); }
+		ComponentsSelector<Components...> createView() { return ComponentsSelector<Components...>(this); }
 	private:
 		std::vector<Memory::ComponentsArray*> mComponentsArraysMap;
-		bool mIsTerminating = false;
-
-	private:
-		template <typename T, typename ...ComponentTypes>
-		class ComponentsIterator {
-			ComponentManager* mManager;
-			Memory::ComponentsArray* mMainContainer;
-
-		public:
-			class Iterator {
-				using ComponentsIt = Memory::ComponentsArray::Iterator<T>;
-				ComponentsIt mIt;
-				ComponentManager* mManager;
-
-			public:
-				Iterator(ComponentsIt listIt, ComponentManager* manager) : mIt(listIt), mManager(manager) {}
-
-				std::tuple<T&, ComponentTypes&...> operator*() {
-					return std::tie(**mIt, *mManager->getComponent<ComponentTypes>(mIt.getSectorId())...);
-				}
-
-				Iterator& operator++() {
-					++mIt;
-					return *this;
-				}
-
-				bool operator!=(const Iterator& other) const {
-					return mIt != other.mIt;
-				}
-			};
-
-			ComponentsIterator(ComponentManager* manager) : mManager(manager), mMainContainer(manager->getComponentContainer<T>()) {}
-
-			Iterator begin() {
-				return { mMainContainer->begin<T>(), mManager };
-			}
-
-			Iterator end() {
-				return { mMainContainer->end<T>(), mManager };
-			}
-		};
 	};
 
 	template <class T>
@@ -128,11 +118,8 @@ namespace ECS {
 			return comp;
 		}
 
-		//mtx.lock();//this shit can lock main thread if acquireComponentId waiting synchronization
 		auto comp = new(getComponentContainer<T>()->acquireSector(T::STATIC_COMPONENT_TYPE_ID, entityId))T(std::forward<Args>(args)...);
 		comp->mOwnerId = entityId;
-
-		//mtx.unlock();
 
 		return static_cast<T*>(comp);
 	}
@@ -162,7 +149,7 @@ namespace ECS {
 			return;
 		}
 
-		auto container = new (allocate(sizeof(Memory::ComponentsArrayInitializer<Components...>) + alignof(Memory::ComponentsArrayInitializer<Components...>)))Memory::ComponentsArrayInitializer<Components...>(MAX_ENTITIES, mStack);
+		auto container = new Memory::ComponentsArrayInitializer<Components...>();
 
 		((mComponentsArraysMap[Components::STATIC_COMPONENT_TYPE_ID] = container),...);
 	}
@@ -171,6 +158,52 @@ namespace ECS {
 	T* ComponentManager::getComponent(const EntityId entityId) {
 		return getComponentContainer<T>()->getComponent<T>(entityId);
 	}
+
+	template <typename T, typename ...ComponentTypes>
+	class ComponentsSelector {
+		ComponentManager* mManager;
+		Memory::ComponentsArray* mMainContainer;
+
+	public:
+		class Iterator {
+			using ComponentsIt = Memory::ComponentsArray::Iterator<T>;
+			ComponentsIt mIt;
+			ComponentManager* mManager;
+
+		public:
+			Iterator(ComponentsIt listIt, ComponentManager* manager) : mIt(listIt), mManager(manager) {}
+
+			std::tuple<T&, ComponentTypes&...> operator*() {
+				return std::tie(**mIt, *mManager->getComponent<ComponentTypes>(mIt.getSectorId())...);
+			}
+
+			Iterator& operator++() {
+				++mIt;
+				return *this;
+			}
+
+			bool operator!=(const Iterator& other) const {
+				return mIt != other.mIt;
+			}
+		};
+
+		size_t size() const { return mMainContainer->size(); }
+
+		std::tuple<T&, ComponentTypes&...> operator[](size_t i) const {
+			auto it = Iterator(mMainContainer->begin<T>() + i, mManager);
+			return *it;
+		}
+
+		ComponentsSelector(ComponentManager* manager) : mManager(manager), mMainContainer(manager->getComponentContainer<T>()) {}
+
+		Iterator begin() {
+			return { mMainContainer->begin<T>(), mManager };
+		}
+
+		Iterator end() {
+			return { mMainContainer->end<T>(), mManager };
+		}
+	};
 }
 
 

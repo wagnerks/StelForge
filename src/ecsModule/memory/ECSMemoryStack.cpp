@@ -3,17 +3,6 @@
 #include <stdlib.h>
 
 namespace ECS::Memory {
-	ECSMemoryUser::ECSMemoryUser(ECSMemoryStack* ecsMemoryStack) : mStack(ecsMemoryStack) {}
-
-	void* ECSMemoryUser::allocate(size_t memSize) const {
-		return mStack->allocate(memSize);
-	}
-
-	void ECSMemoryUser::free(void* pMem) const {
-		mStack->free(pMem);
-	}
-
-
 	ECSMemoryStack::ECSMemoryStack(size_t memoryCapacity) : mMemoryCapacity(memoryCapacity), mGlobalAddress(malloc(mMemoryCapacity)) {
 		assert(mGlobalAddress);
 		if (!mGlobalAddress) {

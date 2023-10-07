@@ -1,111 +1,64 @@
 ﻿#include "EntityManager.h"
 
-#include <cassert>
-
 #include "ComponentsManager.h"
 #include "EntityComponentSystem.h"
 #include "base/EntityBase.h"
-#include "memory/settings.h"
 
 using namespace ECS;
 
 
-EntityManager::EntityManager(Memory::ECSMemoryStack* memoryManager, EntityComponentSystem* ecs) : ECSMemoryUser(memoryManager), mEcsController(ecs) {
-	for (EntityId i = 0; i < MAX_ENTITIES; i++) {
-		mFreeEntities.push_back(i);
-	}
+EntityManager::EntityManager(EntityComponentSystem* ecs) : mEcsController(ecs) {}
 
-	mEntitySize = sizeof(EntityHandle) + alignof(EntityHandle);
-	mEntitiesBegin = allocate(MAX_ENTITIES * mEntitySize);
-}
-
-EntityManager::~EntityManager() {
-	mIsTerminating = true;
-	destroyEntities();
-
-	for (auto entity : entities) {
-		destroyEntity(entity->getEntityID());
-	}
-
-	entities.clear();
-}
-
-EntityHandle* EntityManager::createEntity(EntityId id) {
-	if (mFreeEntities.empty()) {
-		return nullptr;
-	}
-
+EntityHandle EntityManager::takeEntity(EntityId id) {
 	if (id == INVALID_ID) {
 		id = getNewId();
 	}
-	else {
-		assert(std::find(mFreeEntities.begin(), mFreeEntities.end(), id) == mFreeEntities.end());
-	}
 
-	const auto newEntity = new (static_cast<char*>(mEntitiesBegin) + id * mEntitySize)EntityHandle(id);
-	insertNewEntity(newEntity, id);
+	mEntities.insert(id);
 
-	return newEntity;
+	return {id};
 }
 
-EntityHandle* EntityManager::getEntity(EntityId entityId) const {
-	if (entityId < mEntitiesMap.size() && mEntitiesMap[entityId]) {
-		return static_cast<EntityHandle*>(static_cast<void*>(static_cast<char*>(mEntitiesBegin) + entityId * mEntitySize));
+EntityHandle EntityManager::getEntity(EntityId entityId) const {
+	if (mEntities.contains(entityId)) {
+		return { entityId };
 	}
 
-	return nullptr;
+	return { INVALID_ID };
 }
 
 void EntityManager::destroyEntity(EntityId entityId) {
-	if (mEntitiesDeletingMap[entityId] || !mEntitiesMap[entityId]) {
+	if (!mEntities.contains(entityId)) {
 		return;
 	}
-	
-	if (mIsTerminating) {
-		auto entity = getEntity(entityId);
-		mEntitiesMap[entityId] = false;
-		entity->~EntityHandle();
-	}
-	else {
-		mEntitiesDeletingMap[entityId] = true;
-		mEntitiesToDelete.emplace_back(entityId);
-	}
+
+	mEntitiesToDelete.insert(entityId);
 }
 
 void EntityManager::destroyEntities() {
 	for (const auto entityId : mEntitiesToDelete) {
-		if (auto entity = getEntity(entityId)) {
-			if (!mIsTerminating) {
-				entities.remove(entity);
-				mFreeEntities.push_front(entityId);
-			}
-			
-			mEntitiesMap[entityId] = false;
-			entity->~EntityHandle();
-			mEcsController->getComponentManager()->destroyComponents(entityId);
-			mEntitiesDeletingMap[entityId] = false;
+		mEntities.erase(entityId);
+		if (entityId != mEntities.size()) {//if entity was removed not from end - add its id to the list
+			mFreeEntities.push_front(entityId);
 		}
+
+		mEcsController->getComponentManager()->destroyComponents(entityId);
 	}
 
 	mEntitiesToDelete.clear();
 }
 
-void EntityManager::insertNewEntity(EntityHandle* entity, EntityId id) {
-	mEntitiesMap[id] = true;
-
-	if (id >= entities.size()) {
-		entities.push_back(entity);
-	}
-	else {
-		auto beg = entities.begin();
-		std::advance(beg, id);
-		entities.insert(beg, entity);
-	}
+const std::set<EntityId>& EntityManager::getAllEntities() {
+	return mEntities;
 }
 
 EntityId EntityManager::getNewId() {
-	const auto id = mFreeEntities.front();
-	mFreeEntities.pop_front();
+	if (!mFreeEntities.empty()) {
+		const auto id = mFreeEntities.front();
+		mFreeEntities.pop_front();
 
-	return id;
+		return id;
+	}
+
+	return static_cast<EntityId>(mEntities.size());
 }

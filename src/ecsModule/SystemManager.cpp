@@ -1,18 +1,25 @@
 ﻿#include "SystemManager.h"
 
+#include <algorithm>
+
 #include "base/SystemBase.h"
-#include "memory/settings.h"
+#include "memory/ECSMemoryStack.h"
 
 using namespace ECS;
 
-SystemManager::SystemManager(Memory::ECSMemoryStack* memoryManager) : ECSMemoryUser(memoryManager) {
-	mSystemAllocator.init(ECS::ECS_SYSTEM_MEMORY_BUFFER_SIZE, allocate(ECS::ECS_SYSTEM_MEMORY_BUFFER_SIZE));
+SystemManager::SystemManager() {
+	const auto systemsSize = StaticTypeCounter<SystemInterface>::getSize();
+	mMemoryManager = new Memory::ECSMemoryStack(systemsSize);
+
+	mSystemAllocator.init(systemsSize, mMemoryManager->allocate(systemsSize));
 }
 
 SystemManager::~SystemManager() {
 	for (const auto system : mWorkQueue) {
 		system->~SystemInterface();
 	}
+
+	delete mMemoryManager;
 }
 
 void SystemManager::sortWorkQueue() {

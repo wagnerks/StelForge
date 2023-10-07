@@ -4,7 +4,7 @@
 
 using namespace ECS;
 
-ComponentManager::ComponentManager(Memory::ECSMemoryStack* memoryManager) : ECSMemoryUser(memoryManager) {
+ComponentManager::ComponentManager() {
 	mComponentsArraysMap.resize(StaticTypeCounter<ComponentInterface>::getCount(), nullptr);
 }
 
@@ -16,27 +16,21 @@ ComponentManager::~ComponentManager() {
 			continue;
 		}
 
-		container->~ComponentsArray();
+		delete container;
 		deleted[container] = true;
 	}
 }
 
-void ComponentManager::clearComponents() {
+void ComponentManager::clearComponents() const {
 	for (const auto compContainer : mComponentsArraysMap) {
 		if (!compContainer) {
 			continue;
 		}
-		compContainer->clearAllSectors();
+		compContainer->clear();
 	}
-
-	mIsTerminating = true;
 }
 
 void ComponentManager::destroyComponents(const EntityId entityId) const {
-	if (mIsTerminating) {
-		return;
-	}
-
 	for (const auto compContainer : mComponentsArraysMap) {
 		if (!compContainer) {
 			continue;

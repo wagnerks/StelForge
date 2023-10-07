@@ -23,7 +23,7 @@ namespace ECS {
 		EntityManager* getEntityManager() const;
 		ComponentManager* getComponentManager() const;
 	private:
-		Memory::ECSMemoryStack* mMemoryManager = nullptr;
+		
 
 		SystemManager* mSystemManager = nullptr;
 		EntityManager* mEntityManager = nullptr;

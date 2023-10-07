@@ -3,17 +3,22 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "memory/ECSMemoryStack.h"
+#include "memory/Allocators.h"
 
 namespace ECS {
+	namespace Memory {
+		class ECSMemoryStack;
+	}
+
+	class EntityComponentSystem;
 	class SystemInterface;
 
-	class SystemManager : Memory::ECSMemoryUser {
+	class SystemManager final {
 		SystemManager(const SystemManager&) = delete;
 		SystemManager& operator=(SystemManager&) = delete;
 	public:
-		SystemManager(Memory::ECSMemoryStack* memoryManager);
-		~SystemManager() override;
+		SystemManager();
+		~SystemManager();
 
 		void update(float_t dt);
 		void sortWorkQueue();
@@ -89,5 +94,7 @@ namespace ECS {
 
 		std::unordered_map<uint64_t, SystemInterface*> mSystemsMap;
 		std::vector<SystemInterface*> mWorkQueue;
+
+		Memory::ECSMemoryStack* mMemoryManager = nullptr;
 	};
 }

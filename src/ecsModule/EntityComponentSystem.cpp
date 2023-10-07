@@ -7,21 +7,17 @@
 using namespace ECS;
 
 EntityComponentSystem::EntityComponentSystem() {
-	mMemoryManager = new Memory::ECSMemoryStack(ECS_GLOBAL_MEMORY_CAPACITY);
-
-
-	mSystemManager = new (mMemoryManager->allocate(sizeof(SystemManager) + alignof(SystemManager)))SystemManager(mMemoryManager);
-	mComponentManager = new (mMemoryManager->allocate(sizeof(ComponentManager) + alignof(ComponentManager)))ComponentManager(mMemoryManager);
-	mEntityManager = new (mMemoryManager->allocate(sizeof(EntityManager) + alignof(EntityManager)))EntityManager(mMemoryManager, this);
+	mSystemManager = new SystemManager();
+	mComponentManager = new ComponentManager();
+	mEntityManager = new EntityManager(this);
 }
 
 EntityComponentSystem::~EntityComponentSystem() {
-	mSystemManager->~SystemManager();
 	mComponentManager->clearComponents();
-	mEntityManager->~EntityManager();
-	mComponentManager->~ComponentManager();
 
-	delete mMemoryManager; //will clear all the memory which was allocated by ecs
+	delete mSystemManager;
+	delete mEntityManager;
+	delete mComponentManager;
 }
 
 SystemManager* EntityComponentSystem::getSystemManager() const {

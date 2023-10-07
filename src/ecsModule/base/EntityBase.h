@@ -1,22 +1,14 @@
 ﻿#pragma once
 
-#include "../memory/settings.h"
-#include "string_view"
+#include "../Types.h"
 
 namespace ECS {
-	class EntityHandle final {
-		friend class EntityManager;
+	class EntityHandle {
 	public:
-		EntityHandle(EntityId entityID) : mId(entityID) {}
-
-		EntityId getEntityID() const { return mId; }
-
-		void setStringId(std::string_view id) { mStringId = id; }
-		std::string_view getStringId() { return mStringId; }
+		operator bool() const { return mId != INVALID_ID; }
+		EntityHandle(EntityId entityID = INVALID_ID) : mId(entityID) {}
+		EntityId getID() const { return mId; }
 	private:
-		~EntityHandle() { }
-
-		const EntityId mId = INVALID_ID;
-		std::string mStringId;
+		EntityId mId = INVALID_ID;
 	};
 }

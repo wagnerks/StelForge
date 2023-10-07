@@ -4,23 +4,6 @@
 #include "Allocators.h"
 
 namespace ECS::Memory {
-	class ECSMemoryStack;
-
-	class ECSMemoryUser {
-		ECSMemoryUser(const ECSMemoryUser&) = delete;
-		ECSMemoryUser& operator=(ECSMemoryUser&) = delete;
-
-	protected:
-		ECSMemoryStack* mStack = nullptr;
-
-	public:
-		ECSMemoryUser(ECSMemoryStack* ecsMemoryStack);
-		virtual ~ECSMemoryUser() = default;
-
-		void* allocate(size_t memSize) const;
-		void free(void* pMem) const;
-	};
-
 	class ECSMemoryStack final {
 		ECSMemoryStack(const ECSMemoryStack&) = delete;
 		ECSMemoryStack& operator=(ECSMemoryStack&) = delete;
