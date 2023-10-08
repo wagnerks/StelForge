@@ -3,9 +3,9 @@
 #include <unordered_map>
 
 #include "ComponentsArrayUtils.h"
-#include "ecsModule/Types.h"
+#include "../Types.h"
 
-namespace ECS::Memory {
+namespace ecss::Memory {
 	struct ChunkData {
 		uint16_t sectorSize = 0;
 		std::array<uint16_t, 34> sectorMembersOffsets;

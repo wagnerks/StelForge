@@ -4,7 +4,7 @@
 #include <type_traits>
 #include <limits>
 
-namespace ECS {
+namespace ecss {
 	using EntityId = uint32_t;
 	using ECSType = uint16_t;
 

@@ -3,7 +3,7 @@
 #include "../base/ComponentBase.h"
 
 
-namespace ECS::Memory {
+namespace ecss::Memory {
 	ComponentsArray::ComponentsArray(size_t capacity) : mCapacity(std::max(capacity, static_cast<size_t>(1))) {
 		mChunkData.sectorMembersOffsets[0] = mChunkData.sectorSize += 0;
 		mChunkData.sectorMembersOffsets[1] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(SectorInfo) + alignof(SectorInfo)); //offset for sector id
@@ -95,7 +95,7 @@ namespace ECS::Memory {
 
 	void* ComponentsArray::initSectorMember(void* sectorPtr, const ECSType componentTypeId) {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		//assert(!sectorInfo->isTypeNull(mChunkData.sectorMembersIndexes[componentTypeId]));
+		destroyObject(sectorPtr, componentTypeId);
 
 		sectorInfo->setTypeBitTrue(mChunkData.sectorMembersIndexes[componentTypeId]);
 		return Utils::getTypePlace(sectorPtr, componentTypeId, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes);

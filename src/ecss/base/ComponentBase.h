@@ -3,9 +3,9 @@
 #include "../Types.h"
 #include "../memory/ComponentsArray.h"
 
-namespace ECS {
+namespace ecss {
 	class ComponentInterface {
-		friend class ComponentManager;
+		friend class Registry;
 		friend class Memory::ComponentsArray;
 	protected:
 		ComponentInterface(const ComponentInterface& other) = default;

@@ -1,9 +1,9 @@
 ﻿#include "ComponentsArraySector.h"
 
-#include "ecsModule/base/ComponentBase.h"
+#include "../base/ComponentBase.h"
 
 
-namespace ECS::Memory {
+namespace ecss::Memory {
 	SectorsChunk::SectorsChunk(SectorsChunk&& other) noexcept
 		: size(std::move(other.size))
 		, data(std::move(other.data))

@@ -4,7 +4,7 @@
 
 #include "ComponentsArraySector.h"
 
-namespace ECS::Memory {
+namespace ecss::Memory {
 
 	class ComponentsArray {
 		ComponentsArray(const ComponentsArray&) = delete;

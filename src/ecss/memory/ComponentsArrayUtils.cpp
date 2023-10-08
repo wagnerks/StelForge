@@ -3,7 +3,7 @@
 #include "ComponentsArray.h"
 
 
-namespace ECS::Memory::Utils {
+namespace ecss::Memory::Utils {
 	void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::unordered_map<ECSType, uint8_t, NoHash<ECSType>>& types) {
 		return getTypePlace(start, offsets[types.at(typeId)]);
 	}

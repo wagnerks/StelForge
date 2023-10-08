@@ -3,15 +3,15 @@
 #include <array>
 #include <unordered_map>
 
-#include "ecsModule/Types.h"
+#include "../Types.h"
 
-namespace ECS {
+namespace ecss {
 	namespace Memory {
 		struct SectorsChunk;
 	}
 }
 
-namespace ECS::Memory::Utils {
+namespace ecss::Memory::Utils {
 	template <class T>
 	struct NoHash { std::size_t operator()(T const& s) const { return static_cast<T>(s); } };
 
