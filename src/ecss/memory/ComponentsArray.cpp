@@ -95,10 +95,11 @@ namespace ecss::Memory {
 
 	void* ComponentsArray::initSectorMember(void* sectorPtr, const ECSType componentTypeId) {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		destroyObject(sectorPtr, componentTypeId);
+		const auto idx = mChunkData.sectorMembersIndexes[componentTypeId];
+		destroyObject(sectorPtr, idx);
 
-		sectorInfo->setTypeBitTrue(mChunkData.sectorMembersIndexes[componentTypeId]);
-		return Utils::getTypePlace(sectorPtr, componentTypeId, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes);
+		sectorInfo->setTypeBitTrue(idx);
+		return Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[idx]);
 	}
 
 	void* ComponentsArray::createSector(size_t pos, const EntityId sectorId) {
@@ -150,27 +151,26 @@ namespace ecss::Memory {
 
 		const auto sectorPtr = (*mChunk)[pos];
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		destroyObject(sectorPtr, componentTypeId);
+		destroyObject(sectorPtr, mChunkData.sectorMembersIndexes[componentTypeId]);
 		
 		if (sectorInfo->nullBits == 0) {
 			erase(mSectorsMap[entityId]);
 		}
 	}
 
-	void ComponentsArray::destroyObject(void* sectorPtr, ECSType componentTypeId) {
+	void ComponentsArray::destroyObject(void* sectorPtr, uint8_t typeIdx) const {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		const auto memberIdx = mChunkData.sectorMembersIndexes[componentTypeId];
-		if (sectorInfo->isTypeNull(memberIdx)) {
+		if (sectorInfo->isTypeNull(typeIdx)) {
 			return;
 		}
-		sectorInfo->setTypeBitFalse(memberIdx);
+		sectorInfo->setTypeBitFalse(typeIdx);
 
-		static_cast<ComponentInterface*>(Utils::getTypePlace(sectorPtr, componentTypeId, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes))->~ComponentInterface();
+		static_cast<ComponentInterface*>(Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]))->~ComponentInterface();
 	}
 
-	void ComponentsArray::destroySector(void* sectorPtr) {
+	void ComponentsArray::destroySector(void* sectorPtr) const {
 		for (auto& [typeId, typeIdx] : mChunk->data.sectorMembersIndexes) {
-			destroyObject(sectorPtr, typeId);
+			destroyObject(sectorPtr, typeIdx);
 		}
 	}
 

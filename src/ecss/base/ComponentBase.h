@@ -28,6 +28,8 @@ namespace ecss {
 	class Component : public ComponentInterface {
 	public:
 		inline static const ECSType STATIC_COMPONENT_TYPE_ID = StaticTypeCounter<ComponentInterface>::get<T>();
+		inline static uint8_t staticComponentSectorIdx = 0;
+
 		ComponentInterface* clone(void* adr) override {
 			return new (adr)T(*static_cast<T*>(this));
 		}

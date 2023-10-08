@@ -33,7 +33,8 @@ namespace ecss::Memory {
 
 		template <typename T>
 		Iterator<T> begin() {
-			return { mChunk->begin(), mChunkData.sectorMembersOffsets[mChunkData.sectorMembersIndexes[T::STATIC_COMPONENT_TYPE_ID]], mChunkData.sectorMembersIndexes[T::STATIC_COMPONENT_TYPE_ID] };
+
+			return { mChunk->begin(), mChunkData.sectorMembersOffsets[T::staticComponentSectorIdx], T::staticComponentSectorIdx };
 		}
 
 		template<typename T>
@@ -54,16 +55,21 @@ namespace ecss::Memory {
 
 		template<typename T>
 		T* getComponent(EntityId sectorId) {
-			if (sectorId >= mSectorsMap.size() || mSectorsMap[sectorId] >= size()) {
+			if (sectorId >= mSectorsMap.size()) {
 				return nullptr;
 			}
 
-			const auto sectorPtr = (*mChunk)[mSectorsMap[sectorId]];
-			if (static_cast<SectorInfo*>(sectorPtr)->isTypeNull(mChunkData.sectorMembersIndexes[T::STATIC_COMPONENT_TYPE_ID])) {
+			const auto idx = mSectorsMap[sectorId];
+			if(idx >= size()) {
 				return nullptr;
 			}
 
-			return static_cast<T*>(Utils::getTypePlace(sectorPtr, T::STATIC_COMPONENT_TYPE_ID, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes));
+			const auto sectorPtr = (*mChunk)[idx];
+			if (static_cast<SectorInfo*>(sectorPtr)->isTypeNull(T::staticComponentSectorIdx)) {
+				return nullptr;
+			}
+
+			return static_cast<T*>(Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[T::staticComponentSectorIdx]));
 		}
 
 		template<typename T>
@@ -106,8 +112,8 @@ namespace ecss::Memory {
 		void setCapacity(size_t newCap);
 
 		void* createSector(size_t pos, EntityId sectorId);
-		void destroyObject(void* sectorPtr, ECSType componentTypeId);
-		void destroySector(void* sectorPtr);
+		void destroyObject(void* sectorPtr, uint8_t typeIdx) const;
+		void destroySector(void* sectorPtr) const;
 
 		void erase(size_t pos);
 
@@ -137,6 +143,8 @@ namespace ecss::Memory {
 
 			uint8_t i = 0;
 			((mChunkData.sectorMembersIndexes[Types::STATIC_COMPONENT_TYPE_ID] = ++i), ...);
+			i = 0;
+			((Types::staticComponentSectorIdx = ++i), ...);
 
 			allocateChunk();
 		}

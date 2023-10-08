@@ -10,7 +10,7 @@ namespace ecss {
 	Registry::~Registry() {
 		clear();
 
-		std::unordered_map<void*, bool> deleted;
+		std::map<void*, bool> deleted;
 
 		for (const auto container : mComponentsArraysMap) {
 			if (!container || deleted[container]) {//skip not created and containers of multiple components

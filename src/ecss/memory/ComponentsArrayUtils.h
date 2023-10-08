@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include <array>
-#include <unordered_map>
+#include <map>
 
 #include "../Types.h"
 
@@ -12,10 +12,7 @@ namespace ecss {
 }
 
 namespace ecss::Memory::Utils {
-	template <class T>
-	struct NoHash { std::size_t operator()(T const& s) const { return static_cast<T>(s); } };
-
-	void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::unordered_map<ECSType, uint8_t, NoHash<ECSType>>& types);
+	void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::map<ECSType, uint8_t>& types);
 	void* getTypePlace(void* start, uint16_t offset);
 
 	size_t distance(void* beg, void* end, size_t size);

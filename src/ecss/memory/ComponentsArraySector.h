@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include <cstdint>
-#include <unordered_map>
+#include <map>
 
 #include "ComponentsArrayUtils.h"
 #include "../Types.h"
@@ -9,7 +9,7 @@ namespace ecss::Memory {
 	struct ChunkData {
 		uint16_t sectorSize = 0;
 		std::array<uint16_t, 34> sectorMembersOffsets;
-		std::unordered_map<ECSType, uint8_t, Utils::NoHash<ECSType>> sectorMembersIndexes; // < {type id} , {idx in members offsets} >
+		std::map<ECSType, uint8_t> sectorMembersIndexes; // < {type id} , {idx in members offsets} >
 	};
 
 	/* SectorsChunk is data container with sectors of custom data in it

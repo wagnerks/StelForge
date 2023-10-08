@@ -4,7 +4,7 @@
 
 
 namespace ecss::Memory::Utils {
-	void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::unordered_map<ECSType, uint8_t, NoHash<ECSType>>& types) {
+	void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::map<ECSType, uint8_t>& types) {
 		return getTypePlace(start, offsets[types.at(typeId)]);
 	}
 

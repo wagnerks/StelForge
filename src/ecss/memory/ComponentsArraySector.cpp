@@ -17,13 +17,12 @@ namespace ecss::Memory {
 			new(copySector)SectorInfo(std::move(*sectorInfo));
 
 			for (auto& [typeId, typeIdx] : data.sectorMembersIndexes) {
-				const auto memberIdx = data.sectorMembersIndexes.at(typeId);
-				if (sectorInfo->isTypeNull(memberIdx)) {
+				if (sectorInfo->isTypeNull(typeIdx)) {
 					continue;
 				}
 
-				const auto oldPlace = Utils::getTypePlace(sectorPtr, typeId, data.sectorMembersOffsets, data.sectorMembersIndexes);
-				const auto newPlace = Utils::getTypePlace(copySector, typeId, data.sectorMembersOffsets, data.sectorMembersIndexes);
+				const auto oldPlace = Utils::getTypePlace(sectorPtr, data.sectorMembersOffsets[typeIdx]);
+				const auto newPlace = Utils::getTypePlace(copySector, data.sectorMembersOffsets[typeIdx]);
 
 				static_cast<ComponentInterface*>(oldPlace)->move(newPlace);//call move constructor
 			}
@@ -85,13 +84,12 @@ namespace ecss::Memory {
 			const auto sectorInfo = static_cast<SectorInfo*>(prevAdr);
 
 			for (auto& [typeId, typeIdx] : data.sectorMembersIndexes) {
-				const auto memberIdx = data.sectorMembersIndexes.at(typeId);
-				if (sectorInfo->isTypeNull(memberIdx)) {
+				if (sectorInfo->isTypeNull(typeIdx)) {
 					continue;
 				}
 
-				const auto oldPlace = Utils::getTypePlace(prevAdr, typeId, data.sectorMembersOffsets, data.sectorMembersIndexes);
-				const auto newPlace = Utils::getTypePlace(newAdr, typeId, data.sectorMembersOffsets, data.sectorMembersIndexes);
+				const auto oldPlace = Utils::getTypePlace(prevAdr, data.sectorMembersOffsets[typeIdx]);
+				const auto newPlace = Utils::getTypePlace(newAdr, data.sectorMembersOffsets[typeIdx]);
 
 				static_cast<ComponentInterface*>(oldPlace)->move(newPlace);//call move constructor
 			}
@@ -113,13 +111,12 @@ namespace ecss::Memory {
 			const auto sectorInfo = static_cast<SectorInfo*>(prevAdr);
 
 			for (auto& [typeId, typeIdx] : data.sectorMembersIndexes) {
-				const auto memberIdx = data.sectorMembersIndexes.at(typeId);
-				if (sectorInfo->isTypeNull(memberIdx)) {
+				if (sectorInfo->isTypeNull(typeIdx)) {
 					continue;
 				}
 
-				const auto oldPlace = Utils::getTypePlace(prevAdr, typeId, data.sectorMembersOffsets, data.sectorMembersIndexes);
-				const auto newPlace = Utils::getTypePlace(newAdr, typeId, data.sectorMembersOffsets, data.sectorMembersIndexes);
+				const auto oldPlace = Utils::getTypePlace(prevAdr, data.sectorMembersOffsets[typeIdx]);
+				const auto newPlace = Utils::getTypePlace(newAdr, data.sectorMembersOffsets[typeIdx]);
 
 				static_cast<ComponentInterface*>(oldPlace)->move(newPlace);//call move constructor
 			}
