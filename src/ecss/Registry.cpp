@@ -66,16 +66,17 @@ namespace ecss {
 			return;
 		}
 
-		if (!mEntities.contains(entity.getID())) {
+		const auto id = entity.getID();
+		if (!mEntities.contains(id)) {
 			return;
 		}
 
-		if (entity.getID() != *mEntities.rbegin()) {//if entity was removed not from end - add its id to the list
-			mFreeEntities.push_front(entity.getID());
+		if (id != *mEntities.rbegin()) {//if entity was removed not from end - add its id to the list
+			mFreeEntities.push_front(id);
 		}
 
-		mEntities.erase(entity.getID());
-		destroyComponents(entity.getID());
+		mEntities.erase(id);
+		destroyComponents(id);
 	}
 
 	const std::set<EntityId>& Registry::getAllEntities() {

@@ -83,6 +83,9 @@ so better, if you want to merge multiple types in one sector, always create all 
 		template<typename... Components>
 		ComponentsArrayHandle<Components...> getComponentsArray() { return ComponentsArrayHandle<Components...>(this); }
 
+		template <class... Components>
+		void reserve(size_t newCapacity) { (getComponentContainer<Components>()->reserve(newCapacity),...); }
+
 		EntityHandle takeEntity(EntityId id = INVALID_ID);
 		EntityHandle getEntity(EntityId entityId) const;
 
@@ -127,7 +130,7 @@ so better, if you want to merge multiple types in one sector, always create all 
 	void Registry::removeComponent(const EntityHandle& entity) {
 		getComponentContainer<T>()->destroyObject(T::STATIC_COMPONENT_TYPE_ID, entity.getID());
 	}
-
+	
 	template <typename ... Components>
 	void Registry::initCustomComponentsContainer() {
 		bool added = false;
