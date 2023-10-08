@@ -5,15 +5,14 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/ShaderComponent.h"
 #include "core/ECSHandler.h"
-#include "ecsModule/ComponentsManager.h"
-#include "ecsModule/EntityComponentSystem.h"
+#include "..\ecss\Registry.h"
 
 namespace Engine::SystemsModule {
 	void ShaderSystem::update(float_t dt) {
 		auto shaderController = ShaderModule::ShaderController::instance();
 		drawableEntities.clear();
-
-		for (auto& shaderComponent : *ECSHandler::componentManagerInstance()->getComponentContainer<ComponentsModule::ShaderComponent>()) {
+		
+		for (auto [shaderComponent] : ECSHandler::registry()->getComponentsArray<ComponentsModule::ShaderComponent>()) {
 			auto shader = shaderController->getShader(shaderComponent.shaderId);
 			if (!shader) {
 				continue;
@@ -27,7 +26,7 @@ namespace Engine::SystemsModule {
 				typedUniforms->apply(shader);
 			}
 
-			drawableEntities.emplace_back(shaderComponent.shaderId, shaderComponent.getOwnerId());
+			drawableEntities.emplace_back(shaderComponent.shaderId, shaderComponent.getEntityId());
 		}
 
 		std::stable_sort(drawableEntities.begin(), drawableEntities.end(), [](const auto& a, const auto& b) {

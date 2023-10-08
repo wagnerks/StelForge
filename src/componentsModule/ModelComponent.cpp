@@ -3,7 +3,6 @@
 #include <algorithm>
 
 #include "assetsModule/modelModule/ModelLoader.h"
-#include "ecsModule/EntityManager.h"
 #include "assetsModule/modelModule/Model.h"
 
 
@@ -37,8 +36,8 @@ void LODData::setCurrentLodValue(float currentLodValue) {
 
 ModelComponent::ModelComponent() {}
 
-void ModelComponent::addMeshData(std::vector<AssetsModule::ModelObj> meshData) {
-	mModel = std::move(meshData);
+void ModelComponent::addMeshData(std::vector<AssetsModule::ModelObj>* meshData) {
+	mModel = meshData;
 }
 
 const AssetsModule::ModelObj& ModelComponent::getModel() {
@@ -46,29 +45,29 @@ const AssetsModule::ModelObj& ModelComponent::getModel() {
 }
 
 AssetsModule::ModelObj& ModelComponent::getModel(size_t LOD) {
-	if (mModel.empty()) {
+	if (!mModel || mModel->empty()) {
 		static AssetsModule::ModelObj empty;
 		return empty;
 	}
 
-	if (mModel.size() < LOD) {
-		return mModel.back();
+	if (mModel->size() < LOD) {
+		return mModel->back();
 	}
 
-	return mModel[LOD];
+	return mModel->at(LOD);
 }
 
-const AssetsModule::ModelObj& ModelComponent::getModelLowestDetails() {
-	if (mModel.empty()) {
+const AssetsModule::ModelObj& ModelComponent::getModelLowestDetails() const {
+	if (!mModel || mModel->empty()) {
 		static AssetsModule::ModelObj empty;
 		return empty;
 	}
 
-	return mModel.back();
+	return mModel->back();
 }
 
-void ModelComponent::setModel(std::vector<AssetsModule::ModelObj> data) {
-	mModel = std::move(data);
+void ModelComponent::setModel(std::vector<AssetsModule::ModelObj>* data) {
+	mModel = data;
 }
 
 void ModelComponent::serialize(Json::Value& data) {

@@ -1,13 +1,13 @@
 ﻿#pragma once
 #include <vector>
 
-#include "ecsModule/SystemBase.h"
+#include "SystemBase.h"
 
 namespace Engine::SystemsModule {
-	class ShaderSystem : public ecsModule::System<ShaderSystem> {
+	class ShaderSystem : public ecss::System<ShaderSystem> {
 	public:
 		void update(float_t dt) override;
 
-		std::vector<std::pair<size_t, size_t>> drawableEntities;
+		std::vector<std::pair<size_t, ecss::EntityId>> drawableEntities;
 	};
 }

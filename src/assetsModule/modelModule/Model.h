@@ -35,9 +35,9 @@ namespace AssetsModule {
 
 	class Model : public Asset {
 	public:
-		Model(MeshNode& model, std::string_view modelPath);
+		Model(MeshNode model, std::string_view modelPath);
 
-		std::vector<ModelObj> getAllLODs();
+		std::vector<ModelObj>* getAllLODs();
 
 		ModelObj toModelObj(int lod);
 
@@ -45,11 +45,14 @@ namespace AssetsModule {
 
 		void normalizeModel();
 
+		void bindMeshes();
+
+		bool normalized = false;
 		int mLODs = 0;
 
 		void calculateLODs();
 		void toModelObjHelper(MeshNode* root, int lod, ModelObj& res);
-
+		std::vector<ModelObj> lods;
 		MeshNode mMeshTree;
 		std::string mModelPath = "";
 	};

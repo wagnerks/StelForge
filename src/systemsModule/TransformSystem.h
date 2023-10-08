@@ -1,5 +1,8 @@
 ﻿#pragma once
-#include "ecsModule/SystemBase.h"
+
+#include <cmath>
+
+#include "SystemBase.h"
 
 namespace Engine {
 	namespace ComponentsModule {
@@ -8,7 +11,7 @@ namespace Engine {
 }
 
 namespace Engine::SystemsModule {
-	class TransformSystem : public ecsModule::System<TransformSystem> {
+	class TransformSystem : public ecss::System<TransformSystem> {
 	public:
 		void preUpdate(float_t dt) override {}
 		void update(float_t dt) override;

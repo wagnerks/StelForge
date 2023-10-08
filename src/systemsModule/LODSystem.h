@@ -1,5 +1,9 @@
 ﻿#pragma once
-#include "ecsModule/SystemBase.h"
+#include <cmath>
+
+
+#include "ecss/base/EntityHandle.h"
+#include "SystemBase.h"
 
 namespace AssetsModule {
 	class Mesh;
@@ -11,17 +15,16 @@ namespace Engine {
 	}
 }
 
-class Camera;
 
 namespace Engine::SystemsModule {
-	class LODSystem : public ecsModule::System<LODSystem> {
+	class LODSystem : public ecss::System<LODSystem> {
 	public:
 		void preUpdate(float_t dt) override {}
 		void update(float_t dt) override;
 		void postUpdate(float_t dt) override {}
 
-		static float calculateScreenSpaceArea(const AssetsModule::Mesh* mesh, const Camera* camera, ComponentsModule::TransformComponent* meshTransform);
-		static float calculateDistanceToMesh(const Camera* camera, ComponentsModule::TransformComponent* meshTransform);
+		static float calculateScreenSpaceArea(const AssetsModule::Mesh* mesh, const ecss::EntityHandle& camera, ComponentsModule::TransformComponent* meshTransform);
+		static float calculateDistanceToMesh(const ecss::EntityHandle& camera, ComponentsModule::TransformComponent* meshTransform);
 	private:
 
 	};

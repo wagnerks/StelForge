@@ -1,9 +1,10 @@
 ﻿#pragma once
-#include "ecsModule/SystemBase.h"
+
+#include "SystemBase.h"
 #include "renderModule/Renderer.h"
 
 namespace Engine::SystemsModule {
-	class DrawSystem : public ecsModule::System<DrawSystem> {
+	class DrawSystem : public ecss::System<DrawSystem> {
 	public:
 		void update(float_t dt) override;
 	private:

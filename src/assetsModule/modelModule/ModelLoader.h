@@ -1,12 +1,11 @@
 ﻿#pragma once
 
+#include <mutex>
 #include <unordered_map>
 #include <assimp/material.h>
 
 #include "core/Singleton.h"
 #include "assetsModule/AssetsManager.h"
-#include "ecsModule/EntityManager.h"
-#include "memoryModule/LinearAllocator.h"
 #include "assetsModule/modelModule/Model.h"
 
 
@@ -31,18 +30,16 @@ namespace AssetsModule {
 	public:
 		AssetsModule::Model* load(const std::string& path);
 		void releaseModel(const std::string& path);
-		AssetsModule::AssetsManager* getModelsHolder() const;
-
+		std::map<std::string, std::condition_variable> loading;
+		std::mutex mtx;
 	private:
 		ModelLoader() = default;
 		~ModelLoader() override;
 		void init() override;
 
-		AssetsModule::AssetsManager* mModelsHolder = nullptr;
-
 		static AssetsModule::MeshNode loadModel(const std::string& path);
-		static void processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
-		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
-		static std::vector<AssetsModule::MaterialTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureLoader* loader, const std::string& directory);
+		static void processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
+		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
+		static std::vector<AssetsModule::MaterialTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureHandler* loader, const std::string& directory);
 	};
 }

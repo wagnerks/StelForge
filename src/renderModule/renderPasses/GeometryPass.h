@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <future>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -32,7 +33,6 @@ namespace Engine::RenderModule::RenderPasses {
 		Data mData;
 		OutlinesData mOData;
 		bool needClearOutlines = false;
-		std::vector<std::thread> threads;
-		std::mutex mtx;
+
 	};
 }

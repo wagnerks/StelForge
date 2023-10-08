@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include "core/Projection.h"
-#include "ecsModule/ComponentBase.h"
+#include "ecss/base/ComponentBase.h"
 
 namespace Engine::ComponentsModule {
-	class CameraComponent : public ecsModule::Component<CameraComponent> {
+	class CameraComponent : public ecss::Component<CameraComponent> {
 	public:
 		CameraComponent();
 		CameraComponent(float FOV, float aspect, float zNear, float zFar);

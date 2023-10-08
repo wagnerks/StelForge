@@ -2,7 +2,8 @@
 #include <vec2.hpp>
 #include <vec3.hpp>
 
-#include "ecsModule/ComponentBase.h"
+
+#include "ecss/base/ComponentBase.h"
 #include "propertiesModule/Serializable.h"
 
 
@@ -14,12 +15,8 @@ namespace Engine::ComponentsModule {
 		PERSPECTIVE,
 		WORLD
 	};
-
-	class ShadowsComponent : public ecsModule::Component<ShadowsComponent> {
-		//component just to handle entities which can produce shadows, aka light sources
-	};
-
-	class LightSourceComponent : public ecsModule::Component<LightSourceComponent>, public PropertiesModule::Serializable {
+	
+	class LightSourceComponent : public ecss::Component<LightSourceComponent>, public PropertiesModule::Serializable {
 	public:
 		LightSourceComponent(eLightType type);
 		static int getTypeOffset(eLightType type);

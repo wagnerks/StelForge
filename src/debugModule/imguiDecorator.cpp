@@ -37,67 +37,67 @@ void ImGuiDecorator::init(GLFWwindow* window) {
 	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
 		style.WindowRounding = 0.0f;
 
-		//style.Colors[ImGuiCol_Text] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12, 0.12, 0.12, 0.8);						// Background of normal windows
-		style.Colors[ImGuiCol_ChildBg] = ImVec4(0.15, 0.15, 0.15, 0.8);							// Background of child windows
-		style.Colors[ImGuiCol_PopupBg] = ImVec4(0.24, 0.24, 0.24, 1.0);							// Background of popups, menus, tooltips windows
-		//style.Colors[ImGuiCol_Border] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_BorderShadow] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		style.Colors[ImGuiCol_FrameBg] = ImVec4(0.2, 0.2, 0.2, 1.0);							// Background of checkbox, radio button, plot, slider, text input
-		style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.24, 0.24, 0.24, 1.0);
+		//style.Colors[ImGuiCol_Text] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.12f, 0.12f, 0.8f);						// Background of normal windows
+		style.Colors[ImGuiCol_ChildBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.8f);							// Background of child windows
+		style.Colors[ImGuiCol_PopupBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);							// Background of popupsf, menusf, tooltips windows
+		//style.Colors[ImGuiCol_Border] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_BorderShadow] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		style.Colors[ImGuiCol_FrameBg] = ImVec4(0.2f, 0.2f, 0.2f, 1.0f);							// Background of checkboxf, radio buttonf, plotf, sliderf, text input
+		style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
 
-		style.Colors[ImGuiCol_TitleBg] = ImVec4(0.12, 0.12, 0.12, 1.0);
-		style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.12, 0.12, 0.12, 1.0);
-		//style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.24, 0.24, 0.24, 0.1);
-		//style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_CheckMark] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.24, 0.24, 0.24, 1.0);
+		style.Colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.12f, 0.12f, 1.0f);
+		style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.12f, 0.12f, 1.0f);
+		//style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.24f, 0.24f, 0.24f, 0.1f);
+		//style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_CheckMark] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
 
-		style.Colors[ImGuiCol_Button] = ImVec4(0.3, 0.3, 0.3, 1.0);
-		style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.4, 0.4, 0.4, 1.0);
-		style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.35, 0.35, 0.35, 1.0);
+		style.Colors[ImGuiCol_Button] = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+		style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+		style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.35f, 0.35f, 0.35f, 1.0f);
 
-		style.Colors[ImGuiCol_Header] = ImVec4(0.24, 0.24, 0.24, 1.0);                // Header* colors are used for CollapsingHeader, TreeNode, Selectable, MenuItem
-		style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.35, 0.35, 0.35, 1.0);
-		style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.3, 0.3, 0.3, 1.0);
+		style.Colors[ImGuiCol_Header] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);                // Header* colors are used for CollapsingHeaderf, TreeNodef, Selectablef, MenuItem
+		style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.35f, 0.35f, 0.35f, 1.0f);
+		style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
 
-		//style.Colors[ImGuiCol_Separator] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_SeparatorHovered] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_SeparatorActive] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_ResizeGrip] = ImVec4(0.24, 0.24, 0.24, 1.0);            // Resize grip in lower-right and lower-left corners of windows.
-		//style.Colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.24, 0.24, 0.24, 1.0);
+		//style.Colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_SeparatorHovered] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_SeparatorActive] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_ResizeGrip] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);            // Resize grip in lower-right and lower-left corners of windows.
+		//style.Colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
 
-		style.Colors[ImGuiCol_Tab] = ImVec4(0.2, 0.2, 0.2, 1.0);                     // TabItem in a TabBar
-		style.Colors[ImGuiCol_TabHovered] = ImVec4(0.4, 0.4, 0.4, 1.0);
-		style.Colors[ImGuiCol_TabActive] = ImVec4(0.35, 0.35, 0.35, 1.0);
-		style.Colors[ImGuiCol_TabUnfocused] = ImVec4(0.15, 0.15, 0.15, 1.0);
-		style.Colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.26, 0.26, 0.26, 1.0);
+		style.Colors[ImGuiCol_Tab] = ImVec4(0.2f, 0.2f, 0.2f, 1.0f);                     // TabItem in a TabBar
+		style.Colors[ImGuiCol_TabHovered] = ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+		style.Colors[ImGuiCol_TabActive] = ImVec4(0.35f, 0.35f, 0.35f, 1.0f);
+		style.Colors[ImGuiCol_TabUnfocused] = ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
+		style.Colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.26f, 0.26f, 0.26f, 1.0f);
 
-		//style.Colors[ImGuiCol_DockingPreview] = ImVec4(0.24, 0.24, 0.24, 1.0);          // Preview overlay color when about to docking something
-		//style.Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.24, 0.24, 0.24, 1.0);          // Background color for empty node (e.g. CentralNode with no window docked into it)
-		//style.Colors[ImGuiCol_PlotLines] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_PlotLinesHovered] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_PlotHistogram] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_PlotHistogramHovered] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_TableHeaderBg] = ImVec4(0.24, 0.24, 0.24, 1.0);         // Table header background
-		//style.Colors[ImGuiCol_TableBorderStrong] = ImVec4(0.24, 0.24, 0.24, 1.0);     // Table outer and header borders (prefer using Alpha=1.0 here)
-		//style.Colors[ImGuiCol_TableBorderLight] = ImVec4(0.24, 0.24, 0.24, 1.0);      // Table inner borders (prefer using Alpha=1.0 here)
-		//style.Colors[ImGuiCol_TableRowBg] = ImVec4(0.24, 0.24, 0.24, 1.0);            // Table row background (even rows)
-		//style.Colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.24, 0.24, 0.24, 1.0);         // Table row background (odd rows)
-		//style.Colors[ImGuiCol_TextSelectedBg] = ImVec4(0.24, 0.24, 0.24, 1.0);
-		//style.Colors[ImGuiCol_DragDropTarget] = ImVec4(0.24, 0.24, 0.24, 1.0);        // Rectangle highlighting a drop target
-		//style.Colors[ImGuiCol_NavHighlight] = ImVec4(0.24, 0.24, 0.24, 1.0);          // Gamepad/keyboard: current highlighted item
-		//style.Colors[ImGuiCol_NavWindowingHighlight] = ImVec4(0.24, 0.24, 0.24, 1.0); // Highlight window when using CTRL+TAB
-		//style.Colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.24, 0.24, 0.24, 1.0);     // Darken/colorize entire screen behind the CTRL+TAB window list, when active
-		//style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.24, 0.24, 0.24, 1.0);      // Darken/colorize entire screen behind a modal window, when one is active
+		//style.Colors[ImGuiCol_DockingPreview] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);          // Preview overlay color when about to docking something
+		//style.Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);          // Background color for empty node (e.g. CentralNode with no window docked into it)
+		//style.Colors[ImGuiCol_PlotLines] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_PlotLinesHovered] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_PlotHistogram] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_PlotHistogramHovered] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_TableHeaderBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);         // Table header background
+		//style.Colors[ImGuiCol_TableBorderStrong] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);     // Table outer and header borders (prefer using Alpha=1.0 here)
+		//style.Colors[ImGuiCol_TableBorderLight] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);      // Table inner borders (prefer using Alpha=1.0 here)
+		//style.Colors[ImGuiCol_TableRowBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);            // Table row background (even rows)
+		//style.Colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);         // Table row background (odd rows)
+		//style.Colors[ImGuiCol_TextSelectedBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);
+		//style.Colors[ImGuiCol_DragDropTarget] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);        // Rectangle highlighting a drop target
+		//style.Colors[ImGuiCol_NavHighlight] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);          // Gamepad/keyboard: current highlighted item
+		//style.Colors[ImGuiCol_NavWindowingHighlight] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f); // Highlight window when using CTRL+TAB
+		//style.Colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);     // Darken/colorize entire screen behind the CTRL+TAB window listf, when active
+		//style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.24f, 0.24f, 0.24f, 1.0f);      // Darken/colorize entire screen behind a modal windowf, when one is active
 
 
 	}

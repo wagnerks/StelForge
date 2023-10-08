@@ -16,37 +16,43 @@
 #include "core/Engine.h"
 #include "core/FileSystem.h"
 #include "assetsModule/modelModule/ModelLoader.h"
+#include "componentsModule/DebugDataComponent.h"
 #include "componentsModule/OutlineComponent.h"
+#include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
-#include "ecsModule/EntityComponentSystem.h"
-#include "ecsModule/EntityBase.h"
-#include "ecsModule/EntityManager.h"
-#include "ecsModule/SystemManager.h"
-#include "entitiesModule/Object.h"
+#include "core/ThreadPool.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "systemsModule/CameraSystem.h"
 #include "renderModule/Utils.h"
 #include "misc/cpp/imgui_stdlib.h"
+#include "systemsModule/SystemManager.h"
 
 using namespace Engine::Debug;
 
-void ComponentsDebug::drawTree(ecsModule::EntityInterface* entity, size_t& selectedID) {
-	auto id = entity->getEntityID();
-	auto& children = entity->getElements();
+void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::EntityId& selectedID) {
+	auto treeComp = ECSHandler::registry()->getComponent<ComponentsModule::TreeComponent>(entity);
 
+	auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::EntityId>();
+	std::string strid = "";
+	if (auto debugData = ECSHandler::registry()->getComponent<DebugDataComponent>(entity)) {
+		strid = debugData->stringId;
+	}
+
+	auto id = entity.getID();
 	if (!children.empty()) {
+		
 		int flag = ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_OpenOnArrow;
 		if (selectedID == id) {
 			flag = flag | ImGuiTreeNodeFlags_Selected;
 		}
 
-		if (ImGui::TreeNodeEx((std::string(entity->getNodeId()) + ":" + std::to_string(id)).c_str(), flag)) {
+		if (ImGui::TreeNodeEx((std::string(strid) + ":" + std::to_string(id)).c_str(), flag)) {
 			if (ImGui::IsItemClicked()) {
 				selectedID = id;
 			}
 
 			for (auto child : children) {
-				drawTree(child, selectedID);
+				drawTree(ECSHandler::registry()->getEntity(child), selectedID);
 			}
 
 			ImGui::TreePop();
@@ -58,7 +64,7 @@ void ComponentsDebug::drawTree(ecsModule::EntityInterface* entity, size_t& selec
 		}
 	}
 	else {
-		if (ImGui::Selectable((std::string(entity->getNodeId()) + ":" + std::to_string(id)).c_str(), selectedID == id)) {
+		if (ImGui::Selectable((std::string(strid) + ":" + std::to_string(id)).c_str(), selectedID == id)) {
 			selectedID = id;
 		}
 	}
@@ -66,18 +72,18 @@ void ComponentsDebug::drawTree(ecsModule::EntityInterface* entity, size_t& selec
 
 void ComponentsDebug::entitiesDebug() {
 
+	auto compManager = ECSHandler::registry();
+
 	if (ImGui::Begin("Entities Editor")) {
 
 		static bool clickedSeparator = false;
 		static float separatorPos = 100.f;
 		static ImVec2 mousePos = {};
 
+		static ecss::EntityId prevId = std::numeric_limits<ecss::EntityId>::max();
 
-		auto entityManager = ECSHandler::entityManagerInstance();
+		auto entityManager = ECSHandler::registry();
 
-		if (auto currentEntity = entityManager->getEntity(mSelectedId)) {
-			currentEntity->removeComponent<OutlineComponent>();
-		}
 
 		if (separatorPos > ImGui::GetWindowHeight() * 0.9f) {
 			separatorPos = ImGui::GetWindowHeight() * 0.9f;
@@ -86,30 +92,38 @@ void ComponentsDebug::entitiesDebug() {
 			separatorPos = ImGui::GetWindowHeight() * 0.1f;
 		}
 
-		ImGui::BeginChild("##entities", { ImGui::GetWindowContentRegionWidth(), separatorPos });
-		for (auto entity : entityManager->getAllEntities()) {
-			if (!entity) {
-				continue;
-			}
+		ImGui::BeginChild("##mEntities", { ImGui::GetWindowContentRegionWidth(), separatorPos });
+		{
+			for (auto entityIt : entityManager->getAllEntities()) {
+				
+				auto treeComp = compManager->getComponent<ComponentsModule::TreeComponent>(entityIt);
+				if (treeComp) {
+					if (treeComp->getParent() != ecss::INVALID_ID) {
+						continue;
+					}
+				}
 
-			if (entity->getParent()) {
-				continue;
+				drawTree(entityIt, mSelectedId);
 			}
-
-			drawTree(entity, mSelectedId);
 		}
 		ImGui::EndChild();
 
-		if (auto currentEntity = entityManager->getEntity(mSelectedId)) {
-			currentEntity->addComponent<OutlineComponent>();
+		if (prevId != mSelectedId) {
+			if (prevId != std::numeric_limits<ecss::EntityId>::max()) {
+				ECSHandler::registry()->removeComponent<OutlineComponent>(prevId);
+			}
+			
+			ECSHandler::registry()->addComponent<OutlineComponent>(mSelectedId);
 		}
 
+		prevId = mSelectedId;
 
 
 		if (ImGui::Button("add node")) {
-			auto createdEntity = entityManager->createEntity<EntitiesModule::Object>();
+			auto createdEntity = entityManager->takeEntity();
 			if (auto entity = entityManager->getEntity(mSelectedId)) {
-				entity->addElement(createdEntity);
+
+				compManager->addComponent<ComponentsModule::TreeComponent>(mSelectedId)->addChildEntity(createdEntity);
 			}
 		}
 		ImGui::SameLine();
@@ -124,7 +138,7 @@ void ComponentsDebug::entitiesDebug() {
 
 					if (current_item == "light") {
 						if (auto entity = entityManager->getEntity(mSelectedId)) {
-							entity->addComponent<LightSourceComponent>(ComponentsModule::eLightType::POINT);
+							compManager->addComponent<LightSourceComponent>(mSelectedId, ComponentsModule::eLightType::POINT);
 						}
 					}
 
@@ -137,7 +151,7 @@ void ComponentsDebug::entitiesDebug() {
 			ImGui::EndCombo();
 		}
 
-		/*if (auto entity = entityManager->getEntity(mSelectedId)) {
+		/*if (auto entity = registry->getEntity(mSelectedId)) {
 			entity->addComponent<LightSourceComponent>(ComponentsModule::eLightType::POINT);
 		}*/
 
@@ -172,46 +186,60 @@ void ComponentsDebug::entitiesDebug() {
 		ImGui::BeginChild("comps##comps", {}, false, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse);
 
 		if (auto currentEntity = entityManager->getEntity(mSelectedId)) {
-
-			ImGui::Text("entity: \"%s\"", currentEntity->getNodeId().data());
+			std::string strid = "";
+			if (auto debugData = ECSHandler::registry()->getComponent<DebugDataComponent>(currentEntity)) {
+				strid = debugData->stringId;
+			}
+			ImGui::Text("entity: \"%s\"", strid.data());
 			ImGui::SameLine();
-			ImGui::Text("id: %zu", currentEntity->getEntityID());
+			ImGui::Text("id: %zu", currentEntity.getID());
 			ImGui::Separator();
 
-			bool isDrawable = currentEntity->getComponent<IsDrawableComponent>();
+			
+
+			bool isDrawable = compManager->getComponent<IsDrawableComponent>(mSelectedId);
 			if (ImGui::Checkbox("isDrawable", &isDrawable)) {
 				if (isDrawable) {
-					currentEntity->addComponent<IsDrawableComponent>();
-					for (auto node : currentEntity->getAllNodes()) {
-						node->addComponent<IsDrawableComponent>();
+					compManager->addComponent<IsDrawableComponent>(mSelectedId);
+
+					auto tree = compManager->getComponent<ComponentsModule::TreeComponent>(mSelectedId);
+					if (tree) {
+						for (auto node : tree->getAllNodes()) {
+							compManager->addComponent<IsDrawableComponent>(node);
+						}
 					}
+					
 				}
 				else {
-					currentEntity->removeComponent<IsDrawableComponent>();
-					for (auto node : currentEntity->getAllNodes()) {
-						node->removeComponent<IsDrawableComponent>();
+					compManager->removeComponent<IsDrawableComponent>(mSelectedId);
+					auto tree = compManager->getComponent<ComponentsModule::TreeComponent>(mSelectedId);
+					if (tree) {
+						for (auto node : tree->getAllNodes()) {
+							compManager->removeComponent<IsDrawableComponent>(node);
+						}
 					}
 				}
 			}
 
-			bool outline = currentEntity->getComponent<OutlineComponent>();
+			bool outline = compManager->getComponent<OutlineComponent>(mSelectedId);
 			if (ImGui::Checkbox("outline", &outline)) {
 				if (outline) {
-					currentEntity->addComponent<OutlineComponent>();
+					compManager->addComponent<OutlineComponent>(mSelectedId);
 				}
 				else {
-					currentEntity->removeComponent<OutlineComponent>();
+					compManager->removeComponent<OutlineComponent>(mSelectedId);
 				}
 			}
 
 			ImGui::Separator();
+			auto cam = ECSHandler::systemManager()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 
-			auto& P = ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix();
-			auto& V = ECSHandler::systemManagerInstance()->getSystem<SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getViewMatrix();
+			auto& P = compManager->getComponent<CameraComponent>(cam)->getProjection().getProjectionsMatrix();
+			auto& V = compManager->getComponent<TransformComponent>(cam)->getViewMatrix();
 			auto PV = P * V;
 			auto S = glm::scale(glm::mat4(1.0f), glm::vec3(1.f, 1.f, 1.f));
 
-			if (auto comp = currentEntity->getComponent<TransformComponent>(); comp && ImGui::TreeNode("Transform Component")) {
+			if (auto comp = compManager->getComponent<TransformComponent>(currentEntity); comp && ImGui::TreeNode("Transform Component")) {
 				componentEditorInternal(comp);
 
 				auto pos = glm::vec3{ 0.f,0.f,0.f };
@@ -221,7 +249,7 @@ void ComponentsDebug::entitiesDebug() {
 				auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
 				xyzLines->use();
 
-				auto model = currentEntity->getComponent<TransformComponent>()->getTransform();
+				auto model = compManager->getComponent<TransformComponent>(currentEntity)->getTransform();
 
 
 				model *= glm::translate(glm::mat4(1.0f), pos) * glm::toMat4(rotQuat) * S;
@@ -241,7 +269,7 @@ void ComponentsDebug::entitiesDebug() {
 					ImGui::TreePop();
 				}*/
 
-			if (auto comp = currentEntity->getComponent<ModelComponent>(); comp && ImGui::TreeNode("Mesh Component")) {
+			if (auto comp = compManager->getComponent<ModelComponent>(currentEntity); comp && ImGui::TreeNode("Mesh Component")) {
 				auto& modObj = comp->getModel(0);
 
 				static bool drawNormales = false;
@@ -264,26 +292,26 @@ void ComponentsDebug::entitiesDebug() {
 					auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
 					xyzLines->use();
 
-					auto model = currentEntity->getComponent<TransformComponent>()->getTransform();
+					auto model = compManager->getComponent<TransformComponent>(currentEntity)->getTransform();
 
 					xyzLines->setMat4("PVM", PV * model);
 
 					//vertex normals
 					if (vertexNormals) {
 						for (auto& mesh : modObj.mMeshHandles) {
-							for (int i = 0; i < mesh.mData.mVertices.size(); i++) {
-								auto pos = mesh.mData.mVertices[i].mPosition;
+							for (int i = 0; i < mesh.mData->mVertices.size(); i++) {
+								auto pos = mesh.mData->mVertices[i].mPosition;
 
 								if (drawNormales) {
-									auto posEnd = pos + mesh.mData.mVertices[i].mNormal * 5.f;
+									auto posEnd = pos + mesh.mData->mVertices[i].mNormal * 5.f;
 									RenderModule::Utils::renderLine(pos, posEnd);
 								}
 								if (drawTangent) {
-									auto posEnd = pos + mesh.mData.mVertices[i].mTangent * 5.f;
+									auto posEnd = pos + mesh.mData->mVertices[i].mTangent * 5.f;
 									RenderModule::Utils::renderLine(pos, posEnd);
 								}
 								if (drawBiTangent) {
-									auto posEnd = pos + mesh.mData.mVertices[i].mBiTangent * 5.f;
+									auto posEnd = pos + mesh.mData->mVertices[i].mBiTangent * 5.f;
 									RenderModule::Utils::renderLine(pos, posEnd);
 								}
 
@@ -293,23 +321,23 @@ void ComponentsDebug::entitiesDebug() {
 					else {
 						//face normals
 						for (auto& mesh : modObj.mMeshHandles) {
-							for (int i = 0; i < mesh.mData.mIndices.size(); i += 3) {
+							for (int i = 0; i < mesh.mData->mIndices.size(); i += 3) {
 
-								auto pos = mesh.mData.mVertices[mesh.mData.mIndices[i]].mPosition;
-								pos += mesh.mData.mVertices[mesh.mData.mIndices[i + 1]].mPosition;
-								pos += mesh.mData.mVertices[mesh.mData.mIndices[i + 2]].mPosition;
+								auto pos = mesh.mData->mVertices[mesh.mData->mIndices[i]].mPosition;
+								pos += mesh.mData->mVertices[mesh.mData->mIndices[i + 1]].mPosition;
+								pos += mesh.mData->mVertices[mesh.mData->mIndices[i + 2]].mPosition;
 								pos /= 3.f;
 
 								if (drawNormales) {
-									auto posEnd = pos + mesh.mData.mVertices[mesh.mData.mIndices[i]].mNormal * 5.f;
+									auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mNormal * 5.f;
 									RenderModule::Utils::renderLine(pos, posEnd);
 								}
 								if (drawTangent) {
-									auto posEnd = pos + mesh.mData.mVertices[mesh.mData.mIndices[i]].mTangent * 5.f;
+									auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mTangent * 5.f;
 									RenderModule::Utils::renderLine(pos, posEnd);
 								}
 								if (drawBiTangent) {
-									auto posEnd = pos + mesh.mData.mVertices[mesh.mData.mIndices[i]].mBiTangent * 5.f;
+									auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mBiTangent * 5.f;
 									RenderModule::Utils::renderLine(pos, posEnd);
 								}
 
@@ -322,15 +350,15 @@ void ComponentsDebug::entitiesDebug() {
 				ImGui::TreePop();
 			}
 
-			auto& model = currentEntity->getComponent<TransformComponent>()->getTransform();
+			auto& model = compManager->getComponent<TransformComponent>(currentEntity)->getTransform();
 
-			if (auto comp = currentEntity->getComponent<MaterialComponent>(); comp && ImGui::TreeNode("Material Component")) {
+			if (auto comp = compManager->getComponent<MaterialComponent>(currentEntity); comp && ImGui::TreeNode("Material Component")) {
 				//componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
 
-			if (auto comp = currentEntity->getComponent<LightSourceComponent>(); comp && ImGui::TreeNode("Light Component")) {
-				auto lightTransform = glm::translate(glm::mat4(1.0), currentEntity->getComponent<TransformComponent>()->getPos(true));
+			if (auto comp = compManager->getComponent<LightSourceComponent>(currentEntity); comp && ImGui::TreeNode("Light Component")) {
+				auto lightTransform = glm::translate(glm::mat4(1.0), compManager->getComponent<TransformComponent>(currentEntity)->getPos(true));
 				auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
 				coloredLines->use();
 
@@ -342,7 +370,7 @@ void ComponentsDebug::entitiesDebug() {
 				ImGui::TreePop();
 			}
 
-			if (auto comp = currentEntity->getComponent<CameraComponent>(); comp && ImGui::TreeNode("Camera Component")) {
+			if (auto comp = compManager->getComponent<CameraComponent>(currentEntity); comp && ImGui::TreeNode("Camera Component")) {
 				auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
 				coloredLines->use();
 
@@ -354,17 +382,17 @@ void ComponentsDebug::entitiesDebug() {
 				ImGui::TreePop();
 			}
 
-			if (auto comp = currentEntity->getComponent<ComponentsModule::CascadeShadowComponent>(); comp && ImGui::TreeNode("CascadeShadowComponent")) {
+			if (auto comp = compManager->getComponent<ComponentsModule::CascadeShadowComponent>(currentEntity); comp && ImGui::TreeNode("CascadeShadowComponent")) {
 				componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
 
 
-			if (auto comp = currentEntity->getComponent<FrustumComponent>(); comp && ImGui::TreeNode("Frustum Component")) {
+			if (auto comp = compManager->getComponent<FrustumComponent>(currentEntity); comp && ImGui::TreeNode("Frustum Component")) {
 				//componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
-			if (auto comp = currentEntity->getComponent<ComponentsModule::ShaderComponent>(); comp && ImGui::TreeNode("Shader Component")) {
+			if (auto comp = compManager->getComponent<ComponentsModule::ShaderComponent>(currentEntity); comp && ImGui::TreeNode("Shader Component")) {
 				componentEditorInternal(comp);
 				ImGui::TreePop();
 			}
@@ -522,7 +550,7 @@ void ComponentsDebug::componentEditorInternal(CascadeShadowComponent* component)
 
 
 	if (ImGui::Button("save to json")) {
-		FileSystem::writeJson("cascadedShadows.json", PropertiesModule::PropertiesSystem::serializeEntity(ECSHandler::entityManagerInstance()->getEntity(component->getOwnerId())));
+		FileSystem::writeJson("cascadedShadows.json", PropertiesModule::PropertiesSystem::serializeEntity(ECSHandler::registry()->getEntity(component->getEntityId())));
 	}
 
 }
@@ -539,31 +567,35 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* 
 	}
 
 	auto& modelobj = component->getModel(0);
-
+	if (ImGui::Button("update bind")) {
+		if (auto model = AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>(component->mPath)) {
+			model->bindMeshes();
+		}
+	}
 	int i = 0;
 	for (auto& lod : modelobj.mMeshHandles) {
 		auto treeLabel = "LOD " + std::to_string(i) + "##meshLod";
 		if (ImGui::TreeNode(std::to_string(i).c_str())) {
 
-			ImGui::Text("vertices: %d", lod.mData.mVertices.size());
-			ImGui::Text("indices: %d", lod.mData.mIndices.size());
+			ImGui::Text("vertices: %d", lod.mData->mVertices.size());
+			ImGui::Text("indices: %d", lod.mData->mIndices.size());
 			ImGui::Spacing();
 
 			static std::string diffusePath = "";
 			ImGui::InputText("diffusePath", &diffusePath);
 			if (ImGui::Button("load##diffuse")) {
-				lod.mMaterial.mDiffuse.mTexture = AssetsModule::TextureHandler::instance()->mLoader.loadTexture(diffusePath);
+				//lod.mMaterial->mDiffuse.mTexture = AssetsModule::TextureHandler::instance()->loadTexture(diffusePath);
 			}
 
 			static std::string normalPath = "";
 			ImGui::InputText("normalPath", &normalPath);
 			if (ImGui::Button("load##normalPath")) {
-				lod.mMaterial.mNormal.mTexture = AssetsModule::TextureHandler::instance()->mLoader.loadTexture(normalPath);
+				//lod.mMaterial->mNormal.mTexture = AssetsModule::TextureHandler::instance()->loadTexture(normalPath);
 			}
 
 			ImGui::Text("diffuse:");
-			if (lod.mMaterial.mDiffuse.mTexture.isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mDiffuse.mTexture.mId), { 200.f,200.f });
+			if (lod.mMaterial->mDiffuse.mTexture->isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial->mDiffuse.mTexture->mId), { 200.f,200.f });
 
 			}
 			else {
@@ -572,8 +604,8 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* 
 			}
 
 			ImGui::Text("specular:");
-			if (lod.mMaterial.mSpecular.mTexture.isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mSpecular.mTexture.mId), { 200.f,200.f });
+			if (lod.mMaterial->mSpecular.mTexture->isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial->mSpecular.mTexture->mId), { 200.f,200.f });
 			}
 			else {
 				ImGui::SameLine();
@@ -581,8 +613,8 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* 
 			}
 
 			ImGui::Text("normal:");
-			if (lod.mMaterial.mNormal.mTexture.isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial.mNormal.mTexture.mId), { 200.f,200.f });
+			if (lod.mMaterial->mNormal.mTexture->isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(lod.mMaterial->mNormal.mTexture->mId), { 200.f,200.f });
 			}
 			else {
 				ImGui::SameLine();

@@ -5,16 +5,14 @@
 
 #include "CameraSystem.h"
 #include "imgui.h"
+#include "SystemManager.h"
 #include "SystemsPriority.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "ecsModule/ComponentsManager.h"
-#include "ecsModule/EntityBase.h"
-#include "ecsModule/EntityManager.h"
-#include "ecsModule/SystemManager.h"
+#include "..\ecss\Registry.h"
 #include "renderModule/Renderer.h"
 #include "renderModule/Utils.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
@@ -74,37 +72,36 @@ void RenderSystem::update(float_t dt) {
 		return;
 	}
 
-	const auto compManager = ECSHandler::componentManagerInstance();
-	const auto entityManager = ECSHandler::entityManagerInstance();
-	auto renderComponents = compManager->getComponentContainer<IsDrawableComponent>();
-	auto playerCamera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
-	auto& playerPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
+	const auto compManager = ECSHandler::registry();
 
-	mRenderData.mProjection = playerCamera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix();
-	mRenderData.mView = playerCamera->getComponent<TransformComponent>()->getViewMatrix();
-	mRenderData.mCameraPos = playerCamera->getComponent<TransformComponent>()->getPos(true);
+	auto& playerCamera = ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+
+	auto& playerPos = compManager->getComponent<TransformComponent>(playerCamera)->getPos(true);
+
+	mRenderData.mProjection = compManager->getComponent<CameraComponent>(playerCamera)->getProjection().getProjectionsMatrix();
+	mRenderData.mView = compManager->getComponent<TransformComponent>(playerCamera)->getViewMatrix();
+	mRenderData.mCameraPos = compManager->getComponent<TransformComponent>(playerCamera)->getPos(true);
 
 	mRenderData.mCamFrustum = FrustumModule::createFrustum(mRenderData.mProjection * mRenderData.mView);
 
-	mRenderData.mDrawableEntities.clear();
-	mRenderData.mDrawableEntities.reserve(renderComponents->size());
-
-	const auto farSqr = playerCamera->getComponent<CameraComponent>()->getProjection().getFar() * playerCamera->getComponent<CameraComponent>()->getProjection().getFar();
-
-	for (const auto& renderComp : *renderComponents) {
-		if (Math::distanceSqr(playerPos, compManager->getComponent<TransformComponent>(renderComp.getOwnerId())->getPos(true)) > farSqr) {
+	const auto farSqr = compManager->getComponent<CameraComponent>(playerCamera)->getProjection().getFar() * compManager->getComponent<CameraComponent>(playerCamera)->getProjection().getFar();
+	/*for (auto [isDrawable, transform] : ecss::Registry::createComponentsSelector<IsDrawableComponent, TransformComponent>()) {
+		if (!&isDrawable || !&transform) {
+			continue;
+		}
+		if (Math::distanceSqr(playerPos, transform.getPos(true)) > farSqr) {
 			continue;
 		}
 
-		mRenderData.mDrawableEntities.emplace_back(renderComp.getOwnerId());
-	}
+		mRenderData.mDrawableEntities.emplace_back(isDrawable.getEntityId());
+	}*/
 
 	for (const auto renderPass : mRenderPasses) {
 		renderPass->render(mRenderer, mRenderData);
 	}
 
-	auto curCamera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
-	CascadeShadows::debugDraw(mRenderData.mCascadedShadowsPassData.shadows->getCacheLightSpaceMatrices(), curCamera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix(), curCamera->getComponent<TransformComponent>()->getViewMatrix());
+	auto curCamera = ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	CascadeShadowComponent::debugDraw(compManager->getComponent<CascadeShadowComponent>(mRenderData.mCascadedShadowsPassData.shadows)->getCacheLightSpaceMatrices(), compManager->getComponent<CameraComponent>(curCamera)->getProjection().getProjectionsMatrix(), compManager->getComponent<TransformComponent>(curCamera)->getViewMatrix());
 
 	{
 		if (ImGui::BeginMainMenuBar()) {

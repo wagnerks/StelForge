@@ -1,18 +1,21 @@
 ﻿#include "GeometryPass.h"
 
 #include "componentsModule/ModelComponent.h"
-#include "ecsModule/EntityManager.h"
 #include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/OutlineComponent.h"
 #include "componentsModule/ShaderComponent.h"
 #include "core/ECSHandler.h"
-#include "ecsModule/SystemManager.h"
+#include "core/ThreadPool.h"
+#include "..\..\ecss\Registry.h"
+#include "logsModule/logger.h"
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/RenderSystem.h"
+#include "systemsModule/SystemManager.h"
 
 using namespace Engine::RenderModule::RenderPasses;
 
@@ -148,37 +151,26 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	renderDataHandle.mGeometryPassData = mData;
 	auto batcher = renderer->getBatcher();
 
-	const auto& drawableEntities = renderDataHandle.mDrawableEntities;
+	auto future = ThreadPool::instance()->addRenderTask([&](std::mutex& poolMutex) {
+		for (auto [isDraw, modelComp, transform] : ECSHandler::registry()->getComponentsArray<const IsDrawableComponent, ModelComponent, const TransformComponent>()) {
+			if (!&isDraw) {
+				continue;
+			}
 
-	auto addToDraw = [batcher, &drawableEntities, this, &renderDataHandle](size_t chunkBegin, size_t chunkEnd) {
-		for (size_t i = chunkBegin; i < chunkEnd; i++) {
-			auto entityId = drawableEntities[i];
-			auto entity = ECSHandler::entityManagerInstance()->getEntity(entityId);
-			if (auto modelComp = entity->getComponent<ModelComponent>()) {
-				auto& transform = entity->getComponent<TransformComponent>()->getTransform();
-				auto& model = modelComp->getModel();
-				for (auto& mesh : model.mMeshHandles) {
-					if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform)) {
+			if (!&modelComp) {
+				continue;
+			}
 
-						mtx.lock();
-						batcher->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform, false);
-						mtx.unlock();
-					}
+			auto& model = modelComp.getModel();
+			for (auto& mesh : model.mMeshHandles) {
+				if (mesh.mBounds && mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
+					batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 				}
 			}
 		}
-	};
-
-	auto size = drawableEntities.size();
-	size_t chunk = 0;
-	size_t growSpeed = 500;
-
-
-	threads.reserve(size / growSpeed);
-	while (chunk < size) {
-		threads.emplace_back(addToDraw, chunk, std::min(chunk + growSpeed, size));
-		chunk += growSpeed;
-	}
+	});
+		
+	
 
 	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
 
@@ -194,35 +186,35 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	shaderGeometryPass->setInt("texture_diffuse1", 0);
 	shaderGeometryPass->setInt("normalMap", 1);
 	shaderGeometryPass->setBool("outline", false);
-	for (auto& thread : threads) {
-		thread.join();
-	}
 
-	threads.clear();
+	
+	
+	
+	auto curCam = ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	future.get();
 
-	batcher->flushAll(true, ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
+	batcher->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(curCam)->getPos());
 
 	auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
 	lightObjectsPass->use();
 	lightObjectsPass->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
 
-	for (auto& lightSource : *ECSHandler::componentManagerInstance()->getComponentContainer<LightSourceComponent>()) {
-		auto entity = ECSHandler::entityManagerInstance()->getEntity(lightSource.getOwnerId());
-		if (auto modelComp = entity->getComponent<ModelComponent>()) {
-			auto& transform = entity->getComponent<TransformComponent>()->getTransform();
-			auto& model = modelComp->getModel();
+	for (auto [lightSource, modelComp, transform] : ECSHandler::registry()->getComponentsArray<LightSourceComponent, ModelComponent, TransformComponent>()) {
+		if (&modelComp) {
+			auto& model = modelComp.getModel();
 			for (auto& mesh : model.mMeshHandles) {
-				if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform)) {
-					batcher->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform, false);
+				if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
+					batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 				}
 			}
 		}
 	}
 
-	batcher->flushAll(true, ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
+	
+	batcher->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
 
-
-	auto& outlineNodes = *ECSHandler::componentManagerInstance()->getComponentContainer<OutlineComponent>();
+	
+	auto outlineNodes = ECSHandler::registry()->getComponentsArray<OutlineComponent>();
 	if (!outlineNodes.empty()) {
 		needClearOutlines = true;
 
@@ -233,21 +225,20 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		g_buffer_outlines->use();
 		g_buffer_outlines->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
 
-		for (auto& outlineEntities : outlineNodes) {
-			auto entityId = outlineEntities.getOwnerId();
-			auto entity = ECSHandler::entityManagerInstance()->getEntity(entityId);
-			if (auto modelComp = entity->getComponent<ModelComponent>()) {
-				auto& transform = entity->getComponent<TransformComponent>()->getTransform();
-				auto& model = modelComp->getModel();
-				for (auto& mesh : model.mMeshHandles) {
-					if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform)) {
-						batcher->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transform, false);
-					}
+		for (auto [outline, modelComp, transform] : ECSHandler::registry()->getComponentsArray<OutlineComponent, ModelComponent, TransformComponent>()) {
+			if (!&modelComp || !&transform) {
+				continue;
+			}
+
+			auto& model = modelComp.getModel();
+			for (auto& mesh : model.mMeshHandles) {
+				if (mesh.mBounds && mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
+					batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 				}
 			}
 		}
-
-		batcher->flushAll(true, ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera()->getComponent<TransformComponent>()->getPos());
+		
+		batcher->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(curCam)->getPos());
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);

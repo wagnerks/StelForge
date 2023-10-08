@@ -1,19 +1,21 @@
 ﻿#include "Model.h"
 
 namespace AssetsModule {
-	Model::Model(MeshNode& model, std::string_view modelPath) {
+	Model::Model(MeshNode model, std::string_view modelPath) {
 		mMeshTree = std::move(model);
 		mModelPath = modelPath;
 		calculateLODs();
+		getAllLODs();
 	}
 
-	std::vector<ModelObj> Model::getAllLODs() {
-		std::vector<ModelObj> res;
-		for (auto lod = 0; lod < mLODs; lod++) {
-			res.emplace_back(toModelObj(lod));
+	std::vector<ModelObj>* Model::getAllLODs() {
+		if (lods.empty()) {
+			for (auto lod = 0; lod < mLODs; lod++) {
+				lods.emplace_back(toModelObj(lod));
+			}
 		}
 
-		return res;
+		return &lods;
 	}
 
 	ModelObj Model::toModelObj(int lod) {
@@ -42,6 +44,11 @@ namespace AssetsModule {
 	}
 
 	void Model::normalizeModel() {
+		/*if (normalized) {
+			return;
+		}*/
+
+		normalized = true;
 		auto normalizeTriangle = [](Mesh& mesh, int a, int b, int c) {
 			const auto& A = mesh.mData.mVertices[a].mPosition;
 			const auto& B = mesh.mData.mVertices[b].mPosition;
@@ -97,6 +104,20 @@ namespace AssetsModule {
 				}
 			}
 		}
+	}
+
+	void Model::bindMeshes() {
+		for (auto node : mMeshTree.getAllNodes()) {
+			for (auto& lods : node->mMeshes) {
+				for (auto& mesh : lods) {
+					mesh.unbindMesh();
+					mesh.bindMesh();
+				}
+			}
+		}
+
+		lods.clear();
+		getAllLODs();
 	}
 
 	void Model::calculateLODs() {

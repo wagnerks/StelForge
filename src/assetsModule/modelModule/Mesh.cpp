@@ -1,6 +1,8 @@
 ﻿#include "Mesh.h"
 
 #include "core/BoundingVolume.h"
+#include "core/Engine.h"
+#include "core/ThreadPool.h"
 #include "renderModule/Renderer.h"
 
 using namespace AssetsModule;
@@ -36,62 +38,65 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept {
 
 Mesh::~Mesh() {
 	unbindMesh();
-	delete mBounds;
 }
 
 void Mesh::bindMesh() {
-	unbindMesh();
-	if (mBinded) {
-		return;
+	if (Engine::UnnamedEngine::isMainThread()) {
+		unbindMesh();
+		mBinded = true;
+
+		glGenVertexArrays(1, &mData.mVao);
+		glGenBuffers(1, &mData.mVbo);
+		glGenBuffers(1, &mData.mEbo);
+
+		glBindVertexArray(mData.mVao);
+		glBindBuffer(GL_ARRAY_BUFFER, mData.mVbo);
+
+		glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizei>(mData.mVertices.size() * sizeof(Vertex)), mData.mVertices.data(), GL_STATIC_DRAW);
+
+		if (!mData.mIndices.empty()) {
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mData.mEbo);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizei>(mData.mIndices.size() * sizeof(unsigned int)), mData.mIndices.data(), GL_STATIC_DRAW);
+		}
+
+		// vertex positions
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), static_cast<void*>(0));
+		// vertex normals
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mNormal)));
+		// vertex texture coords
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mTexCoords)));
+		// vertex tangent
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mTangent)));
+
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mBiTangent)));
+
+		glBindVertexArray(0);
+
+		auto minAABB = glm::vec3(std::numeric_limits<float>::max());
+		auto maxAABB = glm::vec3(std::numeric_limits<float>::min());
+
+		for (auto& vertex : mData.mVertices) {
+			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
+			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
+			minAABB.z = std::min(minAABB.z, vertex.mPosition.z);
+
+			maxAABB.x = std::max(maxAABB.x, vertex.mPosition.x);
+			maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
+			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
+		}
+
+		mBounds = Engine::FrustumModule::AABB(minAABB, maxAABB);
 	}
-	mBinded = true;
-
-	glGenVertexArrays(1, &mData.mVao);
-	glGenBuffers(1, &mData.mVbo);
-	glGenBuffers(1, &mData.mEbo);
-
-	glBindVertexArray(mData.mVao);
-	glBindBuffer(GL_ARRAY_BUFFER, mData.mVbo);
-
-	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizei>(mData.mVertices.size() * sizeof(Vertex)), mData.mVertices.data(), GL_STATIC_DRAW);
-
-	if (!mData.mIndices.empty()) {
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mData.mEbo);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizei>(mData.mIndices.size() * sizeof(unsigned int)), mData.mIndices.data(), GL_STATIC_DRAW);
+	else {
+		Engine::ThreadPool::instance()->addTaskToSynchronization([this]()mutable { //easy crash 
+			bindMesh();
+		});
 	}
-
-	// vertex positions
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), static_cast<void*>(0));
-	// vertex normals
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mNormal)));
-	// vertex texture coords
-	glEnableVertexAttribArray(2);
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mTexCoords)));
-	// vertex tangent
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(3, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mTangent)));
-
-	glEnableVertexAttribArray(4);
-	glVertexAttribPointer(4, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mBiTangent)));
-
-	glBindVertexArray(0);
-
-	auto minAABB = glm::vec3(std::numeric_limits<float>::max());
-	auto maxAABB = glm::vec3(std::numeric_limits<float>::min());
-
-	for (auto& vertex : mData.mVertices) {
-		minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
-		minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
-		minAABB.z = std::min(minAABB.z, vertex.mPosition.z);
-
-		maxAABB.x = std::max(maxAABB.x, vertex.mPosition.x);
-		maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
-		maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
-	}
-
-	mBounds = new Engine::FrustumModule::AABB(minAABB, maxAABB);
 }
 
 void Mesh::unbindMesh() {
@@ -100,9 +105,18 @@ void Mesh::unbindMesh() {
 	}
 	mBinded = false;
 
-	glDeleteVertexArrays(1, &mData.mVao);
-	glDeleteBuffers(1, &mData.mVbo);
-	glDeleteBuffers(1, &mData.mEbo);
+	if (Engine::UnnamedEngine::isMainThread()) {
+		glDeleteVertexArrays(1, &mData.mVao);
+		glDeleteBuffers(1, &mData.mVbo);
+		glDeleteBuffers(1, &mData.mEbo);
+	}
+	else {
+		Engine::ThreadPool::instance()->addTaskToSynchronization([vao = mData.mVao, vbo = mData.mVbo, ebo = mData.mEbo]()mutable {
+			glDeleteVertexArrays(1, &vao);
+			glDeleteBuffers(1, &vbo);
+			glDeleteBuffers(1, &ebo);
+		});
+	}
 
 	mData.mVao = std::numeric_limits<unsigned>::max();
 	mData.mVbo = std::numeric_limits<unsigned>::max();

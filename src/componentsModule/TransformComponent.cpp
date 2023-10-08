@@ -5,23 +5,13 @@
 #include <ext/quaternion_trigonometric.hpp>
 #include <gtx/quaternion.hpp>
 
+#include "TreeComponent.h"
+#include "core/ThreadPool.h"
 #include "mathModule/MathUtils.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "propertiesModule/TypeName.h"
 
 using namespace Engine::ComponentsModule;
-
-void TransformComponent::addChildTransform(TransformComponent* comp) {
-	if (std::ranges::find(childTransforms, comp) != childTransforms.end()) {
-		return;
-	}
-
-	childTransforms.push_back(comp);
-}
-
-void TransformComponent::removeChildTransform(TransformComponent* comp) {
-	std::erase(childTransforms, comp);
-}
 
 const glm::vec3& TransformComponent::getPos(bool global) const {
 	if (global) {
@@ -130,22 +120,31 @@ void TransformComponent::reloadTransform() {
 		return;
 	}
 	dirty = false;
-
 	transform = getLocalTransform();
 
-	if (mParentTransform) {
-		mParentTransform->reloadTransform();
-		transform = mParentTransform->getTransform() * transform;
+	auto tree = ECSHandler::registry()->getComponent<TreeComponent>(getEntityId());
+
+	if (tree) {
+		if (auto parentTransform = ECSHandler::registry()->getComponent<TransformComponent>(tree->getParent())) {
+			parentTransform->reloadTransform();
+			transform = parentTransform->getTransform() * transform;
+		}
+
 	}
 
 	view = glm::inverse(transform);
 	globalScale = calculateGlobalScale();
 	globalPos = glm::vec3(transform[3]);
 
-	for (const auto childTransform : childTransforms) {
-		childTransform->markDirty();
-		childTransform->reloadTransform();
+	if (tree) {
+		for (const auto childTransform : tree->getChildren()) {
+			if (auto transformPtr = ECSHandler::registry()->getComponent<TransformComponent>(childTransform)) {
+				transformPtr->markDirty();
+				transformPtr->reloadTransform();
+			}
+		}
 	}
+	
 }
 
 glm::mat4 TransformComponent::getLocalTransform() const {
@@ -209,13 +208,8 @@ void TransformComponent::deserialize(const Json::Value& data) {
 	}
 }
 
-void TransformComponent::setParentTransform(TransformComponent* parentTransform) {
-	if (parentTransform == mParentTransform) {
-		return;
-	}
-
-	markDirty();
-	mParentTransform = parentTransform;
+TransformComponent::~TransformComponent() {
+	
 }
 
 glm::vec3 TransformComponent::calculateGlobalScale() {

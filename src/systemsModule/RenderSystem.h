@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "core/BoundingVolume.h"
-#include "ecsModule/SystemBase.h"
+#include "SystemBase.h"
 #include "renderModule/RenderPass.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/GeometryPass.h"
@@ -30,7 +30,6 @@ namespace Engine::SystemsModule {
 	};
 
 	struct RenderDataHandle {
-		std::vector<size_t> mDrawableEntities;
 		FrustumModule::Frustum mCamFrustum;
 
 		glm::mat4 mProjection = {};
@@ -45,7 +44,7 @@ namespace Engine::SystemsModule {
 		RenderMode mRenderType = RenderMode::DEFAULT;
 	};
 
-	class RenderSystem : public ecsModule::System<RenderSystem> {
+	class RenderSystem : public ecss::System<RenderSystem> {
 	public:
 		void setRenderType(RenderMode type);
 		RenderSystem(RenderModule::Renderer* renderer);

@@ -1,17 +1,19 @@
 ﻿#include "CameraSystem.h"
 
+#include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
-#include "ecsModule/EntityManager.h"
+#include "..\ecss\Registry.h"
 
 namespace Engine::SystemsModule {
 	CameraSystem::CameraSystem() {
 		auto aspect = static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT);
-		mDefaultCamera = ECSHandler::entityManagerInstance()->createEntity<Camera>(45.f, aspect, 0.1f, 5000.f);
-		auto transform = mDefaultCamera->addComponent<TransformComponent>();
+		mDefaultCamera = ECSHandler::registry()->takeEntity();
+
+		auto transform = ECSHandler::registry()->addComponent<TransformComponent>(mDefaultCamera);
 		transform->setPos({ 28.f, 218.f, 265.f });
 		transform->setRotate({ -30.5f, 0.8f, 0.0f });
-
+		ECSHandler::registry()->addComponent<CameraComponent>(mDefaultCamera, 45.f, aspect, 0.1f, 5000.f);
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
 			if (type == Engine::CoreModule::InputEventType::PRESS) {
 				isPressed[key] = true;
@@ -45,11 +47,11 @@ namespace Engine::SystemsModule {
 		}
 	}
 
-	void CameraSystem::setCurrentCamera(Camera* camera) {
+	void CameraSystem::setCurrentCamera(const ecss::EntityHandle& camera) {
 		mCurrentCamera = camera;
 	}
 
-	Camera* CameraSystem::getCurrentCamera() const {
+	const ecss::EntityHandle& CameraSystem::getCurrentCamera() const {
 		if (mCurrentCamera) {
 			return mCurrentCamera;
 		}
@@ -57,14 +59,14 @@ namespace Engine::SystemsModule {
 		return mDefaultCamera;
 	}
 
-	void CameraSystem::processKeyboard(Camera* camera, Camera_Movement direction, float deltaTime) {
+	void CameraSystem::processKeyboard(const ecss::EntityHandle& camera, Camera_Movement direction, float deltaTime) {
 		if (!camera) {
 			return;
 		}
 
-		auto tc = camera->getComponent<TransformComponent>();
+		auto tc = ECSHandler::registry()->getComponent<TransformComponent>(camera);
 
-		const float velocity = camera->MovementSpeed * deltaTime;
+		const float velocity = MovementSpeed * deltaTime;
 
 		glm::vec3 dif = {};
 		if (direction == FORWARD) {
@@ -95,5 +97,35 @@ namespace Engine::SystemsModule {
 		tc->setPos(tc->getPos() + dif);
 		tc->reloadTransform();
 	}
-}
 
+
+	void CameraSystem::ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch) {
+		if (!processMouse) {
+			return;
+		}
+		xoffset *= MouseSensitivity;
+		yoffset *= MouseSensitivity;
+		auto tc = ECSHandler::registry()->getComponent<TransformComponent>(getCurrentCamera());
+		if (!tc) {
+			return;
+		}
+		auto Pitch = tc->getRotate().x;
+		auto Yaw = tc->getRotate().y;
+		Yaw -= xoffset;
+
+		Pitch += yoffset;
+
+		if (constrainPitch) {
+			Pitch = std::min(std::max(Pitch, -90.f), 90.f);
+		}
+
+		tc->setRotate({ Pitch, Yaw, 0.f });
+		tc->reloadTransform();
+	}
+	void CameraSystem::ProcessMouseScroll(float yoffset) {
+		auto fov = ECSHandler::registry()->getComponent<CameraComponent>(getCurrentCamera())->getProjection().getFOV();
+		fov -= yoffset;
+
+		ECSHandler::registry()->getComponent<CameraComponent>(getCurrentCamera())->getProjection().setFOV(std::min(std::max(1.f, fov), 90.f));
+	}
+}

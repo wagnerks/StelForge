@@ -4,24 +4,41 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
-#include "ecsModule/EntityManager.h"
 #include "logsModule/logger.h"
 #include "assetsModule/TextureHandler.h"
+#include "core/ThreadPool.h"
 
 using namespace AssetsModule;
 
 AssetsModule::Model* ModelLoader::load(const std::string& path) {
-	auto asset = mModelsHolder->getAsset<Model>(path);
-
+	auto asset = AssetsManager::instance()->getAsset<Model>(path);
 	if (asset) {
 		return asset;
 	}
 
-	auto meshNode = loadModel(path);
-	auto model = mModelsHolder->createAsset<Model>(path, meshNode, path);
-	model->normalizeModel();
+	mtx.lock();
+	auto searchLock = loading.find(path);
+	if (searchLock != loading.end()) {
+		mtx.unlock();
+		auto mutex = std::unique_lock(mtx);
+		searchLock->second.wait(mutex);
+		return AssetsManager::instance()->getAsset<Model>(path);
+	}
 
-	return model;
+	loading[path];
+	mtx.unlock();
+
+	auto model = loadModel(path);
+	mtx.lock();
+	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(model), path);
+
+	loading[path].notify_all();
+	loading.erase(path);
+
+	mtx.unlock();
+	asset->normalizeModel();
+
+	return asset;
 }
 
 void ModelLoader::releaseModel(const std::string& path) {
@@ -36,20 +53,13 @@ void ModelLoader::releaseModel(const std::string& path) {
 	//models.erase(it);
 }
 
-AssetsManager* ModelLoader::getModelsHolder() const {
-	return mModelsHolder;
-}
 
 ModelLoader::~ModelLoader() {
-	delete mModelsHolder;
 }
 
-void ModelLoader::init() {
-	mModelsHolder = new AssetsManager(new Engine::MemoryModule::MemoryManager(ecsModule::ECS_GLOBAL_MEMORY_CAPACITY));
-}
+void ModelLoader::init() {}
 
 MeshNode ModelLoader::loadModel(const std::string& path) {
-	TextureLoader loader;
 	Assimp::Importer import;
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
 
@@ -61,12 +71,12 @@ MeshNode ModelLoader::loadModel(const std::string& path) {
 	auto directory = path.substr(0, path.find_last_of('/'));
 
 	MeshNode rawModel;
-	processNode(scene->mRootNode, scene, &loader, directory, rawModel);
+	processNode(scene->mRootNode, scene, TextureHandler::instance(), directory, rawModel);
 
-	return rawModel;
+	return std::move(rawModel);
 }
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureLoader* loader, const std::string& directory, MeshNode& rawModel) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureHandler* loader, const std::string& directory, MeshNode& rawModel) {
 	auto parent = node->mParent;
 	while (parent) {
 		node->mTransformation *= parent->mTransformation;
@@ -86,7 +96,7 @@ void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureLoader*
 	}
 }
 
-void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureLoader* loader, const std::string& directory, AssetsModule::MeshNode& rawModel) {
+void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel) {
 	auto lodLevel = 0;
 	auto i = parent->mName.length - 4;
 	for (; i > 0; i--) {
@@ -107,7 +117,7 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 	rawModel.mMeshes[lodLevel].emplace_back();
 
 	auto& modelMesh = rawModel.mMeshes[lodLevel].back();
-	modelMesh = AssetsModule::Mesh();
+	//modelMesh = AssetsModule::Mesh();
 	modelMesh.mData.mVertices.resize(mesh->mNumVertices);
 
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
@@ -187,7 +197,7 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 	modelMesh.bindMesh();
 }
 
-std::vector<AssetsModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureLoader* loader, const std::string& directory) {
+std::vector<AssetsModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureHandler* loader, const std::string& directory) {
 	std::vector<AssetsModule::MaterialTexture> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;

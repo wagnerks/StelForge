@@ -7,8 +7,8 @@
 #include "imgui.h"
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/ModelComponent.h"
-#include "ecsModule/EntityManager.h"
-#include "entitiesModule/Object.h"
+#include "core/ECSHandler.h"
+#include "..\..\ecss\Registry.h"
 #include "renderModule/CascadeShadows.h"
 #include "renderModule/SceneGridFloor.h"
 
@@ -37,9 +37,8 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 	int offsetSum = 0;
 	for (size_t i = 0; i < renderDataHandle.mPointPassData.shadowEntities.size(); i++) {
-		auto entity = ECSHandler::entityManagerInstance()->getEntity(renderDataHandle.mPointPassData.shadowEntities[i]);
-		auto tc = entity->getComponent<TransformComponent>();
-		auto lightComp = entity->getComponent<LightSourceComponent>();
+		auto tc = ECSHandler::registry()->getComponent<TransformComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
+		auto lightComp = ECSHandler::registry()->getComponent<LightSourceComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
 
 		shaderLightingPass->setVec3(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
 		shaderLightingPass->setVec2(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), lightComp->getTexelSize());

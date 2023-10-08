@@ -5,12 +5,12 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
+#include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
-#include "ecsModule/EntityManager.h"
-#include "ecsModule/SystemManager.h"
+#include "..\..\ecss\Registry.h"
 
 #include "logsModule/logger.h"
 #include "systemsModule/CameraSystem.h"
@@ -81,8 +81,8 @@ namespace Engine::RenderModule::RenderPasses {
 		renderDataHandle.mPointPassData.shadowEntities.clear();
 
 		offsets.clear();
-		auto& lightSources = *ECSHandler::componentManagerInstance()->getComponentContainer<LightSourceComponent>();
-		for (auto& lightSource : lightSources) {
+	
+		for (auto [lightSource] : ECSHandler::registry()->getComponentsArray<LightSourceComponent>()) {
 			//todo some dirty logic
 			switch (lightSource.getType()) {
 			case ComponentsModule::eLightType::DIRECTIONAL: {
@@ -95,10 +95,10 @@ namespace Engine::RenderModule::RenderPasses {
 				break;
 			}
 			case ComponentsModule::eLightType::POINT: {
-				auto owner = ECSHandler::entityManagerInstance()->getEntity(lightSource.getOwnerId());
-				renderDataHandle.mPointPassData.shadowEntities.push_back(owner->getEntityID());
-				offsets.emplace_back(owner->getEntityID(), lightSource.getTypeOffset(lightSource.getType()));
-				fillMatrix(owner->getComponent<TransformComponent>()->getPos(true), lightSource.mNear, lightSource.mRadius);
+				renderDataHandle.mPointPassData.shadowEntities.push_back(lightSource.getEntityId());
+				offsets.emplace_back(lightSource.getEntityId(), lightSource.getTypeOffset(lightSource.getType()));
+				
+				fillMatrix(ECSHandler::registry()->getComponent<TransformComponent>(lightSource.getEntityId())->getPos(true), lightSource.mNear, lightSource.mRadius);
 				break;
 			}
 			case ComponentsModule::eLightType::PERSPECTIVE: {
@@ -132,26 +132,26 @@ namespace Engine::RenderModule::RenderPasses {
 			simpleDepthShader->use();
 			simpleDepthShader->setInt("offset", offsetSum);
 
-			for (auto entityId : renderDataHandle.mDrawableEntities) {
-				auto transform = ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<TransformComponent>();
-				auto modelComp = ECSHandler::entityManagerInstance()->getEntity(entityId)->getComponent<ModelComponent>();
-				if (transform && modelComp) {
-					const auto& transformMatrix = transform->getTransform();
-					for (auto& mesh : modelComp->getModelLowestDetails().mMeshHandles) {
-						for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
-							if (mesh.mBounds->isOnFrustum(frustums[i], transformMatrix)) {
-								batcher->addToDrawList(mesh.mData.mVao, mesh.mData.mVertices.size(), mesh.mData.mIndices.size(), mesh.mMaterial, transformMatrix, false);
-								break;
-							}
-						}
+			for (auto [trans, mod, draw] : ECSHandler::registry()->getComponentsArray<TransformComponent, ModelComponent, IsDrawableComponent>()) {
+				if (!&trans || !&mod || !&draw) {
+					continue;
+				}
 
+				const auto& transformMatrix = trans.getTransform();
+				for (auto& mesh : mod.getModelLowestDetails().mMeshHandles) {
+					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
+						if (mesh.mBounds->isOnFrustum(frustums[i], transformMatrix)) {
+							batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, false);
+							break;
+						}
 					}
+
 				}
 			}
 
 			offsetSum += offset.second;
-
-			renderer->getBatcher()->flushAll(true, ECSHandler::entityManagerInstance()->getEntity(offset.first)->getComponent<TransformComponent>()->getPos(true));
+			
+			renderer->getBatcher()->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(offset.first)->getPos(true));
 		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);

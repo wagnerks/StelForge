@@ -2,9 +2,9 @@
 #include "mat4x4.hpp"
 #include <vector>
 
+#include "assetsModule/shaderModule/ShaderBase.h"
 #include "core/BoundingVolume.h"
 #include "core/Projection.h"
-#include "ecsModule/ComponentBase.h"
 #include "renderModule/CascadeShadows.h"
 
 namespace Engine::ComponentsModule {
@@ -18,7 +18,7 @@ namespace Engine::ComponentsModule {
 		glm::vec2 texelSize = {};
 	};
 
-	class CascadeShadowComponent : public ecsModule::Component<CascadeShadowComponent>, PropertiesModule::Serializable {
+	class CascadeShadowComponent : public ecss::Component<CascadeShadowComponent>, PropertiesModule::Serializable {
 	public:
 		CascadeShadowComponent() = default;
 
@@ -42,7 +42,17 @@ namespace Engine::ComponentsModule {
 		void serialize(Json::Value& data) override;
 		void deserialize(const Json::Value& data) override;
 		float shadowIntensity = 1.f;
+
+		void cacheMatrices();
+
+		static const std::vector<glm::mat4>& getCacheLightSpaceMatrices();
+		static void debugDraw(const std::vector<glm::mat4>& lightSpaceMatrices, const glm::mat4& cameraProjection, const glm::mat4& cameraView);
+		static void clearCacheMatrices();
 	private:
+		static void drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader);
+		static inline std::vector<glm::mat4> mLightMatricesCache;
+
+
 		std::vector<glm::mat4> mLightSpaceMatrices;
 		bool mDirty = true;
 	};

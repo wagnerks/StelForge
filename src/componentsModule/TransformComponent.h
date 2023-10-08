@@ -5,17 +5,15 @@
 
 #include "matrix.hpp"
 
-#include "ecsModule/ComponentBase.h"
+#include "ecss/base/ComponentBase.h"
 #include "propertiesModule/Serializable.h"
 
 
 namespace Engine::ComponentsModule {
 
-	class TransformComponent : public ecsModule::Component<TransformComponent>, public PropertiesModule::Serializable {
+	class TransformComponent : public ecss::Component<TransformComponent>, public PropertiesModule::Serializable {
 	public:
-		void setParentTransform(TransformComponent* parentTransform);
-		void addChildTransform(TransformComponent* comp);
-		void removeChildTransform(TransformComponent* comp);
+		~TransformComponent() override;
 
 		const glm::vec3& getPos(bool global = false) const;
 		void setX(float x);
@@ -58,9 +56,6 @@ namespace Engine::ComponentsModule {
 		void serialize(Json::Value& data) override;
 	private:
 		glm::vec3 calculateGlobalScale();
-		TransformComponent* mParentTransform = nullptr;
-
-		std::vector<TransformComponent*> childTransforms;
 
 		bool dirty = true;
 		glm::mat4 transform = glm::mat4(1.0f);

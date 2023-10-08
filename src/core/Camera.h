@@ -5,26 +5,5 @@
 
 #include "InputHandler.h"
 #include "Projection.h"
-#include "ecsModule/EntityBase.h"
 
 
-enum Camera_Movement {
-	FORWARD,
-	BACKWARD,
-	LEFT,
-	RIGHT,
-	TOP,
-	BOTTOM
-};
-
-class Camera : public ecsModule::Entity<Camera> {
-public:
-	Camera(size_t entID, float FOV, float aspect, float zNear, float zFar, glm::vec3 position = glm::vec3(0.0f, 1.0f, 0.0f), float yaw = 0.f);
-
-	float MovementSpeed = 10.f;
-	float MouseSensitivity = 0.1f;
-
-	bool processMouse = false;
-	void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true);
-	void ProcessMouseScroll(float yoffset);
-};

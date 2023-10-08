@@ -7,6 +7,7 @@
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "logsModule/logger.h"
 #include "systemsModule/RenderSystem.h"
 
 using namespace Engine::RenderModule::RenderPasses;

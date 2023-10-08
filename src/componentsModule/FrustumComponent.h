@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include "core/BoundingVolume.h"
-#include "ecsModule/ComponentBase.h"
+#include "core/Projection.h"
 
 namespace Engine::ComponentsModule {
-	class FrustumComponent : public ecsModule::Component<FrustumComponent> {
+	class FrustumComponent : public ecss::Component<FrustumComponent> {
 	public:
 		FrustumComponent();
 		void updateFrustum(const ProjectionModule::Projection& projection, const glm::mat4& view);

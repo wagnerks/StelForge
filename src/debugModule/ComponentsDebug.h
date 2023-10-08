@@ -4,8 +4,8 @@
 #include "componentsModule/ShaderComponent.h"
 
 
-namespace ecsModule {
-	class EntityInterface;
+namespace ecss {
+	class EntityHandle;
 }
 
 namespace Engine {
@@ -22,7 +22,7 @@ namespace Engine {
 namespace Engine::Debug {
 	class ComponentsDebug {
 	public:
-		static void drawTree(ecsModule::EntityInterface* entity, size_t& selectedID);
+		static void drawTree(const ecss::EntityHandle& entity, ecss::EntityId& selectedID);
 		static void entitiesDebug();
 		static void componentEditorInternal(ComponentsModule::TransformComponent* component);
 		static void componentEditorInternal(ComponentsModule::LightSourceComponent* component);
@@ -30,7 +30,7 @@ namespace Engine::Debug {
 		static void componentEditorInternal(ComponentsModule::ModelComponent* component);
 		static void componentEditorInternal(ComponentsModule::ShaderComponent* component);
 
-		static inline size_t mSelectedId = std::numeric_limits<size_t>::max();
+		static inline ecss::EntityId mSelectedId = ecss::INVALID_ID;
 	};
 
 }

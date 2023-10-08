@@ -6,11 +6,12 @@
 
 #include "Core.h"
 #include "InputHandler.h"
-#include "ecsModule/SystemManager.h"
+#include "ThreadPool.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 
 namespace Engine {
 	void UnnamedEngine::init() {
+		mMainThreadID = std::this_thread::get_id();
 		mMainWindow = RenderModule::Renderer::initGLFW();
 		if (!mMainWindow) {
 			return;
@@ -44,8 +45,8 @@ namespace Engine {
 		updateDelta();
 		mCore->update(mDeltaTime);
 
-		if (mDeltaTime < 1.f / 60.f) {
-			std::this_thread::sleep_for(std::chrono::milliseconds((int)((1 / 60.f - mDeltaTime) * 1000.f)));
+		if (mDeltaTime < 1.f / maxFPS) {
+			std::this_thread::sleep_for(std::chrono::milliseconds((int)((1.f / maxFPS - mDeltaTime) * 1000.f)));
 		}
 	}
 
@@ -81,6 +82,10 @@ namespace Engine {
 
 	GLFWwindow* UnnamedEngine::getMainWindow() const {
 		return mMainWindow;
+	}
+
+	bool UnnamedEngine::isMainThread() {
+		return mMainThreadID == std::this_thread::get_id();
 	}
 
 	UnnamedEngine::~UnnamedEngine() {

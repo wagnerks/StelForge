@@ -2,16 +2,15 @@
 
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
-#include "ecsModule/ComponentsManager.h"
-#include "ecsModule/EntityBase.h"
-#include "ecsModule/EntityManager.h"
+#include "..\ecss\Registry.h"
 
 using namespace Engine::SystemsModule;
 
 void TransformSystem::update(float_t dt) {
-	auto transforms = ECSHandler::componentManagerInstance()->getComponentContainer<TransformComponent>();
-
-	for (auto& transform : *transforms) {
+	for (auto [transform] : ECSHandler::registry()->getComponentsArray<TransformComponent>()) {
+		if(!&transform) {
+			continue;
+		}
 		transform.reloadTransform();
 	}
 }

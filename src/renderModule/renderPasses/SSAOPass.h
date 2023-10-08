@@ -9,8 +9,8 @@ namespace Engine::RenderModule::RenderPasses {
 	public:
 		struct Data {
 			std::vector<glm::vec3> mSsaoKernel;
-			unsigned int mNoiseTexture;
-			unsigned int mSsaoFbo;
+			unsigned int mNoiseTexture = 0;
+			unsigned int mSsaoFbo = 0;
 			unsigned int mSsaoBlurFbo = 0;
 			unsigned int mSsaoColorBuffer = 0;
 			unsigned int mSsaoColorBufferBlur = 0;

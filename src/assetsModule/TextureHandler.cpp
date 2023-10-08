@@ -3,10 +3,17 @@
 #include <stb_image.h>
 #include <string>
 
+#include "AssetsManager.h"
+#include "core/Engine.h"
+#include "core/ThreadPool.h"
 #include "glad/glad.h"
 #include "logsModule/logger.h"
 
 using namespace AssetsModule;
+
+bool Texture::isValid() const {
+	return this != nullptr && mId != std::numeric_limits<uint16_t>::max();
+}
 
 void TextureHandler::bindTexture(unsigned slot, unsigned type, unsigned id) {
 	if (mBindedTextures[slot] == id) {
@@ -17,23 +24,27 @@ void TextureHandler::bindTexture(unsigned slot, unsigned type, unsigned id) {
 	glBindTexture(type, id);
 }
 
-Texture TextureLoader::loadTexture(const std::string& path, bool flip) {
-	if (&TextureHandler::instance()->mLoader == this) {
-		auto it = mLoadedTex.find(path);
-		if (it != mLoadedTex.end()) {
-			return it->second;
-		}
-		stbi_set_flip_vertically_on_load(flip);
-		unsigned texID;
+Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
+	auto texture = AssetsManager::instance()->getAsset<Texture>(path);
+	if (texture) {
+		return texture;
+	}
 
-		int texWidth, texHeight, nrChannels;
+	stbi_set_flip_vertically_on_load(flip);
 
-		auto data = stbi_load(path.data(), &texWidth, &texHeight, &nrChannels, 4);
-		if (!data) {
-			Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
-			stbi_image_free(data);
-			return TextureHandler::instance()->mDefaultTex;
-		}
+	int texWidth, texHeight, nrChannels;
+	auto data = stbi_load(path.data(), &texWidth, &texHeight, &nrChannels, 4);
+	if (!data) {
+		Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
+		stbi_image_free(data);
+		return &mDefaultTex;
+	}
+
+	unsigned texID = 0;
+
+	texture = AssetsManager::instance()->createAsset<Texture>(path);
+
+	if (Engine::UnnamedEngine::isMainThread()) {
 		glGenTextures(1, &texID);
 
 		TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texID);
@@ -46,85 +57,79 @@ Texture TextureLoader::loadTexture(const std::string& path, bool flip) {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
 		stbi_image_free(data);
-
-		Texture tex = { texID, path, eTextureType::DEFAULT };
-		mLoadedTex[path] = tex;
-		return tex;
 	}
+	else {
+		Engine::ThreadPool::instance()->addTaskToSynchronization([id = texture->assetId, data, texWidth, texHeight]()mutable {
+			unsigned texID;
 
-	auto it = mLoadedTex.find(path);
-	if (it != mLoadedTex.end()) {
-		return it->second;
-	}
-	auto id = TextureHandler::instance()->mLoader.loadTexture(path, flip);
-	mLoadedTex[path] = id;
-	return id;
-}
+			glGenTextures(1, &texID);
 
-Texture TextureLoader::loadCubemapTexture(const std::string& path, bool flip) {
-	if (&TextureHandler::instance()->mLoader == this) {
-		auto it = mLoadedTex.find(path);
-		if (it != mLoadedTex.end()) {
-			return it->second;
-		}
+			TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texID);
 
-		stbi_set_flip_vertically_on_load(flip);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		unsigned int textureID;
-		glGenTextures(1, &textureID);
-		TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, textureID);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-		std::vector<std::string> faces{
-			path + "right.jpg",
-				path + "left.jpg",
-				path + "top.jpg",
-				path + "bottom.jpg",
-				path + "front.jpg",
-				path + "back.jpg"
-		};
-
-		int width, height, nrChannels;
-		for (unsigned int i = 0; i < faces.size(); i++) {
-			auto data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
-			if (!data) {
-				Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
-				stbi_image_free(data);
-				glDeleteTextures(1, &textureID);
-				return {};
-			}
-			glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 			stbi_image_free(data);
-		}
 
-		Texture tex = { textureID, path, eTextureType::CUBEMAP };
-		mLoadedTex[path] = tex;
-		return tex;
+			AssetsManager::instance()->getAsset<Texture>(id)->mId = texID;
+		});
 	}
 
-	auto it = mLoadedTex.find(path);
-	if (it != mLoadedTex.end()) {
-		return it->second;
-	}
-	auto id = TextureHandler::instance()->mLoader.loadCubemapTexture(path, flip);
-	mLoadedTex[path] = id;
-	return id;
+	texture->mId = texID;
+	texture->mPath = path;
+	texture->mType = eTextureType::DEFAULT;
+	return texture;
 }
 
-Texture TextureLoader::createEmpty2DTexture(const std::string& id, int w, int h, int format) {
+Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) {
+	auto texture = AssetsManager::instance()->getAsset<Texture>(path);
+	if (texture) {
+		return texture;
+	}
+
+	stbi_set_flip_vertically_on_load(flip);
+
 	unsigned int textureID;
 	glGenTextures(1, &textureID);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, textureID);
+	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, textureID);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, nullptr);
+	std::vector<std::string> faces{
+		path + "right.jpg",
+			path + "left.jpg",
+			path + "top.jpg",
+			path + "bottom.jpg",
+			path + "front.jpg",
+			path + "back.jpg"
+	};
 
-	return { textureID, "", eTextureType::DEFAULT };
+	int width, height, nrChannels;
+	for (unsigned int i = 0; i < faces.size(); i++) {
+		auto data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+		if (!data) {
+			Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
+			stbi_image_free(data);
+			glDeleteTextures(1, &textureID);
+			return {};
+		}
+		glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+		stbi_image_free(data);
+	}
+
+	texture = AssetsManager::instance()->createAsset<Texture>(path);
+
+	texture->mId = textureID;
+	texture->mPath = path;
+	texture->mType = eTextureType::CUBEMAP;
+
+	return texture;
 }

@@ -3,7 +3,6 @@
 #include <vector>
 #include <json/value.h>
 
-#include "ecsModule/ComponentBase.h"
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/modelModule/Model.h"
 #include "propertiesModule/Serializable.h"
@@ -26,7 +25,7 @@ namespace Engine::ComponentsModule {
 		std::vector<float> mLodLevelValues;
 	};
 
-	class ModelComponent : public ecsModule::Component<ModelComponent>, public PropertiesModule::Serializable {
+	class ModelComponent : public ecss::Component<ModelComponent>, public PropertiesModule::Serializable {
 	public:
 		ModelComponent();
 		void init(AssetsModule::Model* model) {
@@ -36,20 +35,18 @@ namespace Engine::ComponentsModule {
 
 		const AssetsModule::ModelObj& getModel();
 		AssetsModule::ModelObj& getModel(size_t LOD);
-		const AssetsModule::ModelObj& getModelLowestDetails();
+		const AssetsModule::ModelObj& getModelLowestDetails() const;
 
-		void setModel(std::vector<AssetsModule::ModelObj> data);
+		void setModel(std::vector<AssetsModule::ModelObj>* data);
 		LODData mLOD;
 
 		void serialize(Json::Value& data) override;
 		void deserialize(const Json::Value& data) override;
 		std::string mPath = "";
 	private:
-		void addMeshData(std::vector<AssetsModule::ModelObj> meshData);
+		void addMeshData(std::vector<AssetsModule::ModelObj>* meshData);
 
-		size_t modelId = ecsModule::INVALID_ID;
-		std::vector<AssetsModule::ModelObj> mModel;
-
+		std::vector<AssetsModule::ModelObj>* mModel = nullptr;
 	};
 }
 

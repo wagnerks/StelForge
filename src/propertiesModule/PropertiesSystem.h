@@ -1,47 +1,49 @@
 #pragma once
+#include <mutex>
 #include <json/value.h>
 
 #include "TypeName.h"
+#include "core/ECSHandler.h"
+#include "ecss/base/EntityHandle.h"
 
 namespace Engine::PropertiesModule {
 	class PropertiesSystem {
 	public:
-		//ecsModule::EntityInterface* createEntity(Json::Value properties);
+		//ecss::EntityInterface* takeEntity(Json::Value properties);
+		static ecss::EntityHandle loadScene(std::string_view path);
 
-		static ecsModule::EntityInterface* loadScene(std::string_view path);
+		static void applyProperties(const ecss::EntityHandle& entity, const Json::Value& properties);
 
-		static void applyProperties(ecsModule::EntityInterface* entity, const Json::Value& properties);
+		static void fillTree(const ecss::EntityHandle& entity, const Json::Value& properties);
 
-		static void fillTree(ecsModule::EntityInterface* entity, const Json::Value& properties);
-
-		static Json::Value serializeEntity(ecsModule::EntityInterface* entity);
-
-		template<class T>
-		static void deserializeProperty(ecsModule::EntityInterface* entity, const Json::Value& properties);
+		static Json::Value serializeEntity(const ecss::EntityHandle& entity);
 
 		template<class T>
-		static void serializeProperty(ecsModule::EntityInterface* entity, Json::Value& properties);
+		static void deserializeProperty(const ecss::EntityHandle& entity, const Json::Value& properties);
+
+		template<class T>
+		static void serializeProperty(const ecss::EntityHandle& entity, Json::Value& properties);
 	private:
 	};
 
 	template <class T>
-	void PropertiesSystem::deserializeProperty(ecsModule::EntityInterface* entity, const Json::Value& properties) {
+	void PropertiesSystem::deserializeProperty(const ecss::EntityHandle& entity, const Json::Value& properties) {
 		if (!entity) {
 			return;
 		}
 		auto name = TypeName<T>::name().data();
 		if (properties.isMember(name)) {
-			entity->addComponent<T>()->deserialize(properties[name]);
+			ECSHandler::registry()->addComponent<T>(entity)->deserialize(properties[name]);
 		}
 	}
 
 	template <class T>
-	void PropertiesSystem::serializeProperty(ecsModule::EntityInterface* entity, Json::Value& properties) {
+	void PropertiesSystem::serializeProperty(const ecss::EntityHandle& entity, Json::Value& properties) {
 		if (!entity) {
 			return;
 		}
 
-		if (auto component = entity->getComponent<T>()) {
+		if (auto component = ECSHandler::registry()->getComponent<T>(entity)) {
 			component->serialize(properties[TypeName<T>::name().data()]);
 		}
 

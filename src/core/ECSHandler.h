@@ -1,29 +1,18 @@
 ﻿#pragma once
 #include "Singleton.h"
 
-namespace Engine {
-	namespace MemoryModule {
-		class MemoryManager;
-	}
-}
-
-namespace ecsModule {
-	class EntityComponentSystem;
-	class ComponentManager;
-	class EntityManager;
+namespace ecss {
+	class Registry;
 	class SystemManager;
 }
 
 class ECSHandler : public Engine::Singleton<ECSHandler> {
 public:
-	ECSHandler();
-	static ecsModule::SystemManager* systemManagerInstance();
-	static ecsModule::EntityManager* entityManagerInstance();
-	static ecsModule::ComponentManager* componentManagerInstance();
+	ECSHandler();;
+	static ecss::SystemManager* systemManager();
+	static ecss::Registry* registry();
 	void initSystems();
-
-	~ECSHandler() override;
 private:
-	ecsModule::EntityComponentSystem* ECS = nullptr;
-	Engine::MemoryModule::MemoryManager* ECSMemoryManager = nullptr;
+	ecss::SystemManager* mSystemManager = nullptr;
+	ecss::Registry* mRegistry = nullptr;
 };

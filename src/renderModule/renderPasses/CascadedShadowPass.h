@@ -6,10 +6,10 @@
 #include <vector>
 
 #include "componentsModule/CascadeShadowComponent.h"
+#include "ecss/base/EntityHandle.h"
+
 #include "renderModule/RenderPass.h"
 
-
-class CascadeShadows;
 
 namespace Engine::RenderModule::RenderPasses {
 
@@ -22,7 +22,7 @@ namespace Engine::RenderModule::RenderPasses {
 			glm::vec2 resolution = {};
 			float cameraFarPlane = 0.f;
 			std::vector<float> shadowCascadeLevels;
-			CascadeShadows* shadows = nullptr;
+			ecss::EntityHandle shadows;
 			std::vector<ComponentsModule::ShadowCascade> shadowCascades;
 			float shadowsIntensity = 0.f;
 		};
@@ -39,12 +39,9 @@ namespace Engine::RenderModule::RenderPasses {
 		unsigned lightDepthMaps;
 		unsigned matricesUBO;
 
-		CascadeShadows* mShadowSource;
+		ecss::EntityHandle mShadowSource;
 		bool mInited = false;
 		Data mData;
-
-		std::vector<std::thread> threads;
-		std::mutex mtx;
 
 		float mUpdateDelta = 0.03f; //update shadows time, rerender objects with shadow not every frame for optimization purposes
 		float mUpdateTimer = std::numeric_limits<float>::max(); //guarantee first frame rendering

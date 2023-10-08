@@ -1,6 +1,7 @@
 ﻿#include "MemoryManager.h"
 
 #include <cassert>
+#include <stdlib.h>
 
 using namespace Engine::MemoryModule;
 
@@ -17,7 +18,9 @@ MemoryManager::MemoryManager(size_t memoryCapacity) : mMemoryCapacity(memoryCapa
 	}
 	LogsModule::Logger::LOG_INFO("%u bytes of memory allocated.", mMemoryCapacity);
 
-	allocator = new StackAllocator(mMemoryCapacity, globalMemoryAddress);
+	allocator = new StackAllocator();
+	allocator->init(mMemoryCapacity, globalMemoryAddress);
+
 	LogsModule::Logger::LOG_FATAL(allocator, "Failed to create memory allocator!");
 }
 

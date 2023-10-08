@@ -17,8 +17,8 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 		for (auto& [hash, shader] : SHADER_CONTROLLER->getShaders()) {
 			ImGui::PushStyleColor(ImGuiCol_Button, { 0,0,0,0 });
 			auto btnId = "recompile##" + std::to_string(shader->getID());
-			auto updateTex = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("icons/update-12-32.png");
-			auto editTex = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("icons/edit-47-32.png");
+			auto updateTex = AssetsModule::TextureHandler::instance()->loadTexture("icons/update-12-32.png");
+			auto editTex = AssetsModule::TextureHandler::instance()->loadTexture("icons/edit-47-32.png");
 
 			auto size = ImGui::GetTextLineHeight() - 4;
 			static ImVec4 icoColor = { 1,1,1,1 };
@@ -27,7 +27,7 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 
 				ImGui::SameLine(0, 20);
 				ImGui::PushID(btnId.c_str());
-				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(updateTex.mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
+				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(updateTex->mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
 					SHADER_CONTROLLER->recompileShader(shader);
 				}
 				ImGui::PopID();
@@ -37,7 +37,7 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 				auto btnId = "edit##" + std::to_string(shader->getID());
 				ImGui::SameLine();
 				ImGui::PushID(btnId.c_str());
-				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(editTex.mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
+				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(editTex->mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
 					if (auto it = std::find(mOpenedShaderDebugWindows.begin(), mOpenedShaderDebugWindows.end(), shader->getID()); it == mOpenedShaderDebugWindows.end()) {
 						mOpenedShaderDebugWindows.push_back(shader->getID());
 					}

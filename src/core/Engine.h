@@ -19,6 +19,10 @@ namespace Engine {
 		bool isAlive() const;
 
 		GLFWwindow* getMainWindow() const;
+
+		static bool isMainThread();
+
+		int maxFPS = 60;
 	private:
 		UnnamedEngine() = default;
 		~UnnamedEngine() override;
@@ -31,11 +35,14 @@ namespace Engine {
 		int mFramesCounter = 0;
 		int mFPS = 0;
 
+
 		bool mAlive = false;
 
 		CoreModule::Core* mCore = nullptr;
 
 		GLFWwindow* mMainWindow = nullptr;
+
+		inline static std::thread::id mMainThreadID;
 	};
 }
 

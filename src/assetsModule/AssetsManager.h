@@ -6,24 +6,29 @@
 
 #include "Asset.h"
 #include "modelModule/Model.h"
+#include "memoryModule/GlobalMemoryUser.h"
 
 namespace AssetsModule {
 
-	inline static constexpr size_t ASSETS_MEMORY_BUFFER_SIZE = 8ll * 1024u * 1024u;//256MB
+	inline static constexpr size_t ASSETS_MEMORY_BUFFER_SIZE = 256ll * 1024u * 1024u;//256MB
 
-	class AssetsManager : Engine::MemoryModule::GlobalMemoryUser {
+	class AssetsManager : public Engine::Singleton<AssetsManager>, Engine::MemoryModule::GlobalMemoryUser {
 	public:
-		AssetsManager(Engine::MemoryModule::MemoryManager* memoryManager);
-
+		AssetsManager();
 		~AssetsManager() override;
 
 		template <class T>
-		T* getAsset(const std::string& path) {
-			if (const auto it = mAssetsMap.find(mHasher(path)); it != mAssetsMap.end()) {
+		T* getAsset(size_t hashId) {
+			if (const auto it = mAssetsMap.find(hashId); it != mAssetsMap.end()) {
 				return static_cast<T*>(it->second);
 			}
 
 			return nullptr;
+		}
+
+		template <class T>
+		T* getAsset(const std::string& path) {
+			return getAsset<T>(mHasher(path));
 		}
 
 		template <class T, class... ARGS>
@@ -40,7 +45,10 @@ namespace AssetsModule {
 			}
 
 			asset = new(pAssetMem)T(std::forward<ARGS>(Args)...);
-			mAssetsMap.insert({ mHasher(path) , asset });
+
+			auto id = mHasher(path);
+			asset->assetId = id;
+			mAssetsMap.insert({ id, asset });
 
 			return asset;
 		}
@@ -49,6 +57,8 @@ namespace AssetsModule {
 		Engine::MemoryModule::Allocator* mAssetsAllocator;
 		std::unordered_map<size_t, Asset*> mAssetsMap;
 		std::hash<std::string> mHasher;
+
+
 	};
 
 }

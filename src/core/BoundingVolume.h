@@ -1,9 +1,11 @@
 ﻿#pragma once
 #include <array>
 
-#include "Camera.h"
 #include "componentsModule/TransformComponent.h"
-#include "assetsModule/modelModule/Model.h"
+
+namespace AssetsModule {
+	class Mesh;
+}
 
 namespace Engine::FrustumModule {
 	struct Plane
@@ -151,6 +153,8 @@ namespace Engine::FrustumModule {
 		glm::vec3 center{ 0.f, 0.f, 0.f };
 		glm::vec3 extents{ 0.f, 0.f, 0.f };
 
+		AABB() = default;
+
 		AABB(const glm::vec3& min, const glm::vec3& max)
 			: BoundingVolume{}, center{ (max + min) * 0.5f }, extents{ max.x - center.x, max.y - center.y, max.z - center.z }
 		{}
@@ -217,45 +221,9 @@ namespace Engine::FrustumModule {
 	};
 
 
-	inline AABB generateAABB(const AssetsModule::Mesh& mesh)
-	{
-		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
-		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
+	inline AABB generateAABB(const AssetsModule::Mesh& mesh);
 
-
-		for (auto&& vertex : mesh.mData.mVertices)
-		{
-			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
-			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
-			minAABB.z = std::min(minAABB.z, vertex.mPosition.z);
-
-			maxAABB.x = std::max(maxAABB.x, vertex.mPosition.x);
-			maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
-			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
-		}
-
-		return AABB(minAABB, maxAABB);
-	}
-
-	inline Sphere generateSphereBV(const AssetsModule::Mesh& mesh)
-	{
-		glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
-		glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::min());
-
-		for (auto& vertex : mesh.mData.mVertices)
-		{
-			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
-			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
-			minAABB.z = std::min(minAABB.z, vertex.mPosition.z);
-
-			maxAABB.x = std::max(maxAABB.x, vertex.mPosition.x);
-			maxAABB.y = std::max(maxAABB.y, vertex.mPosition.y);
-			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
-		}
-
-
-		return Sphere((maxAABB + minAABB) * 0.5f, glm::length(minAABB - maxAABB));
-	}
+	inline Sphere generateSphereBV(const AssetsModule::Mesh& mesh);
 
 	inline void normalizePlane(glm::vec4& planeVec) {
 		auto mag = glm::sqrt(planeVec.x * planeVec.x + planeVec.y * planeVec.y + planeVec.z * planeVec.z);

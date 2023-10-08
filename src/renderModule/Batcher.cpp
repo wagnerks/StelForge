@@ -8,7 +8,6 @@
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/Engine.h"
-#include "ecsModule/SystemManager.h"
 #include "glad/glad.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "mathModule/MathUtils.h"
@@ -59,23 +58,23 @@ void Batcher::flushAll(bool clear, const glm::vec3& viewPos) {
 	});
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboModelMatrices);
-	auto defaultTex = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("white.png").mId;
-	auto defaultNormal = AssetsModule::TextureHandler::instance()->mLoader.loadTexture("defaultNormal.png").mId;
+	auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png")->mId;
+	auto defaultNormal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png")->mId;
 	for (auto& drawObjects : drawList) {
 		glBindVertexArray(drawObjects.VAO);
 
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::mat4x4) * drawObjects.transforms.size(), &drawObjects.transforms[0]);
 
 
-		if (drawObjects.material.mDiffuse.mTexture.isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture.mId);
+		if (drawObjects.material.mDiffuse.mTexture->isValid()) {
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture->mId);
 		}
 		else {
 			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, defaultTex);
 		}
 
-		if (drawObjects.material.mNormal.mTexture.isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, drawObjects.material.mNormal.mTexture.mId);
+		if (drawObjects.material.mNormal.mTexture->isValid()) {
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, drawObjects.material.mNormal.mTexture->mId);
 		}
 		else {
 			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultNormal);

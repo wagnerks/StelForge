@@ -11,7 +11,8 @@
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/shaderModule/Shader.h"
 #include "assetsModule/shaderModule/ShaderBase.h"
-#include "ecsModule/ComponentBase.h"
+#include "ecss/base/ComponentBase.h"
+
 namespace Engine::ComponentsModule {
 
 	template<typename T>
@@ -121,14 +122,14 @@ namespace Engine::ComponentsModule {
 		structUniforms.apply(shader, prefix);
 	}
 
-	class ShaderComponent : public ecsModule::Component<ShaderComponent> {
+	class ShaderComponent : public ecss::Component<ShaderComponent> {
 	public:
 		ShaderComponent() {
 		}
 
 		ShaderVariablesStruct variables;
 
-		ShaderUniformVariables<AssetsModule::Texture> texturesUniforms;
+		ShaderUniformVariables<AssetsModule::Texture*> texturesUniforms;
 
 		std::vector<ShaderUniformVariablesI*> uniforms;
 

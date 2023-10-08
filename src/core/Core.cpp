@@ -2,13 +2,14 @@
 
 #include "ECSHandler.h"
 #include "InputHandler.h"
+#include "ThreadPool.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "debugModule/ComponentsDebug.h"
 #include "debugModule/imguiDecorator.h"
-#include "ecsModule/EntityManager.h"
-#include "ecsModule/SystemManager.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "..\ecss\Registry.h"
+#include "systemsModule/SystemManager.h"
 
 using namespace Engine;
 using namespace Engine::CoreModule;
@@ -16,12 +17,17 @@ using namespace Engine::CoreModule;
 void Core::update(float dt) {
 	Debug::ImGuiDecorator::preDraw();
 
-	ECSHandler::entityManagerInstance()->destroyEntities();
-	ECSHandler::systemManagerInstance()->update(dt);
+	ECSHandler::systemManager()->update(dt);
 
 	mDebugMenu.draw();
 
+	static auto threadID = std::this_thread::get_id();
+	if (threadID != std::this_thread::get_id()) {
+		int d = 0;
+	}
 	RenderModule::Renderer::instance()->draw();
+
+	ThreadPool::instance()->synchroUpdate();
 
 	Debug::ComponentsDebug::entitiesDebug();
 
@@ -44,6 +50,7 @@ Core::~Core() {
 	RenderModule::Renderer::terminate();
 	ECSHandler::terminate();
 	CoreModule::InputHandler::terminate();
+	ThreadPool::terminate();
 
 }
 

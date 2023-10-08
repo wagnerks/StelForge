@@ -1,24 +1,42 @@
 ﻿#pragma once
-#include "core/Camera.h"
+
 #include "core/InputHandler.h"
-#include "ecsModule/SystemBase.h"
+#include "ecss/base/EntityHandle.h"
+#include "SystemBase.h"
 
 namespace Engine::SystemsModule {
-	class CameraSystem : public ecsModule::System<CameraSystem>, CoreModule::InputObserver {
+	enum Camera_Movement {
+		FORWARD,
+		BACKWARD,
+		LEFT,
+		RIGHT,
+		TOP,
+		BOTTOM
+	};
+
+
+	class CameraSystem : public ecss::System<CameraSystem>, CoreModule::InputObserver {
 	public:
 		CameraSystem();
 		void preUpdate(float_t dt) override {}
 		void update(float_t dt) override;
 		void postUpdate(float_t dt) override {}
 
-		void setCurrentCamera(Camera* camera);
-		Camera* getCurrentCamera() const;
-	private:
-		void processKeyboard(Camera* camera, Camera_Movement direction, float deltaTime);
-		Camera* mCurrentCamera = nullptr;
+		void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true);
+		void ProcessMouseScroll(float yoffset);
 
-		Camera* mDefaultCamera = nullptr;
+		void setCurrentCamera(const ecss::EntityHandle& camera);
+		const ecss::EntityHandle& getCurrentCamera() const;
+		bool processMouse = false;
+		float MovementSpeed = 10.f;
+		float MouseSensitivity = 0.1f;
+	private:
+		void processKeyboard(const ecss::EntityHandle& camera, Camera_Movement direction, float deltaTime);
+		ecss::EntityHandle mCurrentCamera;
+
+		ecss::EntityHandle mDefaultCamera;
 
 		std::map<Engine::CoreModule::InputKey, bool> isPressed;
+
 	};
 }

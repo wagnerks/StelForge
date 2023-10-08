@@ -3,33 +3,30 @@
 #include <ext/scalar_constants.hpp>
 
 #include "CameraSystem.h"
+#include "SystemManager.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Camera.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "ecsModule/ComponentsManager.h"
-#include "ecsModule/EntityComponentSystem.h"
-#include "ecsModule/SystemManager.h"
+#include "..\ecss\Registry.h"
 
 using namespace Engine::SystemsModule;
 
 void LODSystem::update(float_t dt) {
-	const auto playerCamera = ECSHandler::systemManagerInstance()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	const auto playerCamera = ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
 	if (!playerCamera) {
 		return;
 	}
 
-	for (auto& lodObject : *ECSHandler::componentManagerInstance()->getComponentContainer<ModelComponent>()) {
-		auto transform = ECSHandler::componentManagerInstance()->getComponent<ComponentsModule::TransformComponent>(lodObject.getOwnerId());
-		if (!transform) {
+	for (auto [lodObject, transform] : ECSHandler::registry()->getComponentsArray<ModelComponent, TransformComponent>()) {
+		if (!&lodObject) {
 			continue;
 		}
-
 		float value = 0.f;
 		//if (lodObject.getLodType() == ComponentsModule::eLodType::SCREEN_SPACE) {
-		//	//if (const auto modelComponent = ecsModule::ECSHandler::componentManagerInstance()->getComponent<ModelComponent>(lodObject.getOwnerId())) {
+		//	//if (const auto modelComponent = ecss::ECSHandler::registry()->getComponent<ModelComponent>(lodObject.getEntityId())) {
 		//	//	if (const auto model = modelComponent->getModel()) {
 		//	//		/*for (auto& mesh : model->getMeshes()){
 		//	//			value = std::max(value, calculateScreenSpaceArea(&mesh, playerCamera, transform));
@@ -38,7 +35,7 @@ void LODSystem::update(float_t dt) {
 		//	//}
 		//}
 		//else if (lodObject.getLodType() == ComponentsModule::eLodType::DISTANCE) {
-		value = calculateDistanceToMesh(playerCamera, transform);
+		value = calculateDistanceToMesh(playerCamera, &transform);
 		//}
 
 		int lodLevel = 0;
@@ -54,14 +51,14 @@ void LODSystem::update(float_t dt) {
 	}
 }
 
-float LODSystem::calculateScreenSpaceArea(const AssetsModule::Mesh* mesh, const Camera* camera, TransformComponent* meshTransform) {
+float LODSystem::calculateScreenSpaceArea(const AssetsModule::Mesh* mesh, const ecss::EntityHandle& camera, TransformComponent* meshTransform) {
 	if (!mesh || !camera || !meshTransform) {
 		return 0.f;
 	}
 
 	/*auto t = meshTransform->getTransform();
 	t = camera->getComponent<CameraComponent>()->getProjection().getProjectionsMatrix() * camera->getComponent<TransformComponent>()->getViewMatrix() * t;*/
-	auto d = glm::distance(camera->getComponent<TransformComponent>()->getPos(true), meshTransform->getPos(true));
+	auto d = glm::distance(ECSHandler::registry()->getComponent<TransformComponent>(camera)->getPos(true), meshTransform->getPos(true));
 
 
 	glm::vec3 globalScale = meshTransform->getScale(true);
@@ -86,6 +83,6 @@ float LODSystem::calculateScreenSpaceArea(const AssetsModule::Mesh* mesh, const 
 	return spaceRadius * spaceRadius * glm::pi<float>();
 }
 
-float LODSystem::calculateDistanceToMesh(const Camera* camera, ComponentsModule::TransformComponent* meshTransform) {
-	return glm::distance(camera->getComponent<ComponentsModule::TransformComponent>()->getPos(true), meshTransform->getPos(true));
+float LODSystem::calculateDistanceToMesh(const ecss::EntityHandle& camera, ComponentsModule::TransformComponent* meshTransform) {
+	return glm::distance(ECSHandler::registry()->getComponent<ComponentsModule::TransformComponent>(camera)->getPos(true), meshTransform->getPos(true));
 }

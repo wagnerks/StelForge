@@ -17,6 +17,11 @@ namespace AssetsModule {
 
 	class Texture : public Asset {
 	public:
+		Texture(const Texture& other) = delete;
+		Texture(Texture&& other) noexcept = delete;
+		Texture& operator=(const Texture& other) = delete;
+		Texture& operator=(Texture&& other) noexcept = delete;
+
 		Texture() = default;
 		Texture(unsigned id, std::string_view path, eTextureType type) : mId(id), mPath(path), mType(type) {}
 
@@ -24,27 +29,18 @@ namespace AssetsModule {
 		std::string mPath;
 		eTextureType mType = eTextureType::DEFAULT;
 
-		bool isValid() const {
-			return mId != std::numeric_limits<uint16_t>::max();
-		}
-	};
-
-	class TextureLoader {
-	public:
-		Texture loadTexture(const std::string& path, bool flip = false);
-		Texture loadCubemapTexture(const std::string& path, bool flip = false);
-		Texture createEmpty2DTexture(const std::string& id, int w, int h, int format);
-	private:
-		std::unordered_map<std::string, Texture> mLoadedTex;
+		bool isValid() const;
 	};
 
 	class TextureHandler : public Engine::Singleton<TextureHandler> {
 		friend Singleton;
 	public:
 		void bindTexture(unsigned slot, unsigned type, unsigned int id);
-		TextureLoader mLoader;
 		unsigned getCurentTexture(unsigned slot) { return mBindedTextures[slot]; }
 		Texture mDefaultTex;
+
+		Texture* loadTexture(const std::string& path, bool flip = false);
+		Texture* loadCubemapTexture(const std::string& path, bool flip = false);
 	private:
 		std::unordered_map<unsigned, unsigned> mBindedTextures;
 

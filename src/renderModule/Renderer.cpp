@@ -2,7 +2,14 @@
 
 #include <deque>
 
+#include "componentsModule/IsDrawableComponent.h"
+#include "componentsModule/MaterialComponent.h"
+#include "componentsModule/TreeComponent.h"
 #include "core/Engine.h"
+#include "core/FileSystem.h"
+#include "core/ThreadPool.h"
+#include "..\ecss\Registry.h"
+#include "componentsModule/FrustumComponent.h"
 #include "logsModule/logger.h"
 
 #include "gtc/random.hpp"
@@ -34,8 +41,49 @@ void Renderer::postDraw() {
 }
 
 void Renderer::init() {
+	//ThreadPool::instance()->addTask([](std::mutex&) {
+	//	auto root = PropertiesModule::PropertiesSystem::loadScene("scene.json");
+		//auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json"); 
+		//auto root = PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
+	//});
 
-	auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
+	//for (auto i = 25; i < 50; i++) {
+	//	auto ent = ECSHandler::registry()->takeEntity(i);
+	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
+	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
+	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
+	//}
+
+	//for (auto i = 10; i < 25; i++) {
+	//	auto ent = ECSHandler::registry()->takeEntity(i);
+	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
+	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
+	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
+	//}
+	//for (auto i = 70; i < 80; i++) {
+	//	auto ent = ECSHandler::registry()->takeEntity(i);
+	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
+	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
+	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
+	//}
+
+	//for (auto i = 50; i < 70; i++) {
+	//	auto ent = ECSHandler::registry()->takeEntity(i);
+	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
+	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
+	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
+	//}
+
+	//ECSHandler::registry()->getComponentContainer<TransformComponent>()->shrinkToFit();
+	auto reg = ECSHandler::registry();
+	reg->reserve<TransformComponent, IsDrawableComponent, FrustumComponent>(1000100);
+	for (auto i = 100; i < 1000100; i++) {
+		auto entity = reg->takeEntity(i);
+		reg->addComponent<TransformComponent>(entity);
+		reg->addComponent<IsDrawableComponent>(entity);
+		reg->addComponent<FrustumComponent>(entity);
+	}
+		
 
 	mBatcher = new Batcher();
 }
@@ -103,10 +151,6 @@ GLFWwindow* Renderer::initGLFW() {
 	}
 
 	glfwSwapInterval(0);
-
-	loadingWindow = glfwCreateWindow(Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, "GameEngine", nullptr, nullptr);
-	//glfwMakeContextCurrent(loadingWindow);
-
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);

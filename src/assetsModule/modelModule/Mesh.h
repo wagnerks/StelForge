@@ -5,16 +5,11 @@
 #include <vec3.hpp>
 #include <vector>
 
-#include "ecsModule/EntityBase.h"
 #include "assetsModule/TextureHandler.h"
+#include "core/BoundingVolume.h"
 #include "mathModule/MathUtils.h"
 
 
-namespace Engine {
-	namespace FrustumModule {
-		struct AABB;
-	}
-}
 
 namespace AssetsModule {
 	struct Vertex {
@@ -26,7 +21,7 @@ namespace AssetsModule {
 	};
 
 	struct MaterialTexture {
-		Texture mTexture;
+		Texture* mTexture;
 		std::string mType;
 	};
 
@@ -62,7 +57,7 @@ namespace AssetsModule {
 
 		unsigned int getVAO() const { return mData.mVao; }
 
-		Engine::FrustumModule::AABB* mBounds = nullptr;
+		Engine::FrustumModule::AABB mBounds;
 		Material mMaterial;
 		MeshData mData;
 	private:
@@ -73,11 +68,11 @@ namespace AssetsModule {
 	public:
 		MeshHandle() = default;
 
-		MeshHandle(const Mesh& mesh) : mMaterial(mesh.mMaterial), mData(mesh.mData), mBounds(mesh.mBounds) {}
+		MeshHandle(const Mesh& mesh) : mMaterial(&mesh.mMaterial), mData(&mesh.mData), mBounds(&mesh.mBounds) {}
 
-		Material mMaterial;
-		MeshData mData;
-		Engine::FrustumModule::AABB* mBounds = nullptr;
+		const Material* mMaterial = nullptr;
+		const MeshData* mData = nullptr;
+		const Engine::FrustumModule::AABB* mBounds = nullptr;
 
 	};
 }

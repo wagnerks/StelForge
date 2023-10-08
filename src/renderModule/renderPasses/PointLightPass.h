@@ -4,13 +4,14 @@
 #include <vec3.hpp>
 
 #include "core/BoundingVolume.h"
+#include "core/Projection.h"
 #include "renderModule/RenderPass.h"
 
 namespace Engine::RenderModule::RenderPasses {
 	class PointLightPass : public RenderPass {
 	public:
 		struct Data {
-			std::vector<size_t> shadowEntities;
+			std::vector<ecss::EntityId> shadowEntities;
 		};
 
 		void initRender();
@@ -26,7 +27,7 @@ namespace Engine::RenderModule::RenderPasses {
 		Engine::ProjectionModule::PerspectiveProjection lightProjection;
 		std::vector<glm::mat4> lightMatrices;
 		std::vector<FrustumModule::Frustum> frustums;
-		std::vector<std::pair<size_t, int>> offsets;
+		std::vector<std::pair<ecss::EntityId, int>> offsets;
 
 		const int shadowResolution = 1024;
 		const int maxShadowFaces = 36;
