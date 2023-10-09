@@ -2,6 +2,7 @@
 
 #include "../Types.h"
 #include "../memory/ComponentsArray.h"
+#include "ecss/Registry.h"
 
 namespace ecss {
 	class ComponentInterface {
@@ -19,16 +20,19 @@ namespace ecss {
 		ComponentInterface() = default;
 		virtual ~ComponentInterface() = default;
 
-		EntityId getEntityId() const { return mOwnerId; };
+		inline EntityId getEntityId() const { return mOwnerId; };
 	private:
 		EntityId mOwnerId = INVALID_ID; //this variable will be set by components manager or component array after placing into entity sector
 	};
 
 	template<class T>
 	class Component : public ComponentInterface {
+		friend class Registry;
+		friend class Memory::ComponentsArray;
+
 	public:
 		inline static const ECSType STATIC_COMPONENT_TYPE_ID = StaticTypeCounter<ComponentInterface>::get<T>();
-		inline static uint8_t staticComponentSectorIdx = 0;
+		inline static uint8_t STATIC_COMPONENT_SECTOR_IDX = 0;
 
 		ComponentInterface* clone(void* adr) override {
 			return new (adr)T(*static_cast<T*>(this));

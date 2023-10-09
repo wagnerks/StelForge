@@ -37,43 +37,25 @@ namespace ecss::Memory {
 	void* SectorsChunk::operator[](size_t i) const {
 		return static_cast<char*>(const_cast<void*>(beginAdr)) + i * data.sectorSize;
 	}
-
-	void* SectorsChunk::Iterator::operator*() const {
-		return mPtr;
-	}
-
-	SectorsChunk::Iterator& SectorsChunk::Iterator::operator++() {
-		mPtr = static_cast<char*>(mPtr) + mSectorSize;
-		return *this;
-	}
-
-	SectorsChunk::Iterator& SectorsChunk::Iterator::operator+(size_t i) {
-		mPtr = static_cast<char*>(mPtr) + i * mSectorSize;
-		return *this;
-	}
-
-	bool SectorsChunk::Iterator::operator!=(const Iterator& other) const {
-		return mPtr != other.mPtr;
-	}
-
-	SectorsChunk::Iterator& SectorsChunk::Iterator::operator=(const Iterator& other) {
-		if (this != &other) {
-			mPtr = other.mPtr;
-			mSectorSize = other.mSectorSize;
-		}
-		return *this;
-	}
-
-	bool SectorsChunk::Iterator::operator==(const Iterator& other) const {
-		return mPtr == other.mPtr;
-	}
-
+	
 	SectorsChunk::Iterator SectorsChunk::begin() const {
 		return Iterator(const_cast<void*>(beginAdr), data);
 	}
 
 	SectorsChunk::Iterator SectorsChunk::end() const {
 		return Iterator((*this)[size], data);
+	}
+
+	bool SectorInfo::isTypeNull(uint8_t typeIdx) const {
+		return !nullBits[typeIdx - 1];
+	}
+
+	void SectorInfo::setTypeBitTrue(uint8_t typeIdx) {
+		nullBits[typeIdx - 1] = true; //typeIdx in sector starts after sectorInfo, so move index 1 to right
+	}
+
+	void SectorInfo::setTypeBitFalse(uint8_t typeIdx) {
+		nullBits[typeIdx - 1] = false;
 	}
 
 	void SectorsChunk::shiftDataRight(size_t from) const {

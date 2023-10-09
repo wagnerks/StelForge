@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <cstdint>
 #include <map>
+#include <vector>
 
 #include "ComponentsArrayUtils.h"
 #include "../Types.h"
@@ -8,7 +9,7 @@
 namespace ecss::Memory {
 	struct ChunkData {
 		uint16_t sectorSize = 0;
-		std::array<uint16_t, 34> sectorMembersOffsets;
+		std::array<uint16_t, 34> sectorMembersOffsets = {};
 		std::map<ECSType, uint8_t> sectorMembersIndexes; // < {type id} , {idx in members offsets} >
 	};
 
@@ -64,14 +65,28 @@ namespace ecss::Memory {
 			Iterator() : mPtr(nullptr), mSectorSize(0) {}
 			Iterator(void* ptr, const ChunkData& data) : mPtr(ptr), mSectorSize(data.sectorSize) {}
 
-			bool operator!=(const Iterator& other) const;
-			bool operator==(const Iterator& other) const;
+			inline bool operator!=(const Iterator& other) const { return mPtr != other.mPtr; }
+			inline bool operator==(const Iterator& other) const { return mPtr == other.mPtr; }
 
-			Iterator& operator=(const Iterator& other);
-			void* operator*() const;
+			inline Iterator& operator=(const Iterator& other) {
+				if (this != &other) {
+					mPtr = other.mPtr;
+					mSectorSize = other.mSectorSize;
+				}
+				return *this;
+			}
 
-			Iterator& operator++();
-			Iterator& operator+(size_t i);
+			inline void* operator*() const { return mPtr; }
+
+			inline Iterator& operator++() {
+				mPtr = static_cast<char*>(mPtr) + mSectorSize;
+				return *this;
+			}
+
+			inline Iterator& operator+(size_t i) {
+				mPtr = static_cast<char*>(mPtr) + i * mSectorSize;
+				return *this;
+			}
 		};
 
 		Iterator begin() const;
@@ -93,19 +108,14 @@ namespace ecss::Memory {
 	*/
 	struct SectorInfo {
 		EntityId id;
-		unsigned long nullBits = 0; //each bit means that component 0 1 2 3 etc alive or not, maximum 32 components
+		std::array<bool, 32> nullBits;
+		//unsigned long nullBits = 0; //each bit means that component 0 1 2 3 etc alive or not, maximum 32 components
 
-		bool isTypeNull(uint8_t typeIdx) const {
-			return !((nullBits >> (typeIdx - 1)) & 1);
-		}
+		bool isTypeNull(uint8_t typeIdx) const;
 
-		void setTypeBitTrue(uint8_t typeIdx) {
-			nullBits |= (1 << (typeIdx - 1)); //typeIdx in sector starts after sectorInfo, so move index 1 to left
-		}
+		void setTypeBitTrue(uint8_t typeIdx);
 
-		void setTypeBitFalse(uint8_t typeIdx) {
-			nullBits &= ~(1 << (typeIdx - 1));
-		}
+		void setTypeBitFalse(uint8_t typeIdx);
 	};
 
 }

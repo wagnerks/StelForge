@@ -4,13 +4,17 @@
 
 namespace ecss {
 	Registry::Registry() {
-		mComponentsArraysMap.resize(StaticTypeCounter<ComponentInterface>::getCount(), nullptr);
+		mDummy = new Memory::ComponentsArray();
+
+		mComponentsArraysMap.resize(StaticTypeCounter<ComponentInterface>::getCount(), mDummy);
 	}
 
 	Registry::~Registry() {
 		clear();
 
 		std::map<void*, bool> deleted;
+		deleted[mDummy] = true;
+		delete mDummy;
 
 		for (const auto container : mComponentsArraysMap) {
 			if (!container || deleted[container]) {//skip not created and containers of multiple components
@@ -43,18 +47,16 @@ namespace ecss {
 		}
 	}
 
-	EntityHandle Registry::takeEntity(EntityId id) {
-		if (id == INVALID_ID) {
-			id = getNewId();
-		}
+	EntityHandle Registry::takeEntity() {
+		auto id = getNewId();
 
-		mEntities.insert(id);
+		mEntities.insert(mEntities.begin() + id, id);
 
 		return { id };
 	}
 
 	EntityHandle Registry::getEntity(EntityId entityId) const {
-		if (mEntities.contains(entityId)) {
+		if (std::find(mEntities.begin(), mEntities.end(), entityId) != mEntities.end()) {
 			return { entityId };
 		}
 
@@ -67,26 +69,26 @@ namespace ecss {
 		}
 
 		const auto id = entity.getID();
-		if (!mEntities.contains(id)) {
+		if (std::find(mEntities.begin(), mEntities.end(), id) == mEntities.end()) {
 			return;
 		}
 
 		if (id != *mEntities.rbegin()) {//if entity was removed not from end - add its id to the list
-			mFreeEntities.push_front(id);
+			mFreeEntities.insert(id);
 		}
 
-		mEntities.erase(id);
+		mEntities.erase(std::find(mEntities.begin(), mEntities.end(),id));
 		destroyComponents(id);
 	}
 
-	const std::set<EntityId>& Registry::getAllEntities() {
+	const std::vector<EntityId>& Registry::getAllEntities() {
 		return mEntities;
 	}
 
 	EntityId Registry::getNewId() {
 		if (!mFreeEntities.empty()) {
-			const auto id = mFreeEntities.front();
-			mFreeEntities.pop_front();
+			const auto id = *mFreeEntities.begin();
+			mFreeEntities.erase(id);
 
 			return id;
 		}

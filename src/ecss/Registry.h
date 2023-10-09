@@ -86,23 +86,24 @@ so better, if you want to merge multiple types in one sector, always create all 
 		template <class... Components>
 		void reserve(size_t newCapacity) { (getComponentContainer<Components>()->reserve(newCapacity),...); }
 
-		EntityHandle takeEntity(EntityId id = INVALID_ID);
+		EntityHandle takeEntity();
 		EntityHandle getEntity(EntityId entityId) const;
 
 		void destroyEntity(const EntityHandle& entityId);
 
-		const std::set<EntityId>& getAllEntities();
+		const std::vector<EntityId>& getAllEntities();
 	private:
 		template <class T>
-		Memory::ComponentsArray* getComponentContainer() {
+		Memory::ComponentsArray* getComponentContainer(bool skipCheck = false) {
 			if (mComponentsArraysMap.empty()) {
 				return nullptr;
 			}
 
 			const size_t componentTypeID = T::STATIC_COMPONENT_TYPE_ID;
-
-			if (!mComponentsArraysMap[componentTypeID]) {
-				initCustomComponentsContainer<T>();
+			if (!skipCheck) {
+				if (mComponentsArraysMap[componentTypeID] == mDummy) {
+					initCustomComponentsContainer<T>();
+				}
 			}
 
 			return mComponentsArraysMap[componentTypeID];
@@ -110,8 +111,10 @@ so better, if you want to merge multiple types in one sector, always create all 
 
 		std::vector<Memory::ComponentsArray*> mComponentsArraysMap;
 
-		std::set<EntityId> mEntities;
-		std::deque<EntityId> mFreeEntities;
+		std::vector<EntityId> mEntities;
+		std::set<EntityId> mFreeEntities;
+
+		Memory::ComponentsArray* mDummy;
 
 		EntityId getNewId();
 	};
@@ -134,7 +137,7 @@ so better, if you want to merge multiple types in one sector, always create all 
 	template <typename ... Components>
 	void Registry::initCustomComponentsContainer() {
 		bool added = false;
-		((added |= mComponentsArraysMap[Components::STATIC_COMPONENT_TYPE_ID] != nullptr), ...);
+		((added |= mComponentsArraysMap[Components::STATIC_COMPONENT_TYPE_ID] != mDummy), ...);
 		if (added) {
 			assert(false);
 			return;
@@ -151,6 +154,11 @@ so better, if you want to merge multiple types in one sector, always create all 
 			return nullptr;
 		}
 
+		auto cont = getComponentContainer<T>();
+		if (cont->entitiesCapacity() <= entity.getID()) {
+			return nullptr;
+		}
+
 		return getComponentContainer<T>()->getComponent<T>(entity.getID());
 	}
 
@@ -163,7 +171,7 @@ so better, if you want to merge multiple types in one sector, always create all 
 			return comp;
 		}
 
-		auto comp = new(getComponentContainer<T>()->acquireSector(T::STATIC_COMPONENT_TYPE_ID, entity.getID()))T(std::forward<Args>(args)...);
+		auto comp = new(getComponentContainer<T>()->acquireSector(T::STATIC_COMPONENT_SECTOR_IDX, entity.getID()))T(std::forward<Args>(args)...);
 		comp->mOwnerId = entity.getID();
 
 		return static_cast<T*>(comp);
@@ -171,29 +179,39 @@ so better, if you want to merge multiple types in one sector, always create all 
 
 	template <typename T, typename ...ComponentTypes>
 	class ComponentsArrayHandle {
-		
-		Registry* mManager;
 		Memory::ComponentsArray* mMainContainer;
 
+		std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
 	public:
 		class Iterator {
 			using ComponentsIt = Memory::ComponentsArray::Iterator<T>;
 			ComponentsIt mIt;
-			Registry* mManager;
+			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
+			std::array<bool, sizeof...(ComponentTypes)> mIsTyped;
+			size_t mIdx = 0;
 
 		public:
-			Iterator(ComponentsIt listIt, Registry* manager) : mIt(listIt), mManager(manager) {}
+			inline Iterator(ComponentsIt listIt, std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> arrays) : mIt(listIt), mArrays(arrays) {
+				size_t i = 0;
+				((mIsTyped[i++] = mIt.template isType< std::remove_const_t<ComponentTypes>>()), ...);
 
-			std::tuple<T&, ComponentTypes&...> operator*() {
-				return std::tie(**mIt, *mManager->getComponent<ComponentTypes>(mIt.getSectorId())...);
+				std::reverse(mIsTyped.begin(), mIsTyped.end());
 			}
 
-			Iterator& operator++() {
-				++mIt;
-				return *this;
+			template<typename ComponentType>
+			inline ComponentType* getComponent(const EntityId& sectorId) {
+				return mIsTyped[mIdx] ? mIdx++, mIt.template getTyped<ComponentType>() : mArrays[mIdx++]->template getComponent<ComponentType>(sectorId);
+			}
+			
+			inline std::tuple<T&, ComponentTypes&...> operator*() {
+				return std::forward_as_tuple(*(mIt.template getTyped<T>()), *getComponent<ComponentTypes>(*static_cast<EntityId*>(*(mIt.mIt)))...);
 			}
 
-			bool operator!=(const Iterator& other) const {
+			inline Iterator& operator++() {
+				++mIt, mIdx = 0; return *this;
+			}
+
+			inline bool operator!=(const Iterator& other) const {
 				return mIt != other.mIt;
 			}
 		};
@@ -202,20 +220,22 @@ so better, if you want to merge multiple types in one sector, always create all 
 		bool empty() const { return !size(); }
 
 		std::tuple<T&, ComponentTypes&...> operator[](size_t i) const {
-			auto it = Iterator(mMainContainer->begin<T>() + i, mManager);
-			return *it;
+			return *Iterator(mMainContainer->begin<T>() + i, mArrays);
 		}
 
-		ComponentsArrayHandle(Registry* manager) : mManager(manager), mMainContainer(manager->getComponentContainer<T>()) {}
+		ComponentsArrayHandle(Registry* manager) : mMainContainer(manager->getComponentContainer<T>()) {
+			size_t i = 0;
+			((mArrays[i++] = manager->getComponentContainer<ComponentTypes>(true)), ...);
+
+			std::reverse(mArrays.begin(), mArrays.end());
+		}
 
 		Iterator begin() {
-			return { mMainContainer->begin<T>(), mManager };
+			return { mMainContainer->begin<T>(), mArrays };
 		}
 
 		Iterator end() {
-			return { mMainContainer->end<T>(), mManager };
+			return { mMainContainer->end<T>(), mArrays };
 		}
 	};
 }
-
-

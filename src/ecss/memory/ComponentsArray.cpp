@@ -10,6 +10,10 @@ namespace ecss::Memory {
 	}
 
 	ComponentsArray::~ComponentsArray() {
+		if (!mChunk) {
+			return;
+		}
+
 		clear();
 
 		mChunk->~SectorsChunk();
@@ -25,6 +29,10 @@ namespace ecss::Memory {
 	}
 
 	void ComponentsArray::clear() {
+		if (!mChunk) {
+			return;
+		}
+
 		for (EntityId i = 0; i < size(); i++) {
 			destroySector((*mChunk)[i]);
 		}
@@ -32,7 +40,15 @@ namespace ecss::Memory {
 		mSize = 0;
 		mChunk->size = 0;
 		mSectorsMap.clear();
-		mSectorsMap.resize(mCapacity, INVALID_ID);
+		mSectorsMap.resize(mCapacity, nullptr);
+	}
+
+	size_t ComponentsArray::capacity() const {
+		return mCapacity;
+	}
+
+	size_t ComponentsArray::entitiesCapacity() const {
+		return mSectorsMap.size();
 	}
 
 	void ComponentsArray::reserve(size_t newCapacity) {
@@ -62,7 +78,11 @@ namespace ecss::Memory {
 		mChunk = newChunk;
 
 		if (mCapacity > mSectorsMap.size()) {
-			mSectorsMap.resize(mCapacity, INVALID_ID);
+			mSectorsMap.resize(mCapacity, nullptr);
+		}
+
+		for (auto sectorPtr : *mChunk) {
+			mSectorsMap[static_cast<SectorInfo*>(static_cast<void*>(sectorPtr))->id] = sectorPtr;
 		}
 	}
 
@@ -71,7 +91,7 @@ namespace ecss::Memory {
 			return;
 		}
 
-		mSectorsMap.resize(mCapacity, std::numeric_limits<uint32_t>::max());
+		mSectorsMap.resize(mCapacity, nullptr);
 
 		auto chunkPlace = malloc(sizeof(SectorsChunk) + alignof(SectorsChunk) + mChunkData.sectorSize * mCapacity);
 		mChunk = new (chunkPlace)SectorsChunk(mChunkData);
@@ -79,8 +99,8 @@ namespace ecss::Memory {
 
 	void ComponentsArray::erase(size_t pos) {
 		char* sectorPtr = static_cast<char*>((*mChunk)[pos]);
-
-		mSectorsMap[static_cast<SectorInfo*>(static_cast<void*>(sectorPtr))->id] = std::numeric_limits<EntityId>::max();
+		auto info = static_cast<SectorInfo*>(static_cast<void*>(sectorPtr));
+		mSectorsMap[info->id] = nullptr;
 		
 		mChunk->shiftDataLeft(pos);
 		--mSize;
@@ -88,18 +108,17 @@ namespace ecss::Memory {
 
 		auto sectorIt = SectorsChunk::Iterator(sectorPtr, mChunkData);
 		while (sectorIt != mChunk->end()) {
-			mSectorsMap[static_cast<SectorInfo*>(*sectorIt)->id] = static_cast<EntityId>(pos++);
+			mSectorsMap[static_cast<SectorInfo*>(*sectorIt)->id] = *sectorIt;
 			++sectorIt;
 		}
 	}
 
-	void* ComponentsArray::initSectorMember(void* sectorPtr, const ECSType componentTypeId) {
+	void* ComponentsArray::initSectorMember(void* sectorPtr, const uint8_t componentTypeIdx) {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		const auto idx = mChunkData.sectorMembersIndexes[componentTypeId];
-		destroyObject(sectorPtr, idx);
+		destroyObject(sectorPtr, componentTypeIdx);
 
-		sectorInfo->setTypeBitTrue(idx);
-		return Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[idx]);
+		sectorInfo->setTypeBitTrue(componentTypeIdx);
+		return Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[componentTypeIdx]);
 	}
 
 	void* ComponentsArray::createSector(size_t pos, const EntityId sectorId) {
@@ -117,44 +136,52 @@ namespace ecss::Memory {
 		auto sectorIt = SectorsChunk::Iterator(sectorAdr, mChunkData);
 		while (sectorIt != mChunk->end()) {
 			auto id = static_cast<SectorInfo*>(*sectorIt)->id;
-			mSectorsMap[id] = static_cast<EntityId>(pos++);
+			mSectorsMap[id] = *sectorIt;
 			++sectorIt;
 		}
 
 		return sectorAdr;
 	}
 
-	void* ComponentsArray::acquireSector(const ECSType componentTypeId, const EntityId entityId) {
+	void* ComponentsArray::acquireSector(const uint8_t componentTypeIdx, const EntityId entityId) {
 		if (size() >= mCapacity) {
 			setCapacity(mCapacity * 2);
 		}
 
 		if (mSectorsMap.size() <= entityId) {
-			mSectorsMap.resize(entityId + 1, INVALID_ID);
+			mSectorsMap.resize(entityId + 1, nullptr);
 		}
 
-		if (mSectorsMap[entityId] < size()) {
-			return initSectorMember((*mChunk)[mSectorsMap[entityId]], componentTypeId);
+		if (const auto sectorPtr = mSectorsMap[entityId]) {
+			return initSectorMember(sectorPtr, componentTypeIdx);
 		}
 
 		size_t idx = 0;
 		Utils::binarySearch(entityId, idx, mChunk); //find the place where to insert sector
 
-		return initSectorMember(createSector(idx, entityId), componentTypeId);
+		return initSectorMember(createSector(idx, entityId), componentTypeIdx);
 	}
 
 	void ComponentsArray::destroyObject(const ECSType componentTypeId, const EntityId entityId) {
-		const auto pos = mSectorsMap[entityId];
-		if (pos >= size()) {
+		const auto sectorPtr = mSectorsMap[entityId];
+		if (!sectorPtr) {
 			return;
 		}
 
-		const auto sectorPtr = (*mChunk)[pos];
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
 		destroyObject(sectorPtr, mChunkData.sectorMembersIndexes[componentTypeId]);
-		
-		if (sectorInfo->nullBits == 0) {
-			erase(mSectorsMap[entityId]);
+		auto dead = true;
+		for (auto bit : sectorInfo->nullBits) {
+			if (bit) {
+				dead = false;
+				break;
+			}
+		}
+
+		if (dead) {
+			size_t pos = 0;
+			Utils::binarySearch(entityId, pos, mChunk);
+			erase(pos);
 		}
 	}
 
@@ -175,12 +202,14 @@ namespace ecss::Memory {
 	}
 
 	void ComponentsArray::destroySector(const EntityId entityId) {
-		if (entityId >= mSectorsMap.size() || mSectorsMap[entityId] > mCapacity) {
+		if (entityId >= mSectorsMap.size() || !mSectorsMap[entityId]) {
 			return;
 		}
 
-		destroySector((*mChunk)[mSectorsMap[entityId]]);
+		destroySector(mSectorsMap[entityId]);
 
-		erase(mSectorsMap[entityId]);
+		size_t pos = 0;
+		Utils::binarySearch(entityId, pos, mChunk);
+		erase(pos);
 	}
 }

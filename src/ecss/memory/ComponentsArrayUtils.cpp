@@ -17,20 +17,21 @@ namespace ecss::Memory::Utils {
 	}
 
 	void* binarySearch(EntityId sectorId, size_t& idx, SectorsChunk* sectors) {
-		auto begin = sectors->begin();
-		auto end = sectors->end();
-		auto size = sectors->size;
-		if (begin == end) {
+		const auto size = sectors->size;
+		if (size == 0) {
 			idx = 0;
 			return nullptr;
 		}
 
+		auto begin = sectors->begin();
+		auto end = sectors->end();
+		
 		if (static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>((*sectors)[size - 1])))->id < sectorId) {
 			idx = size;
 			return nullptr;
 		}
 
-		if (static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>((*sectors)[0])))->id > sectorId) {
+		if (static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>((*sectors)[0])))->id >= sectorId) {
 			idx = 0;
 			return nullptr;
 		}
