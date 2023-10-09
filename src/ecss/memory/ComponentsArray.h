@@ -39,7 +39,7 @@ namespace ecss::Memory {
 
 			template<typename Type>
 			inline Type* getTyped() {
-				return static_cast<SectorInfo*>(*mIt)->nullBits[Type::STATIC_COMPONENT_SECTOR_IDX - 1] ? static_cast<Type*>(static_cast<void*>(static_cast<char*>(*mIt) + offsets[Type::STATIC_COMPONENT_SECTOR_IDX])) : nullptr;
+				return static_cast<SectorInfo*>(*mIt)->nullBits[Type::STATIC_COMPONENT_SECTOR_IDX - 1] ? static_cast<Type*>(Utils::getTypePlace(*mIt, offsets[Type::STATIC_COMPONENT_SECTOR_IDX])) : nullptr;
 			}
 
 			inline Iterator& operator+(size_t i) {	mIt = mIt + i;	return *this; }

@@ -12,10 +12,10 @@ namespace ecss {
 }
 
 namespace ecss::Memory::Utils {
-	void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::map<ECSType, uint8_t>& types);
-	void* getTypePlace(void* start, uint16_t offset);
+	inline void* getTypePlace(void* start, uint16_t offset) { return static_cast<void*>(static_cast<char*>(start) + offset); }
+	inline void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::map<ECSType, uint8_t>& types) { return getTypePlace(start, offsets[types.at(typeId)]); }
 
-	size_t distance(void* beg, void* end, size_t size);
+	inline size_t distance(void* beg, void* end, size_t size) { return std::abs((static_cast<char*>(beg) - static_cast<char*>(end))) / size; }
 
 	void* binarySearch(EntityId sectorId, size_t& idx, SectorsChunk* sectors);
 

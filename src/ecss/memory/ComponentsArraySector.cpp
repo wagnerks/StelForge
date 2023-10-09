@@ -46,18 +46,6 @@ namespace ecss::Memory {
 		return Iterator((*this)[size], data);
 	}
 
-	bool SectorInfo::isTypeNull(uint8_t typeIdx) const {
-		return !nullBits[typeIdx - 1];
-	}
-
-	void SectorInfo::setTypeBitTrue(uint8_t typeIdx) {
-		nullBits[typeIdx - 1] = true; //typeIdx in sector starts after sectorInfo, so move index 1 to right
-	}
-
-	void SectorInfo::setTypeBitFalse(uint8_t typeIdx) {
-		nullBits[typeIdx - 1] = false;
-	}
-
 	void SectorsChunk::shiftDataRight(size_t from) const {
 		for (auto i = size - 1; i >= from; i--) {
 			auto prevAdr = (*this)[i];

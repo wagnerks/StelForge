@@ -109,13 +109,13 @@ namespace ecss::Memory {
 	struct SectorInfo {
 		EntityId id;
 		std::array<bool, 32> nullBits;
-		//unsigned long nullBits = 0; //each bit means that component 0 1 2 3 etc alive or not, maximum 32 components
+		//each bit means that component 0 1 2 3 etc alive or not, maximum 32 components
 
-		bool isTypeNull(uint8_t typeIdx) const;
+		inline bool isTypeNull(uint8_t typeIdx) const { return !nullBits[typeIdx - 1]; }
 
-		void setTypeBitTrue(uint8_t typeIdx);
+		inline void setTypeBitTrue(uint8_t typeIdx) { nullBits[typeIdx - 1] = true; }//typeIdx in sector starts after sectorInfo, so move index 1 to right
 
-		void setTypeBitFalse(uint8_t typeIdx);
+		inline void setTypeBitFalse(uint8_t typeIdx) { nullBits[typeIdx - 1] = false; }
 	};
 
 }
