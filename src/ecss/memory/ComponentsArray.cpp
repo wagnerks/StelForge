@@ -4,20 +4,19 @@
 
 
 namespace ecss::Memory {
-	ComponentsArray::ComponentsArray(size_t capacity) : mCapacity(std::max(capacity, static_cast<size_t>(1))) {
+	ComponentsArray::ComponentsArray(size_t capacity) {
 		mChunkData.sectorMembersOffsets[0] = mChunkData.sectorSize += 0;
 		mChunkData.sectorMembersOffsets[1] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(SectorInfo) + alignof(SectorInfo)); //offset for sector id
 	}
 
 	ComponentsArray::~ComponentsArray() {
-		if (!mChunk) {
+		if (!mData) {
 			return;
 		}
 
 		clear();
 
-		mChunk->~SectorsChunk();
-		std::free(mChunk);
+		std::free(mData);
 	}
 
 	size_t ComponentsArray::size() const {
@@ -29,18 +28,17 @@ namespace ecss::Memory {
 	}
 
 	void ComponentsArray::clear() {
-		if (!mChunk) {
+		if (!mSize) {
 			return;
 		}
 
 		for (EntityId i = 0; i < size(); i++) {
-			destroySector((*mChunk)[i]);
+			destroySector((*this)[i]);
 		}
 
 		mSize = 0;
-		mChunk->size = 0;
 		mSectorsMap.clear();
-		mSectorsMap.resize(mCapacity, nullptr);
+		mSectorsMap.resize(mCapacity, INVALID_ID);
 	}
 
 	size_t ComponentsArray::capacity() const {
@@ -70,146 +68,268 @@ namespace ecss::Memory {
 
 		mCapacity = newCap;
 
-		void* newMemory = malloc(sizeof(SectorsChunk) + alignof(SectorsChunk) + mCapacity * mChunkData.sectorSize);
-		assert(newMemory);
+		if (!mData) {
+			mData = malloc(mChunkData.sectorSize * mCapacity);
+			assert(mData);
+		}
+		else {
+			void* newMemory = malloc(mCapacity * mChunkData.sectorSize);
+			assert(newMemory);
 
-		const auto newChunk = new(newMemory)SectorsChunk(std::move(*mChunk));
-		std::free(mChunk);
-		mChunk = newChunk;
+			for (size_t i = 0; i < size(); i++) {
+				const auto sectorPtr = static_cast<void*>(static_cast<char*>(mData) + i * mChunkData.sectorSize);
+				const auto copySector = static_cast<void*>(static_cast<char*>(newMemory) + i * mChunkData.sectorSize);
+
+				const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
+				const auto newSectorInfo = static_cast<SectorInfo*>(copySector);
+
+				new(copySector)SectorInfo(std::move(*sectorInfo));
+
+				for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
+					if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
+						newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], false);
+						continue;
+					}
+
+					const auto oldPlace = Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]);
+					const auto newPlace = Utils::getTypePlace(copySector, mChunkData.sectorMembersOffsets[typeIdx]);
+					ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
+					newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], true);
+				}
+			}
+
+			std::free(mData);
+			mData = newMemory;
+		}
 
 		if (mCapacity > mSectorsMap.size()) {
-			mSectorsMap.resize(mCapacity, nullptr);
+			mSectorsMap.resize(mCapacity, INVALID_ID);
 		}
-
-		for (auto sectorPtr : *mChunk) {
-			mSectorsMap[static_cast<SectorInfo*>(static_cast<void*>(sectorPtr))->id] = sectorPtr;
-		}
-	}
-
-	void ComponentsArray::allocateChunk() {
-		if (mChunk) {
-			return;
-		}
-
-		mSectorsMap.resize(mCapacity, nullptr);
-
-		auto chunkPlace = malloc(sizeof(SectorsChunk) + alignof(SectorsChunk) + mChunkData.sectorSize * mCapacity);
-		mChunk = new (chunkPlace)SectorsChunk(mChunkData);
 	}
 
 	void ComponentsArray::erase(size_t pos) {
-		char* sectorPtr = static_cast<char*>((*mChunk)[pos]);
-		auto info = static_cast<SectorInfo*>(static_cast<void*>(sectorPtr));
-		mSectorsMap[info->id] = nullptr;
-		
-		mChunk->shiftDataLeft(pos);
-		--mSize;
-		--mChunk->size;
+		const auto sectorInfo = (*this)[pos];
+		mSectorsMap[sectorInfo->id] = INVALID_ID;
 
-		auto sectorIt = SectorsChunk::Iterator(sectorPtr, mChunkData);
-		while (sectorIt != mChunk->end()) {
-			mSectorsMap[static_cast<SectorInfo*>(*sectorIt)->id] = *sectorIt;
-			++sectorIt;
-		}
+		shiftDataLeft(pos);
+		--mSize;
+	}
+
+	void ComponentsArray::erase(size_t from, size_t to) {
+		shiftDataLeft(from, to - from);
+		mSize -= to - from;
 	}
 
 	void* ComponentsArray::initSectorMember(void* sectorPtr, const uint8_t componentTypeIdx) {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
 		destroyObject(sectorPtr, componentTypeIdx);
 
-		sectorInfo->setTypeBitTrue(componentTypeIdx);
+		sectorInfo->setAlive(mChunkData.sectorMembersOffsets[componentTypeIdx], mChunkData.sectorMembersOffsets[componentTypeIdx + 1] - mChunkData.sectorMembersOffsets[componentTypeIdx], true);
 		return Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[componentTypeIdx]);
 	}
 
 	void* ComponentsArray::createSector(size_t pos, const EntityId sectorId) {
-		char* sectorAdr = static_cast<char*>((*mChunk)[pos]);
+		auto sectorAdr = (*this)[pos];
 
 		if (pos < size()) {
-			mChunk->shiftDataRight(pos);
+			shiftDataRight(pos);
 		}
 
 		++mSize;
-		++mChunk->size;
-		const auto sectorInfo = new(sectorAdr)SectorInfo();;
-		sectorInfo->id = sectorId;
-
-		auto sectorIt = SectorsChunk::Iterator(sectorAdr, mChunkData);
-		while (sectorIt != mChunk->end()) {
-			auto id = static_cast<SectorInfo*>(*sectorIt)->id;
-			mSectorsMap[id] = *sectorIt;
-			++sectorIt;
+		sectorAdr->id = sectorId;
+		for (auto i = 1u; i < 1 + mSectorCapacity; i++) {//1 is reserved for sector info
+			sectorAdr->setAlive(mChunkData.sectorMembersOffsets[i], mChunkData.sectorMembersOffsets[i + 1] - mChunkData.sectorMembersOffsets[i], false);
 		}
+
+		mSectorsMap[sectorAdr->id] = static_cast<EntityId>(pos);
 
 		return sectorAdr;
 	}
 
 	void* ComponentsArray::acquireSector(const uint8_t componentTypeIdx, const EntityId entityId) {
 		if (size() >= mCapacity) {
+			if (!mCapacity) {
+				mCapacity = 1;
+			}
 			setCapacity(mCapacity * 2);
 		}
 
 		if (mSectorsMap.size() <= entityId) {
-			mSectorsMap.resize(entityId + 1, nullptr);
+			mSectorsMap.resize(entityId + 1, INVALID_ID);
 		}
-
-		if (const auto sectorPtr = mSectorsMap[entityId]) {
-			return initSectorMember(sectorPtr, componentTypeIdx);
+		else {
+			if (mSectorsMap[entityId] != INVALID_ID) {
+				return initSectorMember((*this)[mSectorsMap[entityId]], componentTypeIdx);
+			}
 		}
 
 		size_t idx = 0;
-		Utils::binarySearch(entityId, idx, mChunk); //find the place where to insert sector
+		Utils::binarySearch(entityId, idx, this, mChunkData.sectorSize); //find the place where to insert sector
 
 		return initSectorMember(createSector(idx, entityId), componentTypeIdx);
 	}
 
 	void ComponentsArray::destroyObject(const ECSType componentTypeId, const EntityId entityId) {
-		const auto sectorPtr = mSectorsMap[entityId];
-		if (!sectorPtr) {
+		if (mSectorsMap[entityId] == INVALID_ID) {
 			return;
 		}
 
-		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		destroyObject(sectorPtr, mChunkData.sectorMembersIndexes[componentTypeId]);
-		auto dead = true;
-		for (auto bit : sectorInfo->nullBits) {
-			if (bit) {
-				dead = false;
-				break;
-			}
+		const auto sectorInfo = (*this)[mSectorsMap[entityId]];
+
+		destroyObject(sectorInfo, mChunkData.sectorMembersIndexes[componentTypeId]);
+
+		if (!isSectorAlive(sectorInfo)) {
+			size_t pos = 0;
+			Utils::binarySearch(entityId, pos, this, mChunkData.sectorSize);
+			erase(pos);
+		}
+	}
+
+	void ComponentsArray::destroyObjects(ECSType componentTypeId, std::vector<EntityId> entityIds) {
+		if (entityIds.empty()) {
+			return;
 		}
 
-		if (dead) {
-			size_t pos = 0;
-			Utils::binarySearch(entityId, pos, mChunk);
-			erase(pos);
+		std::sort(entityIds.begin(), entityIds.end());
+		if (entityIds.front() == INVALID_ID) {
+			return;
+		}
+
+		auto prevPos = mSectorsMap[entityIds.front()];
+		auto lastPos = mSectorsMap[entityIds.front()];
+
+		for (auto i = 0u; i < entityIds.size(); i++) {
+			const auto entityId = entityIds[i];
+			if (entityId == INVALID_ID) {
+				break; //all valid entities destroyed
+			}
+
+			if (mSectorsMap[entityId] == INVALID_ID) {
+				continue;//there is no such entity in container
+			}
+
+			const auto sector = (*this)[mSectorsMap[entityId]];
+			destroyObject(sector, mChunkData.sectorMembersIndexes[componentTypeId]);
+
+			if (!isSectorAlive(sector)) {
+				lastPos = mSectorsMap[entityId];
+				mSectorsMap[entityId] = INVALID_ID;
+
+				const bool isLast = i == entityIds.size() - 1;
+				if (isLast || ((entityIds[i + 1] - entityId) > 1)) {
+					erase(prevPos, lastPos);
+					prevPos = lastPos;
+				}
+				//continue iterations till not found some nod dead sector
+				continue;
+			}
+
+			erase(prevPos, lastPos);//todo not sure this part works correctly
+			prevPos = lastPos;
 		}
 	}
 
 	void ComponentsArray::destroyObject(void* sectorPtr, uint8_t typeIdx) const {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		if (sectorInfo->isTypeNull(typeIdx)) {
+		if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
 			return;
 		}
-		sectorInfo->setTypeBitFalse(typeIdx);
 
-		static_cast<ComponentInterface*>(Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]))->~ComponentInterface();
+		sectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx],false);
+		for (auto [typeId, idx] : mChunkData.sectorMembersIndexes) {
+			if (idx == typeIdx) {
+				ReflectionHelper::destructorMap[typeId](Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]));
+				break;
+			}
+		}
 	}
 
 	void ComponentsArray::destroySector(void* sectorPtr) const {
-		for (auto& [typeId, typeIdx] : mChunk->data.sectorMembersIndexes) {
+		for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
 			destroyObject(sectorPtr, typeIdx);
 		}
 	}
 
 	void ComponentsArray::destroySector(const EntityId entityId) {
-		if (entityId >= mSectorsMap.size() || !mSectorsMap[entityId]) {
+		if (entityId >= mSectorsMap.size() || mSectorsMap[entityId] == INVALID_ID) {
 			return;
 		}
 
-		destroySector(mSectorsMap[entityId]);
+		destroySector((*this)[mSectorsMap[entityId]]);
 
 		size_t pos = 0;
-		Utils::binarySearch(entityId, pos, mChunk);
+		Utils::binarySearch(entityId, pos, this, mChunkData.sectorSize);
 		erase(pos);
+	}
+
+	ComponentsArray::IteratorSectors ComponentsArray::beginSectors() const {
+		return IteratorSectors(mData, mChunkData);
+	}
+
+	ComponentsArray::IteratorSectors ComponentsArray::endSectors() const {
+		return IteratorSectors((*this)[size()], mChunkData);
+	}
+
+	void ComponentsArray::shiftDataRight(size_t from) {
+		for (auto i = size() - 1; i >= from; i--) {
+			auto prevAdr = (*this)[i];
+			auto newAdr = (*this)[i + 1];
+
+			for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
+				if (!prevAdr->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
+					newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], false);
+					continue;
+				}
+
+				const auto oldPlace = Utils::getTypePlace(prevAdr, mChunkData.sectorMembersOffsets[typeIdx]);
+				const auto newPlace = Utils::getTypePlace(newAdr, mChunkData.sectorMembersOffsets[typeIdx]);
+				ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
+
+				newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], true);
+			}
+
+			//move data one sector right to empty place for new sector
+			new (newAdr)SectorInfo(std::move(*prevAdr));//call move constructor for sector info
+			mSectorsMap[newAdr->id] = static_cast<EntityId>(i + 1);
+
+			if (i == 0) {
+				break;
+			}
+		}
+	}
+
+	void ComponentsArray::shiftDataLeft(size_t from, size_t offset) {
+		for (auto i = from; i < size() - offset; i++) {
+			auto newAdr = (*this)[i];
+			auto prevAdr = (*this)[i + offset];
+
+			for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
+				if (!prevAdr->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
+					newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], false);
+					continue;
+				}
+
+				const auto oldPlace = Utils::getTypePlace(prevAdr, mChunkData.sectorMembersOffsets[typeIdx]);
+				const auto newPlace = Utils::getTypePlace(newAdr, mChunkData.sectorMembersOffsets[typeIdx]);
+				ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
+				newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], true);
+			}
+
+			new (newAdr)SectorInfo(std::move(*prevAdr));//move sector info
+			mSectorsMap[newAdr->id] = static_cast<EntityId>(i);
+		}
+
+	}
+
+	bool ComponentsArray::isSectorAlive(SectorInfo* sector) const {
+		bool alive = true;
+		for (auto i = 1u; i < 1 + mSectorCapacity; i++) {
+			if (!sector->isAlive(mChunkData.sectorMembersOffsets[i], mChunkData.sectorMembersOffsets[i + 1] - mChunkData.sectorMembersOffsets[i])) {
+				alive = false;
+				break;
+			}
+		}
+
+		return alive;
 	}
 }

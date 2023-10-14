@@ -1,23 +1,25 @@
 ﻿#pragma once
 
 #include <array>
-#include <map>
+#include <functional>
 
 #include "../Types.h"
+#include "../contiguousMap.h"
 
 namespace ecss {
 	namespace Memory {
+		class ComponentsArray;
 		struct SectorsChunk;
 	}
 }
 
 namespace ecss::Memory::Utils {
-	inline void* getTypePlace(void* start, uint16_t offset) { return static_cast<void*>(static_cast<char*>(start) + offset); }
-	inline void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 34>& offsets, const std::map<ECSType, uint8_t>& types) { return getTypePlace(start, offsets[types.at(typeId)]); }
+	__forceinline  void* getTypePlace(void* start, uint16_t offset) { return static_cast<void*>(static_cast<char*>(start) + offset); }
+	__forceinline  void* getTypePlace(void* start, ECSType typeId, const std::array<uint16_t, 10>& offsets, ContiguousMap<ECSType, uint8_t>& types) { return getTypePlace(start, offsets[types[typeId]]); }
 
-	inline size_t distance(void* beg, void* end, size_t size) { return std::abs((static_cast<char*>(beg) - static_cast<char*>(end))) / size; }
+	__forceinline  size_t distance(void* beg, void* end, size_t size) { return std::abs((static_cast<char*>(beg) - static_cast<char*>(end))) / size; }
 
-	void* binarySearch(EntityId sectorId, size_t& idx, SectorsChunk* sectors);
+	void* binarySearch(EntityId sectorId, size_t& idx, ComponentsArray* sectors, size_t sectorSize);
 
 	template <typename T>
 	struct Base {};

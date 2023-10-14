@@ -29,20 +29,43 @@ namespace ecss {
 		void clear();
 
 		template <class T>
-		T* getComponent(const EntityHandle& entity);
+		T* getComponent(const EntityHandle& entity) {
+			return entity ? getComponentContainer<T>()->getComponent<T>(entity.getID()) : nullptr;
+		}
 
 		template <class T, class ...Args>
-		T* addComponent(const EntityHandle& entity, Args&&... args);
+		T* addComponent(const EntityHandle& entity, Args&&... args) {
+			if (auto comp = getComponent<T>(entity)) {
+				return comp;
+			}
+
+			auto container = getComponentContainer<T>();
+			auto comp = new(container->acquireSector(container->template getTypeIdx<T>(), entity.getID()))T(std::forward<Args>(args)...);
+			comp->mOwnerId = entity.getID();
+
+			return static_cast<T*>(comp);
+		}
 
 		//you can create component somewhere in another thread and move it into container here
 		template <class T>
-		void moveComponentToEntity(const EntityHandle& entityId, T* component);
+		void moveComponentToEntity(const EntityHandle& entity, T* component) {
+			getComponentContainer<T>()->moveToSector<T>(entity.getID(), component);
+		}
 
 		template <class T>
-		void copyComponentToEntity(const EntityHandle& entityId, T* component);
+		void copyComponentToEntity(const EntityHandle& entity, T* component) {
+			getComponentContainer<T>()->copyToSector<T>(entity.getID(), component);
+		}
 
 		template <class T>
-		void removeComponent(const EntityHandle& entityId);
+		void removeComponent(const EntityHandle& entity) {
+			getComponentContainer<T>()->destroyObject(Memory::ReflectionHelper::getTypeId<T>(), entity.getID());
+		}
+
+		template <class T>
+		void removeComponent(const std::vector<EntityId>& entities) {
+			getComponentContainer<T>()->destroyObjects(Memory::ReflectionHelper::getTypeId<T>(), entities);
+		}
 
 		void destroyComponents(const EntityHandle& entityId) const;
 
@@ -54,12 +77,35 @@ namespace ecss {
  0x..[    ...    ]
  0x..[component maxN]
  
-  maxN = 32
+  maxN = 10
  
   should be called before any getContainer calls
 */
 		template<typename... Components> 
-		void initCustomComponentsContainer(); 
+		void initCustomComponentsContainer() {
+			bool added = false;
+
+			((added |= prepareForContainer<Components>()), ...);
+			if (added) {
+				assert(false);
+				return;
+			}
+
+			auto container = new Memory::ComponentsArrayInitializer<Components...>();
+
+			((mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<Components>()] = container), ...);
+		}
+
+		template <typename T>
+		bool prepareForContainer() {
+			auto type = Memory::ReflectionHelper::getTypeId<T>();
+			if (mComponentsArraysMap.size() <= type) {
+				mComponentsArraysMap.resize(type + 1, nullptr);
+				return false;
+			}
+			
+			return mComponentsArraysMap[type];
+		}
 
 /*
 this function creates an object with selected components, which provided ability to iterate through entities like it is the container of tuple<component1,component2,component3>
@@ -92,150 +138,93 @@ so better, if you want to merge multiple types in one sector, always create all 
 		void destroyEntity(const EntityHandle& entityId);
 
 		const std::vector<EntityId>& getAllEntities();
-	private:
+
 		template <class T>
 		Memory::ComponentsArray* getComponentContainer(bool skipCheck = false) {
-			if (mComponentsArraysMap.empty()) {
-				return nullptr;
-			}
-
-			const size_t componentTypeID = T::STATIC_COMPONENT_TYPE_ID;
 			if (!skipCheck) {
-				if (mComponentsArraysMap[componentTypeID] == mDummy) {
+				auto compId = Memory::ReflectionHelper::getTypeId<T>();
+				if (mComponentsArraysMap.size() <= compId) {
+					mComponentsArraysMap.resize(compId + 1);
+				}
+
+				if (mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<T>()] == nullptr) {
 					initCustomComponentsContainer<T>();
 				}
 			}
 
-			return mComponentsArraysMap[componentTypeID];
+			return mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<T>()];
 		}
 
+	private:
 		std::vector<Memory::ComponentsArray*> mComponentsArraysMap;
 
 		std::vector<EntityId> mEntities;
 		std::set<EntityId> mFreeEntities;
 
-		Memory::ComponentsArray* mDummy;
-
 		EntityId getNewId();
 	};
-
-	template <class T>
-	void Registry::moveComponentToEntity(const EntityHandle& entity, T* component) {
-		getComponentContainer<T>()->moveToSector<T>(entity.getID(), component);
-	}
-
-	template <class T>
-	void Registry::copyComponentToEntity(const EntityHandle& entity, T* component) {
-		getComponentContainer<T>()->copyToSector<T>(entity.getID(), component);
-	}
-
-	template <class T>
-	void Registry::removeComponent(const EntityHandle& entity) {
-		getComponentContainer<T>()->destroyObject(T::STATIC_COMPONENT_TYPE_ID, entity.getID());
-	}
 	
-	template <typename ... Components>
-	void Registry::initCustomComponentsContainer() {
-		bool added = false;
-		((added |= mComponentsArraysMap[Components::STATIC_COMPONENT_TYPE_ID] != mDummy), ...);
-		if (added) {
-			assert(false);
-			return;
-		}
-
-		auto container = new Memory::ComponentsArrayInitializer<Components...>();
-
-		((mComponentsArraysMap[Components::STATIC_COMPONENT_TYPE_ID] = container),...);
-	}
-
-	template <class T>
-	T* Registry::getComponent(const EntityHandle& entity) {
-		if (!entity) {
-			return nullptr;
-		}
-
-		auto cont = getComponentContainer<T>();
-		if (cont->entitiesCapacity() <= entity.getID()) {
-			return nullptr;
-		}
-
-		return getComponentContainer<T>()->getComponent<T>(entity.getID());
-	}
-
-	template <class T, class ... Args>
-	T* Registry::addComponent(const EntityHandle& entity, Args&&... args) {
-		if (!entity) {
-			return nullptr;
-		}
-		if (auto comp = getComponent<T>(entity)) {
-			return comp;
-		}
-
-		auto comp = new(getComponentContainer<T>()->acquireSector(T::STATIC_COMPONENT_SECTOR_IDX, entity.getID()))T(std::forward<Args>(args)...);
-		comp->mOwnerId = entity.getID();
-
-		return static_cast<T*>(comp);
-	}
-
 	template <typename T, typename ...ComponentTypes>
 	class ComponentsArrayHandle {
-		Memory::ComponentsArray* mMainContainer;
-
-		std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
 	public:
-		class Iterator {
-			using ComponentsIt = Memory::ComponentsArray::Iterator<T>;
-			ComponentsIt mIt;
-			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
-			std::array<bool, sizeof...(ComponentTypes)> mIsTyped;
-			size_t mIdx = 0;
-
-		public:
-			inline Iterator(ComponentsIt listIt, std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> arrays) : mIt(listIt), mArrays(arrays) {
-				size_t i = 0;
-				((mIsTyped[i++] = mIt.template isType< std::remove_const_t<ComponentTypes>>()), ...);
-
-				std::reverse(mIsTyped.begin(), mIsTyped.end());
-			}
-
-			template<typename ComponentType>
-			inline ComponentType* getComponent(const EntityId& sectorId) {
-				return mIsTyped[mIdx] ? mIdx++, mIt.template getTyped<ComponentType>() : mArrays[mIdx++]->template getComponent<ComponentType>(sectorId);
-			}
-			
-			inline std::tuple<T&, ComponentTypes&...> operator*() {
-				return std::forward_as_tuple(*(mIt.template getTyped<T>()), *getComponent<ComponentTypes>(*static_cast<EntityId*>(*(mIt.mIt)))...);
-			}
-
-			inline Iterator& operator++() {
-				++mIt, mIdx = 0; return *this;
-			}
-
-			inline bool operator!=(const Iterator& other) const {
-				return mIt != other.mIt;
-			}
-		};
-
-		size_t size() const { return mMainContainer->size(); }
-		bool empty() const { return !size(); }
-
-		std::tuple<T&, ComponentTypes&...> operator[](size_t i) const {
-			return *Iterator(mMainContainer->begin<T>() + i, mArrays);
-		}
-
-		ComponentsArrayHandle(Registry* manager) : mMainContainer(manager->getComponentContainer<T>()) {
+		explicit ComponentsArrayHandle(Registry* manager) : mMainContainer(manager->getComponentContainer<T>()) {
 			size_t i = 0;
-			((mArrays[i++] = manager->getComponentContainer<ComponentTypes>(true)), ...);
-
+			((mArrays[i++] = manager->getComponentContainer<ComponentTypes>()), ...);
 			std::reverse(mArrays.begin(), mArrays.end());
 		}
 
-		Iterator begin() {
-			return { mMainContainer->begin<T>(), mArrays };
-		}
+		inline size_t size() const { return mMainContainer->size(); }
+		inline bool empty() const { return !size(); }
 
-		Iterator end() {
-			return { mMainContainer->end<T>(), mArrays };
-		}
+		inline std::tuple<T&, ComponentTypes&...> operator[](size_t i) const { return *Iterator(mMainContainer->begin() + i, mArrays); }
+
+		class Iterator {
+			using ComponentsIt = Memory::ComponentsArray::Iterator;
+
+		public:
+			inline Iterator(const ComponentsIt& iterator, const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)>& arrays) : mIt(std::move(iterator)), mArrays(arrays) {
+				size_t i = 0;
+				((mHasType[i++] = mIt.hasType<std::remove_const_t<ComponentTypes>>()), ...);
+				std::reverse(mHasType.begin(), mHasType.end());
+
+				mMainIndex = mIt.getTypeIdx<T>();
+				std::reverse(mArrays.begin(), mArrays.end());
+
+				i = 0;
+				((i++,mTypeIndexes[i-1] = mArrays[i-1]->template getTypeIdx<ComponentTypes>()), ...);
+
+				std::reverse(mArrays.begin(), mArrays.end());
+				std::reverse(mTypeIndexes.begin(), mTypeIndexes.end());
+			}
+
+			template<typename ComponentType>
+			inline ComponentType* getComponent(const EntityId sectorId) {
+				return mHasType[mIdx] ? mIt.getTyped<ComponentType>(mTypeIndexes[mIdx++]) : mArrays[mIdx]->template getComponentImpl<ComponentType>(sectorId, mTypeIndexes[mIdx++]);
+			}
+			
+			inline std::tuple<size_t, T&, ComponentTypes&...> operator*() {
+				return std::forward_as_tuple((*mIt)->id, *(mIt.getTyped<T>(mMainIndex)), *getComponent<ComponentTypes>((*mIt)->id)...);
+			}
+
+			inline Iterator& operator++() {	return ++mIt, mIdx = 0, *this; }
+			inline bool operator!=(const Iterator& other) const { return mIt != other.mIt; }
+
+		private:
+			ComponentsIt mIt;
+			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
+			std::array<bool, sizeof...(ComponentTypes)> mHasType;
+			std::array<uint8_t, sizeof...(ComponentTypes)> mTypeIndexes;
+			size_t mIdx = 0;
+
+			uint8_t mMainIndex = 0;
+		};
+
+
+		inline Iterator begin() { return { mMainContainer->begin(), mArrays }; }
+		inline Iterator end() {	return { mMainContainer->end(), mArrays }; }
+
+	private:
+		Memory::ComponentsArray* mMainContainer;
+		std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
 	};
 }

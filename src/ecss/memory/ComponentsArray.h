@@ -1,102 +1,137 @@
 ﻿#pragma once
 
 #include <cassert>
+#include <functional>
 #include <vector>
 
 #include "ComponentsArraySector.h"
+#include "Reflection.h"
 
 namespace ecss::Memory {
-
+	/* data container with sectors of custom data in it
+	 *
+	 * the Sector is object in memory which includes SectorInfo {uint32_t(by default) sectorId; unsigned long nullBits;}
+	 * nullBits is the value, which contains information about custom data in sector availability
+	 * for example the object on the first place is not created, or deleted, first bit of nullBits == 0, the third object of sector is created, third bit == 1
+	 * it allows to return nullptr if bit is zero
+	 *
+	 * sector stores data for any custom type in theory, offset to type stores in ChunkData struct
+	 *--------------------------------------------------------------------------------------------
+	 *                                          [SECTOR]
+	 * 0x 00                                                           {SectorInfo}
+	 * 0x sizeof(SectorInfo)                                           {SomeObject}
+	 * 0x sizeof(SectorInfo + SomeObject)                              {SomeObject1}
+	 * 0x sizeof(SectorInfo + SomeObject + SomeObject1)                {SomeObject2}
+	 * ...
+	 * 0x sizeof(SectorInfo... + ...SomeObjectN-1 + SomeObjectN)       {SomeObjectN}
+	 *
+	 *--------------------------------------------------------------------------------------------
+	 *
+	 * N can be any number, but here locked on 32 for optimization purposes, if more then 32 - need to adjust nullBits memory
+	 *
+	 * objects from sector can be pulled as void*, and then casted to desired type, as long as the information about offsets for every object stored according to their type ids
+	 * you can't get object without knowing it's type
+	 *
+	 */
 	class ComponentsArray {
+	private:
 		ComponentsArray(const ComponentsArray&) = delete;
 		ComponentsArray& operator=(ComponentsArray&) = delete;
 
-	public:
-		template<typename T>
-		class Iterator {
-		private:
-			using VoidIt = SectorsChunk::Iterator;
-			const uint16_t mOffset = 0;
-			const uint8_t mTypePos = 0;
-			std::array<uint16_t, 34> offsets;
-			std::map<ECSType, uint8_t> members;
+		//shifts chunk data right
+		//[][][][from][][][]   -> [][][] [empty] [from][][][]
+		void shiftDataRight(size_t from);
+
+		//shifts chunk data left
+		//[][][][from][][][]   -> [][][from][][][]
+		//caution - shifting on alive data will produce memory leak
+		void shiftDataLeft(size_t from, size_t offset = 1);
+
+		bool isSectorAlive(SectorInfo* sector) const;
+
+		class IteratorSectors {
 		public:
-			VoidIt mIt;
+			IteratorSectors() : mPtr(nullptr), mSectorSize(0) {}
+			IteratorSectors(void* ptr, const ChunkData& data) : mPtr(ptr), mSectorSize(data.sectorSize) {}
 
-			EntityId getSectorId() const { return *static_cast<EntityId*>(*mIt); }
+			inline bool operator!=(const IteratorSectors& other) const { return mPtr != other.mPtr; }
+			inline bool operator==(const IteratorSectors& other) const { return mPtr == other.mPtr; }
 
-			inline Iterator() {};
-			inline Iterator(const VoidIt& listIt, uint16_t offset, uint8_t typePos, std::array<uint16_t, 34> offsets, std::map<ECSType, uint8_t> members) : mOffset(offset), mTypePos(typePos), mIt(listIt), offsets(offsets), members(members){}
-			
-			inline T* operator*() {
-				return getTyped<T>();
-			}
-
-			template<typename Type>
-			inline bool isType() {
-				return members.contains(Type::STATIC_COMPONENT_TYPE_ID);
-			}
-
-			template<typename Type>
-			inline Type* getTyped() {
-				return static_cast<SectorInfo*>(*mIt)->nullBits[Type::STATIC_COMPONENT_SECTOR_IDX - 1] ? static_cast<Type*>(Utils::getTypePlace(*mIt, offsets[Type::STATIC_COMPONENT_SECTOR_IDX])) : nullptr;
-			}
-
-			inline Iterator& operator+(size_t i) {	mIt = mIt + i;	return *this; }
-			inline Iterator& operator++() {
-				++mIt;
+			inline IteratorSectors& operator=(const IteratorSectors& other) {
+				if (this != &other) {
+					mPtr = other.mPtr;
+					mSectorSize = other.mSectorSize;
+				}
 				return *this;
 			}
 
-			inline bool operator!=(const Iterator& other) const { return mIt != other.mIt; }
+			inline void* operator*() const { return mPtr; }
+
+			inline IteratorSectors& operator++() { return mPtr = static_cast<char*>(mPtr) + mSectorSize, *this; }
+
+			inline IteratorSectors& operator+(size_t i) { return mPtr = static_cast<char*>(mPtr) + i * mSectorSize, *this; }
+		private:
+			void* mPtr;
+			uint16_t mSectorSize;
 		};
 
-		template <typename T>
-		Iterator<T> begin() {
+	protected:
+		template <typename... Types>
+		void initChunkData() {
+			size_t idx = 2; //first is 0, 1 is for sector data
+			((mChunkData.sectorMembersOffsets[idx++] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(Types)) + alignof(Types)), ...);
+			mSectorCapacity = idx - 2;
 
-			return { mChunk->begin(), mChunkData.sectorMembersOffsets[T::STATIC_COMPONENT_SECTOR_IDX], T::STATIC_COMPONENT_SECTOR_IDX, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes };
+			uint8_t i = 0;
+			((mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<Types>()] = ++i), ...);
 		}
 
-		template<typename T>
-		Iterator<T> end() { return { mChunk->end(), 0, 0, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes }; }
-
-		ComponentsArray(size_t capacity = 1);
+	public:
+		ComponentsArray(size_t capacity = 0);
 		virtual ~ComponentsArray();
+
+		IteratorSectors beginSectors() const;
+		IteratorSectors endSectors() const;
+
+		inline SectorInfo* operator[](size_t i) const { return static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>(mData) + i * mChunkData.sectorSize)); }
 
 		size_t size() const;
 		bool empty() const;
 		void clear();
+
 		size_t capacity() const;
-		size_t entitiesCapacity() const;
 		void reserve(size_t newCapacity);
 		void shrinkToFit();
 
+		size_t entitiesCapacity() const;
+
 		void* acquireSector(uint8_t componentTypeIdx, EntityId entityId);
 		void destroyObject(ECSType componentTypeId, EntityId entityId);
+		void destroyObjects(ECSType componentTypeId, std::vector<EntityId> entityIds);
 		void destroySector(EntityId entityId);
 
+		inline SectorInfo* getSectorInfo(EntityId sectorId) const {
+			return sectorId >= mSectorsMap.size() || mSectorsMap[sectorId] == INVALID_ID ? nullptr : (*this)[mSectorsMap[sectorId]];
+		}
+
 		template<typename T>
-		inline T* getComponent(const EntityId& sectorId) {
-			if (!T::STATIC_COMPONENT_SECTOR_IDX || sectorId >= mSectorsMap.size()) {
-				return nullptr;
-			}
+		inline T* getComponent(EntityId sectorId) {
+			return getComponentImpl<T>(sectorId, mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()]);
+		}
 
-			const auto sectorPtr = mSectorsMap[sectorId];
-			if (!sectorPtr || !static_cast<SectorInfo*>(sectorPtr)->nullBits[T::STATIC_COMPONENT_SECTOR_IDX - 1]) {
-				return nullptr;
-			}
-
-			return static_cast<T*>(Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[T::STATIC_COMPONENT_SECTOR_IDX]));
+		template<typename T>
+		inline T* getComponentImpl(EntityId sectorId, uint8_t sectorIdx) {
+			return getSectorInfo(sectorId) ? getSectorInfo(sectorId)->getObject<T>(mChunkData.sectorMembersOffsets[sectorIdx]) : nullptr;
 		}
 
 		template<typename T>
 		void moveToSector(EntityId sectorId, T* data) {
-			if (!data || !mChunkData.sectorMembersIndexes.contains(T::STATIC_COMPONENT_TYPE_ID)) {
+			if (!data || !mChunkData.sectorMembersIndexes.contains(ReflectionHelper::getTypeId<T>())) {
 				assert(false);
 				return;
 			}
-
-			auto sector = acquireSector(T::STATIC_COMPONENT_SECTOR_IDX, sectorId);
+			
+			auto sector = acquireSector(mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()], sectorId);
 			if (!sector) {
 				assert(false);
 				return;
@@ -108,12 +143,12 @@ namespace ecss::Memory {
 
 		template<typename T>
 		void copyToSector(EntityId sectorId, T* data) {
-			if (!data || !mChunkData.sectorMembersIndexes.contains(T::STATIC_COMPONENT_TYPE_ID)) {
+			if (!data || !mChunkData.sectorMembersIndexes.contains(ReflectionHelper::getTypeId<T>())) {
 				assert(false);
 				return;
 			}
 
-			auto sector = acquireSector(T::STATIC_COMPONENT_SECTOR_IDX, sectorId);
+			auto sector = acquireSector(mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()], sectorId);
 			if (!sector) {
 				assert(false);
 				return;
@@ -121,6 +156,11 @@ namespace ecss::Memory {
 
 			data->mOwnerId = sectorId;
 			new (sector) T(*data);
+		}
+
+		template<typename T>
+		inline uint8_t getTypeIdx() {
+			return mChunkData.sectorMembersIndexes.contains(ReflectionHelper::getTypeId<T>()) ? mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()] : 0;
 		}
 
 	private:
@@ -133,42 +173,67 @@ namespace ecss::Memory {
 		void destroySector(void* sectorPtr) const;
 
 		void erase(size_t pos);
+		void erase(size_t from, size_t to);
 
-		std::vector<void*> mSectorsMap;
-		SectorsChunk* mChunk = nullptr;
+		std::vector<EntityId> mSectorsMap;
+
+		ChunkData mChunkData;
+
+		size_t mSectorCapacity = 0;
+
 		size_t mSize = 0;
 		size_t mCapacity = 0;
 
-	protected:
-		template <typename... Types>
-		void initChunkData() {
-			size_t idx = 2; //first is 0, 1 is for sector data
-			((mChunkData.sectorMembersOffsets[idx++] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(Types)) + alignof(Types)), ...);
+		void* mData = nullptr;
 
+	public:
+		class Iterator {
+		public:
+			inline constexpr EntityId getSectorId() const { return *static_cast<EntityId*>(mPtr); }
 
-			uint8_t i = 0;
-			((mChunkData.sectorMembersIndexes[Types::STATIC_COMPONENT_TYPE_ID] = ++i), ...);
-			i = 0;
-			((Types::STATIC_COMPONENT_SECTOR_IDX = ++i), ...);
-		}
+			inline Iterator() {};
+			inline Iterator(void* ptr, uint16_t sectorSize, std::array<uint16_t, 10> offsets, ContiguousMap<ECSType, uint8_t> members) : mPtr(ptr), mSectorSize(sectorSize), mOffsets(offsets), mMembers(members) {}
 
-		void allocateChunk();
-		ChunkData mChunkData;
+			inline SectorInfo* operator*() const { return static_cast<SectorInfo*>(mPtr); }
+
+			template<typename Type>
+			inline bool hasType() { return mMembers.contains(Memory::ReflectionHelper::getTypeId<Type>()); }
+
+			template<typename Type>
+			inline Type* getTyped(uint8_t typeIdx) { return static_cast<SectorInfo*>(mPtr)->getObject<Type>(mOffsets[typeIdx]); }
+
+			template<typename Type>
+			inline uint8_t getTypeIdx() { return mMembers[Memory::ReflectionHelper::getTypeId<Type>()]; }
+
+			inline Iterator& operator+(size_t i) { return mPtr = static_cast<char*>(mPtr) + i * mSectorSize, *this; }
+			inline Iterator& operator++() { return mPtr = static_cast<char*>(mPtr) + mSectorSize, *this; }
+
+			inline bool operator!=(const Iterator& other) const { return mPtr != other.mPtr; }
+
+		private:
+			void* mPtr = nullptr;
+			uint16_t mSectorSize = 0;
+
+			std::array<uint16_t, 10> mOffsets = {};
+			ContiguousMap<ECSType, uint8_t> mMembers;
+		};
+
+		Iterator begin() { return { mData, mChunkData.sectorSize, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes }; }
+		Iterator end() { return { static_cast<char*>(mData) + size() * mChunkData.sectorSize, mChunkData.sectorSize, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes }; }
 	};
 
 	template <typename... Types>
-	class ComponentsArrayInitializer : public ComponentsArray {
+	class ComponentsArrayInitializer final : public ComponentsArray  {
 		ComponentsArrayInitializer(const ComponentsArrayInitializer&) = delete;
 		ComponentsArrayInitializer& operator=(ComponentsArrayInitializer&) = delete;
 
 	public:
-		ComponentsArrayInitializer(size_t capacity = 1) : ComponentsArray(capacity){
+		ComponentsArrayInitializer(size_t capacity = 0) : ComponentsArray(capacity){
 			static_assert(Utils::areUnique<Types...>(), "Duplicates detected in types");
 			static_assert(sizeof...(Types) <= 32, "More then 32 components in one container not allowed");
 
 			initChunkData<Types...>();
-
-			allocateChunk();
+			reserve(capacity);
 		}
 	};
 }

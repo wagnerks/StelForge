@@ -3,18 +3,12 @@
 #include "base/ComponentBase.h"
 
 namespace ecss {
-	Registry::Registry() {
-		mDummy = new Memory::ComponentsArray();
-
-		mComponentsArraysMap.resize(StaticTypeCounter<ComponentInterface>::getCount(), mDummy);
-	}
+	Registry::Registry() {}
 
 	Registry::~Registry() {
 		clear();
 
 		std::map<void*, bool> deleted;
-		deleted[mDummy] = true;
-		delete mDummy;
 
 		for (const auto container : mComponentsArraysMap) {
 			if (!container || deleted[container]) {//skip not created and containers of multiple components
@@ -49,7 +43,6 @@ namespace ecss {
 
 	EntityHandle Registry::takeEntity() {
 		auto id = getNewId();
-
 		mEntities.insert(mEntities.begin() + id, id);
 
 		return { id };

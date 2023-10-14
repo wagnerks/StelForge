@@ -4,24 +4,29 @@
 
 
 namespace ecss::Memory::Utils {
-	void* binarySearch(EntityId sectorId, size_t& idx, SectorsChunk* sectors) {
-		const auto size = sectors->size;
+	void* binarySearch(EntityId sectorId, size_t& idx, ComponentsArray* sectors, size_t sectorSize) {
+		const auto size = sectors->size();
 		if (size == 0) {
 			idx = 0;
 			return nullptr;
 		}
 
-		auto begin = sectors->begin();
-		auto end = sectors->end();
+		auto begin = sectors->beginSectors();
+		auto end = sectors->endSectors();
 		
-		if (static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>((*sectors)[size - 1])))->id < sectorId) {
+		if ((*sectors)[size - 1]->id < sectorId) {
 			idx = size;
 			return nullptr;
 		}
 
-		if (static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>((*sectors)[0])))->id >= sectorId) {
+		if ((*sectors)[0]->id > sectorId) {
 			idx = 0;
 			return nullptr;
+		}
+
+		if ((*sectors)[0]->id == sectorId) {
+			idx = 0;
+			return (*sectors)[0];
 		}
 
 		auto it = begin;
@@ -29,9 +34,9 @@ namespace ecss::Memory::Utils {
 		while (true) {
 			it = begin;
 
-			const auto dist = Utils::distance(*begin, *end, sectors->data.sectorSize);
+			const auto dist = Utils::distance(*begin, *end, sectorSize);
 			if (dist == 1) {
-				idx = Utils::distance(*sectors->begin(), *it, sectors->data.sectorSize) + 1;
+				idx = Utils::distance(*sectors->beginSectors(), *it, sectorSize) + 1;
 				break;
 			}
 
@@ -41,7 +46,7 @@ namespace ecss::Memory::Utils {
 				end = it;
 			}
 			else if (static_cast<SectorInfo*>(*it)->id == sectorId) {
-				idx = Utils::distance(*sectors->begin(), *it, sectors->data.sectorSize);
+				idx = Utils::distance(*sectors->beginSectors(), *it, sectorSize);
 				return *it;
 			}
 			else {
