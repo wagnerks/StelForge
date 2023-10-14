@@ -120,7 +120,7 @@ namespace ecss::Memory {
 		mSize -= to - from;
 	}
 
-	void* ComponentsArray::initSectorMember(void* sectorPtr, const uint8_t componentTypeIdx) {
+	void* ComponentsArray::initSectorMember(void* sectorPtr, const uint8_t componentTypeIdx) const {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
 		destroyObject(sectorPtr, componentTypeIdx);
 
@@ -129,7 +129,7 @@ namespace ecss::Memory {
 	}
 
 	void* ComponentsArray::createSector(size_t pos, const EntityId sectorId) {
-		auto sectorAdr = (*this)[pos];
+		const auto sectorAdr = (*this)[pos];
 
 		if (pos < size()) {
 			shiftDataRight(pos);
@@ -158,7 +158,7 @@ namespace ecss::Memory {
 			mSectorsMap.resize(entityId + 1, INVALID_ID);
 		}
 		else {
-			if (mSectorsMap[entityId] != INVALID_ID) {
+			if (mSectorsMap[entityId] < size()) {
 				return initSectorMember((*this)[mSectorsMap[entityId]], componentTypeIdx);
 			}
 		}
@@ -170,7 +170,7 @@ namespace ecss::Memory {
 	}
 
 	void ComponentsArray::destroyObject(const ECSType componentTypeId, const EntityId entityId) {
-		if (mSectorsMap[entityId] == INVALID_ID) {
+		if (mSectorsMap[entityId] >= size()) {
 			return;
 		}
 
@@ -191,7 +191,7 @@ namespace ecss::Memory {
 		}
 
 		std::sort(entityIds.begin(), entityIds.end());
-		if (entityIds.front() == INVALID_ID) {
+		if (entityIds.front() >= size()) {
 			return;
 		}
 
@@ -204,7 +204,7 @@ namespace ecss::Memory {
 				break; //all valid entities destroyed
 			}
 
-			if (mSectorsMap[entityId] == INVALID_ID) {
+			if (mSectorsMap[entityId] >= size()) {
 				continue;//there is no such entity in container
 			}
 
@@ -251,7 +251,7 @@ namespace ecss::Memory {
 	}
 
 	void ComponentsArray::destroySector(const EntityId entityId) {
-		if (entityId >= mSectorsMap.size() || mSectorsMap[entityId] == INVALID_ID) {
+		if (entityId >= mSectorsMap.size() || mSectorsMap[entityId] >= size()) {
 			return;
 		}
 
@@ -318,7 +318,6 @@ namespace ecss::Memory {
 			new (newAdr)SectorInfo(std::move(*prevAdr));//move sector info
 			mSectorsMap[newAdr->id] = static_cast<EntityId>(i);
 		}
-
 	}
 
 	bool ComponentsArray::isSectorAlive(SectorInfo* sector) const {

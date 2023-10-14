@@ -111,7 +111,7 @@ namespace ecss::Memory {
 		void destroySector(EntityId entityId);
 
 		inline SectorInfo* getSectorInfo(EntityId sectorId) const {
-			return sectorId >= mSectorsMap.size() || mSectorsMap[sectorId] == INVALID_ID ? nullptr : (*this)[mSectorsMap[sectorId]];
+			return sectorId >= mSectorsMap.size() || mSectorsMap[sectorId] >= size() ? nullptr : (*this)[mSectorsMap[sectorId]];
 		}
 
 		template<typename T>
@@ -164,7 +164,7 @@ namespace ecss::Memory {
 		}
 
 	private:
-		void* initSectorMember(void* sectorPtr, uint8_t componentTypeIdx);
+		void* initSectorMember(void* sectorPtr, uint8_t componentTypeIdx) const;
 
 		void setCapacity(size_t newCap);
 
