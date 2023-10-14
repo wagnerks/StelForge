@@ -1,5 +1,7 @@
 ﻿#include "Registry.h"
 
+#include <map>
+
 #include "base/ComponentBase.h"
 
 namespace ecss {
