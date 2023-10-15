@@ -1,7 +1,6 @@
 ﻿#include "ComponentsArray.h"
 
-#include "../base/ComponentBase.h"
-
+#include <algorithm>
 
 namespace ecss::Memory {
 	ComponentsArray::ComponentsArray(size_t capacity) {

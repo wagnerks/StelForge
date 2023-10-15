@@ -1,6 +1,7 @@
 ﻿#pragma once
+#include <array>
 #include <cstdint>
-#include "ComponentsArrayUtils.h"
+
 #include "../Types.h"
 #include "../contiguousMap.h"
 

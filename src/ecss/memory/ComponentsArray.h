@@ -1,10 +1,9 @@
 ﻿#pragma once
 
 #include <cassert>
-#include <functional>
-#include <vector>
 
 #include "ComponentsArraySector.h"
+#include "ComponentsArrayUtils.h"
 #include "Reflection.h"
 
 namespace ecss::Memory {
@@ -137,7 +136,6 @@ namespace ecss::Memory {
 				return;
 			}
 
-			data->mOwnerId = sectorId;
 			new (sector) T(std::move(*data));
 		}
 
@@ -154,7 +152,6 @@ namespace ecss::Memory {
 				return;
 			}
 
-			data->mOwnerId = sectorId;
 			new (sector) T(*data);
 		}
 

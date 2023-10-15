@@ -1,5 +1,4 @@
 ﻿#pragma once
-#include <algorithm>
 
 namespace ecss {
 	template<typename Key, typename Value>

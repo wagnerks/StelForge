@@ -4,11 +4,10 @@
 // "Sectors" refers to the logic of storing components.
 // Multiple components of different types can be stored in one memory location, which I've named a "sector."
 
-#include <deque>
 #include <set>
 
 #include "Types.h"
-#include "base/EntityHandle.h"
+#include "EntityHandle.h"
 #include "memory/ComponentsArray.h"
 
 
@@ -41,7 +40,6 @@ namespace ecss {
 
 			auto container = getComponentContainer<T>();
 			auto comp = new(container->acquireSector(container->template getTypeIdx<T>(), entity.getID()))T(std::forward<Args>(args)...);
-			comp->mOwnerId = entity.getID();
 
 			return static_cast<T*>(comp);
 		}

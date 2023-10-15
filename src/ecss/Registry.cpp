@@ -2,8 +2,6 @@
 
 #include <map>
 
-#include "base/ComponentBase.h"
-
 namespace ecss {
 	Registry::Registry() {}
 

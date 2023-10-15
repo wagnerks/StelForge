@@ -1,16 +1,12 @@
 ﻿#pragma once
 
 #include <array>
-#include <functional>
 
 #include "../Types.h"
 #include "../contiguousMap.h"
 
-namespace ecss {
-	namespace Memory {
-		class ComponentsArray;
-		struct SectorsChunk;
-	}
+namespace ecss::Memory {
+	class ComponentsArray;
 }
 
 namespace ecss::Memory::Utils {
