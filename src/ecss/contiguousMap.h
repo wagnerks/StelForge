@@ -4,8 +4,8 @@ namespace ecss {
 	template<typename Key, typename Value>
 	class ContiguousMap {
 		struct KeyValPair {
-			Key key;
-			Value value;
+			Key key = Key{};
+			Value value = Value{};
 		};
 	public:
 		ContiguousMap(const ContiguousMap& other)
@@ -117,7 +117,7 @@ namespace ecss {
 			return {};
 		}
 
-		bool contains(Key key) {
+		bool contains(Key key) const {
 			for (auto i = 0u; i < mSize; i++) {
 				if (mData[i].key == key) {
 					return true;
@@ -125,6 +125,16 @@ namespace ecss {
 			}
 
 			return false;
+		}
+
+		Value at(Key key) const {
+			for (auto i = 0u; i < mSize; i++) {
+				if (mData[i].key == key) {
+					return mData[i].value;
+				}
+			}
+
+			return {};
 		}
 
 		class Iterator {

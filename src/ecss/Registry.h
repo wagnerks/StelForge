@@ -180,41 +180,49 @@ so better, if you want to merge multiple types in one sector, always create all 
 			using ComponentsIt = Memory::ComponentsArray::Iterator;
 
 		public:
-			inline Iterator(const ComponentsIt& iterator, const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)>& arrays) : mIt(std::move(iterator)), mArrays(arrays) {
+			inline Iterator(const ComponentsIt& iterator, const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)>& arrays) : mArrays(arrays) {
+				mPtr = iterator.mPtr;
+				mSectorSize = iterator.mSectorSize;
+				mOffsets = iterator.mOffsets;
+
 				size_t i = 0;
-				((mHasType[i++] = mIt.hasType<std::remove_const_t<ComponentTypes>>()), ...);
-				std::reverse(mHasType.begin(), mHasType.end());
 
-				mMainIndex = mIt.getTypeIdx<T>();
+				mMainIndex = iterator.mMembers.at(Memory::ReflectionHelper::getTypeId<T>());
+
 				std::reverse(mArrays.begin(), mArrays.end());
-
-				i = 0;
-				((i++,mTypeIndexes[i-1] = mArrays[i-1]->template getTypeIdx<ComponentTypes>()), ...);
-
+				((mHasType[i++] = iterator.mMembers.contains(Memory::ReflectionHelper::getTypeId<ComponentTypes>()), mTypeIndexes[i - 1] = mArrays[i - 1]->template getTypeIdx<ComponentTypes>()), ...);
+				std::reverse(mHasType.begin(), mHasType.end());
 				std::reverse(mArrays.begin(), mArrays.end());
 				std::reverse(mTypeIndexes.begin(), mTypeIndexes.end());
 			}
 
 			template<typename ComponentType>
 			inline ComponentType* getComponent(const EntityId sectorId) {
-				return mHasType[mIdx] ? mIt.getTyped<ComponentType>(mTypeIndexes[mIdx++]) : mArrays[mIdx]->template getComponentImpl<ComponentType>(sectorId, mTypeIndexes[mIdx++]);
+				return mHasType[mIdx] ? static_cast<Memory::SectorInfo*>(mPtr)->getObject<ComponentType>(mOffsets[mTypeIndexes[mIdx++]]) : mArrays[mIdx]->template getComponentImpl<ComponentType>(sectorId, mTypeIndexes[mIdx++]);
 			}
 			
-			inline std::tuple<size_t, T&, ComponentTypes&...> operator*() {
-				return std::forward_as_tuple((*mIt)->id, *(mIt.getTyped<T>(mMainIndex)), *getComponent<ComponentTypes>((*mIt)->id)...);
+			inline std::tuple<EntityId, T&, ComponentTypes&...> operator*() {
+				auto id = static_cast<Memory::SectorInfo*>(mPtr)->id;
+				return std::forward_as_tuple(id, *(static_cast<Memory::SectorInfo*>(mPtr)->getObject<T>(mOffsets[mMainIndex])), *getComponent<ComponentTypes>(id)...);
 			}
 
-			inline Iterator& operator++() {	return ++mIt, mIdx = 0, *this; }
-			inline bool operator!=(const Iterator& other) const { return mIt != other.mIt; }
+			inline Iterator& operator++() {
+				return mPtr = static_cast<char*>(mPtr) + mSectorSize, mIdx = 0, *this;
+			}
+			inline bool operator!=(const Iterator& other) const { return mPtr != other.mPtr; }
 
 		private:
-			ComponentsIt mIt;
 			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
 			std::array<bool, sizeof...(ComponentTypes)> mHasType;
 			std::array<uint8_t, sizeof...(ComponentTypes)> mTypeIndexes;
-			size_t mIdx = 0;
+			std::array<uint16_t, 10> mOffsets = {};
 
 			uint8_t mMainIndex = 0;
+			uint8_t mIdx = 0;
+
+			uint16_t mSectorSize = 0;
+
+			void* mPtr = nullptr;
 		};
 
 

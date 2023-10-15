@@ -8,6 +8,7 @@
 namespace ecss::Memory {
 	struct ChunkData {
 		uint16_t sectorSize = 0;
+		uint8_t sectorCapacity = 0;
 		std::array<uint16_t, 10> sectorMembersOffsets = {};
 		ContiguousMap<ECSType, uint8_t> sectorMembersIndexes; // < {type id} , {idx in members offsets} >
 	};
@@ -28,17 +29,18 @@ namespace ecss::Memory {
 	struct SectorInfo {
 		EntityId id;
 
-		inline constexpr void setAlive(size_t offset, size_t objSize, bool value) {
-			*static_cast<bool*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(this)) + offset + objSize - sizeof(bool))) = value;//use last byte which is reserved for align - to store if object alive
+		inline constexpr void setAlive(size_t offset, bool value) {
+			*static_cast<bool*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(this)) + offset)) = value;//use first byte which is also reserved for align - to store if object alive
 		}
 
-		inline constexpr bool isAlive(size_t offset, size_t objSize) {
-			return *static_cast<bool*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(this)) + offset + objSize - sizeof(bool)));
+		inline constexpr bool isAlive(size_t offset) {
+			return *static_cast<bool*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(this)) + offset));
 		}
 
 		template<typename T>
 		inline constexpr T* getObject(size_t offset) noexcept {
-			return isAlive(offset, sizeof(T) + alignof(T)) ? static_cast<T*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(this)) + offset)) : nullptr;
+			const auto alive = static_cast<bool*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(this)) + offset));
+			return *alive ? static_cast<T*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(alive)) + 1)) : nullptr;
 		}
 	};
 

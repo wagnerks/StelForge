@@ -3,9 +3,9 @@
 #include <algorithm>
 
 namespace ecss::Memory {
-	ComponentsArray::ComponentsArray(size_t capacity) {
+	ComponentsArray::ComponentsArray(uint32_t capacity) {
 		mChunkData.sectorMembersOffsets[0] = mChunkData.sectorSize += 0;
-		mChunkData.sectorMembersOffsets[1] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(SectorInfo) + alignof(SectorInfo)); //offset for sector id
+		mChunkData.sectorMembersOffsets[1] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(SectorInfo) /*+ alignof(SectorInfo)*/); //offset for sector id
 	}
 
 	ComponentsArray::~ComponentsArray() {
@@ -18,7 +18,7 @@ namespace ecss::Memory {
 		std::free(mData);
 	}
 
-	size_t ComponentsArray::size() const {
+	uint32_t ComponentsArray::size() const {
 		return mSize;
 	}
 
@@ -40,7 +40,7 @@ namespace ecss::Memory {
 		mSectorsMap.resize(mCapacity, INVALID_ID);
 	}
 
-	size_t ComponentsArray::capacity() const {
+	uint32_t ComponentsArray::capacity() const {
 		return mCapacity;
 	}
 
@@ -48,7 +48,7 @@ namespace ecss::Memory {
 		return mSectorsMap.size();
 	}
 
-	void ComponentsArray::reserve(size_t newCapacity) {
+	void ComponentsArray::reserve(uint32_t newCapacity) {
 		if (newCapacity <= mCapacity) {
 			return;
 		}
@@ -60,7 +60,7 @@ namespace ecss::Memory {
 		setCapacity(size());
 	}
 
-	void ComponentsArray::setCapacity(size_t newCap) {
+	void ComponentsArray::setCapacity(uint32_t newCap) {
 		if (mCapacity == newCap) {
 			return;
 		}
@@ -85,15 +85,15 @@ namespace ecss::Memory {
 				new(copySector)SectorInfo(std::move(*sectorInfo));
 
 				for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
-					if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
-						newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], false);
+					if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx])) {
+						newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], false);
 						continue;
 					}
 
 					const auto oldPlace = Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]);
 					const auto newPlace = Utils::getTypePlace(copySector, mChunkData.sectorMembersOffsets[typeIdx]);
 					ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
-					newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], true);
+					newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], true);
 				}
 			}
 
@@ -115,15 +115,18 @@ namespace ecss::Memory {
 	}
 
 	void ComponentsArray::erase(size_t from, size_t to) {
+		if (from == to) {
+			return;
+		}
 		shiftDataLeft(from, to - from);
-		mSize -= to - from;
+		mSize -= static_cast<uint32_t>(to - from);
 	}
 
 	void* ComponentsArray::initSectorMember(void* sectorPtr, const uint8_t componentTypeIdx) const {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
 		destroyObject(sectorPtr, componentTypeIdx);
 
-		sectorInfo->setAlive(mChunkData.sectorMembersOffsets[componentTypeIdx], mChunkData.sectorMembersOffsets[componentTypeIdx + 1] - mChunkData.sectorMembersOffsets[componentTypeIdx], true);
+		sectorInfo->setAlive(mChunkData.sectorMembersOffsets[componentTypeIdx], true);
 		return Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[componentTypeIdx]);
 	}
 
@@ -136,8 +139,8 @@ namespace ecss::Memory {
 
 		++mSize;
 		sectorAdr->id = sectorId;
-		for (auto i = 1u; i < 1 + mSectorCapacity; i++) {//1 is reserved for sector info
-			sectorAdr->setAlive(mChunkData.sectorMembersOffsets[i], mChunkData.sectorMembersOffsets[i + 1] - mChunkData.sectorMembersOffsets[i], false);
+		for (auto i = 1u; i < 1u + mChunkData.sectorCapacity; i++) {//1 is reserved for sector info
+			sectorAdr->setAlive(mChunkData.sectorMembersOffsets[i], false);
 		}
 
 		mSectorsMap[sectorAdr->id] = static_cast<EntityId>(pos);
@@ -230,11 +233,11 @@ namespace ecss::Memory {
 
 	void ComponentsArray::destroyObject(void* sectorPtr, uint8_t typeIdx) const {
 		const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-		if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
+		if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx])) {
 			return;
 		}
 
-		sectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx],false);
+		sectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx],false);
 		for (auto [typeId, idx] : mChunkData.sectorMembersIndexes) {
 			if (idx == typeIdx) {
 				ReflectionHelper::destructorMap[typeId](Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]));
@@ -275,8 +278,8 @@ namespace ecss::Memory {
 			auto newAdr = (*this)[i + 1];
 
 			for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
-				if (!prevAdr->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
-					newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], false);
+				if (!prevAdr->isAlive(mChunkData.sectorMembersOffsets[typeIdx])) {
+					newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], false);
 					continue;
 				}
 
@@ -284,7 +287,7 @@ namespace ecss::Memory {
 				const auto newPlace = Utils::getTypePlace(newAdr, mChunkData.sectorMembersOffsets[typeIdx]);
 				ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
 
-				newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], true);
+				newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], true);
 			}
 
 			//move data one sector right to empty place for new sector
@@ -303,15 +306,15 @@ namespace ecss::Memory {
 			auto prevAdr = (*this)[i + offset];
 
 			for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
-				if (!prevAdr->isAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx])) {
-					newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], false);
+				if (!prevAdr->isAlive(mChunkData.sectorMembersOffsets[typeIdx])) {
+					newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], false);
 					continue;
 				}
 
 				const auto oldPlace = Utils::getTypePlace(prevAdr, mChunkData.sectorMembersOffsets[typeIdx]);
 				const auto newPlace = Utils::getTypePlace(newAdr, mChunkData.sectorMembersOffsets[typeIdx]);
 				ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
-				newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], mChunkData.sectorMembersOffsets[typeIdx + 1] - mChunkData.sectorMembersOffsets[typeIdx], true);
+				newAdr->setAlive(mChunkData.sectorMembersOffsets[typeIdx], true);
 			}
 
 			new (newAdr)SectorInfo(std::move(*prevAdr));//move sector info
@@ -320,10 +323,10 @@ namespace ecss::Memory {
 	}
 
 	bool ComponentsArray::isSectorAlive(SectorInfo* sector) const {
-		bool alive = true;
-		for (auto i = 1u; i < 1 + mSectorCapacity; i++) {
-			if (!sector->isAlive(mChunkData.sectorMembersOffsets[i], mChunkData.sectorMembersOffsets[i + 1] - mChunkData.sectorMembersOffsets[i])) {
-				alive = false;
+		bool alive = false;
+		for (auto i = 1u; i < 1u + mChunkData.sectorCapacity; i++) {
+			if (sector->isAlive(mChunkData.sectorMembersOffsets[i])) {
+				alive = true;
 				break;
 			}
 		}

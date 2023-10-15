@@ -78,15 +78,15 @@ namespace ecss::Memory {
 		template <typename... Types>
 		void initChunkData() {
 			size_t idx = 2; //first is 0, 1 is for sector data
-			((mChunkData.sectorMembersOffsets[idx++] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(Types)) + alignof(Types)), ...);
-			mSectorCapacity = idx - 2;
+			((mChunkData.sectorMembersOffsets[idx++] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(Types)) + 1), ...);
+			mChunkData.sectorCapacity = static_cast<uint8_t>(idx - 2);
 
 			uint8_t i = 0;
 			((mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<Types>()] = ++i), ...);
 		}
 
 	public:
-		ComponentsArray(size_t capacity = 0);
+		ComponentsArray(uint32_t capacity = 0);
 		virtual ~ComponentsArray();
 
 		IteratorSectors beginSectors() const;
@@ -94,12 +94,12 @@ namespace ecss::Memory {
 
 		inline SectorInfo* operator[](size_t i) const { return static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>(mData) + i * mChunkData.sectorSize)); }
 
-		size_t size() const;
+		uint32_t size() const;
 		bool empty() const;
 		void clear();
 
-		size_t capacity() const;
-		void reserve(size_t newCapacity);
+		uint32_t capacity() const;
+		void reserve(uint32_t newCapacity);
 		void shrinkToFit();
 
 		size_t entitiesCapacity() const;
@@ -120,7 +120,8 @@ namespace ecss::Memory {
 
 		template<typename T>
 		inline T* getComponentImpl(EntityId sectorId, uint8_t sectorIdx) {
-			return getSectorInfo(sectorId) ? getSectorInfo(sectorId)->getObject<T>(mChunkData.sectorMembersOffsets[sectorIdx]) : nullptr;
+			auto info = getSectorInfo(sectorId);
+			return info ? info->getObject<T>(mChunkData.sectorMembersOffsets[sectorIdx]) : nullptr;
 		}
 
 		template<typename T>
@@ -163,7 +164,7 @@ namespace ecss::Memory {
 	private:
 		void* initSectorMember(void* sectorPtr, uint8_t componentTypeIdx) const;
 
-		void setCapacity(size_t newCap);
+		void setCapacity(uint32_t newCap);
 
 		void* createSector(size_t pos, EntityId sectorId);
 		void destroyObject(void* sectorPtr, uint8_t typeIdx) const;
@@ -176,10 +177,8 @@ namespace ecss::Memory {
 
 		ChunkData mChunkData;
 
-		size_t mSectorCapacity = 0;
-
-		size_t mSize = 0;
-		size_t mCapacity = 0;
+		uint32_t mSize = 0;
+		uint32_t mCapacity = 0;
 
 		void* mData = nullptr;
 
@@ -207,7 +206,7 @@ namespace ecss::Memory {
 
 			inline bool operator!=(const Iterator& other) const { return mPtr != other.mPtr; }
 
-		private:
+		public:
 			void* mPtr = nullptr;
 			uint16_t mSectorSize = 0;
 
@@ -225,7 +224,7 @@ namespace ecss::Memory {
 		ComponentsArrayInitializer& operator=(ComponentsArrayInitializer&) = delete;
 
 	public:
-		ComponentsArrayInitializer(size_t capacity = 0) : ComponentsArray(capacity){
+		ComponentsArrayInitializer(uint32_t capacity = 0) : ComponentsArray(capacity){
 			static_assert(Utils::areUnique<Types...>(), "Duplicates detected in types");
 			static_assert(sizeof...(Types) <= 32, "More then 32 components in one container not allowed");
 
