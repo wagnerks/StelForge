@@ -4,7 +4,7 @@
 
 #include "TypeName.h"
 #include "core/ECSHandler.h"
-#include "ecss/base/EntityHandle.h"
+#include "ecss/EntityHandle.h"
 
 namespace Engine::PropertiesModule {
 	class PropertiesSystem {
@@ -33,7 +33,7 @@ namespace Engine::PropertiesModule {
 		}
 		auto name = TypeName<T>::name().data();
 		if (properties.isMember(name)) {
-			ECSHandler::registry()->addComponent<T>(entity)->deserialize(properties[name]);
+			ECSHandler::registry()->addComponent<T>(entity, entity.getID())->deserialize(properties[name]);
 		}
 	}
 

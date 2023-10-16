@@ -1,9 +1,7 @@
 ﻿#pragma once
-#include "ecss/base/ComponentBase.h"
-
 
 namespace Engine::ComponentsModule {
-	class IsDrawableComponent : public ecss::Component<IsDrawableComponent> {}; //
+	class IsDrawableComponent {}; //
 }
 
 using Engine::ComponentsModule::IsDrawableComponent;

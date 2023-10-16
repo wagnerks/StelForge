@@ -82,7 +82,7 @@ namespace Engine::RenderModule::RenderPasses {
 
 		offsets.clear();
 	
-		for (auto [lightSource] : ECSHandler::registry()->getComponentsArray<LightSourceComponent>()) {
+		for (const auto& [entity,lightSource] : ECSHandler::registry()->getComponentsArray<LightSourceComponent>()) {
 			//todo some dirty logic
 			switch (lightSource.getType()) {
 			case ComponentsModule::eLightType::DIRECTIONAL: {
@@ -95,10 +95,10 @@ namespace Engine::RenderModule::RenderPasses {
 				break;
 			}
 			case ComponentsModule::eLightType::POINT: {
-				renderDataHandle.mPointPassData.shadowEntities.push_back(lightSource.getEntityId());
-				offsets.emplace_back(lightSource.getEntityId(), lightSource.getTypeOffset(lightSource.getType()));
+				renderDataHandle.mPointPassData.shadowEntities.push_back(entity);
+				offsets.emplace_back(entity, lightSource.getTypeOffset(lightSource.getType()));
 				
-				fillMatrix(ECSHandler::registry()->getComponent<TransformComponent>(lightSource.getEntityId())->getPos(true), lightSource.mNear, lightSource.mRadius);
+				fillMatrix(ECSHandler::registry()->getComponent<TransformComponent>(entity)->getPos(true), lightSource.mNear, lightSource.mRadius);
 				break;
 			}
 			case ComponentsModule::eLightType::PERSPECTIVE: {
@@ -132,7 +132,7 @@ namespace Engine::RenderModule::RenderPasses {
 			simpleDepthShader->use();
 			simpleDepthShader->setInt("offset", offsetSum);
 
-			for (auto [trans, mod, draw] : ECSHandler::registry()->getComponentsArray<TransformComponent, ModelComponent, IsDrawableComponent>()) {
+			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry()->getComponentsArray<ModelComponent, IsDrawableComponent, TransformComponent>()) {
 				if (!&trans || !&mod || !&draw) {
 					continue;
 				}

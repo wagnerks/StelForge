@@ -5,14 +5,17 @@
 
 #include "matrix.hpp"
 
-#include "ecss/base/ComponentBase.h"
+#include "componentsModule/ComponentBase.h"
 #include "propertiesModule/Serializable.h"
 
 
 namespace Engine::ComponentsModule {
 
-	class TransformComponent : public ecss::Component<TransformComponent>, public PropertiesModule::Serializable {
+	class DirtyTransform {};
+
+	class TransformComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
+		TransformComponent(ecss::EntityId id) : ComponentInterface(id) {};
 		~TransformComponent() override;
 
 		const glm::vec3& getPos(bool global = false) const;
@@ -73,3 +76,4 @@ namespace Engine::ComponentsModule {
 }
 
 using Engine::ComponentsModule::TransformComponent;
+using Engine::ComponentsModule::DirtyTransform;

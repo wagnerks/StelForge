@@ -5,7 +5,6 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "core/BoundingVolume.h"
 #include "core/Projection.h"
-#include "renderModule/CascadeShadows.h"
 
 namespace Engine::ComponentsModule {
 	struct ShadowCascade {
@@ -18,9 +17,9 @@ namespace Engine::ComponentsModule {
 		glm::vec2 texelSize = {};
 	};
 
-	class CascadeShadowComponent : public ecss::Component<CascadeShadowComponent>, PropertiesModule::Serializable {
+	class CascadeShadowComponent : public ecss::ComponentInterface, PropertiesModule::Serializable {
 	public:
-		CascadeShadowComponent() = default;
+		CascadeShadowComponent(ecss::EntityId id) : ComponentInterface(id) {};
 
 		void updateCascades(const ProjectionModule::PerspectiveProjection& cameraProjection);
 		void updateLightSpaceMatrices(const glm::mat4& cameraView);

@@ -1,12 +1,13 @@
 ﻿#pragma once
 #include <string>
 
-#include "ecss/base/ComponentBase.h"
+#include "componentsModule/ComponentBase.h"
 
 namespace Engine::ComponentsModule {
 
-	class DebugDataComponent : public ecss::Component<DebugDataComponent> {
+	class DebugDataComponent {
 	public:
+		DebugDataComponent() = default;
 		std::string stringId;
 	};
 }

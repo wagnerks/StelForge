@@ -1,11 +1,12 @@
 ﻿#pragma once
 #include "..\ecss\Registry.h"
 #include "ecss/Types.h"
-#include "ecss/base/ComponentBase.h"
+#include "componentsModule/ComponentBase.h"
 
 namespace Engine::ComponentsModule {
-	class TreeComponent : public ecss::Component<TreeComponent> {
+	class TreeComponent : public ecss::ComponentInterface {
 	public:
+		TreeComponent(ecss::EntityId id) : ComponentInterface(id) {};
 		~TreeComponent() override;
 		ecss::EntityId getParent() const;
 

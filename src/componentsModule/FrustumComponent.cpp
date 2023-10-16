@@ -1,7 +1,5 @@
 ﻿#include "FrustumComponent.h"
 
-FrustumComponent::FrustumComponent() {}
-
 void FrustumComponent::updateFrustum(const ProjectionModule::Projection& projection, const glm::mat4& view) {
 	mFrustum = FrustumModule::createFrustum(projection.getProjectionsMatrix() * view);
 }

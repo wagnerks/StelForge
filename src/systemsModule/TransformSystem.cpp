@@ -7,10 +7,13 @@
 using namespace Engine::SystemsModule;
 
 void TransformSystem::update(float_t dt) {
-	for (auto [transform] : ECSHandler::registry()->getComponentsArray<TransformComponent>()) {
+	for (auto [entity, isDirty, transform] : ECSHandler::registry()->getComponentsArray<DirtyTransform, TransformComponent>()) {
 		if(!&transform) {
 			continue;
 		}
 		transform.reloadTransform();
 	}
+
+	ECSHandler::registry()->getComponentContainer<DirtyTransform>()->clear();
+	ECSHandler::registry()->getComponentContainer<DirtyTransform>()->shrinkToFit();
 }

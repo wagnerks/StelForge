@@ -3,9 +3,9 @@
 #include "core/Projection.h"
 
 namespace Engine::ComponentsModule {
-	class FrustumComponent : public ecss::Component<FrustumComponent> {
+	class FrustumComponent : public ecss::ComponentInterface {
 	public:
-		FrustumComponent();
+		FrustumComponent(ecss::EntityId id) : ComponentInterface(id) {};
 		void updateFrustum(const ProjectionModule::Projection& projection, const glm::mat4& view);
 		void updateFrustum(const glm::mat4& projView);
 		void updateFrustum(const glm::mat4& projection, const glm::mat4& view);

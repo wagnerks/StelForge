@@ -25,9 +25,9 @@ namespace Engine::ComponentsModule {
 		std::vector<float> mLodLevelValues;
 	};
 
-	class ModelComponent : public ecss::Component<ModelComponent>, public PropertiesModule::Serializable {
+	class ModelComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
-		ModelComponent();
+		ModelComponent(ecss::EntityId id) : ComponentInterface(id) {};
 		void init(AssetsModule::Model* model) {
 			mPath = model->getModelPath();
 			addMeshData(model->getAllLODs());

@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "core/InputHandler.h"
-#include "ecss/base/EntityHandle.h"
+#include "ecss/EntityHandle.h"
 #include "SystemBase.h"
 
 namespace Engine::SystemsModule {

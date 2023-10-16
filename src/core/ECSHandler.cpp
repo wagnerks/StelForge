@@ -31,7 +31,8 @@ ecss::Registry* ECSHandler::registry() {
 }
 
 void ECSHandler::initSystems() {
-	mRegistry->initCustomComponentsContainer<TreeComponent, TransformComponent, ModelComponent, IsDrawableComponent>();
+	//mRegistry->initCustomComponentsContainer<TreeComponent, TransformComponent, ModelComponent, IsDrawableComponent>();
+	mRegistry->initCustomComponentsContainer<IsDrawableComponent, TransformComponent, ModelComponent>();
 
 
 	mSystemManager->addSystem<Engine::SystemsModule::CameraSystem>();
@@ -42,7 +43,7 @@ void ECSHandler::initSystems() {
 
 	mSystemManager->addSystem<Engine::SystemsModule::LODSystem>();
 	mSystemManager->setSystemPriority<Engine::SystemsModule::LODSystem>(eSystemsPriority::LOD_SYSTEM);
-	mSystemManager->setSystemUpdateInterval<Engine::SystemsModule::LODSystem>(1 / 60.f);
+	mSystemManager->setSystemUpdateInterval<Engine::SystemsModule::LODSystem>(1.f);
 
 	mSystemManager->addSystem<Engine::SystemsModule::ShaderSystem>();
 	mSystemManager->setSystemPriority<Engine::SystemsModule::ShaderSystem>(eSystemsPriority::SHADERS_SYSTEM);

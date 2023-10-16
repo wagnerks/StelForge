@@ -21,23 +21,27 @@ const glm::vec3& TransformComponent::getPos(bool global) const {
 }
 
 void TransformComponent::setX(float x) {
-	dirty = dirty || std::fabs(x - pos.x) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(x - pos.x) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	pos.x = x;
 }
 void TransformComponent::setY(float y) {
-	dirty = dirty || std::fabs(y - pos.y) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(y - pos.y) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	pos.y = y;
 }
 void TransformComponent::setZ(float z) {
-	dirty = dirty || std::fabs(z - pos.z) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(z - pos.z) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	pos.z = z;
 }
 void TransformComponent::setPos(const glm::vec3& pos) {
-	dirty = dirty || this->pos != pos;
-
+	if (this->pos != pos) {
+		markDirty();
+	}
 	this->pos = pos;
 }
 
@@ -47,26 +51,30 @@ const glm::vec3& TransformComponent::getRotate() const {
 }
 
 void TransformComponent::setRotateX(float x) {
-	dirty = dirty || std::fabs(x - rotate.x) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(x - rotate.x) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	rotate.x = x;
 	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 void TransformComponent::setRotateY(float y) {
-	dirty = dirty || std::fabs(y - rotate.y) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(y - rotate.y) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	rotate.y = y;
 	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 void TransformComponent::setRotateZ(float z) {
-	dirty = dirty || std::fabs(z - rotate.z) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(z - rotate.z) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	rotate.z = z;
 	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 void TransformComponent::setRotate(const glm::vec3& rotate) {
-	dirty = dirty || this->rotate != rotate;
-
+	if (this->rotate != rotate) {
+		markDirty();
+	}
 	this->rotate = rotate;
 	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
@@ -80,22 +88,28 @@ const glm::vec3& TransformComponent::getScale(bool global) const {
 }
 
 void TransformComponent::setScaleX(float x) {
-	dirty = dirty || std::fabs(x - scale.x) > std::numeric_limits<float>::epsilon();
+	if (std::fabs(x - scale.x) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 
 	scale.x = x;
 }
 void TransformComponent::setScaleY(float y) {
-	dirty = dirty || std::fabs(y - scale.y) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(y - scale.y) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	scale.y = y;
 }
 void TransformComponent::setScaleZ(float z) {
-	dirty = dirty || std::fabs(z - scale.z) > std::numeric_limits<float>::epsilon();
-
+	if (std::fabs(z - scale.z) > std::numeric_limits<float>::epsilon()) {
+		markDirty();
+	}
 	scale.z = z;
 }
 void TransformComponent::setScale(const glm::vec3& scale) {
-	dirty = dirty || this->scale != scale;
+	if (this->scale != scale) {
+		markDirty();
+	}
 
 	this->scale = scale;
 }
@@ -116,9 +130,9 @@ glm::quat TransformComponent::getRotationMatrixQuaternion() const {
 }
 
 void TransformComponent::reloadTransform() {
-	if (!dirty) {
+	/*if (!dirty) {
 		return;
-	}
+	}*/
 	dirty = false;
 	transform = getLocalTransform();
 
@@ -126,7 +140,10 @@ void TransformComponent::reloadTransform() {
 
 	if (tree) {
 		if (auto parentTransform = ECSHandler::registry()->getComponent<TransformComponent>(tree->getParent())) {
-			parentTransform->reloadTransform();
+			if (parentTransform->isDirty()) {
+				parentTransform->reloadTransform();
+			}
+			
 			transform = parentTransform->getTransform() * transform;
 		}
 
@@ -139,7 +156,7 @@ void TransformComponent::reloadTransform() {
 	if (tree) {
 		for (const auto childTransform : tree->getChildren()) {
 			if (auto transformPtr = ECSHandler::registry()->getComponent<TransformComponent>(childTransform)) {
-				transformPtr->markDirty();
+				//transformPtr->markDirty();
 				transformPtr->reloadTransform();
 			}
 		}
@@ -172,6 +189,16 @@ glm::vec3 TransformComponent::getForward() {
 }
 
 void TransformComponent::markDirty() {
+	ECSHandler::registry()->addComponent<DirtyTransform>(getEntityId());
+
+	auto tree = ECSHandler::registry()->getComponent<TreeComponent>(getEntityId());
+	if (tree) {
+		for (const auto childTransform : tree->getChildren()) {
+			if (auto transformPtr = ECSHandler::registry()->getComponent<TransformComponent>(childTransform)) {
+				transformPtr->markDirty();
+			}
+		}
+	}
 	dirty = true;
 }
 

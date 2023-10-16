@@ -3,7 +3,7 @@
 #include <vec3.hpp>
 
 
-#include "ecss/base/ComponentBase.h"
+#include "componentsModule/ComponentBase.h"
 #include "propertiesModule/Serializable.h"
 
 
@@ -16,9 +16,9 @@ namespace Engine::ComponentsModule {
 		WORLD
 	};
 	
-	class LightSourceComponent : public ecss::Component<LightSourceComponent>, public PropertiesModule::Serializable {
+	class LightSourceComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
-		LightSourceComponent(eLightType type);
+		LightSourceComponent(ecss::EntityId id , eLightType type);
 		static int getTypeOffset(eLightType type);
 		eLightType getType() const;
 		void setType(eLightType type);

@@ -1,9 +1,7 @@
 ﻿#pragma once
 
-#include "ecss/base/ComponentBase.h"
-
 namespace Engine::ComponentsModule {
-	class OutlineComponent : public ecss::Component<OutlineComponent> {}; //
+	class OutlineComponent {};
 }
 
 using Engine::ComponentsModule::OutlineComponent;

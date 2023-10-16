@@ -18,7 +18,7 @@ namespace Engine::ComponentsModule {
 	void TreeComponent::addChildEntity(ecss::EntityId id) {
 		if (std::find(mChildrenEntities.begin(), mChildrenEntities.end(), id) == mChildrenEntities.end()) {
 			mChildrenEntities.push_back(id);
-			if (auto tree = ECSHandler::registry()->addComponent<TreeComponent>(id)) {
+			if (auto tree = ECSHandler::registry()->getComponent<TreeComponent>(id)) {
 				tree->setParent(getEntityId());;
 			}
 		}

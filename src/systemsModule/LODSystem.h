@@ -2,7 +2,7 @@
 #include <cmath>
 
 
-#include "ecss/base/EntityHandle.h"
+#include "ecss/EntityHandle.h"
 #include "SystemBase.h"
 
 namespace AssetsModule {

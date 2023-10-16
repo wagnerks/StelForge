@@ -10,10 +10,10 @@ namespace Engine::SystemsModule {
 		auto aspect = static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT);
 		mDefaultCamera = ECSHandler::registry()->takeEntity();
 
-		auto transform = ECSHandler::registry()->addComponent<TransformComponent>(mDefaultCamera);
+		auto transform = ECSHandler::registry()->addComponent<TransformComponent>(mDefaultCamera, mDefaultCamera.getID());
 		transform->setPos({ 28.f, 218.f, 265.f });
 		transform->setRotate({ -30.5f, 0.8f, 0.0f });
-		ECSHandler::registry()->addComponent<CameraComponent>(mDefaultCamera, 45.f, aspect, 0.1f, 5000.f);
+		ECSHandler::registry()->addComponent<CameraComponent>(mDefaultCamera, mDefaultCamera.getID(), 45.f, aspect, 0.1f, 5000.f);
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
 			if (type == Engine::CoreModule::InputEventType::PRESS) {
 				isPressed[key] = true;
@@ -93,9 +93,10 @@ namespace Engine::SystemsModule {
 			dif -= glm::vec3{0.f, 1.f, 0.f} *velocity;
 		}
 
-
-		tc->setPos(tc->getPos() + dif);
-		tc->reloadTransform();
+		if (dif != glm::vec3{}) {
+			tc->setPos(tc->getPos() + dif);
+			tc->reloadTransform();
+		}
 	}
 
 

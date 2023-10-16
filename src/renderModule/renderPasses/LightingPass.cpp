@@ -9,7 +9,6 @@
 #include "componentsModule/ModelComponent.h"
 #include "core/ECSHandler.h"
 #include "..\..\ecss\Registry.h"
-#include "renderModule/CascadeShadows.h"
 #include "renderModule/SceneGridFloor.h"
 
 using namespace Engine::RenderModule::RenderPasses;

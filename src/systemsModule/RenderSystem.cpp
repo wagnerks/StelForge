@@ -19,7 +19,6 @@
 #include "renderModule/renderPasses/LightingPass.h"
 #include "renderModule/renderPasses/SSAOPass.h"
 #include "mathModule/MathUtils.h"
-#include "renderModule/CascadeShadows.h"
 #include "renderModule/renderPasses/PointLightPass.h"
 #include "renderModule/renderPasses/ShadersPass.h"
 

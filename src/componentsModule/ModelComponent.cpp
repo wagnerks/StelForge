@@ -33,9 +33,6 @@ void LODData::setCurrentLodValue(float currentLodValue) {
 	mCurrentLodValue = currentLodValue;
 }
 
-
-ModelComponent::ModelComponent() {}
-
 void ModelComponent::addMeshData(std::vector<AssetsModule::ModelObj>* meshData) {
 	mModel = meshData;
 }

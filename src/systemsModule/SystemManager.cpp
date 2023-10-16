@@ -26,7 +26,7 @@ SystemManager::~SystemManager() {
 
 void SystemManager::sortWorkQueue() {
 	std::ranges::sort(mWorkQueue, [](const SystemInterface* a, const SystemInterface* b) {
-		return a->mPriority > b->mPriority;
+		return a->mPriority <  b->mPriority;
 	});
 }
 

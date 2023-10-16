@@ -11,7 +11,7 @@
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/shaderModule/Shader.h"
 #include "assetsModule/shaderModule/ShaderBase.h"
-#include "ecss/base/ComponentBase.h"
+#include "componentsModule/ComponentBase.h"
 
 namespace Engine::ComponentsModule {
 
@@ -122,10 +122,9 @@ namespace Engine::ComponentsModule {
 		structUniforms.apply(shader, prefix);
 	}
 
-	class ShaderComponent : public ecss::Component<ShaderComponent> {
+	class ShaderComponent {
 	public:
-		ShaderComponent() {
-		}
+		ShaderComponent() = default;
 
 		ShaderVariablesStruct variables;
 

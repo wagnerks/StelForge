@@ -123,7 +123,7 @@ void ComponentsDebug::entitiesDebug() {
 			auto createdEntity = entityManager->takeEntity();
 			if (auto entity = entityManager->getEntity(mSelectedId)) {
 
-				compManager->addComponent<ComponentsModule::TreeComponent>(mSelectedId)->addChildEntity(createdEntity);
+				compManager->addComponent<ComponentsModule::TreeComponent>(mSelectedId, mSelectedId)->addChildEntity(createdEntity);
 			}
 		}
 		ImGui::SameLine();
@@ -138,7 +138,7 @@ void ComponentsDebug::entitiesDebug() {
 
 					if (current_item == "light") {
 						if (auto entity = entityManager->getEntity(mSelectedId)) {
-							compManager->addComponent<LightSourceComponent>(mSelectedId, ComponentsModule::eLightType::POINT);
+							compManager->addComponent<LightSourceComponent>(mSelectedId, mSelectedId, ComponentsModule::eLightType::POINT);
 						}
 					}
 
@@ -214,9 +214,15 @@ void ComponentsDebug::entitiesDebug() {
 					compManager->removeComponent<IsDrawableComponent>(mSelectedId);
 					auto tree = compManager->getComponent<ComponentsModule::TreeComponent>(mSelectedId);
 					if (tree) {
+						std::vector<ecss::EntityId> entities;
+						
 						for (auto node : tree->getAllNodes()) {
-							compManager->removeComponent<IsDrawableComponent>(node);
+							if (compManager->getComponent<IsDrawableComponent>(node)) {
+								entities.emplace_back(node);
+							}
 						}
+
+						compManager->removeComponent<IsDrawableComponent>(entities);
 					}
 				}
 			}
