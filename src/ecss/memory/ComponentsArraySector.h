@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "../Types.h"
 #include "../contiguousMap.h"
@@ -8,8 +9,7 @@
 namespace ecss::Memory {
 	struct ChunkData {
 		uint16_t sectorSize = 0;
-		uint8_t sectorCapacity = 0;
-		std::array<uint16_t, 10> sectorMembersOffsets = {};
+		std::vector<uint16_t> sectorMembersOffsets = {};
 		ContiguousMap<ECSType, uint8_t> sectorMembersIndexes; // < {type id} , {idx in members offsets} >
 	};
 	

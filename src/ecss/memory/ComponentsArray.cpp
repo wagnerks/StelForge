@@ -1,21 +1,28 @@
 ﻿#include "ComponentsArray.h"
 
 #include <algorithm>
+#include <stdio.h>
+#include <stdlib.h>
 
 namespace ecss::Memory {
 	ComponentsArray::ComponentsArray(uint32_t capacity) {
-		mChunkData.sectorMembersOffsets[0] = mChunkData.sectorSize += 0;
-		mChunkData.sectorMembersOffsets[1] = mChunkData.sectorSize += static_cast<uint16_t>(sizeof(SectorInfo) /*+ alignof(SectorInfo)*/); //offset for sector id
+		mChunkData.sectorMembersOffsets.emplace_back(mChunkData.sectorSize += 0);
+		mChunkData.sectorMembersOffsets.emplace_back(mChunkData.sectorSize += static_cast<uint16_t>(sizeof(SectorInfo) /*+ alignof(SectorInfo)*/)); //offset for sector id
+
+		mChunkSize = 1024;
 	}
 
 	ComponentsArray::~ComponentsArray() {
-		if (!mData) {
+		if (mChunks.empty()) {
 			return;
 		}
 
 		clear();
 
-		std::free(mData);
+		for (auto data : mChunks) {
+			std::free(data);
+		}
+		mChunks.clear();
 	}
 
 	uint32_t ComponentsArray::size() const {
@@ -53,11 +60,20 @@ namespace ecss::Memory {
 			return;
 		}
 
-		setCapacity(newCapacity);
+		const auto diff = newCapacity - mCapacity;
+		for (auto i = 0; i <= diff / mChunkSize; i++) {
+			setCapacity(static_cast<uint32_t>(mCapacity + mChunkSize));
+		}
 	}
 
 	void ComponentsArray::shrinkToFit() {
-		setCapacity(size());
+		auto last = size() / mChunkSize;
+		for (auto i = last; i < mChunks.size(); i++) {
+			std::free(mChunks[i]);
+		}
+		mChunks.resize(last);
+		mChunks.shrink_to_fit();
+		mCapacity = static_cast<uint32_t>(mChunks.size() * mChunkSize);
 	}
 
 	void ComponentsArray::setCapacity(uint32_t newCap) {
@@ -67,39 +83,38 @@ namespace ecss::Memory {
 
 		mCapacity = newCap;
 
-		if (!mData) {
-			mData = malloc(mChunkData.sectorSize * mCapacity);
-			assert(mData);
-		}
-		else {
-			void* newMemory = malloc(mCapacity * mChunkData.sectorSize);
-			assert(newMemory);
+		
+		mChunks.push_back(calloc(mChunkSize, mChunkData.sectorSize));
+		
+		
+			//void* newMemory = calloc(mCapacity, mChunkData.sectorSize);
+			//assert(newMemory);
 
-			for (size_t i = 0; i < size(); i++) {
-				const auto sectorPtr = static_cast<void*>(static_cast<char*>(mData) + i * mChunkData.sectorSize);
-				const auto copySector = static_cast<void*>(static_cast<char*>(newMemory) + i * mChunkData.sectorSize);
+			//for (size_t i = 0; i < size(); i++) {
+			//	const auto sectorPtr = static_cast<void*>(static_cast<char*>(mData) + i * mChunkData.sectorSize);
+			//	const auto copySector = static_cast<void*>(static_cast<char*>(newMemory) + i * mChunkData.sectorSize);
 
-				const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
-				const auto newSectorInfo = static_cast<SectorInfo*>(copySector);
+			//	const auto sectorInfo = static_cast<SectorInfo*>(sectorPtr);
+			//	const auto newSectorInfo = static_cast<SectorInfo*>(copySector);
 
-				new(copySector)SectorInfo(std::move(*sectorInfo));
+			//	new(copySector)SectorInfo(std::move(*sectorInfo));
 
-				for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
-					if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx])) {
-						newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], false);
-						continue;
-					}
+			//	for (auto [typeId, typeIdx] : mChunkData.sectorMembersIndexes) {
+			//		if (!sectorInfo->isAlive(mChunkData.sectorMembersOffsets[typeIdx])) {
+			//			newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], false);
+			//			continue;
+			//		}
 
-					const auto oldPlace = Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]);
-					const auto newPlace = Utils::getTypePlace(copySector, mChunkData.sectorMembersOffsets[typeIdx]);
-					ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
-					newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], true);
-				}
-			}
+			//		const auto oldPlace = Utils::getTypePlace(sectorPtr, mChunkData.sectorMembersOffsets[typeIdx]);
+			//		const auto newPlace = Utils::getTypePlace(copySector, mChunkData.sectorMembersOffsets[typeIdx]);
+			//		ReflectionHelper::moveMap[typeId](newPlace, oldPlace);//call move constructor
+			//		newSectorInfo->setAlive(mChunkData.sectorMembersOffsets[typeIdx], true);
+			//	}
+			//}
 
-			std::free(mData);
-			mData = newMemory;
-		}
+			//std::free(mData);
+			//mData = newMemory;
+		
 
 		if (mCapacity > mSectorsMap.size()) {
 			mSectorsMap.resize(mCapacity, INVALID_ID);
@@ -139,7 +154,7 @@ namespace ecss::Memory {
 
 		++mSize;
 		sectorAdr->id = sectorId;
-		for (auto i = 1u; i < 1u + mChunkData.sectorCapacity; i++) {//1 is reserved for sector info
+		for (auto i = 1u; i < mChunkData.sectorMembersOffsets.size(); i++) {//1 is reserved for sector info
 			sectorAdr->setAlive(mChunkData.sectorMembersOffsets[i], false);
 		}
 
@@ -150,10 +165,7 @@ namespace ecss::Memory {
 
 	void* ComponentsArray::acquireSector(const uint8_t componentTypeIdx, const EntityId entityId) {
 		if (size() >= mCapacity) {
-			if (!mCapacity) {
-				mCapacity = 1;
-			}
-			setCapacity(mCapacity * 2);
+			setCapacity(static_cast<uint32_t>(mCapacity + mChunkSize));
 		}
 
 		if (mSectorsMap.size() <= entityId) {
@@ -264,12 +276,12 @@ namespace ecss::Memory {
 		erase(pos);
 	}
 
-	ComponentsArray::IteratorSectors ComponentsArray::beginSectors() const {
-		return IteratorSectors(mData, mChunkData);
+	ComponentsArray::IteratorSectors ComponentsArray::beginSectors() {
+		return IteratorSectors(this,0);
 	}
 
-	ComponentsArray::IteratorSectors ComponentsArray::endSectors() const {
-		return IteratorSectors((*this)[size()], mChunkData);
+	ComponentsArray::IteratorSectors ComponentsArray::endSectors() {
+		return IteratorSectors(this, size());
 	}
 
 	void ComponentsArray::shiftDataRight(size_t from) {
@@ -324,7 +336,7 @@ namespace ecss::Memory {
 
 	bool ComponentsArray::isSectorAlive(SectorInfo* sector) const {
 		bool alive = false;
-		for (auto i = 1u; i < 1u + mChunkData.sectorCapacity; i++) {
+		for (auto i = 1u; i < mChunkData.sectorMembersOffsets.size(); i++) {
 			if (sector->isAlive(mChunkData.sectorMembersOffsets[i])) {
 				alive = true;
 				break;

@@ -128,7 +128,7 @@ so better, if you want to merge multiple types in one sector, always create all 
 		ComponentsArrayHandle<Components...> getComponentsArray() { return ComponentsArrayHandle<Components...>(this); }
 
 		template <class... Components>
-		void reserve(size_t newCapacity) { (getComponentContainer<Components>()->reserve(newCapacity),...); }
+		void reserve(uint32_t newCapacity) { (getComponentContainer<Components>()->reserve(newCapacity),...); }
 
 		EntityHandle takeEntity();
 		EntityHandle getEntity(EntityId entityId) const;
@@ -161,76 +161,68 @@ so better, if you want to merge multiple types in one sector, always create all 
 
 		EntityId getNewId();
 	};
-	
+
 	template <typename T, typename ...ComponentTypes>
 	class ComponentsArrayHandle {
 	public:
-		explicit ComponentsArrayHandle(Registry* manager) : mMainContainer(manager->getComponentContainer<T>()) {
-			size_t i = 0;
-			((mArrays[i++] = manager->getComponentContainer<ComponentTypes>()), ...);
-			std::reverse(mArrays.begin(), mArrays.end());
+		explicit ComponentsArrayHandle(Registry* manager) {
+			
+			((mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()] = manager->getComponentContainer<ComponentTypes>()), ...);
+			mArrays[sizeof...(ComponentTypes)] = manager->getComponentContainer<T>();
 		}
 
-		inline size_t size() const { return mMainContainer->size(); }
+		inline size_t size() const { return mArrays[sizeof...(ComponentTypes)]->size(); }
 		inline bool empty() const { return !size(); }
 
-		inline std::tuple<T&, ComponentTypes&...> operator[](size_t i) const { return *Iterator(mMainContainer->begin() + i, mArrays); }
+		inline std::tuple<T&, ComponentTypes&...> operator[](size_t i) const { return *Iterator(mArrays[sizeof...(ComponentTypes)]->begin() + i, mArrays); }
 
 		class Iterator {
 			using ComponentsIt = Memory::ComponentsArray::Iterator;
 
 		public:
-			inline Iterator(const ComponentsIt& iterator, const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)>& arrays) : mArrays(arrays) {
-				mPtr = iterator.mPtr;
-				mSectorSize = iterator.mSectorSize;
-				mOffsets = iterator.mOffsets;
+			inline Iterator(const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1>& arrays, size_t idx) : mArrays(arrays), mCurIdx(idx), mPtr((*mArrays[sizeof...(ComponentTypes)])[idx]){
+				constexpr auto mainIdx = sizeof...(ComponentTypes);
+				mOffsets[mainIdx] = mArrays[mainIdx]->getChunkData().sectorMembersOffsets[mArrays[mainIdx]->template getTypeIdx<T>()];
 
-				size_t i = 0;
-
-				mMainIndex = iterator.mMembers.at(Memory::ReflectionHelper::getTypeId<T>());
-
-				std::reverse(mArrays.begin(), mArrays.end());
-				((mHasType[i++] = iterator.mMembers.contains(Memory::ReflectionHelper::getTypeId<ComponentTypes>()), mTypeIndexes[i - 1] = mArrays[i - 1]->template getTypeIdx<ComponentTypes>()), ...);
-				std::reverse(mHasType.begin(), mHasType.end());
-				std::reverse(mArrays.begin(), mArrays.end());
-				std::reverse(mTypeIndexes.begin(), mTypeIndexes.end());
+				(
+					(
+						mTypeIndexes[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()]->template getTypeIdx<ComponentTypes>()
+						, 
+						(mOffsets[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[mainIdx]->template hasType<ComponentTypes>() ? mArrays[mainIdx]->getChunkData().sectorMembersOffsets[mArrays[mainIdx]->template getTypeIdx<ComponentTypes>()] : 0)
+					)
+					,
+				...);
 			}
 
 			template<typename ComponentType>
 			inline ComponentType* getComponent(const EntityId sectorId) {
-				return mHasType[mIdx] ? static_cast<Memory::SectorInfo*>(mPtr)->getObject<ComponentType>(mOffsets[mTypeIndexes[mIdx++]]) : mArrays[mIdx]->template getComponentImpl<ComponentType>(sectorId, mTypeIndexes[mIdx++]);
+				return mOffsets[types::getIndex<ComponentType, ComponentTypes...>()] ? static_cast<Memory::SectorInfo*>(mPtr)->getObject<ComponentType>(mOffsets[types::getIndex<ComponentType, ComponentTypes...>()]) : mArrays[types::getIndex<ComponentType, ComponentTypes...>()]->template getComponentImpl<ComponentType>(sectorId, mTypeIndexes[types::getIndex<ComponentType, ComponentTypes...>()]);
 			}
 			
 			inline std::tuple<EntityId, T&, ComponentTypes&...> operator*() {
 				auto id = static_cast<Memory::SectorInfo*>(mPtr)->id;
-				return std::forward_as_tuple(id, *(static_cast<Memory::SectorInfo*>(mPtr)->getObject<T>(mOffsets[mMainIndex])), *getComponent<ComponentTypes>(id)...);
+				return std::forward_as_tuple(id, *(static_cast<Memory::SectorInfo*>(mPtr)->getObject<T>(mOffsets[sizeof...(ComponentTypes)])), *getComponent<ComponentTypes>(id)...);
 			}
 
 			inline Iterator& operator++() {
-				return mPtr = static_cast<char*>(mPtr) + mSectorSize, mIdx = 0, *this;
+				return mCurIdx++, mPtr = (*mArrays[sizeof...(ComponentTypes)])[mCurIdx], * this;
 			}
 			inline bool operator!=(const Iterator& other) const { return mPtr != other.mPtr; }
 
 		private:
-			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
-			std::array<bool, sizeof...(ComponentTypes)> mHasType;
-			std::array<uint8_t, sizeof...(ComponentTypes)> mTypeIndexes;
-			std::array<uint16_t, 10> mOffsets = {};
+			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1> mArrays;
+			std::array<uint16_t, sizeof...(ComponentTypes) + 1> mOffsets;
+			std::array<uint8_t,	 sizeof...(ComponentTypes)> mTypeIndexes;
 
-			uint8_t mMainIndex = 0;
-			uint8_t mIdx = 0;
-
-			uint16_t mSectorSize = 0;
-
+			size_t mCurIdx = 0;
 			void* mPtr = nullptr;
 		};
 
 
-		inline Iterator begin() { return { mMainContainer->begin(), mArrays }; }
-		inline Iterator end() {	return { mMainContainer->end(), mArrays }; }
+		inline Iterator begin() { return {  mArrays, 0}; }
+		inline Iterator end() {	return {  mArrays, mArrays[sizeof...(ComponentTypes)]->size()}; }
 
 	private:
-		Memory::ComponentsArray* mMainContainer;
-		std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes)> mArrays;
+		std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1> mArrays;
 	};
 }
