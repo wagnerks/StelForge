@@ -40,7 +40,7 @@ struct DrawObject {
 class Batcher {
 public:
 	Batcher();
-	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, AssetsModule::Material material, glm::mat4 transform, bool transparentForShadow);
+	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& material, const glm::mat4&  transform, bool transparentForShadow);
 	void flushAll(bool clear = false, const glm::vec3& viewPos = {});
 
 	std::vector<DrawObject> drawList;

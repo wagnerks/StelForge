@@ -31,16 +31,22 @@ Batcher::Batcher() {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, AssetsModule::Material textures, glm::mat4 transform, bool transparentForShadow) {
+void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& textures, const glm::mat4& transform, bool transparentForShadow) {
 	auto it = std::find_if(drawList.rbegin(), drawList.rend(), [transparentForShadow, VAO, maxDrawSize = maxDrawSize](const DrawObject& obj) {
 		return obj == VAO && obj.transforms.size() < maxDrawSize && obj.transparentForShadow == transparentForShadow;
 	});
 
 	if (it == drawList.rend()) {
-		drawList.push_back({ VAO, vertices, indices, textures, {transform}, transparentForShadow });
+		drawList.emplace_back();
+		drawList.back().VAO = VAO;
+		drawList.back().verticesCount = vertices;
+		drawList.back().indicesCount = indices;
+		drawList.back().material = textures;
+		drawList.back().transforms.emplace_back(transform);
+		drawList.back().transparentForShadow = transparentForShadow;
 	}
 	else {
-		it->transforms.push_back(transform);
+		it->transforms.emplace_back(transform);
 
 	}
 }
