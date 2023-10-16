@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "componentsModule/CascadeShadowComponent.h"
-#include "ecss/base/EntityHandle.h"
+#include "ecss/EntityHandle.h"
 
 #include "renderModule/RenderPass.h"
 
