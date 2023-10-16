@@ -4,6 +4,7 @@ cmake_minimum_required (VERSION 3.8)
 file(GLOB_RECURSE SRC
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/*.h"
+    "${CMAKE_SOURCE_DIR}/src/*.hpp"
 	"${CMAKE_SOURCE_DIR}/src/*.cc"
 )
 
