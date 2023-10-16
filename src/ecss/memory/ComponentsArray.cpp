@@ -154,7 +154,7 @@ namespace ecss::Memory {
 
 		++mSize;
 		sectorAdr->id = sectorId;
-		for (auto i = 1u; i < mChunkData.sectorMembersOffsets.size(); i++) {//1 is reserved for sector info
+		for (auto i = 1u; i < mChunkData.sectorMembersOffsets.size() - 1; i++) {//1 is reserved for sector info
 			sectorAdr->setAlive(mChunkData.sectorMembersOffsets[i], false);
 		}
 
@@ -336,7 +336,7 @@ namespace ecss::Memory {
 
 	bool ComponentsArray::isSectorAlive(SectorInfo* sector) const {
 		bool alive = false;
-		for (auto i = 1u; i < mChunkData.sectorMembersOffsets.size(); i++) {
+		for (auto i = 1u; i < mChunkData.sectorMembersOffsets.size() - 1; i++) {
 			if (sector->isAlive(mChunkData.sectorMembersOffsets[i])) {
 				alive = true;
 				break;
