@@ -418,8 +418,9 @@ void Utils::renderPointLight(float near, float far) {
 
 void Utils::renderXYZ(float length) {
 	static unsigned linesVAO = 0;
+	static float prevLength = 0.f;
 
-	float vertices[] = {
+	static std::vector<float> vertices = {
 		0.f,0.f,0.f,
 		0.f,0.f,length, //+z
 
@@ -431,20 +432,37 @@ void Utils::renderXYZ(float length) {
 	};
 
 	// setup plane VAO
-	unsigned cubeVBO;
-	glGenVertexArrays(1, &linesVAO);
-	glGenBuffers(1, &cubeVBO);
-	glBindVertexArray(linesVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+	static unsigned cubeVBO;
 
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	if (length != prevLength) {
+		prevLength = length;
 
+		glDeleteVertexArrays(1, &linesVAO);
+		glDeleteBuffers(1, &cubeVBO);
+
+		vertices = {
+			0.f,0.f,0.f,
+			0.f,0.f,length, //+z
+
+			0.f,0.f,0.f,
+			0.f,length,0.f,//+y
+
+			0.f,0.f,0.f,
+			length,0.f,0.f,//+x
+		};
+
+		glGenVertexArrays(1, &linesVAO);
+		glGenBuffers(1, &cubeVBO);
+		glBindVertexArray(linesVAO);
+		glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices.front()) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	}
+	
 	glBindVertexArray(linesVAO);
 	RenderModule::Renderer::drawArrays(GL_LINES, 6);
 	glBindVertexArray(0);
-
-	glDeleteVertexArrays(1, &linesVAO);
-	glDeleteBuffers(1, &cubeVBO);
 }
