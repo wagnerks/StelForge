@@ -79,6 +79,11 @@ void TransformComponent::setRotate(const glm::vec3& rotate) {
 	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
 }
 
+void TransformComponent::setRotation(const glm::quat& rotate) {
+	markDirty();
+	rotateQuat = rotate;
+}
+
 const glm::vec3& TransformComponent::getScale(bool global) const {
 	if (global) {
 		return globalScale;

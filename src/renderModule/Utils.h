@@ -13,6 +13,7 @@ namespace Engine::RenderModule {
 		static void renderXYZ(float length);
 
 		static void renderLine(glm::vec3& begin, glm::vec3& end);
+		static void renderCube(const glm::vec3& LT, const glm::vec3& RB);
 
 		static void renderCamera();
 		static void renderPointLight(float near, float far);

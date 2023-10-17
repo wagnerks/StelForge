@@ -11,6 +11,8 @@
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "..\ecss\Registry.h"
+#include "componentsModule/IsDrawableComponent.h"
+#include "logsModule/logger.h"
 
 using namespace Engine::SystemsModule;
 
@@ -19,8 +21,11 @@ void LODSystem::update(float_t dt) {
 	if (!playerCamera) {
 		return;
 	}
-
-	for (auto [lodObject, transform] : ECSHandler::registry()->getComponentsArray<ModelComponent, TransformComponent>()) {
+	auto playerPos = ECSHandler::registry()->getComponent<TransformComponent>(playerCamera)->getPos(true);
+	for (const auto& [entity, isDraw, transform, lodObject] : ECSHandler::registry()->getComponentsArray<IsDrawableComponent, TransformComponent, ModelComponent>()) {
+		if (!&isDraw) {
+			continue;
+		}
 		if (!&lodObject) {
 			continue;
 		}
@@ -35,7 +40,7 @@ void LODSystem::update(float_t dt) {
 		//	//}
 		//}
 		//else if (lodObject.getLodType() == ComponentsModule::eLodType::DISTANCE) {
-		value = calculateDistanceToMesh(playerCamera, &transform);
+		value = Math::distanceSqr(playerPos, transform.getPos(true));
 		//}
 
 		int lodLevel = 0;

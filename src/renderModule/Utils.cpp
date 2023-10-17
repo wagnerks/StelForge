@@ -175,6 +175,91 @@ void Utils::renderLine(glm::vec3& begin, glm::vec3& end) {
 	glDeleteBuffers(1, &cubeVBO);
 }
 
+void Utils::renderCube(const glm::vec3& LTN, const glm::vec3& RBF) {
+	static unsigned linesVAO = 0;
+
+	//    LTF*-----------*RTF
+	//      /|          /|
+	//     / |         / |
+	// LTN*-----------*RTN
+	//    |  |        |  |
+	//    |  |        |  |
+	//    |  *LBF-----|--*RBF
+	//    | /         | /
+	//    |/          |/
+	// LBN*-----------*RBN   
+
+
+	//glm::vec3 LTN = { -far,  far, far };
+	glm::vec3 RTN = { RBF.x, LTN.y, LTN.z };
+	glm::vec3 LBN = { LTN.x, RBF.y, LTN.z };
+	glm::vec3 RBN = { RBF.x, RBF.y, LTN.z };
+
+	glm::vec3 LTF = { LTN.x, LTN.y, RBF.z };
+	glm::vec3 RTF = { RBF.x, LTN.y, RBF.z };
+	glm::vec3 LBF = { LTN.x, RBF.y, RBF.z };
+	//glm::vec3 RBF = { far, -far, -far };
+	
+
+	float vertices[] = {
+		//far cube
+		//backward
+		LTN.x, LTN.y, LTN.z, //start
+		RTN.x, RTN.y, RTN.z, //end
+
+		LTN.x, LTN.y, LTN.z, //start
+		LBN.x, LBN.y, LBN.z, //end
+
+		LBN.x, LBN.y, LBN.z, //start
+		RBN.x, RBN.y, RBN.z, //end
+
+		RBN.x, RBN.y, RBN.z, //start
+		RTN.x, RTN.y, RTN.z, //end
+		//forward
+		LTF.x, LTF.y, LTF.z, //start
+		RTF.x, RTF.y, RTF.z, //end
+
+		LTF.x, LTF.y, LTF.z, //start
+		LBF.x, LBF.y, LBF.z, //end
+
+		LBF.x, LBF.y, LBF.z, //start
+		RBF.x, RBF.y, RBF.z, //end
+
+		RBF.x, RBF.y, RBF.z, //start
+		RTF.x, RTF.y, RTF.z, //end
+		//right
+		RTN.x, RTN.y, RTN.z, //start
+		RTF.x, RTF.y, RTF.z, //end
+
+		RBN.x, RBN.y, RBN.z, //start
+		RBF.x, RBF.y, RBF.z, //end
+		//left
+		LTN.x, LTN.y, LTN.z, //start
+		LTF.x, LTF.y, LTF.z, //end
+
+		LBN.x, LBN.y, LBN.z, //start
+		LBF.x, LBF.y, LBF.z, //end
+	};
+
+	// setup plane VAO
+	unsigned cubeVBO;
+	glGenVertexArrays(1, &linesVAO);
+	glGenBuffers(1, &cubeVBO);
+	glBindVertexArray(linesVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+	glBindVertexArray(linesVAO);
+	RenderModule::Renderer::drawArrays(GL_LINES, sizeof(vertices) / 3);
+	glBindVertexArray(0);
+
+	glDeleteVertexArrays(1, &linesVAO);
+	glDeleteBuffers(1, &cubeVBO);
+}
+
 void Utils::renderCamera() {
 	static unsigned linesVAO = 0;
 	float w = 15.f;

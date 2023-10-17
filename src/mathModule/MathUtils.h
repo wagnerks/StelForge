@@ -3,6 +3,16 @@
 #include <glm.hpp>
 
 namespace Engine::Math {
+	constexpr float M_PI = 3.14159265358979323846f;
+
+	inline float RadToDeg(float rad) {
+		return rad * 180.f / M_PI;
+	}
+
+	inline float DegToRad(float deg) {
+		return deg * M_PI / 180.f;
+	}
+
 	template<typename T>
 	struct Vec2 {
 		T x = 0.f;

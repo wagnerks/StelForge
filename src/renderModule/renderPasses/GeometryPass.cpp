@@ -152,17 +152,12 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	auto batcher = renderer->getBatcher();
 
 	auto future = ThreadPool::instance()->addRenderTask([&](std::mutex& poolMutex) {
-		for (auto [isDraw, modelComp, transform] : ECSHandler::registry()->getComponentsArray<const IsDrawableComponent, ModelComponent, const TransformComponent>()) {
-			if (!&isDraw) {
+		for (auto [enttgsf, isDraw, transform, modelComp] : ECSHandler::registry()->getComponentsArray<const IsDrawableComponent, const TransformComponent, ModelComponent>()) {
+			if (!&isDraw || !&modelComp) {
 				continue;
 			}
-
-			if (!&modelComp) {
-				continue;
-			}
-
-			auto& model = modelComp.getModel();
-			for (auto& mesh : model.mMeshHandles) {
+			
+			for (auto& mesh : modelComp.getModel().mMeshHandles) {
 				if (mesh.mBounds && mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
 					batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 				}
@@ -199,15 +194,17 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	lightObjectsPass->use();
 	lightObjectsPass->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
 
-	for (auto [lightSource, modelComp, transform] : ECSHandler::registry()->getComponentsArray<LightSourceComponent, ModelComponent, TransformComponent>()) {
-		if (&modelComp) {
-			auto& model = modelComp.getModel();
-			for (auto& mesh : model.mMeshHandles) {
-				if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
-					batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
-				}
+	for (const auto& [entt, lightSource, transform, modelComp] : ECSHandler::registry()->getComponentsArray<LightSourceComponent, TransformComponent, ModelComponent>()) {
+		if (!&modelComp) {
+			continue;
+		}
+
+		for (auto& mesh : modelComp.getModel().mMeshHandles) {
+			if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
+				batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 			}
 		}
+		
 	}
 
 	
@@ -225,7 +222,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		g_buffer_outlines->use();
 		g_buffer_outlines->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
 
-		for (auto [outline, modelComp, transform] : ECSHandler::registry()->getComponentsArray<OutlineComponent, ModelComponent, TransformComponent>()) {
+		for (const auto& [entity, outline, transform, modelComp] : ECSHandler::registry()->getComponentsArray<OutlineComponent, TransformComponent, ModelComponent>()) {
 			if (!&modelComp || !&transform) {
 				continue;
 			}

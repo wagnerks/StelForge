@@ -30,6 +30,7 @@ namespace Engine::ComponentsModule {
 		void setRotateY(float y);
 		void setRotateZ(float z);
 		void setRotate(const glm::vec3& rotate);
+		void setRotation(const glm::quat& rotate);
 
 		const glm::vec3& getScale(bool global = false) const;
 		void setScaleX(float x);
