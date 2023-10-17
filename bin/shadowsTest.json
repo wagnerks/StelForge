@@ -161,7 +161,7 @@
 			{
 				"ModelComponent" : 
 				{
-					"ModelPath" : "models/highpoly_sphere.fbx"
+					"ModelPath" : "models/sphere.fbx"
 				},
 				"TransformComponent" : 
 				{
@@ -186,6 +186,192 @@
 				}
 			},
 			"id" : "sphere"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/sphere.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-50.0,
+						50.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "sphere2"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/sphere.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-50.0,
+						50.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "sphere3"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/sphere.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-50.0,
+						50.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "sphere4"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/cube1m1.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-50.0,
+						50.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "cube1x1"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/cube1m1.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-50.0,
+						50.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "cube1x12"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/cube1m1.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-50.0,
+						50.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "cube1x13"
 		},
 		{
 			"Properties" : 
