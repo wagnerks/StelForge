@@ -41,49 +41,26 @@ void Renderer::postDraw() {
 }
 
 void Renderer::init() {
+
+	auto reg = ECSHandler::registry();
+	//reg->reserve<TransformComponent, IsDrawableComponent, ModelComponent, TreeComponent, DirtyTransform, DebugDataComponent>(100000);
+	/*reg->reserve<TreeComponent, TransformComponent, IsDrawableComponent, FrustumComponent>(1000000);
+	for (auto i = 0; i < 1000000; i++) {
+		auto ent = reg->takeEntity();
+		reg->addComponent<TransformComponent>(ent);
+		reg->addComponent<IsDrawableComponent>(ent);
+		reg->addComponent<FrustumComponent>(ent);
+	}*/
+
 	//ThreadPool::instance()->addTask([](std::mutex&) {
 	//	auto root = PropertiesModule::PropertiesSystem::loadScene("scene.json");
-		//auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json"); 
+	auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json"); 
 		//auto root = PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
 	//});
 
-	//for (auto i = 25; i < 50; i++) {
-	//	auto ent = ECSHandler::registry()->takeEntity(i);
-	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
-	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
-	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
-	//}
 
-	//for (auto i = 10; i < 25; i++) {
-	//	auto ent = ECSHandler::registry()->takeEntity(i);
-	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
-	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
-	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
-	//}
-	//for (auto i = 70; i < 80; i++) {
-	//	auto ent = ECSHandler::registry()->takeEntity(i);
-	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
-	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
-	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
-	//}
 
-	//for (auto i = 50; i < 70; i++) {
-	//	auto ent = ECSHandler::registry()->takeEntity(i);
-	//	ECSHandler::registry()->addComponent<TransformComponent>(ent);
-	//	ECSHandler::registry()->addComponent<MaterialComponent>(ent);
-	//	ECSHandler::registry()->addComponent<IsDrawableComponent>(ent);
-	//}
 
-	//ECSHandler::registry()->getComponentContainer<TransformComponent>()->shrinkToFit();
-	auto reg = ECSHandler::registry();
-	reg->reserve<TransformComponent, IsDrawableComponent, FrustumComponent>(1000100);
-	for (auto i = 100; i < 1000100; i++) {
-		auto entity = reg->takeEntity(i);
-		reg->addComponent<TransformComponent>(entity);
-		reg->addComponent<IsDrawableComponent>(entity);
-		reg->addComponent<FrustumComponent>(entity);
-	}
-		
 
 	mBatcher = new Batcher();
 }
