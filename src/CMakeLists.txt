@@ -57,3 +57,19 @@ COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsonc
 COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/release/jsoncpp.dll ${CMAKE_SOURCE_DIR}/.
 )
 
+if(VLD)
+	include_directories("${CMAKE_SOURCE_DIR}/utils/VisualLeakDetector/include")
+	target_link_libraries(${CMAKE_PROJECT_NAME}
+		PUBLIC
+		"${CMAKE_SOURCE_DIR}/utils/VisualLeakDetector/lib/Win64/vld.lib"
+	)
+	add_custom_command(TARGET ${CMAKE_PROJECT_NAME}
+	POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/utils/VisualLeakDetector/bin/Win64/dbghelp.dll ${CMAKE_SOURCE_DIR}/.
+	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/utils/VisualLeakDetector/bin/Win64/Microsoft.DTfW.DHL.manifest ${CMAKE_SOURCE_DIR}/.
+	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/utils/VisualLeakDetector/bin/Win64/vld_x64.dll ${CMAKE_SOURCE_DIR}/.
+	)
+	add_definitions(-DVLD=true)
+
+	message(visual leak detector : ON)
+endif()

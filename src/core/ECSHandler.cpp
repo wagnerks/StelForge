@@ -22,6 +22,11 @@ ECSHandler::ECSHandler() {
 	mRegistry = new ecss::Registry();
 }
 
+ECSHandler::~ECSHandler() {
+	delete mRegistry;
+	delete mSystemManager;
+}
+
 ecss::SystemManager* ECSHandler::systemManager() {
 	return instance()->mSystemManager;
 }

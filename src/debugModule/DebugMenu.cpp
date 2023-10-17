@@ -10,6 +10,10 @@
 
 using namespace Engine::Debug;
 
+DebugMenu::~DebugMenu() {
+	ShadersDebug::terminate();
+}
+
 void DebugMenu::draw() {
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("Debug")) {

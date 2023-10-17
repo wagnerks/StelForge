@@ -9,6 +9,7 @@ namespace ecss {
 class ECSHandler : public Engine::Singleton<ECSHandler> {
 public:
 	ECSHandler();;
+	~ECSHandler();
 	static ecss::SystemManager* systemManager();
 	static ecss::Registry* registry();
 	void initSystems();

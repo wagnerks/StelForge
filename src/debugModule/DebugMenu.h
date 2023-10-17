@@ -4,6 +4,7 @@
 namespace Engine::Debug {
 	class DebugMenu {
 	public:
+		~DebugMenu();
 		void draw();
 
 		bool opened = false;

@@ -10,6 +10,7 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "..\ecss\Registry.h"
 #include "systemsModule/SystemManager.h"
+#include "assetsModule/AssetsManager.h"
 
 using namespace Engine;
 using namespace Engine::CoreModule;
@@ -52,6 +53,7 @@ Core::~Core() {
 	CoreModule::InputHandler::terminate();
 	ThreadPool::terminate();
 
+	AssetsModule::AssetsManager::terminate();
 }
 
 Core::Core() {}

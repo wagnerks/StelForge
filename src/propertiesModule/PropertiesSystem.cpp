@@ -47,6 +47,7 @@ namespace Engine::PropertiesModule {
 
 		ECSHandler::registry()->addComponent<IsDrawableComponent>(entity);
 		applyProperties(entity, properties);
+		auto treeComp = ECSHandler::registry()->addComponent<TreeComponent>(entity, entity.getID());
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
@@ -54,7 +55,6 @@ namespace Engine::PropertiesModule {
 				ECSHandler::registry()->addComponent<IsDrawableComponent>(child);
 				fillTree(child, element);
 				ECSHandler::registry()->addComponent<TreeComponent>(child, child.getID());
-				auto treeComp = ECSHandler::registry()->addComponent<TreeComponent>(entity, entity.getID());
 				treeComp->addChildEntity(child.getID());
 			}
 		}
