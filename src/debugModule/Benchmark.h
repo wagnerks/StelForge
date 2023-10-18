@@ -9,11 +9,11 @@
 namespace Engine::Debug {
 	class Benchmark {
 	public:
-		inline static void start(std::string id) {
+		inline static void start(const std::string& id) {
 			mCounters[id] = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 		}
 
-		inline static void stop(std::string id) {
+		inline static void stop(const std::string& id) {
 			if (mCounters.contains(id)) {
 				const auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 				const auto delta = nanoseconds - mCounters[id];

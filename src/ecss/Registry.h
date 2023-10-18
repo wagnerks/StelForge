@@ -73,10 +73,7 @@ namespace ecss {
  0x..[component 1]
  0x..[component 2]
  0x..[    ...    ]
- 0x..[component maxN]
- 
-  maxN = 10
- 
+  
   should be called before any getContainer calls
 */
 		template<typename... Components> 
@@ -89,7 +86,7 @@ namespace ecss {
 				return;
 			}
 
-			auto container = new Memory::ComponentsArrayInitializer<Components...>();
+			auto container = new Memory::ComponentsArrayConstructor<Components...>();
 
 			((mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<Components>()] = container), ...);
 		}

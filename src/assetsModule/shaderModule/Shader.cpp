@@ -17,8 +17,8 @@ bool Shader::compile() {
 	cachedUniforms.clear();
 	ID = glCreateProgram();
 
-	vertexCode = loadShaderCode(vertexPath.c_str());
-	fragmentCode = loadShaderCode(fragmentPath.c_str());
+	vertexCode = loadShaderCode(vertexPath);
+	fragmentCode = loadShaderCode(fragmentPath);
 
 	auto success = compileShader(vertexCode.c_str(), GL_VERTEX_SHADER);
 	success = compileShader(fragmentCode.c_str(), GL_FRAGMENT_SHADER) && success;

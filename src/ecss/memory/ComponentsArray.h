@@ -34,7 +34,7 @@ namespace ecss::Memory {
 
 		//shifts chunk data right
 		//[][][][from][][][]   -> [][][] [empty] [from][][][]
-		void shiftDataRight(size_t from);
+		void shiftDataRight(size_t from, size_t offset = 1);
 
 		//shifts chunk data left
 		//[][][][from][][][]   -> [][][from][][][]
@@ -71,22 +71,31 @@ namespace ecss::Memory {
 
 	protected:
 		template <typename... Types>
-		void initChunkData() {
-			((mChunkData.sectorMembersOffsets.emplace_back(mChunkData.sectorSize += static_cast<uint16_t>(sizeof(Types)) + 1)), ...);
+		void initChunkData(uint32_t capacity) {
+			static_assert(types::areUnique<Types...>(), "Duplicates detected in types");
+
+			mChunkData.sectorMembersOffsets.emplace_back(mChunkData.sectorSize += 0);
+			mChunkData.sectorMembersOffsets.emplace_back(mChunkData.sectorSize += static_cast<uint16_t>(sizeof(SectorInfo))); //offset for sector id
+
+			((mChunkData.sectorMembersOffsets.emplace_back(mChunkData.sectorSize += static_cast<uint16_t>(sizeof(Types)) + 1)), ...); //+1 for is alive bool
 			mChunkData.sectorMembersOffsets.shrink_to_fit();
 
 			uint8_t i = 0;
 			((mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<Types>()] = ++i), ...);
+
+			reserve(capacity);
 		}
 
 	public:
-		ComponentsArray(uint32_t capacity = 0);
+		ComponentsArray() = default;
 		virtual ~ComponentsArray();
 
 		IteratorSectors beginSectors();
 		IteratorSectors endSectors();
 
-		inline SectorInfo* operator[](size_t i) const { return mChunks.size() <= i / mChunkSize ? nullptr : static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>(mChunks[i / mChunkSize]) + (i % mChunkSize) * mChunkData.sectorSize)); }
+		inline SectorInfo* operator[](size_t i) const {
+			return mChunks.size() <= i / mChunkSize ? nullptr : static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>(mChunks[i / mChunkSize]) + (i % mChunkSize) * mChunkData.sectorSize));
+		}
 
 		uint32_t size() const;
 		bool empty() const;
@@ -120,7 +129,7 @@ namespace ecss::Memory {
 
 		template<typename T>
 		void moveToSector(EntityId sectorId, T* data) {
-			if (!data || !mChunkData.sectorMembersIndexes.contains(ReflectionHelper::getTypeId<T>())) {
+			if (!data || !hasType<T>()) {
 				assert(false);
 				return;
 			}
@@ -136,7 +145,7 @@ namespace ecss::Memory {
 
 		template<typename T>
 		void copyToSector(EntityId sectorId, T* data) {
-			if (!data || !mChunkData.sectorMembersIndexes.contains(ReflectionHelper::getTypeId<T>())) {
+			if (!data || !hasType<T>()) {
 				assert(false);
 				return;
 			}
@@ -152,7 +161,7 @@ namespace ecss::Memory {
 
 		template<typename T>
 		inline uint8_t getTypeIdx() {
-			return mChunkData.sectorMembersIndexes.contains(ReflectionHelper::getTypeId<T>()) ? mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()] : 0;
+			return hasType<T>() ? mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()] : 0;
 		}
 
 		template<typename T>
@@ -172,15 +181,16 @@ namespace ecss::Memory {
 		void erase(size_t pos);
 		void erase(size_t from, size_t to);
 
+	private:
 		std::vector<EntityId> mSectorsMap;
+		std::vector<void*> mChunks;
 
 		ChunkData mChunkData;
 
 		uint32_t mSize = 0;
 		uint32_t mCapacity = 0;
 
-		size_t mChunkSize = 512;
-		std::vector<void*> mChunks;
+		const size_t mChunkSize = 1024;
 
 	public:
 		class Iterator {
@@ -188,18 +198,18 @@ namespace ecss::Memory {
 			inline constexpr EntityId getSectorId() const { return *static_cast<EntityId*>(mPtr); }
 
 			inline Iterator() {};
-			inline Iterator(void* ptr, uint16_t sectorSize, std::vector<uint16_t> offsets, ContiguousMap<ECSType, uint8_t> members) : mPtr(ptr), mSectorSize(sectorSize), mOffsets(offsets), mMembers(members) {}
+			inline Iterator(void* ptr, uint16_t sectorSize, const std::vector<uint16_t>& offsets, const ContiguousMap<ECSType, uint8_t>& members) : mPtr(ptr), mSectorSize(sectorSize), mOffsets(offsets), mMembers(members) {}
 
 			inline SectorInfo* operator*() const { return static_cast<SectorInfo*>(mPtr); }
 
 			template<typename Type>
-			inline bool hasType() { return mMembers.contains(Memory::ReflectionHelper::getTypeId<Type>()); }
+			inline bool hasType() const { return mMembers.contains(ReflectionHelper::getTypeId<Type>()); }
 
 			template<typename Type>
 			inline Type* getTyped(uint8_t typeIdx) { return static_cast<SectorInfo*>(mPtr)->getObject<Type>(mOffsets[typeIdx]); }
 
 			template<typename Type>
-			inline uint8_t getTypeIdx() { return mMembers[Memory::ReflectionHelper::getTypeId<Type>()]; }
+			inline uint8_t getTypeIdx() const { return mMembers.at(ReflectionHelper::getTypeId<Type>()); }
 
 			inline Iterator& operator+(size_t i) { return mPtr = static_cast<char*>(mPtr) + i * mSectorSize, *this; }
 			inline Iterator& operator++() { return mPtr = static_cast<char*>(mPtr) + mSectorSize, *this; }
@@ -208,10 +218,10 @@ namespace ecss::Memory {
 
 		private:
 			void* mPtr = nullptr;
-			uint16_t mSectorSize = 0;
 
-			std::vector<uint16_t> mOffsets = {};
-			ContiguousMap<ECSType, uint8_t> mMembers;
+			const uint16_t mSectorSize = 0;
+			const std::vector<uint16_t> mOffsets = {};
+			const ContiguousMap<ECSType, uint8_t> mMembers;
 		};
 
 		Iterator begin() { return { mChunks.front(), mChunkData.sectorSize, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes}; }
@@ -219,16 +229,13 @@ namespace ecss::Memory {
 	};
 
 	template <typename... Types>
-	class ComponentsArrayInitializer final : public ComponentsArray  {
-		ComponentsArrayInitializer(const ComponentsArrayInitializer&) = delete;
-		ComponentsArrayInitializer& operator=(ComponentsArrayInitializer&) = delete;
+	class ComponentsArrayConstructor final : public ComponentsArray  {
+		ComponentsArrayConstructor(const ComponentsArrayConstructor&) = delete;
+		ComponentsArrayConstructor& operator=(ComponentsArrayConstructor&) = delete;
 
 	public:
-		ComponentsArrayInitializer(uint32_t capacity = 0) : ComponentsArray(capacity){
-			static_assert(types::areUnique<Types...>(), "Duplicates detected in types");
-
-			initChunkData<Types...>();
-			reserve(capacity);
+		explicit ComponentsArrayConstructor(uint32_t capacity = 0) {
+			initChunkData<Types...>(capacity);
 		}
 	};
 }
