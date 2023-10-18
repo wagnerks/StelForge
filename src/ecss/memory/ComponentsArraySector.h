@@ -42,6 +42,16 @@ namespace ecss::Memory {
 			const auto alive = static_cast<bool*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(this)) + offset));
 			return *alive ? static_cast<T*>(static_cast<void*>(static_cast<char*>(static_cast<void*>(alive)) + 1)) : nullptr;
 		}
+
+		inline constexpr bool isSectorAlive(const std::vector<uint16_t>& offsets) {
+			for (auto i = 1u; i < offsets.size() - 1; i++) {
+				if (isAlive(offsets[i])) {
+					return true;
+				}
+			}
+
+			return false;
+		}
 	};
 
 }

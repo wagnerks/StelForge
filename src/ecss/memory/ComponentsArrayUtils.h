@@ -15,5 +15,5 @@ namespace ecss::Memory::Utils {
 
 	__forceinline  size_t distance(void* beg, void* end, size_t size) { return std::abs((static_cast<char*>(beg) - static_cast<char*>(end))) / size; }
 
-	void* binarySearch(EntityId sectorId, size_t& idx, ComponentsArray* sectors, size_t sectorSize);
+	void* binarySearch(EntityId sectorId, size_t& idx, ComponentsArray* sectors);
 }

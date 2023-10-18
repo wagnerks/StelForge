@@ -4,18 +4,15 @@
 
 
 namespace ecss::Memory::Utils {
-	void* binarySearch(EntityId sectorId, size_t& idx, ComponentsArray* sectors, size_t sectorSize) {
-		const auto size = sectors->size();
-		if (size == 0) {
+	void* binarySearch(EntityId sectorId, size_t& idx, ComponentsArray* sectors) {
+		auto right = sectors->size();
+		if (right == 0) {
 			idx = 0;
 			return nullptr;
 		}
-
-		auto begin = sectors->beginSectors();
-		auto end = sectors->endSectors();
-		
-		if ((*sectors)[size - 1]->id < sectorId) {
-			idx = size;
+				
+		if ((*sectors)[right - 1]->id < sectorId) {
+			idx = right;
 			return nullptr;
 		}
 
@@ -29,31 +26,26 @@ namespace ecss::Memory::Utils {
 			return (*sectors)[0];
 		}
 
-		auto it = begin;
+		auto left = 0;
 
 		while (true) {
-			it = begin;
-
-			const auto dist = Utils::distance(*begin, *end, sectorSize);
+			const auto dist = right - left;
 			if (dist == 1) {
-				idx = Utils::distance(*sectors->beginSectors(), *it, sectorSize) + 1;
+				idx = left + 1;
 				break;
 			}
 
-			it = it + dist / 2;
+			left += dist / 2;
 
-			if (static_cast<SectorInfo*>(*it)->id > sectorId) {
-				end = it;
+			if ((*sectors)[left]->id > sectorId) {
+				right = left;
 			}
-			else if (static_cast<SectorInfo*>(*it)->id == sectorId) {
-				idx = Utils::distance(*sectors->beginSectors(), *it, sectorSize);
-				return *it;
-			}
-			else {
-				begin = it;
+			else if ((*sectors)[left]->id == sectorId) {
+				idx = left;
+				return (*sectors)[left];
 			}
 		}
-
+		
 		return nullptr;
 	}
 }

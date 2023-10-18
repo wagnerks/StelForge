@@ -140,7 +140,7 @@ namespace ecss::Memory {
 		}
 
 		size_t idx = 0;
-		Utils::binarySearch(entityId, idx, this, mChunkData.sectorSize); //find the place where to insert sector
+		Utils::binarySearch(entityId, idx, this); //find the place where to insert sector
 
 		return initSectorMember(createSector(idx, entityId), componentTypeIdx);
 	}
@@ -154,9 +154,9 @@ namespace ecss::Memory {
 
 		destroyObject(sectorInfo, mChunkData.sectorMembersIndexes[componentTypeId]);
 
-		if (!isSectorAlive(sectorInfo)) {
+		if (!sectorInfo->isSectorAlive(mChunkData.sectorMembersOffsets)) {
 			size_t pos = 0;
-			Utils::binarySearch(entityId, pos, this, mChunkData.sectorSize);
+			Utils::binarySearch(entityId, pos, this);
 			erase(pos);
 		}
 	}
@@ -186,8 +186,8 @@ namespace ecss::Memory {
 
 			const auto sector = (*this)[mSectorsMap[entityId]];
 			destroyObject(sector, mChunkData.sectorMembersIndexes[componentTypeId]);
-
-			if (!isSectorAlive(sector)) {
+			
+			if (!sector->isSectorAlive(mChunkData.sectorMembersOffsets)) {
 				lastPos = mSectorsMap[entityId];
 				mSectorsMap[entityId] = INVALID_ID;
 
@@ -234,18 +234,10 @@ namespace ecss::Memory {
 		destroySector((*this)[mSectorsMap[entityId]]);
 
 		size_t pos = 0;
-		Utils::binarySearch(entityId, pos, this, mChunkData.sectorSize);
+		Utils::binarySearch(entityId, pos, this);
 		erase(pos);
 	}
-
-	ComponentsArray::IteratorSectors ComponentsArray::beginSectors() {
-		return IteratorSectors(this,0);
-	}
-
-	ComponentsArray::IteratorSectors ComponentsArray::endSectors() {
-		return IteratorSectors(this, size());
-	}
-
+	
 	void ComponentsArray::shiftDataRight(size_t from, size_t offset) {
 		for (auto i = size() - offset; i >= from; i--) {
 			auto prevAdr = (*this)[i];
@@ -296,13 +288,4 @@ namespace ecss::Memory {
 		}
 	}
 
-	bool ComponentsArray::isSectorAlive(SectorInfo* sector) const {
-		for (auto i = 1u; i < mChunkData.sectorMembersOffsets.size() - 1; i++) {
-			if (sector->isAlive(mChunkData.sectorMembersOffsets[i])) {
-				return true;
-			}
-		}
-
-		return false;
-	}
 }

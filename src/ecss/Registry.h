@@ -47,12 +47,12 @@ namespace ecss {
 		//you can create component somewhere in another thread and move it into container here
 		template <class T>
 		void moveComponentToEntity(const EntityHandle& entity, T* component) {
-			getComponentContainer<T>()->moveToSector<T>(entity.getID(), component);
+			getComponentContainer<T>()->insert<T>(entity.getID(), std::move(component));
 		}
 
 		template <class T>
 		void copyComponentToEntity(const EntityHandle& entity, T* component) {
-			getComponentContainer<T>()->copyToSector<T>(entity.getID(), component);
+			getComponentContainer<T>()->insert<T>(entity.getID(), component);
 		}
 
 		template <class T>
@@ -86,7 +86,7 @@ namespace ecss {
 				return;
 			}
 
-			auto container = new Memory::ComponentsArrayConstructor<Components...>();
+			auto container = Memory::ComponentsArray::createComponentsArray<Components...>();
 
 			((mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<Components>()] = container), ...);
 		}
@@ -163,7 +163,6 @@ so better, if you want to merge multiple types in one sector, always create all 
 	class ComponentsArrayHandle {
 	public:
 		explicit ComponentsArrayHandle(Registry* manager) {
-			
 			((mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()] = manager->getComponentContainer<ComponentTypes>()), ...);
 			mArrays[sizeof...(ComponentTypes)] = manager->getComponentContainer<T>();
 		}
@@ -177,15 +176,15 @@ so better, if you want to merge multiple types in one sector, always create all 
 			using ComponentsIt = Memory::ComponentsArray::Iterator;
 
 		public:
-			inline Iterator(const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1>& arrays, size_t idx) : mArrays(arrays), mCurIdx(idx), mPtr((*mArrays[sizeof...(ComponentTypes)])[idx]){
+			inline Iterator(const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1>& arrays, size_t idx) : mArrays(arrays), mCurIdx(idx), mCurrentSector((*mArrays[sizeof...(ComponentTypes)])[idx]){
 				constexpr auto mainIdx = sizeof...(ComponentTypes);
 				mOffsets[mainIdx] = mArrays[mainIdx]->getChunkData().sectorMembersOffsets[mArrays[mainIdx]->template getTypeIdx<T>()];
 
 				(
 					(
-						mTypeIndexes[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()]->template getTypeIdx<ComponentTypes>()
-						, 
-						(mOffsets[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[mainIdx]->template hasType<ComponentTypes>() ? mArrays[mainIdx]->getChunkData().sectorMembersOffsets[mArrays[mainIdx]->template getTypeIdx<ComponentTypes>()] : 0)
+						mOffsets[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()]->getChunkData().sectorMembersOffsets[mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()]->template getTypeIdx<ComponentTypes>()]
+						,
+						mMainSector[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[mainIdx]->template hasType<ComponentTypes>()
 					)
 					,
 				...);
@@ -193,26 +192,26 @@ so better, if you want to merge multiple types in one sector, always create all 
 
 			template<typename ComponentType>
 			inline ComponentType* getComponent(const EntityId sectorId) {
-				return mOffsets[types::getIndex<ComponentType, ComponentTypes...>()] ? static_cast<Memory::SectorInfo*>(mPtr)->getObject<ComponentType>(mOffsets[types::getIndex<ComponentType, ComponentTypes...>()]) : mArrays[types::getIndex<ComponentType, ComponentTypes...>()]->template getComponentImpl<ComponentType>(sectorId, mTypeIndexes[types::getIndex<ComponentType, ComponentTypes...>()]);
+				return mMainSector[types::getIndex<ComponentType, ComponentTypes...>()] ? mCurrentSector->getObject<ComponentType>(mOffsets[types::getIndex<ComponentType, ComponentTypes...>()]) : mArrays[types::getIndex<ComponentType, ComponentTypes...>()]->template getComponent<ComponentType>(sectorId, mOffsets[types::getIndex<ComponentType, ComponentTypes...>()]);
 			}
 			
 			inline std::tuple<EntityId, T&, ComponentTypes&...> operator*() {
-				auto id = static_cast<Memory::SectorInfo*>(mPtr)->id;
-				return std::forward_as_tuple(id, *(static_cast<Memory::SectorInfo*>(mPtr)->getObject<T>(mOffsets[sizeof...(ComponentTypes)])), *getComponent<ComponentTypes>(id)...);
+				auto id = mCurrentSector->id;
+				return std::forward_as_tuple(id, *(mCurrentSector->getObject<T>(mOffsets[sizeof...(ComponentTypes)])), *getComponent<ComponentTypes>(id)...);
 			}
 
 			inline Iterator& operator++() {
-				return mCurIdx++, mPtr = (*mArrays[sizeof...(ComponentTypes)])[mCurIdx], * this;
+				return mCurIdx++, mCurrentSector = (*mArrays[sizeof...(ComponentTypes)])[mCurIdx], * this;
 			}
-			inline bool operator!=(const Iterator& other) const { return mPtr != other.mPtr; }
+			inline bool operator!=(const Iterator& other) const { return mCurrentSector != other.mCurrentSector; }
 
 		private:
 			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1> mArrays;
 			std::array<uint16_t, sizeof...(ComponentTypes) + 1> mOffsets;
-			std::array<uint8_t,	 sizeof...(ComponentTypes)> mTypeIndexes;
+			std::array<bool, sizeof...(ComponentTypes)> mMainSector;
 
 			size_t mCurIdx = 0;
-			void* mPtr = nullptr;
+			Memory::SectorInfo* mCurrentSector = nullptr;
 		};
 
 

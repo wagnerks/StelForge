@@ -32,6 +32,8 @@ namespace ecss::Memory {
 		ComponentsArray(const ComponentsArray&) = delete;
 		ComponentsArray& operator=(ComponentsArray&) = delete;
 
+		ComponentsArray() = default;
+
 		//shifts chunk data right
 		//[][][][from][][][]   -> [][][] [empty] [from][][][]
 		void shiftDataRight(size_t from, size_t offset = 1);
@@ -41,35 +43,6 @@ namespace ecss::Memory {
 		//caution - shifting on alive data will produce memory leak
 		void shiftDataLeft(size_t from, size_t offset = 1);
 
-		bool isSectorAlive(SectorInfo* sector) const;
-
-		class IteratorSectors {
-		public:
-			IteratorSectors(){}
-			IteratorSectors(ComponentsArray* ptr, size_t idx) : mArray(ptr), mIdx(idx) {}
-
-			inline bool operator!=(const IteratorSectors& other) const { return mIdx != other.mIdx; }
-			inline bool operator==(const IteratorSectors& other) const { return mIdx == other.mIdx; }
-
-			inline IteratorSectors& operator=(const IteratorSectors& other) {
-				if (this != &other) {
-					mIdx = other.mIdx;
-					mArray = other.mArray;
-				}
-				return *this;
-			}
-
-			inline void* operator*() const { return (*mArray)[mIdx]; }
-
-			inline IteratorSectors& operator++() { return ++mIdx, *this; }
-
-			inline IteratorSectors& operator+(size_t i) { return mIdx += i, *this; }
-		private:
-			ComponentsArray* mArray = nullptr;
-			size_t mIdx = 0;
-		};
-
-	protected:
 		template <typename... Types>
 		void initChunkData(uint32_t capacity) {
 			static_assert(types::areUnique<Types...>(), "Duplicates detected in types");
@@ -87,12 +60,16 @@ namespace ecss::Memory {
 		}
 
 	public:
-		ComponentsArray() = default;
-		virtual ~ComponentsArray();
+		template <typename... Types>
+		static inline constexpr ComponentsArray* createComponentsArray(uint32_t capacity = 0) {
+			const auto array = new ComponentsArray();
+			array->initChunkData<Types...>(capacity);
 
-		IteratorSectors beginSectors();
-		IteratorSectors endSectors();
+			return array;
+		}
 
+		~ComponentsArray();
+		
 		inline SectorInfo* operator[](size_t i) const {
 			return mChunks.size() <= i / mChunkSize ? nullptr : static_cast<SectorInfo*>(static_cast<void*>(static_cast<char*>(mChunks[i / mChunkSize]) + (i % mChunkSize) * mChunkData.sectorSize));
 		}
@@ -118,33 +95,23 @@ namespace ecss::Memory {
 
 		template<typename T>
 		inline T* getComponent(EntityId sectorId) {
-			return getComponentImpl<T>(sectorId, mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()]);
+			return getComponent<T>(sectorId, mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()]);
 		}
 
 		template<typename T>
-		inline T* getComponentImpl(EntityId sectorId, uint8_t sectorIdx) {
+		inline T* getComponent(EntityId sectorId, uint8_t sectorIdx) {
 			auto info = getSectorInfo(sectorId);
 			return info ? info->getObject<T>(mChunkData.sectorMembersOffsets[sectorIdx]) : nullptr;
 		}
 
 		template<typename T>
-		void moveToSector(EntityId sectorId, T* data) {
-			if (!data || !hasType<T>()) {
-				assert(false);
-				return;
-			}
-			
-			auto sector = acquireSector(mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()], sectorId);
-			if (!sector) {
-				assert(false);
-				return;
-			}
-
-			new (sector) T(std::move(*data));
+		inline T* getComponent(EntityId sectorId, uint16_t offset) {
+			auto info = getSectorInfo(sectorId);
+			return info ? info->getObject<T>(offset) : nullptr;
 		}
 
 		template<typename T>
-		void copyToSector(EntityId sectorId, T* data) {
+		void insert(EntityId sectorId, T* data) {
 			if (!data || !hasType<T>()) {
 				assert(false);
 				return;
@@ -156,9 +123,9 @@ namespace ecss::Memory {
 				return;
 			}
 
-			new (sector) T(*data);
+			new (sector) T(*data); //copy data into sector, use std::move in arguments list if want to move data
 		}
-
+		
 		template<typename T>
 		inline uint8_t getTypeIdx() {
 			return hasType<T>() ? mChunkData.sectorMembersIndexes[ReflectionHelper::getTypeId<T>()] : 0;
@@ -226,16 +193,5 @@ namespace ecss::Memory {
 
 		Iterator begin() { return { mChunks.front(), mChunkData.sectorSize, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes}; }
 		Iterator end() { return { static_cast<char*>(mChunks.front()) + size() * mChunkData.sectorSize, mChunkData.sectorSize, mChunkData.sectorMembersOffsets, mChunkData.sectorMembersIndexes }; }
-	};
-
-	template <typename... Types>
-	class ComponentsArrayConstructor final : public ComponentsArray  {
-		ComponentsArrayConstructor(const ComponentsArrayConstructor&) = delete;
-		ComponentsArrayConstructor& operator=(ComponentsArrayConstructor&) = delete;
-
-	public:
-		explicit ComponentsArrayConstructor(uint32_t capacity = 0) {
-			initChunkData<Types...>(capacity);
-		}
 	};
 }
