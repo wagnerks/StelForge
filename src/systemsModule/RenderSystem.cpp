@@ -12,7 +12,7 @@
 #include "componentsModule/IsDrawableComponent.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "renderModule/Renderer.h"
 #include "renderModule/Utils.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"

@@ -5,7 +5,7 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/ShaderComponent.h"
 #include "core/ECSHandler.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 
 namespace Engine::SystemsModule {
 	void ShaderSystem::update(float_t dt) {

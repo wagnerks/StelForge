@@ -1,27 +1,27 @@
 ﻿#pragma once
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "ecss/Types.h"
 #include "componentsModule/ComponentBase.h"
 
 namespace Engine::ComponentsModule {
 	class TreeComponent : public ecss::ComponentInterface {
 	public:
-		TreeComponent(ecss::EntityId id) : ComponentInterface(id) {};
+		TreeComponent(ecss::SectorId id) : ComponentInterface(id) {};
 		~TreeComponent() override;
-		ecss::EntityId getParent() const;
+		ecss::SectorId getParent() const;
 
-		void addChildEntity(ecss::EntityId id);
-		void removeChildEntity(ecss::EntityId id);
-		const std::vector<ecss::EntityId>& getChildren();
+		void addChildEntity(ecss::SectorId id);
+		void removeChildEntity(ecss::SectorId id);
+		const std::vector<ecss::SectorId>& getChildren();
 
-		std::vector<ecss::EntityId> getAllNodes();
-		void getAllNodesHelper(std::vector<ecss::EntityId>& res);
+		std::vector<ecss::SectorId> getAllNodes();
+		void getAllNodesHelper(std::vector<ecss::SectorId>& res);
 
 	private:
-		void setParent(ecss::EntityId id);
+		void setParent(ecss::SectorId id);
 
-		ecss::EntityId mParentEntity = ecss::INVALID_ID;
-		std::vector<ecss::EntityId> mChildrenEntities;
+		ecss::SectorId mParentEntity = ecss::INVALID_ID;
+		std::vector<ecss::SectorId> mChildrenEntities;
 	};
 }
 

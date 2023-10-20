@@ -11,7 +11,7 @@ namespace Engine::RenderModule::RenderPasses {
 	class PointLightPass : public RenderPass {
 	public:
 		struct Data {
-			std::vector<ecss::EntityId> shadowEntities;
+			std::vector<ecss::SectorId> shadowEntities;
 		};
 
 		void initRender();
@@ -27,7 +27,7 @@ namespace Engine::RenderModule::RenderPasses {
 		Engine::ProjectionModule::PerspectiveProjection lightProjection;
 		std::vector<glm::mat4> lightMatrices;
 		std::vector<FrustumModule::Frustum> frustums;
-		std::vector<std::pair<ecss::EntityId, int>> offsets;
+		std::vector<std::pair<ecss::SectorId, int>> offsets;
 
 		const int shadowResolution = 1024;
 		const int maxShadowFaces = 36;

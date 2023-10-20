@@ -22,7 +22,7 @@
 #include "core/ECSHandler.h"
 #include "core/FileSystem.h"
 #include "core/ThreadPool.h"
-#include "..\..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "logsModule/logger.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "systemsModule/SystemManager.h"

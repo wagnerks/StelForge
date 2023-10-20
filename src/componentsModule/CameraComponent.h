@@ -5,8 +5,8 @@
 namespace Engine::ComponentsModule {
 	class CameraComponent : public ecss::ComponentInterface {
 	public:
-		CameraComponent(ecss::EntityId id);
-		CameraComponent(ecss::EntityId id, float FOV, float aspect, float zNear, float zFar);
+		CameraComponent(ecss::SectorId id);
+		CameraComponent(ecss::SectorId id, float FOV, float aspect, float zNear, float zFar);
 		ProjectionModule::PerspectiveProjection& getProjection();
 
 		void initProjection(float FOV, float aspect, float zNear, float zFar);

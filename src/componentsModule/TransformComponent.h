@@ -15,7 +15,7 @@ namespace Engine::ComponentsModule {
 
 	class TransformComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
-		TransformComponent(ecss::EntityId id) : ComponentInterface(id) {};
+		TransformComponent(ecss::SectorId id) : ComponentInterface(id) {};
 		~TransformComponent() override;
 
 		const glm::vec3& getPos(bool global = false) const;

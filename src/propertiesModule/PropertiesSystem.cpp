@@ -76,7 +76,7 @@ namespace Engine::PropertiesModule {
 		serializeProperty<CascadeShadowComponent>(entity, result["Properties"]);
 
 		auto treeComp = ECSHandler::registry()->getComponent<ComponentsModule::TreeComponent>(entity);
-		auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::EntityId>();
+		auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
 		if (!children.empty()) {
 			result["Children"] = Json::arrayValue;
 			auto& childrenJson = result["Children"];

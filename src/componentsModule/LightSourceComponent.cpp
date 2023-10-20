@@ -1,6 +1,6 @@
 ﻿#include "LightSourceComponent.h"
 
-LightSourceComponent::LightSourceComponent(ecss::EntityId id, eLightType type) : ComponentInterface(id), mType(type) {
+LightSourceComponent::LightSourceComponent(ecss::SectorId id, eLightType type) : ComponentInterface(id), mType(type) {
 }
 
 int LightSourceComponent::getTypeOffset(eLightType type) {

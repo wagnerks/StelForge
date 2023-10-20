@@ -8,7 +8,7 @@
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "core/ECSHandler.h"
-#include "..\..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "renderModule/SceneGridFloor.h"
 
 using namespace Engine::RenderModule::RenderPasses;

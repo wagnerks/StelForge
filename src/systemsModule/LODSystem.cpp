@@ -10,7 +10,7 @@
 #include "core/Camera.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "logsModule/logger.h"
 

@@ -5,7 +5,7 @@
 namespace Engine::ComponentsModule {
 	class FrustumComponent : public ecss::ComponentInterface {
 	public:
-		FrustumComponent(ecss::EntityId id) : ComponentInterface(id) {};
+		FrustumComponent(ecss::SectorId id) : ComponentInterface(id) {};
 		void updateFrustum(const ProjectionModule::Projection& projection, const glm::mat4& view);
 		void updateFrustum(const glm::mat4& projView);
 		void updateFrustum(const glm::mat4& projection, const glm::mat4& view);

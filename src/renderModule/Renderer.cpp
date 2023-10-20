@@ -8,7 +8,7 @@
 #include "core/Engine.h"
 #include "core/FileSystem.h"
 #include "core/ThreadPool.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "componentsModule/FrustumComponent.h"
 #include "logsModule/logger.h"
 
@@ -54,8 +54,8 @@ void Renderer::init() {
 
 	//ThreadPool::instance()->addTask([](std::mutex&) {
 	//	auto root = PropertiesModule::PropertiesSystem::loadScene("scene.json");
-	auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json"); 
-		//auto root = PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
+	//auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json"); 
+		auto root = PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
 	//});
 
 

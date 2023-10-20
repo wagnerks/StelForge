@@ -7,7 +7,7 @@
 #include "core/BoundingVolume.h"
 #include "core/ECSHandler.h"
 #include "debugModule/ComponentsDebug.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/SystemManager.h"
 

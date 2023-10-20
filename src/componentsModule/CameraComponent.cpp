@@ -1,9 +1,9 @@
 ﻿#include "CameraComponent.h"
 
-CameraComponent::CameraComponent(ecss::EntityId id) : ComponentInterface(id) {
+CameraComponent::CameraComponent(ecss::SectorId id) : ComponentInterface(id) {
 }
 
-CameraComponent::CameraComponent(ecss::EntityId id, float FOV, float aspect, float zNear, float zFar) : ComponentInterface(id) {
+CameraComponent::CameraComponent(ecss::SectorId id, float FOV, float aspect, float zNear, float zFar) : ComponentInterface(id) {
 	initProjection(FOV, aspect, zNear, zFar);
 }
 

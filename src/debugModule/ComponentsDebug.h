@@ -22,7 +22,7 @@ namespace Engine {
 namespace Engine::Debug {
 	class ComponentsDebug {
 	public:
-		static void drawTree(const ecss::EntityHandle& entity, ecss::EntityId& selectedID);
+		static void drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID);
 		static void entitiesDebug();
 		static void componentEditorInternal(ComponentsModule::TransformComponent* component);
 		static void componentEditorInternal(ComponentsModule::LightSourceComponent* component);
@@ -30,7 +30,7 @@ namespace Engine::Debug {
 		static void componentEditorInternal(ComponentsModule::ModelComponent* component);
 		static void componentEditorInternal(ComponentsModule::ShaderComponent* component);
 
-		static inline ecss::EntityId mSelectedId = ecss::INVALID_ID;
+		static inline ecss::SectorId mSelectedId = ecss::INVALID_ID;
 	};
 
 }

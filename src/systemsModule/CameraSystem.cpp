@@ -3,7 +3,7 @@
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 
 namespace Engine::SystemsModule {
 	CameraSystem::CameraSystem() {

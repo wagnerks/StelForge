@@ -27,7 +27,7 @@ namespace Engine::ComponentsModule {
 
 	class ModelComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
-		ModelComponent(ecss::EntityId id) : ComponentInterface(id) {};
+		ModelComponent(ecss::SectorId id) : ComponentInterface(id) {};
 		void init(AssetsModule::Model* model) {
 			mPath = model->getModelPath();
 			addMeshData(model->getAllLODs());

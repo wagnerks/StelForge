@@ -3,7 +3,7 @@
 #include "core/ECSHandler.h"
 
 namespace Engine::ComponentsModule {
-	void TreeComponent::setParent(ecss::EntityId id) {
+	void TreeComponent::setParent(ecss::SectorId id) {
 		if (mParentEntity == id) {
 			return;
 		}
@@ -11,11 +11,11 @@ namespace Engine::ComponentsModule {
 		mParentEntity = id;		
 	}
 
-	ecss::EntityId TreeComponent::getParent() const {
+	ecss::SectorId TreeComponent::getParent() const {
 		return mParentEntity;
 	}
 
-	void TreeComponent::addChildEntity(ecss::EntityId id) {
+	void TreeComponent::addChildEntity(ecss::SectorId id) {
 		if (std::find(mChildrenEntities.begin(), mChildrenEntities.end(), id) == mChildrenEntities.end()) {
 			mChildrenEntities.push_back(id);
 			if (auto tree = ECSHandler::registry()->getComponent<TreeComponent>(id)) {
@@ -24,20 +24,20 @@ namespace Engine::ComponentsModule {
 		}
 	}
 
-	void TreeComponent::removeChildEntity(ecss::EntityId id) {
+	void TreeComponent::removeChildEntity(ecss::SectorId id) {
 		std::erase(mChildrenEntities, id);
 		if (auto tree = ECSHandler::registry()->getComponent<TreeComponent>(id)) {
 			tree->setParent(ecss::INVALID_ID);
 		}
 	}
 
-	std::vector<ecss::EntityId> TreeComponent::getAllNodes() {
-		std::vector<ecss::EntityId> allNodes;
+	std::vector<ecss::SectorId> TreeComponent::getAllNodes() {
+		std::vector<ecss::SectorId> allNodes;
 		getAllNodesHelper(allNodes);
 		return allNodes;
 	}
 
-	void TreeComponent::getAllNodesHelper(std::vector<ecss::EntityId>& res) {
+	void TreeComponent::getAllNodesHelper(std::vector<ecss::SectorId>& res) {
 		res.insert(res.end(), mChildrenEntities.begin(), mChildrenEntities.end());
 		for (auto element : mChildrenEntities) {
 			if (auto childNode = ECSHandler::registry()->getComponent<TreeComponent>(element)) {
@@ -46,7 +46,7 @@ namespace Engine::ComponentsModule {
 		}
 	}
 
-	const std::vector<ecss::EntityId>& TreeComponent::getChildren() {
+	const std::vector<ecss::SectorId>& TreeComponent::getChildren() {
 		return mChildrenEntities;
 	}
 

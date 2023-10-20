@@ -2,7 +2,7 @@
 
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 
 using namespace Engine::SystemsModule;
 

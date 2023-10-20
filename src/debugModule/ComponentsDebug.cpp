@@ -29,10 +29,10 @@
 
 using namespace Engine::Debug;
 
-void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::EntityId& selectedID) {
+void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID) {
 	auto treeComp = ECSHandler::registry()->getComponent<ComponentsModule::TreeComponent>(entity);
 
-	auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::EntityId>();
+	auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
 	std::string strid = "";
 	if (auto debugData = ECSHandler::registry()->getComponent<DebugDataComponent>(entity)) {
 		strid = debugData->stringId;
@@ -80,7 +80,7 @@ void ComponentsDebug::entitiesDebug() {
 		static float separatorPos = 100.f;
 		static ImVec2 mousePos = {};
 
-		static ecss::EntityId prevId = std::numeric_limits<ecss::EntityId>::max();
+		static ecss::SectorId prevId = std::numeric_limits<ecss::SectorId>::max();
 
 		auto entityManager = ECSHandler::registry();
 
@@ -109,7 +109,7 @@ void ComponentsDebug::entitiesDebug() {
 		ImGui::EndChild();
 
 		if (prevId != mSelectedId) {
-			if (prevId != std::numeric_limits<ecss::EntityId>::max()) {
+			if (prevId != std::numeric_limits<ecss::SectorId>::max()) {
 				ECSHandler::registry()->removeComponent<OutlineComponent>(prevId);
 			}
 			
@@ -214,7 +214,7 @@ void ComponentsDebug::entitiesDebug() {
 					compManager->removeComponent<IsDrawableComponent>(mSelectedId);
 					auto tree = compManager->getComponent<ComponentsModule::TreeComponent>(mSelectedId);
 					if (tree) {
-						std::vector<ecss::EntityId> entities;
+						std::vector<ecss::SectorId> entities;
 						
 						for (auto node : tree->getAllNodes()) {
 							if (compManager->getComponent<IsDrawableComponent>(node)) {

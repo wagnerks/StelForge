@@ -10,7 +10,7 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
-#include "..\..\ecss\Registry.h"
+#include "ecss/Registry.h"
 
 #include "logsModule/logger.h"
 #include "systemsModule/CameraSystem.h"

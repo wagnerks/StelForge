@@ -18,7 +18,7 @@ namespace Engine::ComponentsModule {
 	
 	class LightSourceComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
-		LightSourceComponent(ecss::EntityId id , eLightType type);
+		LightSourceComponent(ecss::SectorId id , eLightType type);
 		static int getTypeOffset(eLightType type);
 		eLightType getType() const;
 		void setType(eLightType type);

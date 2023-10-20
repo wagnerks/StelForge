@@ -8,6 +8,6 @@ namespace Engine::SystemsModule {
 	public:
 		void update(float_t dt) override;
 
-		std::vector<std::pair<size_t, ecss::EntityId>> drawableEntities;
+		std::vector<std::pair<size_t, ecss::SectorId>> drawableEntities;
 	};
 }

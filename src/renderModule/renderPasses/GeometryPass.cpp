@@ -11,7 +11,7 @@
 #include "componentsModule/ShaderComponent.h"
 #include "core/ECSHandler.h"
 #include "core/ThreadPool.h"
-#include "..\..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "logsModule/logger.h"
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/RenderSystem.h"

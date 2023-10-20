@@ -8,7 +8,7 @@
 #include "debugModule/ComponentsDebug.h"
 #include "debugModule/imguiDecorator.h"
 #include "assetsModule/shaderModule/ShaderController.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "systemsModule/SystemManager.h"
 #include "assetsModule/AssetsManager.h"
 

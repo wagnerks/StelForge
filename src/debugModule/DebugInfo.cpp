@@ -6,7 +6,7 @@
 #include "core/Camera.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "..\ecss\Registry.h"
+#include "ecss/Registry.h"
 #include "systemsModule/CameraSystem.h"
 #include "systemsModule/SystemManager.h"
 

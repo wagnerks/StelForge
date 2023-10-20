@@ -19,7 +19,7 @@ namespace Engine::ComponentsModule {
 
 	class CascadeShadowComponent : public ecss::ComponentInterface, PropertiesModule::Serializable {
 	public:
-		CascadeShadowComponent(ecss::EntityId id) : ComponentInterface(id) {};
+		CascadeShadowComponent(ecss::SectorId id) : ComponentInterface(id) {};
 
 		void updateCascades(const ProjectionModule::PerspectiveProjection& cameraProjection);
 		void updateLightSpaceMatrices(const glm::mat4& cameraView);
