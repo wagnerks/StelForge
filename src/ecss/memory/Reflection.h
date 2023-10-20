@@ -8,8 +8,12 @@
 namespace ecss::Memory {
 	class ReflectionHelper {
 	public:
-		inline static ContiguousMap<ECSType, std::function<void(void* dest, void* src)>> moveMap;
-		inline static ContiguousMap<ECSType, std::function<void(void* src)>> destructorMap;
+		struct FunctionTable {
+			std::function<void(void* dest, void* src)> move;
+			std::function<void(void* src)> destructor;
+		};
+
+		inline static ContiguousMap<ECSType, FunctionTable> functionsTable;
 
 		template<typename T>
 		static ECSType getTypeId() {
@@ -23,8 +27,8 @@ namespace ecss::Memory {
 		static ECSType initType() {
 			const ECSType id = mTypes++;
 
-			moveMap[id] = [](void* dest, void* src) { new(dest)T(std::move(*static_cast<T*>(src))); };
-			destructorMap[id] = [](void* src) { static_cast<T*>(src)->~T(); };
+			functionsTable[id].move = [](void* dest, void* src) { new(dest)T(std::move(*static_cast<T*>(src))); };
+			functionsTable[id].destructor = [](void* src) { static_cast<T*>(src)->~T(); };
 
 			return id;
 		}

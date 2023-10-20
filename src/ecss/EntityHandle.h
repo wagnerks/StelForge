@@ -6,10 +6,10 @@ namespace ecss {
 	class EntityHandle {
 	public:
 		operator bool() const { return mId != INVALID_ID; }
-		EntityHandle(EntityId entityID = INVALID_ID) : mId(entityID) {}
-		EntityId getID() const { return mId; }
+		EntityHandle(SectorId entityID = INVALID_ID) : mId(entityID) {}
+		SectorId getID() const { return mId; }
 
 	private:
-		EntityId mId = INVALID_ID;
+		SectorId mId = INVALID_ID;
 	};
 }

@@ -1,32 +1,29 @@
-﻿#include "ComponentsArrayUtils.h"
+﻿#pragma once
 
-#include "ComponentsArray.h"
-
+#include "SectorsArray.h"
+#include "../Types.h"
 
 namespace ecss::Memory::Utils {
-	void* binarySearch(EntityId sectorId, size_t& idx, ComponentsArray* sectors) {
+	inline void* binarySearch(SectorId sectorId, size_t& idx, SectorsArray* sectors) {
 		auto right = sectors->size();
-		if (right == 0) {
+
+		if (right == 0 || (*sectors)[0]->id > sectorId) {
 			idx = 0;
 			return nullptr;
 		}
-				
+
 		if ((*sectors)[right - 1]->id < sectorId) {
 			idx = right;
 			return nullptr;
 		}
-
-		if ((*sectors)[0]->id > sectorId) {
-			idx = 0;
-			return nullptr;
-		}
-
+		
 		if ((*sectors)[0]->id == sectorId) {
 			idx = 0;
 			return (*sectors)[0];
 		}
 
-		auto left = 0;
+		uint32_t left = 0u;
+		void* result = nullptr;
 
 		while (true) {
 			const auto dist = right - left;
@@ -42,10 +39,11 @@ namespace ecss::Memory::Utils {
 			}
 			else if ((*sectors)[left]->id == sectorId) {
 				idx = left;
-				return (*sectors)[left];
+				result = (*sectors)[left];
+				break;
 			}
 		}
-		
-		return nullptr;
+
+		return result;
 	}
 }

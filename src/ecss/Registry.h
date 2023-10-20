@@ -8,8 +8,7 @@
 
 #include "Types.h"
 #include "EntityHandle.h"
-#include "memory/ComponentsArray.h"
-
+#include "memory/SectorsArray.h"
 
 namespace ecss {
 	class Registry final {
@@ -39,7 +38,7 @@ namespace ecss {
 			}
 
 			auto container = getComponentContainer<T>();
-			auto comp = new(container->acquireSector(container->template getTypeIdx<T>(), entity.getID()))T(std::forward<Args>(args)...);
+			auto comp = new(container->acquireSector(Memory::ReflectionHelper::getTypeId<T>(), entity.getID()))T(std::forward<Args>(args)...);
 
 			return static_cast<T*>(comp);
 		}
@@ -47,7 +46,7 @@ namespace ecss {
 		//you can create component somewhere in another thread and move it into container here
 		template <class T>
 		void moveComponentToEntity(const EntityHandle& entity, T* component) {
-			getComponentContainer<T>()->insert<T>(entity.getID(), std::move(component));
+			getComponentContainer<T>()->move<T>(entity.getID(), component);
 		}
 
 		template <class T>
@@ -61,7 +60,7 @@ namespace ecss {
 		}
 
 		template <class T>
-		void removeComponent(const std::vector<EntityId>& entities) {
+		void removeComponent(const std::vector<SectorId>& entities) {
 			getComponentContainer<T>()->destroyObjects(Memory::ReflectionHelper::getTypeId<T>(), entities);
 		}
 
@@ -86,7 +85,7 @@ namespace ecss {
 				return;
 			}
 
-			auto container = Memory::ComponentsArray::createComponentsArray<Components...>();
+			auto container = Memory::SectorsArray::createSectorsArray<Components...>();
 
 			((mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<Components>()] = container), ...);
 		}
@@ -128,35 +127,34 @@ so better, if you want to merge multiple types in one sector, always create all 
 		void reserve(uint32_t newCapacity) { (getComponentContainer<Components>()->reserve(newCapacity),...); }
 
 		EntityHandle takeEntity();
-		EntityHandle getEntity(EntityId entityId) const;
+		EntityHandle getEntity(SectorId entityId) const;
 
 		void destroyEntity(const EntityHandle& entityId);
 
-		const std::vector<EntityId>& getAllEntities();
+		const std::vector<SectorId>& getAllEntities();
 
 		template <class T>
-		Memory::ComponentsArray* getComponentContainer(bool skipCheck = false) {
-			if (!skipCheck) {
-				auto compId = Memory::ReflectionHelper::getTypeId<T>();
-				if (mComponentsArraysMap.size() <= compId) {
-					mComponentsArraysMap.resize(compId + 1);
-				}
+		Memory::SectorsArray* getComponentContainer() {
+			const ECSType compId = Memory::ReflectionHelper::getTypeId<T>();
 
-				if (mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<T>()] == nullptr) {
-					initCustomComponentsContainer<T>();
-				}
+			if (mComponentsArraysMap.size() <= compId) {
+				mComponentsArraysMap.resize(compId + 1);
 			}
 
-			return mComponentsArraysMap[Memory::ReflectionHelper::getTypeId<T>()];
+			if (mComponentsArraysMap[compId] == nullptr) {
+				initCustomComponentsContainer<T>();
+			}
+
+			return mComponentsArraysMap[compId];
 		}
 
 	private:
-		std::vector<Memory::ComponentsArray*> mComponentsArraysMap;
+		std::vector<Memory::SectorsArray*> mComponentsArraysMap;
 
-		std::vector<EntityId> mEntities;
-		std::set<EntityId> mFreeEntities;
+		std::vector<SectorId> mEntities;
+		std::set<SectorId> mFreeEntities;
 
-		EntityId getNewId();
+		SectorId getNewId();
 	};
 
 	template <typename T, typename ...ComponentTypes>
@@ -170,55 +168,61 @@ so better, if you want to merge multiple types in one sector, always create all 
 		inline size_t size() const { return mArrays[sizeof...(ComponentTypes)]->size(); }
 		inline bool empty() const { return !size(); }
 
-		inline std::tuple<T&, ComponentTypes&...> operator[](size_t i) const { return *Iterator(mArrays[sizeof...(ComponentTypes)]->begin() + i, mArrays); }
+		inline std::tuple<T&, ComponentTypes&...> operator[](size_t i) const { return *Iterator(mArrays, i); }
 
 		class Iterator {
-			using ComponentsIt = Memory::ComponentsArray::Iterator;
-
 		public:
-			inline Iterator(const std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1>& arrays, size_t idx) : mArrays(arrays), mCurIdx(idx), mCurrentSector((*mArrays[sizeof...(ComponentTypes)])[idx]){
+			inline Iterator(const std::array<Memory::SectorsArray*, sizeof...(ComponentTypes) + 1>& arrays, size_t idx) : mCurIdx(idx), mCurrentSector((*arrays[sizeof...(ComponentTypes)])[idx]){
 				constexpr auto mainIdx = sizeof...(ComponentTypes);
-				mOffsets[mainIdx] = mArrays[mainIdx]->getChunkData().sectorMembersOffsets[mArrays[mainIdx]->template getTypeIdx<T>()];
+				mGetInfo[mainIdx].array = arrays[mainIdx];
+				mGetInfo[mainIdx].offset = arrays[mainIdx]->getSectorData().membersLayout.at(Memory::ReflectionHelper::getTypeId<T>());
+				mGetInfo[mainIdx].isMain = true;
 
-				(
-					(
-						mOffsets[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()]->getChunkData().sectorMembersOffsets[mArrays[types::getIndex<ComponentTypes, ComponentTypes...>()]->template getTypeIdx<ComponentTypes>()]
-						,
-						mMainSector[types::getIndex<ComponentTypes, ComponentTypes...>()] = mArrays[mainIdx]->template hasType<ComponentTypes>()
-					)
+				((
+					mGetInfo[types::getIndex<ComponentTypes, ComponentTypes...>()].array = arrays[types::getIndex<ComponentTypes, ComponentTypes...>()]
 					,
+					mGetInfo[types::getIndex<ComponentTypes, ComponentTypes...>()].offset = arrays[types::getIndex<ComponentTypes, ComponentTypes...>()]->getSectorData().membersLayout.at(Memory::ReflectionHelper::getTypeId<ComponentTypes>())
+					,
+					mGetInfo[types::getIndex<ComponentTypes, ComponentTypes...>()].isMain = arrays[mainIdx] == arrays[types::getIndex<ComponentTypes, ComponentTypes...>()]
+					)
+				,
 				...);
 			}
 
 			template<typename ComponentType>
-			inline ComponentType* getComponent(const EntityId sectorId) {
-				return mMainSector[types::getIndex<ComponentType, ComponentTypes...>()] ? mCurrentSector->getObject<ComponentType>(mOffsets[types::getIndex<ComponentType, ComponentTypes...>()]) : mArrays[types::getIndex<ComponentType, ComponentTypes...>()]->template getComponent<ComponentType>(sectorId, mOffsets[types::getIndex<ComponentType, ComponentTypes...>()]);
+			inline ComponentType* getComponent(const SectorId sectorId) {
+				auto getterInfo = mGetInfo[types::getIndex<ComponentType, ComponentTypes...>()];
+				return getterInfo.isMain ? mCurrentSector->getObject<ComponentType>(getterInfo.offset) : getterInfo.array->template getComponent<ComponentType>(sectorId, getterInfo.offset);
 			}
 			
-			inline std::tuple<EntityId, T&, ComponentTypes&...> operator*() {
+			inline std::tuple<SectorId, T&, ComponentTypes&...> operator*() {
 				auto id = mCurrentSector->id;
-				return std::forward_as_tuple(id, *(mCurrentSector->getObject<T>(mOffsets[sizeof...(ComponentTypes)])), *getComponent<ComponentTypes>(id)...);
+				return std::forward_as_tuple(id, *(mCurrentSector->getObject<T>(mGetInfo[sizeof...(ComponentTypes)].offset)), *getComponent<ComponentTypes>(id)...);
 			}
 
 			inline Iterator& operator++() {
-				return mCurIdx++, mCurrentSector = (*mArrays[sizeof...(ComponentTypes)])[mCurIdx], * this;
+				return mCurrentSector = (*(mGetInfo[sizeof...(ComponentTypes)].array))[++mCurIdx], *this;
 			}
+
 			inline bool operator!=(const Iterator& other) const { return mCurrentSector != other.mCurrentSector; }
 
 		private:
-			std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1> mArrays;
-			std::array<uint16_t, sizeof...(ComponentTypes) + 1> mOffsets;
-			std::array<bool, sizeof...(ComponentTypes)> mMainSector;
+			struct ObjectGetter {
+				bool isMain = false;
+				Memory::SectorsArray* array = nullptr;
+				uint16_t offset = 0;
+			};
+
+			std::array<ObjectGetter, sizeof...(ComponentTypes) + 1> mGetInfo;
 
 			size_t mCurIdx = 0;
-			Memory::SectorInfo* mCurrentSector = nullptr;
+			Memory::Sector* mCurrentSector = nullptr;
 		};
-
 
 		inline Iterator begin() { return {  mArrays, 0}; }
 		inline Iterator end() {	return {  mArrays, mArrays[sizeof...(ComponentTypes)]->size()}; }
 
 	private:
-		std::array<Memory::ComponentsArray*, sizeof...(ComponentTypes) + 1> mArrays;
+		std::array<Memory::SectorsArray*, sizeof...(ComponentTypes) + 1> mArrays;
 	};
 }

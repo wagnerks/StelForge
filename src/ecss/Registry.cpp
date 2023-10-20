@@ -48,12 +48,12 @@ namespace ecss {
 		return { id };
 	}
 
-	EntityHandle Registry::getEntity(EntityId entityId) const {
-		if (std::find(mEntities.begin(), mEntities.end(), entityId) != mEntities.end()) {
-			return { entityId };
+	EntityHandle Registry::getEntity(SectorId entityId) const {
+		if (mEntities.empty() || mEntities.back() < entityId || mFreeEntities.contains(entityId)) {
+			return { INVALID_ID };
 		}
 
-		return { INVALID_ID };
+		return { entityId };
 	}
 
 	void Registry::destroyEntity(const EntityHandle& entity) {
@@ -74,11 +74,11 @@ namespace ecss {
 		destroyComponents(id);
 	}
 
-	const std::vector<EntityId>& Registry::getAllEntities() {
+	const std::vector<SectorId>& Registry::getAllEntities() {
 		return mEntities;
 	}
 
-	EntityId Registry::getNewId() {
+	SectorId Registry::getNewId() {
 		if (!mFreeEntities.empty()) {
 			const auto id = *mFreeEntities.begin();
 			mFreeEntities.erase(id);
@@ -86,6 +86,6 @@ namespace ecss {
 			return id;
 		}
 
-		return static_cast<EntityId>(mEntities.size());
+		return static_cast<SectorId>(mEntities.size());
 	}
 }

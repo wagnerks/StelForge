@@ -6,10 +6,10 @@
 #include <type_traits>
 
 namespace ecss {
-	using EntityId = uint32_t;
+	using SectorId = uint32_t;
 	using ECSType = uint16_t;
 
-	constexpr EntityId INVALID_ID = std::numeric_limits<EntityId>::max();
+	constexpr SectorId INVALID_ID = std::numeric_limits<SectorId>::max();
 
 	namespace types {
 		template <typename T>
