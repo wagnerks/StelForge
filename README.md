@@ -37,12 +37,12 @@ Which means really big open world, atmospheres, stars, lights, may be some proce
 - [ ] add specular and other maps to the models
 - [ ] skeleton animation
 - [ ] (possible some 3d tools for converting normals in needed for me way)
-- [x] added converting normals to enginge coorinates system
+- [x] added converting normals to engine coordinates system
 - [ ] 3d objects visual redactor utils
 - [ ] drag and drop
 - [ ] choose object by click
 - [x] outlines
-- [ ] multithread integration, first of all add ability to update systems in parallel
+- [x] multithread integration, first of all add ability to update systems in parallel(almost done but no pushed yet)
 - [x] Shadows (don't like how it looks now, but it works) 
 - [ ] SSAO(current algorithm is not fast enough, and have some glitches while fast moving)
 - [ ] SSR
