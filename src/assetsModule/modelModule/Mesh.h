@@ -1,23 +1,20 @@
 ﻿#pragma once
 
 #include <string>
-#include <vec2.hpp>
-#include <vec3.hpp>
 #include <vector>
 
 #include "assetsModule/TextureHandler.h"
 #include "core/BoundingVolume.h"
-#include "mathModule/MathUtils.h"
 
 
 
 namespace AssetsModule {
 	struct Vertex {
-		glm::vec3 mPosition;
-		glm::vec3 mNormal;
-		glm::vec2 mTexCoords;
-		glm::vec3 mTangent;
-		glm::vec3 mBiTangent;
+		Engine::Math::Vec3 mPosition;
+		Engine::Math::Vec3 mNormal;
+		Engine::Math::Vec2 mTexCoords;
+		Engine::Math::Vec3 mTangent;
+		Engine::Math::Vec3 mBiTangent;
 	};
 
 	struct MaterialTexture {

@@ -2,7 +2,9 @@
 out vec4 FragColor;
 
 in vec3 texPos;
+
+uniform vec4 color = vec4(1.f, 0.f, 0.f, 1.0);
 void main()
 { 
-    FragColor = vec4(1.f, 0.f, 0.f, 1.0);
+    FragColor = color;
 }

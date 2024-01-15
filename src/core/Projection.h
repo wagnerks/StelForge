@@ -1,6 +1,6 @@
 ﻿#pragma once
-#include <vec3.hpp>
-#include <mat4x4.hpp>
+
+#include "mathModule/Forward.h"
 
 namespace Engine::ProjectionModule {
 	enum eProjectionType {
@@ -22,7 +22,7 @@ namespace Engine::ProjectionModule {
 		Projection(float near, float far) : mNear(near), mFar(far) {}
 		virtual ~Projection() = default;
 
-		const glm::mat4& getProjectionsMatrix() const;
+		const Engine::Math::Mat4& getProjectionsMatrix() const;
 		virtual void initProjection() = 0;
 
 		float getNear() const;
@@ -33,7 +33,7 @@ namespace Engine::ProjectionModule {
 
 		void setNearFar(float near, float far);
 	protected:
-		glm::mat4 mProjectionMatrix = {};
+		Engine::Math::Mat4 mProjectionMatrix = {};
 	private:
 
 		float mNear = 0.1f;
@@ -43,15 +43,15 @@ namespace Engine::ProjectionModule {
 	struct OrthoProjection : Projection {
 	public:
 		OrthoProjection() = default;
-		OrthoProjection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar);
+		OrthoProjection(Math::Vec2 leftBtm, Math::Vec2 rightTop, float zNear, float zFar);
 		void initProjection() override;
 
-		void setLeftBtm(glm::vec2 point);
-		void setRightTop(glm::vec2 point);
+		void setLeftBtm(Math::Vec2 point);
+		void setRightTop(Math::Vec2 point);
 
 	private:
-		glm::vec2 mLeftBtm = {};
-		glm::vec2 mRightTop = {};
+		Math::Vec2 mLeftBtm = {};
+		Math::Vec2 mRightTop = {};
 	};
 
 	struct PerspectiveProjection : Projection {

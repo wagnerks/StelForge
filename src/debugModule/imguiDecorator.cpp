@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include "Benchmark.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -112,6 +113,7 @@ void ImGuiDecorator::preDraw() {
 	if (!inited) {
 		return;
 	}
+	FUNCTION_BENCHMARK
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
@@ -121,6 +123,7 @@ void ImGuiDecorator::draw() {
 	if (!inited) {
 		return;
 	}
+	FUNCTION_BENCHMARK
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 	if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {

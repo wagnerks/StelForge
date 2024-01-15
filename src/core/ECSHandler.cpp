@@ -1,59 +1,44 @@
 ﻿#include "ECSHandler.h"
 
-#include "componentsModule/FrustumComponent.h"
-#include "componentsModule/IsDrawableComponent.h"
-#include "componentsModule/MaterialComponent.h"
 #include "componentsModule/ModelComponent.h"
-#include "componentsModule/OutlineComponent.h"
-#include "componentsModule/ShaderComponent.h"
-#include "componentsModule/TreeComponent.h"
+#include "componentsModule/TransformComponent.h"
 
-#include "systemsModule/CameraSystem.h"
-#include "systemsModule/LODSystem.h"
-#include "systemsModule/RenderSystem.h"
-#include "systemsModule/ShaderSystem.h"
 #include "systemsModule/SystemManager.h"
-#include "systemsModule/SystemsPriority.h"
-#include "systemsModule/TransformSystem.h"
 
-
-ECSHandler::ECSHandler() {
-	mSystemManager = new ecss::SystemManager();
-	mRegistry = new ecss::Registry();
-}
-
-ECSHandler::~ECSHandler() {
-	delete mRegistry;
-	delete mSystemManager;
-}
-
-ecss::SystemManager* ECSHandler::systemManager() {
-	return instance()->mSystemManager;
-}
-
-ecss::Registry* ECSHandler::registry() {
-	return instance()->mRegistry;
-}
+#include "systemsModule/systems/AABBSystem.h"
+#include "systemsModule/systems/CameraSystem.h"
+#include "systemsModule/systems/ChunksSystem.h"
+#include "systemsModule/systems/LODSystem.h"
+#include "systemsModule/systems/OcTreeSystem.h"
+#include "systemsModule/systems/PhysicsSystem.h"
+#include "systemsModule/systems/RenderSystem.h"
+#include "systemsModule/systems/ShaderSystem.h"
+#include "systemsModule/systems/TransformSystem.h"
 
 void ECSHandler::initSystems() {
-	//mRegistry->initCustomComponentsContainer<TreeComponent, TransformComponent, ModelComponent, IsDrawableComponent>();
-	mRegistry->initCustomComponentsContainer<IsDrawableComponent, TransformComponent, ModelComponent>();
+	mRegistry.initCustomComponentsContainer<TransformComponent, ModelComponent>();
+
+	mSystemManager.createSystem<Engine::SystemsModule::TransformSystem>();
+	mSystemManager.createSystem<Engine::SystemsModule::OcTreeSystem>();
+	mSystemManager.createSystem<Engine::SystemsModule::AABBSystem>();
+	mSystemManager.createSystem<Engine::SystemsModule::ChunksSystem>();
+
+	mSystemManager.createSystem<Engine::SystemsModule::CameraSystem>();
+	mSystemManager.createSystem<Engine::SystemsModule::RenderSystem>(Engine::RenderModule::Renderer::instance());
+
+	mSystemManager.createSystem<Engine::SystemsModule::Physics>();
+	mSystemManager.setUpdateInterval<Engine::SystemsModule::Physics>(1 / 60.f);
+
+	mSystemManager.createSystem<Engine::SystemsModule::LODSystem>();
+	mSystemManager.setUpdateInterval<Engine::SystemsModule::LODSystem>(60.f);
+
+	mSystemManager.createSystem<Engine::SystemsModule::ShaderSystem>();
+	mSystemManager.setUpdateInterval<Engine::SystemsModule::ShaderSystem>(1 / 60.f);
 
 
-	mSystemManager->addSystem<Engine::SystemsModule::CameraSystem>();
+	mSystemManager.addRootSystems<Engine::SystemsModule::CameraSystem, Engine::SystemsModule::RenderSystem, Engine::SystemsModule::ShaderSystem, Engine::SystemsModule::Physics>();
 
-	mSystemManager->addSystem<Engine::SystemsModule::TransformSystem>();
-	mSystemManager->setSystemPriority<Engine::SystemsModule::TransformSystem>(eSystemsPriority::TRANSFORM_SYSTEM);
-	mSystemManager->setSystemUpdateInterval<Engine::SystemsModule::TransformSystem>(1 / 60.f);
-
-	mSystemManager->addSystem<Engine::SystemsModule::LODSystem>();
-	mSystemManager->setSystemPriority<Engine::SystemsModule::LODSystem>(eSystemsPriority::LOD_SYSTEM);
-	mSystemManager->setSystemUpdateInterval<Engine::SystemsModule::LODSystem>(1.f);
-
-	mSystemManager->addSystem<Engine::SystemsModule::ShaderSystem>();
-	mSystemManager->setSystemPriority<Engine::SystemsModule::ShaderSystem>(eSystemsPriority::SHADERS_SYSTEM);
-	mSystemManager->setSystemUpdateInterval<Engine::SystemsModule::ShaderSystem>(1 / 60.f);
-
-	mSystemManager->addSystem<Engine::SystemsModule::RenderSystem>(Engine::RenderModule::Renderer::instance());
-	mSystemManager->setSystemPriority<Engine::SystemsModule::RenderSystem>(eSystemsPriority::RENDER_SYSTEM);
+	mSystemManager.setSystemDependencies<Engine::SystemsModule::TransformSystem, Engine::SystemsModule::AABBSystem>();
+	mSystemManager.setSystemDependencies<Engine::SystemsModule::AABBSystem, Engine::SystemsModule::OcTreeSystem>();
+	mSystemManager.setSystemDependencies<Engine::SystemsModule::CameraSystem, Engine::SystemsModule::ChunksSystem>();
 }

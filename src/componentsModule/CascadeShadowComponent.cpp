@@ -1,29 +1,25 @@
 #include "CascadeShadowComponent.h"
 
-#include <ext/matrix_transform.hpp>
-
 #include "CameraComponent.h"
+#include "TransformComponent.h"
 #include "assetsModule/shaderModule/ShaderController.h"
-#include "core/BoundingVolume.h"
 #include "core/ECSHandler.h"
-#include "debugModule/ComponentsDebug.h"
-#include "ecss/Registry.h"
-#include "systemsModule/CameraSystem.h"
-#include "systemsModule/SystemManager.h"
+#include "systemsModule/systems/CameraSystem.h"
+
 
 namespace Engine::ComponentsModule {
-	std::vector<glm::vec4> CascadeShadowComponent::getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {
+	std::vector<Math::Vec4> CascadeShadowComponent::getFrustumCornersWorldSpace(const Math::Mat4& proj, const Math::Mat4& view) {
 		return getFrustumCornersWorldSpace(proj * view);
 	}
 
-	std::vector<glm::vec4> CascadeShadowComponent::getFrustumCornersWorldSpace(const glm::mat4& projView) {
-		const auto inv = glm::inverse(projView);
+	std::vector<Math::Vec4> CascadeShadowComponent::getFrustumCornersWorldSpace(const Math::Mat4& projView) {
+		const auto inv = Math::inverse(projView);
 
-		std::vector<glm::vec4> frustumCorners;
+		std::vector<Math::Vec4> frustumCorners;
 		for (unsigned int x = 0; x < 2; ++x) {
 			for (unsigned int y = 0; y < 2; ++y) {
 				for (unsigned int z = 0; z < 2; ++z) {
-					const glm::vec4 pt = inv * glm::vec4(
+					const Math::Vec4 pt = inv * Math::Vec4(
 						2.0f * static_cast<float>(x) - 1.0f,
 						2.0f * static_cast<float>(y) - 1.0f,
 						2.0f * static_cast<float>(z) - 1.0f,
@@ -42,19 +38,19 @@ namespace Engine::ComponentsModule {
 		mDirty = true;
 	}
 
-	const std::vector<glm::mat4>& CascadeShadowComponent::getLightSpaceMatrices() {
+	void CascadeShadowComponent::calculateLightSpaceMatrices(const ProjectionModule::PerspectiveProjection& projection, const Math::Mat4& view) {
+		if (!mLightMatricesCache.empty()) {
+			return;
+		}
+
+		updateCascades(projection);
+		updateLightSpaceMatrices(view);
+	}
+
+	const std::vector<Math::Mat4>& CascadeShadowComponent::getLightSpaceMatrices() {
 		if (!mLightMatricesCache.empty()) {
 			return mLightMatricesCache;
 		}
-
-		auto curCamera = ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
-
-		const auto& cameraView = ECSHandler::registry()->getComponent<TransformComponent>(curCamera)->getViewMatrix();
-		const auto& cameraProjection = ECSHandler::registry()->getComponent<CameraComponent>(curCamera)->getProjection();
-
-		updateCascades(cameraProjection);
-		updateLightSpaceMatrices(cameraView);
-
 		return mLightSpaceMatrices;
 	}
 
@@ -95,8 +91,8 @@ namespace Engine::ComponentsModule {
 
 		resolution = { data["resolution"][0].asFloat(), data["resolution"][1].asFloat() };
 
-		auto cam = ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
-		auto& cameraProjection = ECSHandler::registry()->getComponent<CameraComponent>(cam)->getProjection();
+		auto cam = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+		auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(cam)->getProjection();
 
 		updateCascades(cameraProjection);
 		int i = 0;
@@ -126,7 +122,7 @@ namespace Engine::ComponentsModule {
 		}
 
 		shadowCascadeLevels.front() = cameraProjection.getNear();
-		shadowCascadeLevels.back() = cameraProjection.getFar();
+		shadowCascadeLevels.back() = RenderModule::Renderer::drawDistance;
 
 		auto fov = cameraProjection.getFOV();
 		auto aspect = cameraProjection.getAspect();
@@ -139,31 +135,27 @@ namespace Engine::ComponentsModule {
 
 	}
 
-	void CascadeShadowComponent::updateLightSpaceMatrices(const glm::mat4& cameraView) {
+	void CascadeShadowComponent::updateLightSpaceMatrices(const Math::Mat4& cameraView) {
 		mLightSpaceMatrices.clear();
 
 		for (auto& shadowCascade : cascades) {
 			const auto corners = getFrustumCornersWorldSpace(shadowCascade.viewProjection.getProjectionsMatrix(), cameraView);
 
-			auto tc = ECSHandler::registry()->getComponent<TransformComponent>(getEntityId());
-
-			glm::vec3 directionVector = glm::normalize(tc->getForward());
-			glm::vec3 upVector = glm::normalize(tc->getUp());
-
-			glm::vec4 frustumCenter = corners[0];
+			Math::Vec4 frustumCenter = corners[0];
 			for (size_t i = 1u; i < 8; i++) {
 				frustumCenter += corners[i];
 			}
 			frustumCenter /= 8.f;
 
-			//glm::mat4 lightView = glm::lookAt(glm::vec3(frustumCenter) + directionVector, glm::vec3(frustumCenter), upVector);
-			auto s = glm::normalize(tc->getRight());
-			auto u = glm::normalize(tc->getUp());
-			auto f = glm::normalize(tc->getForward());
+			auto tc = ECSHandler::registry().getComponent<TransformComponent>(getEntityId());
 
-			auto eye = glm::vec3(frustumCenter) - directionVector;
+			auto s = Math::normalize(tc->getRight());
+			auto u = Math::normalize(tc->getUp());
+			auto f = Math::normalize(tc->getForward());
 
-			glm::mat4 lightView(1);
+			auto eye = Math::Vec3(frustumCenter) - f;
+
+			Math::Mat4 lightView(1);
 			lightView[0][0] = s.x;
 			lightView[1][0] = s.y;
 			lightView[2][0] = s.z;
@@ -173,12 +165,10 @@ namespace Engine::ComponentsModule {
 			lightView[0][2] = -f.x;
 			lightView[1][2] = -f.y;
 			lightView[2][2] = -f.z;
-			lightView[3][0] = -glm::dot(s, eye);
-			lightView[3][1] = -glm::dot(u, eye);
-			lightView[3][2] = glm::dot(f, eye);
-
-			//lightView = tc->getViewMatrix();
-
+			lightView[3][0] = -Math::dot(s, eye);
+			lightView[3][1] = -Math::dot(u, eye);
+			lightView[3][2] = Math::dot(f, eye);
+			
 			auto projViewMatrix = getLightSpaceMatrix(corners, lightView, shadowCascade.zMult.x, shadowCascade.zMult.y);
 
 			mLightSpaceMatrices.push_back(projViewMatrix);
@@ -187,17 +177,16 @@ namespace Engine::ComponentsModule {
 		}
 	}
 
+	Engine::Math::Mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<Engine::Math::Vec4>& corners, const Engine::Math::Mat4& lightView, float nearMultiplier, float farMultiplier) {
+		Math::Vec4 transform = lightView * corners[0];
+		auto minX = transform.x;
+		auto maxX = transform.x;
 
-	glm::mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<glm::vec4>& corners, const glm::mat4& lightView, float nearMultiplier, float farMultiplier) {
-		glm::vec4 transform = lightView * corners[0];
-		float minX = transform.x;
-		float maxX = transform.x;
+		auto minY = transform.y;
+		auto maxY = transform.y;
 
-		float minY = transform.y;
-		float maxY = transform.y;
-
-		float minZ = transform.z;
-		float maxZ = transform.z;
+		auto minZ = transform.z;
+		auto maxZ = transform.z;
 
 		for (auto i = 1u; i < corners.size(); i++) {
 			transform = lightView * corners[i];
@@ -217,7 +206,7 @@ namespace Engine::ComponentsModule {
 		return ortho.getProjectionsMatrix() * lightView;
 	}
 
-	const std::vector<glm::mat4>& CascadeShadowComponent::getCacheLightSpaceMatrices() {
+	const std::vector<Math::Mat4>& CascadeShadowComponent::getCacheLightSpaceMatrices() {
 		return mLightMatricesCache;
 	}
 
@@ -230,7 +219,7 @@ namespace Engine::ComponentsModule {
 		mLightMatricesCache.clear();
 	}
 
-	void CascadeShadowComponent::debugDraw(const std::vector<glm::mat4>& lightSpaceMatrices, const glm::mat4& cameraProjection, const glm::mat4& cameraView) {
+	void CascadeShadowComponent::debugDraw(const std::vector<Engine::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView) {
 		if (lightSpaceMatrices.empty()) {
 			return;
 		}
@@ -247,7 +236,7 @@ namespace Engine::ComponentsModule {
 		glDisable(GL_BLEND);
 	}
 
-	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader) {
+	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<Engine::Math::Mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader) {
 		static std::vector<unsigned> visualizerVAOs;
 		static std::vector<unsigned> visualizerVBOs;
 		static std::vector<unsigned> visualizerEBOs;
@@ -271,7 +260,7 @@ namespace Engine::ComponentsModule {
 			0, 1, 4
 		};
 
-		static const glm::vec4 colors[] = {
+		static const Math::Vec4 colors[] = {
 			{1.0, 0.0, 0.0, 0.5f},
 			{0.0, 1.0, 0.0, 0.5f},
 			{0.0, 0.0, 1.0, 0.5f},
@@ -293,7 +282,7 @@ namespace Engine::ComponentsModule {
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, 36 * sizeof(GLuint), &indices[0], GL_STATIC_DRAW);
 
 			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Math::Vec4), (void*)0);
 
 			glBindVertexArray(visualizerVAOs[i]);
 			shader->setVec4("color", colors[i % 3]);

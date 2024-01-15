@@ -1,92 +1,133 @@
 ﻿#include "InputHandler.h"
 
-#include "Camera.h"
-#include "ECSHandler.h"
+#include <algorithm>
+
 #include "Engine.h"
-#include "systemsModule/CameraSystem.h"
-#include "imgui.h"
 #include "imgui_internal.h"
-#include "systemsModule/SystemManager.h"
 
-using namespace Engine::CoreModule;
-
-void InputProvider::subscribe(InputObserver* observer) {
-	auto it = std::find(mKeyObservers.cbegin(), mKeyObservers.cend(), observer);
-	if (it == mKeyObservers.cend()) {
-		mKeyObservers.push_back(observer);
-	}
-}
-
-void InputProvider::unsubscribe(InputObserver* observer) {
-	erase_if(mKeyObservers, [observer](auto obs) {
-		return obs == observer;
-	});
-
-	if (mKeyObservers.empty()) {
-		terminate();
-	}
-}
-
-void InputProvider::fireEvent(InputKey key, InputEventType type) {
-	if (ImGui::GetCurrentContext()->IO.WantCaptureKeyboard) {
-		return;
+namespace Engine::CoreModule {
+	void InputProvider::subscribe(InputObserver* observer) {
+		const auto it = std::find(mKeyObservers.cbegin(), mKeyObservers.cend(), observer);
+		if (it == mKeyObservers.cend()) {
+			mKeyObservers.push_back(observer);
+		}
 	}
 
-	for (const auto observer : mKeyObservers) {
-		observer->onKeyEvent(key, type);
-	}
-}
-
-void InputHandler::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-	InputProvider::instance()->fireEvent(static_cast<InputKey>(key), static_cast<InputEventType>(action));
-}
-
-void InputHandler::mouseCallback(GLFWwindow* window, double xposIn, double yposIn) {
-	if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
-		return;
-	}
-	const auto xpos = static_cast<float>(xposIn);
-	const auto ypos = static_cast<float>(yposIn);
-
-	static auto lastX = xpos;
-	static auto lastY = ypos;
-
-	auto xoffset = xpos - lastX;
-	auto yoffset = lastY - ypos;
-
-	lastX = xpos;
-	lastY = ypos;
-
-	ECSHandler::systemManager()->getSystem<SystemsModule::CameraSystem>()->ProcessMouseMovement(xoffset, yoffset);
-}
-
-void InputHandler::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
-	if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
-		return;
-	}
-	ECSHandler::systemManager()->getSystem<SystemsModule::CameraSystem>()->ProcessMouseScroll(static_cast<float>(yoffset));
-}
-
-void InputHandler::mouseBtnInput(GLFWwindow* w, int btn, int act, int mode) {
-	if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
-		return;
-	}
-	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_PRESS) {
-		ECSHandler::systemManager()->getSystem<SystemsModule::CameraSystem>()->processMouse = true;
-		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-	}
-	if (btn == GLFW_MOUSE_BUTTON_MIDDLE && act == GLFW_RELEASE) {
-		ECSHandler::systemManager()->getSystem<SystemsModule::CameraSystem>()->processMouse = false;
-		glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+	void InputProvider::unsubscribe(InputObserver* observer) {
+		erase_if(mKeyObservers, [observer](auto obs) {
+			return obs == observer;
+		});
 	}
 
-}
+	void InputProvider::fireEvent(InputKey key, InputEventType type) const {
+		if (ImGui::GetCurrentContext()->IO.WantCaptureKeyboard) {
+			return;
+		}
 
-void InputHandler::init() {
-	glfwSetInputMode(UnnamedEngine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		for (const auto observer : mKeyObservers) {
+			if (observer->onKeyEvent) {
+				observer->onKeyEvent(key, type);
+			}
+		}
+	}
 
-	glfwSetKeyCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::keyCallback);
-	glfwSetMouseButtonCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseBtnInput);
-	glfwSetCursorPosCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseCallback);
-	glfwSetScrollCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::scrollCallback);
+	void InputProvider::fireEvent(Math::DVec2 mousePos, MouseButton key, InputEventType type) const {
+		if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
+			return;
+		}
+
+		for (const auto observer : mKeyObservers) {
+			if (observer->onMouseBtnEvent) {
+				observer->onMouseBtnEvent(mousePos, key, type);
+			}
+		}
+	}
+
+	void InputProvider::fireEvent(Math::DVec2 mousePos, Math::DVec2 mouseOffset) const {
+		if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
+			return;
+		}
+
+		for (const auto observer : mKeyObservers) {
+			if (observer->onMouseEvent) {
+				observer->onMouseEvent(mousePos, mouseOffset);
+			}
+		}
+	}
+
+	void InputProvider::fireEvent(Math::DVec2 scrollOffset) const {
+		if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
+			return;
+		}
+
+		for (const auto observer : mKeyObservers) {
+			if (observer->onScrollEvent) {
+				observer->onScrollEvent(scrollOffset);
+			}
+		}
+	}
+
+	InputObserver::InputObserver(const InputObserver& other) {
+		InputProvider::instance()->subscribe(this);
+	}
+
+	InputObserver::InputObserver(InputObserver&& other) noexcept {
+		InputProvider::instance()->unsubscribe(&other);
+		InputProvider::instance()->subscribe(this);
+	}
+
+	InputObserver& InputObserver::operator=(const InputObserver& other) {
+		if (this == &other)
+			return *this;
+			
+		InputProvider::instance()->subscribe(this);
+		return *this;
+	}
+
+	InputObserver& InputObserver::operator=(InputObserver&& other) noexcept {
+		if (this == &other)
+			return *this;
+
+		InputProvider::instance()->unsubscribe(&other);
+		InputProvider::instance()->subscribe(this);
+		return *this;
+	}
+
+	InputObserver::InputObserver() {
+		InputProvider::instance()->subscribe(this);
+	}
+
+	InputObserver::~InputObserver() {
+		InputProvider::instance()->unsubscribe(this);
+	}
+
+	void InputHandler::keyCallback(GLFWwindow* /*window*/, int key, int scancode, int action, int mods) {
+		InputProvider::instance()->fireEvent(static_cast<InputKey>(key), static_cast<InputEventType>(action));
+	}
+
+	void InputHandler::mouseCallback(GLFWwindow* /*window*/, double xPos, double yPos) {
+		if (ImGui::GetCurrentContext()->IO.WantCaptureMouse) {
+			return;
+		}
+
+		InputProvider::instance()->fireEvent({ xPos, yPos}, { xPos - mMousePos.x, mMousePos.y - yPos });
+		mMousePos = { xPos, yPos };
+	}
+
+	void InputHandler::scrollCallback(GLFWwindow* /*window*/, double xOffset, double yOffset) {
+		InputProvider::instance()->fireEvent({ xOffset, yOffset });
+	}
+
+	void InputHandler::mouseBtnInput(GLFWwindow* /*window*/, int btn, int act, int mode) {
+		InputProvider::instance()->fireEvent(mMousePos, static_cast<MouseButton>(btn), static_cast<InputEventType>(act));
+	}
+
+	void InputHandler::init() {
+		glfwSetInputMode(UnnamedEngine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+		glfwSetKeyCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::keyCallback);
+		glfwSetMouseButtonCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseBtnInput);
+		glfwSetCursorPosCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseCallback);
+		glfwSetScrollCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::scrollCallback);
+	}
 }

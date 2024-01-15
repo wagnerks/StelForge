@@ -1,255 +1,207 @@
 ﻿#include "TransformComponent.h"
 
-#include <detail/type_quat.hpp>
-#include <ext/matrix_transform.hpp>
-#include <ext/quaternion_trigonometric.hpp>
-#include <gtx/quaternion.hpp>
-
 #include "TreeComponent.h"
 #include "core/ThreadPool.h"
-#include "mathModule/MathUtils.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "propertiesModule/TypeName.h"
+#include "systemsModule/SystemManager.h"
+#include "systemsModule/systems/TransformSystem.h"
 
-using namespace Engine::ComponentsModule;
-
-const glm::vec3& TransformComponent::getPos(bool global) const {
-	if (global) {
-		return globalPos;
-	}
-	return pos;
-}
-
-void TransformComponent::setX(float x) {
-	if (std::fabs(x - pos.x) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	pos.x = x;
-}
-void TransformComponent::setY(float y) {
-	if (std::fabs(y - pos.y) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	pos.y = y;
-}
-void TransformComponent::setZ(float z) {
-	if (std::fabs(z - pos.z) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	pos.z = z;
-}
-void TransformComponent::setPos(const glm::vec3& pos) {
-	if (this->pos != pos) {
-		markDirty();
-	}
-	this->pos = pos;
-}
-
-//x - pitch, y - yaw, z - roll
-const glm::vec3& TransformComponent::getRotate() const {
-	return rotate;
-}
-
-void TransformComponent::setRotateX(float x) {
-	if (std::fabs(x - rotate.x) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	rotate.x = x;
-	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
-}
-void TransformComponent::setRotateY(float y) {
-	if (std::fabs(y - rotate.y) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	rotate.y = y;
-	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
-}
-void TransformComponent::setRotateZ(float z) {
-	if (std::fabs(z - rotate.z) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	rotate.z = z;
-	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
-}
-void TransformComponent::setRotate(const glm::vec3& rotate) {
-	if (this->rotate != rotate) {
-		markDirty();
-	}
-	this->rotate = rotate;
-	rotateQuat = glm::quat({ glm::radians(rotate.x), glm::radians(rotate.y),glm::radians(rotate.z) });
-}
-
-void TransformComponent::setRotation(const glm::quat& rotate) {
-	markDirty();
-	rotateQuat = rotate;
-}
-
-const glm::vec3& TransformComponent::getScale(bool global) const {
-	if (global) {
-		return globalScale;
-	}
-
-	return scale;
-}
-
-void TransformComponent::setScaleX(float x) {
-	if (std::fabs(x - scale.x) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-
-	scale.x = x;
-}
-void TransformComponent::setScaleY(float y) {
-	if (std::fabs(y - scale.y) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	scale.y = y;
-}
-void TransformComponent::setScaleZ(float z) {
-	if (std::fabs(z - scale.z) > std::numeric_limits<float>::epsilon()) {
-		markDirty();
-	}
-	scale.z = z;
-}
-void TransformComponent::setScale(const glm::vec3& scale) {
-	if (this->scale != scale) {
-		markDirty();
-	}
-
-	this->scale = scale;
-}
-const glm::mat4& TransformComponent::getTransform() const {
-	return transform;
-}
-
-void TransformComponent::setTransform(const glm::mat4& transform) {
-	this->transform = transform;
-}
-
-glm::mat4 TransformComponent::getRotationMatrix() const {
-	return glm::toMat4(rotateQuat);
-}
-
-glm::quat TransformComponent::getRotationMatrixQuaternion() const {
-	return rotateQuat;
-}
-
-void TransformComponent::reloadTransform() {
-	/*if (!dirty) {
-		return;
-	}*/
-	dirty = false;
-	transform = getLocalTransform();
-
-	auto tree = ECSHandler::registry()->getComponent<TreeComponent>(getEntityId());
-
-	if (tree) {
-		if (auto parentTransform = ECSHandler::registry()->getComponent<TransformComponent>(tree->getParent())) {
-			if (parentTransform->isDirty()) {
-				parentTransform->reloadTransform();
-			}
-			
-			transform = parentTransform->getTransform() * transform;
+namespace Engine::ComponentsModule {
+	const Math::Vec3& TransformComponent::getPos(bool global) const {
+		std::shared_lock lock(mtx);
+		if (global) {
+			return mTransform[3].xyz;
 		}
-
+		return mPos;
 	}
 
-	view = glm::inverse(transform);
-	globalScale = calculateGlobalScale();
-	globalPos = glm::vec3(transform[3]);
+	void TransformComponent::setX(float x) {
+		setPos({ x, mPos.y, mPos.z });
+	}
+	void TransformComponent::setY(float y) {
+		setPos({ mPos.x, y, mPos.z });
+	}
+	void TransformComponent::setZ(float z) {
+		setPos({ mPos.x, mPos.y, z });
+	}
+	void TransformComponent::setPos(const Math::Vec3& pos) {
+		std::unique_lock lock(mtx);
+		if (mPos != pos) {	markDirty(); }
 
-	if (tree) {
-		for (const auto childTransform : tree->getChildren()) {
-			if (auto transformPtr = ECSHandler::registry()->getComponent<TransformComponent>(childTransform)) {
-				//transformPtr->markDirty();
-				transformPtr->reloadTransform();
+		mPos = pos;
+	}
+
+	//x - pitch, y - yaw, z - roll
+	const Math::Vec3& TransformComponent::getRotate() const {
+		std::shared_lock lock(mtx);
+		return mRotate;
+	}
+
+	void TransformComponent::setPitch(float x) {
+		setRotate({ x, mRotate.y, mRotate.z });
+	}
+	void TransformComponent::setYaw(float y) {
+		setRotate({ mRotate.x, y, mRotate.z });
+	}
+	void TransformComponent::setRoll(float z) {
+		setRotate({ mRotate.x, mRotate.y, z });
+	}
+	void TransformComponent::setRotate(const Engine::Math::Vec3& rotate) {
+		std::unique_lock lock(mtx);
+		if (this->mRotate != rotate) { markDirty(); }
+
+		this->mRotate = rotate;
+	}
+
+	const Math::Vec3& TransformComponent::getScale() const {
+		std::shared_lock lock(mtx);
+		return mScale;
+	}
+
+	Math::Vec3 TransformComponent::getGlobalScale() const {
+		return { mTransform[0].length(), mTransform[1].length(), mTransform[2].length() };
+	}
+	void TransformComponent::setScaleX(float x) {
+		setScale({ x, mScale.y, mScale.z });
+	}
+	void TransformComponent::setScaleY(float y) {
+		setScale({ mScale.x, y, mScale.z });
+	}
+	void TransformComponent::setScaleZ(float z) {
+		setScale({ mScale.x, mScale.y, z });
+	}
+	void TransformComponent::setScale(const Engine::Math::Vec3& scale) {
+		std::unique_lock lock(mtx);
+		if (mScale != scale) { markDirty();	}
+
+		mScale = scale;
+	}
+
+	const Math::Mat4& TransformComponent::getTransform() const {
+		//std::shared_lock lock(mtx);
+		return mTransform;
+	}
+
+	void TransformComponent::setTransform(const Engine::Math::Mat4& transform) {
+		std::unique_lock lock(mtx);
+		mTransform = transform;
+	}
+
+	Math::Mat4 TransformComponent::getRotationMatrix() const {
+		std::shared_lock lock(mtx);
+		return mRotateQuaternion.toMat4();
+	}
+
+	const Math::Quaternion<float>& TransformComponent::getQuaternion() const {
+		std::shared_lock lock(mtx);
+		return mRotateQuaternion;
+	}
+
+	void TransformComponent::reloadTransform() {
+		{
+			std::unique_lock lock(mtx);
+			if (!mDirty) {
+				return;
+			}
+			mDirty = false;
+
+			mRotateQuaternion.eulerToQuaternion(mRotate);
+			mTransform = getLocalTransform();
+		}
+		
+
+		if (const auto tree = ECSHandler::registry().getComponent<TreeComponent>(getEntityId())) {
+			if (const auto parentTransform = ECSHandler::registry().getComponent<TransformComponent>(tree->getParent())) {
+				std::unique_lock lock(mtx);
+				mTransform = parentTransform->getTransform() * mTransform;
+			}
+
+			for (const auto childTransform : tree->getChildren()) {
+				if (auto transformPtr = ECSHandler::registry().getComponent<TransformComponent>(childTransform)) {
+					transformPtr->mDirty = true;
+					transformPtr->reloadTransform();
+				}
 			}
 		}
 	}
-	
-}
 
-glm::mat4 TransformComponent::getLocalTransform() const {
-	return glm::translate(glm::mat4(1.0f), pos) * getRotationMatrix() * glm::scale(glm::mat4(1.0f), scale);
-}
+	Engine::Math::Mat4 TransformComponent::getLocalTransform() const {
+		return Math::translate({1.f}, mPos) * mRotateQuaternion.toMat4() * Math::scale({ 1.f }, mScale);
+	}
 
-const glm::mat4& TransformComponent::getViewMatrix() const {
-	return view;
-}
+	Engine::Math::Mat4 TransformComponent::getViewMatrix() const {
+		std::shared_lock lock(mtx);
+		return inverse(mTransform);;
+	}
 
-glm::vec3 TransformComponent::getRight() {
-	return transform[0];
-}
+	Engine::Math::Vec3 TransformComponent::getRight() {
+		std::shared_lock lock(mtx);
+		return mTransform[0];
+	}
 
-glm::vec3 TransformComponent::getUp() {
-	return transform[1];
-}
+	Engine::Math::Vec3 TransformComponent::getUp() {
+		std::shared_lock lock(mtx);
+		return mTransform[1];
+	}
 
-glm::vec3 TransformComponent::getBackward() {
-	return transform[2];
-}
+	Engine::Math::Vec3 TransformComponent::getBackward() {
+		std::shared_lock lock(mtx);
+		return mTransform[2];
+	}
 
-glm::vec3 TransformComponent::getForward() {
-	return -transform[2];
-}
+	Engine::Math::Vec3 TransformComponent::getForward() {
+		std::shared_lock lock(mtx);
+		return -mTransform[2];
+	}
 
-void TransformComponent::markDirty() {
-	ECSHandler::registry()->addComponent<DirtyTransform>(getEntityId());
+	void TransformComponent::markDirty() {
+		if (mDirty) {
+			return;
+		}
+		mDirty = true;
 
-	auto tree = ECSHandler::registry()->getComponent<TreeComponent>(getEntityId());
-	if (tree) {
-		for (const auto childTransform : tree->getChildren()) {
-			if (auto transformPtr = ECSHandler::registry()->getComponent<TransformComponent>(childTransform)) {
-				transformPtr->markDirty();
-			}
+		if (auto trSys = ECSHandler::getSystem<SystemsModule::TransformSystem>()) {
+			trSys->addDirtyComp(getEntityId());
 		}
 	}
-	dirty = true;
-}
 
-bool TransformComponent::isDirty() const {
-	return dirty;
-}
-
-void TransformComponent::serialize(Json::Value& data) {
-
-	data["Scale"].append(scale.x);
-	data["Scale"].append(scale.y);
-	data["Scale"].append(scale.z);
-
-	data["Pos"].append(pos.x);
-	data["Pos"].append(pos.y);
-	data["Pos"].append(pos.z);
-
-	data["Rotate"].append(rotate.x);
-	data["Rotate"].append(rotate.y);
-	data["Rotate"].append(rotate.z);
-}
-
-void TransformComponent::deserialize(const Json::Value& data) {
-	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Scale")) {
-		setScale(PropertiesModule::JsonUtils::getVec3(*val));
+	bool TransformComponent::isDirty() const {
+		std::shared_lock lock(mtx);
+		return mDirty;
 	}
 
-	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Pos")) {
-		setPos(PropertiesModule::JsonUtils::getVec3(*val));
+	void TransformComponent::serialize(Json::Value& data) {
+		std::shared_lock lock(mtx);
+
+		data["Scale"].append(mScale.x);
+		data["Scale"].append(mScale.y);
+		data["Scale"].append(mScale.z);
+
+		data["Pos"].append(mPos.x);
+		data["Pos"].append(mPos.y);
+		data["Pos"].append(mPos.z);
+
+		data["Rotate"].append(mRotate.x);
+		data["Rotate"].append(mRotate.y);
+		data["Rotate"].append(mRotate.z);
 	}
 
-	if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Rotate")) {
-		setRotate(PropertiesModule::JsonUtils::getVec3(*val));
+	void TransformComponent::deserialize(const Json::Value& data) {
+		if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Scale")) {
+			setScale(PropertiesModule::JsonUtils::getVec3(*val));
+		}
+
+		if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Pos")) {
+			setPos(PropertiesModule::JsonUtils::getVec3(*val));
+		}
+
+		if (auto val = PropertiesModule::JsonUtils::getValueArray(data, "Rotate")) {
+			setRotate(PropertiesModule::JsonUtils::getVec3(*val));
+		}
 	}
-}
 
-TransformComponent::~TransformComponent() {
-	
-}
+	TransformComponent::~TransformComponent() {
 
-glm::vec3 TransformComponent::calculateGlobalScale() {
-	auto& t = transform;
-
-	return {
-		sqrt(t[0][0] * t[0][0] + t[0][1] * t[0][1] + t[0][2] * t[0][2]),
-		sqrt(t[1][0] * t[1][0] + t[1][1] * t[1][1] + t[1][2] * t[1][2]),
-		sqrt(t[2][0] * t[2][0] + t[2][1] * t[2][1] + t[2][2] * t[2][2])
-	};
+	}
 }

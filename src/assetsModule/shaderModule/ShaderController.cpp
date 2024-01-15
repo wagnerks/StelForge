@@ -4,6 +4,7 @@
 
 #include "GeometryShader.h"
 #include "Shader.h"
+#include "glad/glad.h"
 
 using namespace Engine;
 using namespace Engine::ShaderModule;
@@ -80,12 +81,18 @@ void ShaderController::deleteShader(ShaderBase* shader) {
 	shader = nullptr;
 }
 
+void ShaderController::deleteShader(size_t shaderHash) {
+	if (shaders.contains(shaderHash)) {
+		deleteShader(shaders[shaderHash]);
+	}
+}
+
 void ShaderController::removeShader(ShaderBase* shader) {
 	if (!shader) {
 		return;
 	}
 
-	shaders.erase(shader->hash);
+	shaders.erase(shader->mHash);
 }
 
 const std::unordered_map<size_t, ShaderBase*>& ShaderController::getShaders() {

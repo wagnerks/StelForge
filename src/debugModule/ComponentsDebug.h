@@ -1,8 +1,7 @@
 ﻿#pragma once
-#include <string>
 
-#include "componentsModule/ShaderComponent.h"
-
+#include "core/InputHandler.h"
+#include "ecss/Types.h"
 
 namespace ecss {
 	class EntityHandle;
@@ -15,22 +14,26 @@ namespace Engine {
 		class TransformComponent;
 		class LodComponent;
 		class CascadeShadowComponent;
+		class PhysicsComponent;
+		class ShaderComponent;
 	}
 }
 
 
 namespace Engine::Debug {
-	class ComponentsDebug {
+	class ComponentsDebug : public Singleton<ComponentsDebug>, public CoreModule::InputObserver {
 	public:
-		static void drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID);
-		static void entitiesDebug();
-		static void componentEditorInternal(ComponentsModule::TransformComponent* component);
-		static void componentEditorInternal(ComponentsModule::LightSourceComponent* component);
-		static void componentEditorInternal(ComponentsModule::CascadeShadowComponent* component);
-		static void componentEditorInternal(ComponentsModule::ModelComponent* component);
-		static void componentEditorInternal(ComponentsModule::ShaderComponent* component);
+		void init() override;
+		void drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID);
+		void entitiesDebug();
+		void componentEditorInternal(ComponentsModule::TransformComponent* component);
+		void componentEditorInternal(ComponentsModule::LightSourceComponent* component);
+		void componentEditorInternal(ComponentsModule::CascadeShadowComponent* component);
+		void componentEditorInternal(ComponentsModule::ModelComponent* component);
+		void componentEditorInternal(ComponentsModule::ShaderComponent* component);
+		void componentEditorInternal(ComponentsModule::PhysicsComponent* component);
 
-		static inline ecss::SectorId mSelectedId = ecss::INVALID_ID;
+		ecss::SectorId mSelectedId = ecss::INVALID_ID;
 	};
 
 }

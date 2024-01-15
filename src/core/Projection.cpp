@@ -1,10 +1,10 @@
 ﻿#include "Projection.h"
 
-#include <ext/matrix_clip_space.hpp>
+#include "mathModule/Utils.h"
 
 using namespace Engine::ProjectionModule;
 
-OrthoProjection::OrthoProjection(glm::vec2 leftBtm, glm::vec2 rightTop, float zNear, float zFar) : Projection(zNear, zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
+OrthoProjection::OrthoProjection(Math::Vec2 leftBtm, Math::Vec2 rightTop, float zNear, float zFar) : Projection(zNear, zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
 	OrthoProjection::initProjection();
 }
 
@@ -12,7 +12,7 @@ PerspectiveProjection::PerspectiveProjection(float FOV, float aspect, float zNea
 	PerspectiveProjection::initProjection();
 }
 
-const glm::mat4& Projection::getProjectionsMatrix() const {
+const Engine::Math::Mat4& Projection::getProjectionsMatrix() const {
 	return mProjectionMatrix;
 }
 
@@ -50,7 +50,7 @@ void Projection::setNearFar(float near, float far) {
 }
 
 
-void OrthoProjection::setLeftBtm(glm::vec2 point) {
+void OrthoProjection::setLeftBtm(Math::Vec2 point) {
 	if (mLeftBtm == point) {
 		return;
 	}
@@ -59,7 +59,7 @@ void OrthoProjection::setLeftBtm(glm::vec2 point) {
 	initProjection();
 
 }
-void OrthoProjection::setRightTop(glm::vec2 point) {
+void OrthoProjection::setRightTop(Math::Vec2 point) {
 	if (mRightTop == point) {
 		return;
 	}
@@ -69,7 +69,7 @@ void OrthoProjection::setRightTop(glm::vec2 point) {
 }
 
 void OrthoProjection::initProjection() {
-	mProjectionMatrix = glm::ortho(mLeftBtm.x, mRightTop.x, mLeftBtm.y, mRightTop.y, getNear(), getFar());
+	mProjectionMatrix = Math::orthoRH_NO(mLeftBtm.x, mRightTop.x, mLeftBtm.y, mRightTop.y, getNear(), getFar());
 }
 
 void PerspectiveProjection::setFOV(float FOV) {
@@ -97,5 +97,5 @@ float PerspectiveProjection::getAspect() const {
 }
 
 void PerspectiveProjection::initProjection() {
-	mProjectionMatrix = glm::perspective(glm::radians(mFOV), mAspect, getNear(), getFar());
+	mProjectionMatrix = Math::perspectiveRH_NO(Math::radians(mFOV), mAspect, getNear(), getFar());
 }

@@ -4,6 +4,7 @@
 namespace Engine::RenderModule::RenderPasses {
 	class ShadersPass : public RenderPass {
 	public:
-		void render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) override;
+		ShadersPass();
+		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	};
 }

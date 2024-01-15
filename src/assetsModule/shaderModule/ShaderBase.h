@@ -1,7 +1,9 @@
 ﻿#pragma once
-#include <fwd.hpp>
+
 #include <string>
 #include <unordered_map>
+
+#include "mathModule/Forward.h"
 
 namespace Engine::ShaderModule {
 	class ShaderBase {
@@ -18,11 +20,13 @@ namespace Engine::ShaderModule {
 
 		void setInt(const char* name, int val);
 		void setBool(const char* name, bool val);
-		void setMat4(const char* name, const glm::mat4& val);
-		void setMat3(const char* name, const glm::mat3& val);
-		void setVec2(const char* name, const glm::vec2& val);
-		void setVec3(const char* name, const glm::vec3& val);
-		void setVec4(const char* name, const glm::vec4& val);
+
+		void setMat3(const char* name, const Math::Mat3& val);
+		void setMat4(const char* name, const Math::Mat4& val);
+		void setVec2(const char* name, const Engine::Math::Vec2& val);
+		void setVec3(const char* name, const Engine::Math::Vec3& val);
+		void setVec4(const char* name, const Engine::Math::Vec4& val);
+
 		void setFloat(const char* name, float val);
 		void setUniformBlockIdx(const char* name, unsigned val);
 
@@ -35,17 +39,17 @@ namespace Engine::ShaderModule {
 		std::string fragmentCode;
 
 		bool compileShader(const char* shaderCode, unsigned type);
-
+		inline size_t getHash() const { return mHash; }
 	protected:
 		virtual ~ShaderBase();
 		ShaderBase() = default;
-		ShaderBase(size_t hash) : hash(hash) {};
+		ShaderBase(size_t hash) : mHash(hash) {};
 		unsigned int ID = 0;
 		std::unordered_map<std::string, int> cachedUniforms;
 
 
 	private:
-		size_t hash = 0;
+		size_t mHash = 0;
 
 		static bool checkCompileErrors(unsigned int shader, std::string_view type);
 		int getUniformLocation(const std::string& name);
@@ -65,27 +69,27 @@ namespace Engine::ShaderModule {
 	}
 
 	template <>
-	inline void ShaderBase::setValue<glm::mat4>(std::string_view name, const glm::mat4& val) {
+	inline void ShaderBase::setValue<Math::Mat4>(std::string_view name, const Math::Mat4& val) {
 		setMat4(name.data(), val);
 	}
 
 	template <>
-	inline void ShaderBase::setValue<glm::mat3>(std::string_view name, const glm::mat3& val) {
+	inline void ShaderBase::setValue<Math::Mat3>(std::string_view name, const Math::Mat3& val) {
 		setMat3(name.data(), val);
 	}
 
 	template <>
-	inline void ShaderBase::setValue<glm::vec4>(std::string_view name, const glm::vec4& val) {
+	inline void ShaderBase::setValue<Math::Vec4>(std::string_view name, const Math::Vec4& val) {
 		setVec4(name.data(), val);
 	}
 
 	template <>
-	inline void ShaderBase::setValue<glm::vec3>(std::string_view name, const glm::vec3& val) {
+	inline void ShaderBase::setValue<Math::Vec3>(std::string_view name, const Math::Vec3& val) {
 		setVec3(name.data(), val);
 	}
 
 	template <>
-	inline void ShaderBase::setValue<glm::vec2>(std::string_view name, const glm::vec2& val) {
+	inline void ShaderBase::setValue<Math::Vec2>(std::string_view name, const Math::Vec2& val) {
 		setVec2(name.data(), val);
 	}
 }

@@ -16,17 +16,6 @@ layout(std430, binding = 1) buffer modelMatrices
 void main()
 {
     texPos = aPos;
-    vec3 pos = aPos;
-    //pos.x = aPos.x+1.0;
-    //pos.y = aPos.y + 1.0;
     mat4 m = model[gl_InstanceID];
-    float scale = 1.1;
-
-    mat4 scaleMatrix;
-    scaleMatrix[0].xyzw = vec4(scale, 0.0,   0.0,   0.0);
-    scaleMatrix[1].xyzw = vec4(0.0,   scale, 0.0,   0.0);
-    scaleMatrix[2].xyzw = vec4(0.0,   0.0,   scale, 0.0);
-    scaleMatrix[3].xyzw = vec4(0.0,   0.0,   0.0,   1.0);
-   
-    gl_Position = PV * m  * vec4(pos + aNormal* 5.0,1.0); 
+    gl_Position = PV * m  * vec4(aPos + aNormal* 5.0,1.0); 
 }  

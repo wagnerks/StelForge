@@ -1,11 +1,25 @@
 ﻿#include "Utils.h"
+#include "mathModule/Utils.h"
 
-#include "mat4x4.hpp"
 #include "Renderer.h"
+#include "systemsModule/SystemManager.h"
 
 using namespace Engine::RenderModule;
 
-void Utils::CalculateEulerAnglesFromView(const glm::mat4& view, float& yaw, float& pitch, float& roll) {
+std::vector<Engine::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color) {
+	auto it = std::find_if(renderVertices.begin(), renderVertices.end(), [color](std::pair<Math::Vec4, std::vector<Math::Vec3>>& a) {
+		return a.first == color;
+	});
+
+	if (it != renderVertices.end()) {
+		return it->second;
+	}
+
+	renderVertices.push_back(std::make_pair(color, std::vector<Math::Vec3>()));
+	return renderVertices.back().second;
+}
+
+void Utils::CalculateEulerAnglesFromView(const Math::Mat4& view, float& yaw, float& pitch, float& roll) {
 	if (view[0][0] == 1.0f || view[0][0] == -1.0f) {
 		yaw = atan2f(view[0][2], view[2][3]);
 		pitch = 0;
@@ -42,6 +56,37 @@ void Utils::renderQuad() {
 	}
 	glBindVertexArray(quadVAO);
 	RenderModule::Renderer::drawArrays(GL_TRIANGLE_STRIP, 4);
+	glBindVertexArray(0);
+}
+
+void Utils::renderQuad2() {
+	static unsigned quadVAO = 0;
+	if (quadVAO == 0) {
+		float quadVertices[] = {
+			// positions
+			 1.f,  1.f,  0.f,
+			-1.f, -1.f,  0.f,
+			-1.f,  1.f,  0.f,
+
+			-1.f, -1.f,  0.f,
+			 1.f,  1.f,  0.f,
+			 1.f, -1.f,  0.f
+		};
+		// setup plane VAO
+		unsigned quadVBO;
+		glGenVertexArrays(1, &quadVAO);
+		glGenBuffers(1, &quadVBO);
+		glBindVertexArray(quadVAO);
+		glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 18, &quadVertices, GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindVertexArray(0);
+	}
+	glBindVertexArray(quadVAO);
+	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 6);
 	glBindVertexArray(0);
 }
 
@@ -148,57 +193,35 @@ void Utils::initCubeVAO() {
 	}
 }
 
-void Utils::renderLine(glm::vec3& begin, glm::vec3& end) {
-	static unsigned linesVAO = 0;
-
-	float vertices[] = {
-		begin.x,begin.y,begin.z,
-		end.x,end.y,end.z
-	};
-
-	// setup plane VAO
-	unsigned cubeVBO;
-	glGenVertexArrays(1, &linesVAO);
-	glGenBuffers(1, &cubeVBO);
-	glBindVertexArray(linesVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
-
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-	glBindVertexArray(linesVAO);
-	RenderModule::Renderer::drawArrays(GL_LINES, 2);
-	glBindVertexArray(0);
-
-	glDeleteVertexArrays(1, &linesVAO);
-	glDeleteBuffers(1, &cubeVBO);
+void Utils::renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color) {
+	getVerticesArray(color).emplace_back(begin);
+	getVerticesArray(color).emplace_back(end);
 }
 
-void Utils::renderCube(const glm::vec3& LTN, const glm::vec3& RBF) {
-	static unsigned linesVAO = 0;
+void Utils::renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color) {
+	//		LTF*------------*RTF
+	//		 / |           /|
+	//      /  |          / |
+	//     /   |         /  |
+	// LTN*-----------*RTN  |
+	//    |    |        |   |
+	//    |    |        |   |
+	//    |    *LBF-----|---*RBF
+	//    |   /         |  /
+	//    |  /          | /
+	//    | /           |/
+	// LBN*-------------*RBN   
 
-	//    LTF*-----------*RTF
-	//      /|          /|
-	//     / |         / |
-	// LTN*-----------*RTN
-	//    |  |        |  |
-	//    |  |        |  |
-	//    |  *LBF-----|--*RBF
-	//    | /         | /
-	//    |/          |/
-	// LBN*-----------*RBN   
 
+	//Math::Vec3 LTN = { -far,  far, far };
+	Math::Vec3 RTN = { RBF.x, LTN.y, LTN.z };
+	Math::Vec3 LBN = { LTN.x, RBF.y, LTN.z };
+	Math::Vec3 RBN = { RBF.x, RBF.y, LTN.z };
 
-	//glm::vec3 LTN = { -far,  far, far };
-	glm::vec3 RTN = { RBF.x, LTN.y, LTN.z };
-	glm::vec3 LBN = { LTN.x, RBF.y, LTN.z };
-	glm::vec3 RBN = { RBF.x, RBF.y, LTN.z };
-
-	glm::vec3 LTF = { LTN.x, LTN.y, RBF.z };
-	glm::vec3 RTF = { RBF.x, LTN.y, RBF.z };
-	glm::vec3 LBF = { LTN.x, RBF.y, RBF.z };
-	//glm::vec3 RBF = { far, -far, -far };
+	Math::Vec3 LTF = { LTN.x, LTN.y, RBF.z };
+	Math::Vec3 RTF = { RBF.x, LTN.y, RBF.z };
+	Math::Vec3 LBF = { LTN.x, RBF.y, RBF.z };
+	//Math::Vec3 RBF = { far, -far, -far };
 	
 
 	float vertices[] = {
@@ -241,23 +264,95 @@ void Utils::renderCube(const glm::vec3& LTN, const glm::vec3& RBF) {
 		LBF.x, LBF.y, LBF.z, //end
 	};
 
-	// setup plane VAO
-	unsigned cubeVBO;
-	glGenVertexArrays(1, &linesVAO);
-	glGenBuffers(1, &cubeVBO);
-	glBindVertexArray(linesVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
+	// Create a rotation matrix (e.g., rotate 45 degrees around the Y-axis)
+	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos)) * Math::Mat4(rotate);
+	auto& vertArray = getVerticesArray(color);
 
+	// Apply the rotation to the cube vertices
+	for (int i = 0; i < sizeof(vertices) / sizeof(float); i += 3) {
+		Math::Vec4 vertex(vertices[i], vertices[i + 1], vertices[i + 2], 1.0f);
+
+		// Apply the model and rotation transformations
+		vertex = transform * vertex;
+		vertArray.emplace_back(vertex);
+	}
+}
+
+void Utils::renderCapsule(const Math::Vec3& start, const Math::Vec3& end, float radius) {
+	int segments = 100; // Adjust the number of segments as needed.
+
+	// Calculate the capsule's axis and length
+	Math::Vec3 axis = end - start;
+	float length = Math::distance(start, end);
+
+	// Initialize the vertices array for the capsule.
+	std::vector<float> vertices;
+
+	for (int i = 0; i <= segments; ++i) {
+		float theta = (Math::twoPi<float>() * i) / segments;
+		for (int j = 0; j <= segments; ++j) {
+			float phi = (Math::pi<float>() * j) / segments;
+
+			Math::Vec3 vertex;
+			vertex.x = radius * sinf(phi) * cosf(theta);
+			vertex.y = radius * sinf(phi) * sinf(theta);
+			vertex.z = radius * cosf(phi);
+
+			// Apply the orientation and position to the vertex
+			//vertex = Math::rotate(orientation, vertex);
+			vertex += start + axis * 0.5f;
+
+			vertices.push_back(vertex.x);
+			vertices.push_back(vertex.y);
+			vertices.push_back(vertex.z);
+		}
+	}
+
+	// Generate and bind a VAO
+	unsigned capsuleVAO;
+	glGenVertexArrays(1, &capsuleVAO);
+	glBindVertexArray(capsuleVAO);
+
+	// Generate a VBO and buffer the vertex data
+	unsigned capsuleVBO;
+	glGenBuffers(1, &capsuleVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, capsuleVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+
+	// Configure the vertex attribute
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-	glBindVertexArray(linesVAO);
-	RenderModule::Renderer::drawArrays(GL_LINES, sizeof(vertices) / 3);
+	// Draw the capsule
+	RenderModule::Renderer::drawArrays(GL_LINES, vertices.size() / 3);
+
+	// Unbind VAO (optional)
 	glBindVertexArray(0);
 
-	glDeleteVertexArrays(1, &linesVAO);
-	glDeleteBuffers(1, &cubeVBO);
+	// Deallocate resources (typically done at the end of your program, not immediately)
+	glDeleteVertexArrays(1, &capsuleVAO);
+	glDeleteBuffers(1, &capsuleVBO);
+}
+
+void Utils::renderSphere(const Math::Vec3& center, float radius) {
+	int segments = 10; // Adjust the number of segments as needed.
+
+	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f));
+
+	// Initialize the vertices array for the sphere.
+	for (int i = 0; i <= segments; ++i) {
+		float theta = (Math::twoPi<float>() * i) / segments;
+		for (int j = 0; j <= segments; ++j) {
+			float phi = (Math::pi<float>() * j) / segments;
+
+			Math::Vec3 vertex;
+			vertex.x = center.x + radius * sinf(phi) * cosf(theta);
+			vertex.y = center.y + radius * sinf(phi) * sinf(theta);
+			vertex.z = center.z + radius * cosf(phi);
+
+			vertArray.emplace_back(vertex);
+		}
+	}
 }
 
 void Utils::renderCamera() {
@@ -266,19 +361,19 @@ void Utils::renderCamera() {
 	float h = 10.f;
 	float l = 10.f;
 
-	glm::vec3 A = { -w, -h, -l };
-	glm::vec3 B = { w, -h, -l };
-	glm::vec3 C = { -w, h, -l };
-	glm::vec3 D = { w, h, -l };
+	Math::Vec3 A = { -w, -h, -l };
+	Math::Vec3 B = { w, -h, -l };
+	Math::Vec3 C = { -w, h, -l };
+	Math::Vec3 D = { w, h, -l };
 
 	w = 5.f;
 	h = 5.f;
 	l = 0.f;
 
-	glm::vec3 E = { -w, h, l };
-	glm::vec3 F = { w, h, l };
-	glm::vec3 G = { w, -h, l };
-	glm::vec3 H = { -w, -h, l };
+	Math::Vec3 E = { -w, h, l };
+	Math::Vec3 F = { w, h, l };
+	Math::Vec3 G = { w, -h, l };
+	Math::Vec3 H = { -w, -h, l };
 
 	float vertices[] = {
 		A.x, A.y, A.z, //start
@@ -340,13 +435,7 @@ void Utils::renderCamera() {
 	glDeleteBuffers(1, &cubeVBO);
 }
 
-void Utils::renderPointLight(float near, float far) {
-	static unsigned linesVAO = 0;
-
-	float w = 15.f;
-	float h = 10.f;
-	float l = 10.f;
-
+void Utils::renderPointLight(float near, float far, const Math::Vec3& pos) {
 	//    LTF*-----------*RTF
 	//      /|          /|
 	//     / |         / |
@@ -359,27 +448,27 @@ void Utils::renderPointLight(float near, float far) {
 	// LBN*-----------*RBN   
 
 
-	glm::vec3 LTN = { -far,  far, far };
-	glm::vec3 RTN = { far,  far, far };
-	glm::vec3 LBN = { -far, -far, far };
-	glm::vec3 RBN = { far, -far, far };
+	Math::Vec3 LTN = { -far,  far, far };
+	Math::Vec3 RTN = { far,  far, far };
+	Math::Vec3 LBN = { -far, -far, far };
+	Math::Vec3 RBN = { far, -far, far };
 
-	glm::vec3 LTF = { -far,  far, -far };
-	glm::vec3 RTF = { far,  far, -far };
-	glm::vec3 LBF = { -far, -far, -far };
-	glm::vec3 RBF = { far, -far, -far };
+	Math::Vec3 LTF = { -far,  far, -far };
+	Math::Vec3 RTF = { far,  far, -far };
+	Math::Vec3 LBF = { -far, -far, -far };
+	Math::Vec3 RBF = { far, -far, -far };
 
 
 	//small cube inside big
-	glm::vec3 LTNs = { -near,  near, near };
-	glm::vec3 RTNs = { near,  near, near };
-	glm::vec3 LBNs = { -near, -near, near };
-	glm::vec3 RBNs = { near, -near, near };
+	Math::Vec3 LTNs = { -near,  near, near };
+	Math::Vec3 RTNs = { near,  near, near };
+	Math::Vec3 LBNs = { -near, -near, near };
+	Math::Vec3 RBNs = { near, -near, near };
 
-	glm::vec3 LTFs = { -near,  near, -near };
-	glm::vec3 RTFs = { near,  near,-near };
-	glm::vec3 LBFs = { -near, -near, -near };
-	glm::vec3 RBFs = { near, -near,-near };
+	Math::Vec3 LTFs = { -near,  near, -near };
+	Math::Vec3 RTFs = { near,  near,-near };
+	Math::Vec3 LBFs = { -near, -near, -near };
+	Math::Vec3 RBFs = { near, -near,-near };
 
 
 
@@ -482,23 +571,14 @@ void Utils::renderPointLight(float near, float far) {
 		LBF.x, LBF.y, LBF.z, //end
 	};
 
-	// setup plane VAO
-	unsigned cubeVBO;
-	glGenVertexArrays(1, &linesVAO);
-	glGenBuffers(1, &cubeVBO);
-	glBindVertexArray(linesVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
-
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-	glBindVertexArray(linesVAO);
-	RenderModule::Renderer::drawArrays(GL_LINES, sizeof(vertices) / 3);
-	glBindVertexArray(0);
-
-	glDeleteVertexArrays(1, &linesVAO);
-	glDeleteBuffers(1, &cubeVBO);
+	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos));
+	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f));
+	for (int i = 0; i < sizeof(vertices) / sizeof(float); i += 3) {
+		Math::Vec3 vertex(vertices[i], vertices[i + 1], vertices[i + 2]);
+		
+		vertex = transform * Math::Vec4(vertex, 1.f);
+		vertArray.emplace_back(vertex);
+	}
 }
 
 void Utils::renderXYZ(float length) {

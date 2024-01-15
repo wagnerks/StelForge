@@ -59,46 +59,46 @@ void ShaderBase::setBool(const char* name, bool val) {
 	glUniform1i(getUniformLocation(name), val);
 }
 
-void ShaderBase::setMat4(const char* name, const glm::mat4& val) {
-	if (getUniformLocation(name) == -1) {
-		return;
-	}
-	glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(val));
-}
-
-void ShaderBase::setMat3(const char* name, const glm::mat3& val) {
-	if (getUniformLocation(name) == -1) {
-		return;
-	}
-	glUniformMatrix3fv(getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(val));
-}
-
-void ShaderBase::setVec2(const char* name, const glm::vec2& val) {
-	if (getUniformLocation(name) == -1) {
-		return;
-	}
-	glUniform2fv(getUniformLocation(name), 1, glm::value_ptr(val));
-}
-
-void ShaderBase::setVec3(const char* name, const glm::vec3& val) {
-	if (getUniformLocation(name) == -1) {
-		return;
-	}
-	glUniform3fv(getUniformLocation(name), 1, glm::value_ptr(val));
-}
-
-void ShaderBase::setVec4(const char* name, const glm::vec4& val) {
-	if (getUniformLocation(name) == -1) {
-		return;
-	}
-	glUniform4fv(getUniformLocation(name), 1, glm::value_ptr(val));
-}
-
 void ShaderBase::setFloat(const char* name, float val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
 	glUniform1f(getUniformLocation(name), val);
+}
+
+void ShaderBase::setVec2(const char* name, const Engine::Math::Vec2& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniform2fv(getUniformLocation(name), 1, val.data());
+}
+
+void ShaderBase::setVec3(const char* name, const Engine::Math::Vec3& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniform3fv(getUniformLocation(name), 1, val.data());
+}
+
+void ShaderBase::setVec4(const char* name, const Engine::Math::Vec4& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniform4fv(getUniformLocation(name), 1, val.data());
+}
+
+void ShaderBase::setMat3(const char* name, const Math::Mat3& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniformMatrix3fv(getUniformLocation(name), 1, GL_FALSE, val.data());
+}
+
+void ShaderBase::setMat4(const char* name, const Math::Mat4& val) {
+	if (getUniformLocation(name) == -1) {
+		return;
+	}
+	glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, val.data());
 }
 
 void ShaderBase::setUniformBlockIdx(const char* name, unsigned val) {

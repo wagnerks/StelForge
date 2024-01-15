@@ -8,6 +8,9 @@ uniform vec3 viewPos;
 uniform float ambientColor = 1.0;
 uniform float shadowIntensity = 1.0;
 
+uniform float drawDistance = 5000.0;
+uniform float fogStart = 4500.0;
+
 const int MAX_POINT_LIGHTS_SIZE = 6;
 uniform int pointLightsSize = 0;
 uniform int cascadeCount = 0;   // number of frusta - 1
@@ -194,6 +197,7 @@ void main() {
     // retrieve data from gbuffer
     const vec3 FragPos = texture(gPosition, TexCoords).rgb;
     const vec3 Normal = texture(gNormal, TexCoords).rgb;
+    const float Depth = texture(gNormal, TexCoords).a;
     vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
     const float Specular = texture(gAlbedoSpec, TexCoords).a;
     const float AmbientOcclusion = texture(ssao, TexCoords).r;
@@ -237,7 +241,7 @@ void main() {
         }
     }
 
-    lighting *= (1.0 - (shadowIntensity * shadow * 1.4));
+    lighting *= (1.0 - (shadowIntensity * shadow * 0.9));
     //lighting *= AmbientOcclusion;
     const float gamma = 1.0;
     const float exposure = 1.2;
@@ -255,5 +259,10 @@ void main() {
     mapped = pow(mapped, vec3(1.0 / gamma));
     mapped.g += outlines;
 
-    FragColor = vec4(mapped, 1.0);
+    //FragColor = vec4(mapped, 1.0);
+
+    float fogFactor = smoothstep(fogStart, drawDistance, Depth);
+    vec3 fogColor = vec3(0.0,0.0,0.0);
+    FragColor = mix(vec4(mapped, 1.0), vec4(fogColor, 1.0), fogFactor);
+
 }

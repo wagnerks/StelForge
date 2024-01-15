@@ -18,7 +18,7 @@ namespace Engine::ComponentsModule {
 	void TreeComponent::addChildEntity(ecss::SectorId id) {
 		if (std::find(mChildrenEntities.begin(), mChildrenEntities.end(), id) == mChildrenEntities.end()) {
 			mChildrenEntities.push_back(id);
-			if (auto tree = ECSHandler::registry()->getComponent<TreeComponent>(id)) {
+			if (auto tree = ECSHandler::registry().getComponent<TreeComponent>(id)) {
 				tree->setParent(getEntityId());;
 			}
 		}
@@ -26,7 +26,7 @@ namespace Engine::ComponentsModule {
 
 	void TreeComponent::removeChildEntity(ecss::SectorId id) {
 		std::erase(mChildrenEntities, id);
-		if (auto tree = ECSHandler::registry()->getComponent<TreeComponent>(id)) {
+		if (auto tree = ECSHandler::registry().getComponent<TreeComponent>(id)) {
 			tree->setParent(ecss::INVALID_ID);
 		}
 	}
@@ -40,7 +40,7 @@ namespace Engine::ComponentsModule {
 	void TreeComponent::getAllNodesHelper(std::vector<ecss::SectorId>& res) {
 		res.insert(res.end(), mChildrenEntities.begin(), mChildrenEntities.end());
 		for (auto element : mChildrenEntities) {
-			if (auto childNode = ECSHandler::registry()->getComponent<TreeComponent>(element)) {
+			if (auto childNode = ECSHandler::registry().getComponent<TreeComponent>(element)) {
 				childNode->getAllNodesHelper(res);
 			}
 		}
@@ -51,12 +51,12 @@ namespace Engine::ComponentsModule {
 	}
 
 	TreeComponent::~TreeComponent() {
-		if (const auto parent = ECSHandler::registry()->getComponent<TreeComponent>(mParentEntity)) {
+		if (const auto parent = ECSHandler::registry().getComponent<TreeComponent>(mParentEntity)) {
 			parent->removeChildEntity(getEntityId());
 		}
 
 		for (const auto child : mChildrenEntities) {
-			if (auto childNode = ECSHandler::registry()->getComponent<TreeComponent>(child)) {
+			if (auto childNode = ECSHandler::registry().getComponent<TreeComponent>(child)) {
 				childNode->setParent(ecss::INVALID_ID);
 			}
 		}

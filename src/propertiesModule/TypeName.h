@@ -1,9 +1,10 @@
 ﻿#pragma once
-#include <string>
 
-#include "componentsModule/CascadeShadowComponent.h"
-#include "componentsModule/ModelComponent.h"
+#include <string>
+#include "assert.h"
 #include "componentsModule/TransformComponent.h"
+#include "componentsModule/ModelComponent.h"
+#include "componentsModule/CascadeShadowComponent.h"
 
 namespace Engine::PropertiesModule {
 	// TypeTraits to associate a type with its name

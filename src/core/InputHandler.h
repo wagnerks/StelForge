@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <functional>
+
 #include "renderModule/Renderer.h"
 
 namespace Engine::CoreModule {
@@ -139,49 +141,87 @@ namespace Engine::CoreModule {
 		END
 	};
 
+	enum class MouseButton {
+		MOUSE_BUTTON_1 = 0,
+		MOUSE_BUTTON_2 = 1,
+		MOUSE_BUTTON_3 = 2,
+		MOUSE_BUTTON_4 = 3,
+		MOUSE_BUTTON_5 = 4,
+		MOUSE_BUTTON_6 = 5,
+		MOUSE_BUTTON_7 = 6,
+		MOUSE_BUTTON_8 = 7,
+		MOUSE_BUTTON_LAST = MOUSE_BUTTON_8,
+		MOUSE_BUTTON_LEFT = MOUSE_BUTTON_1,
+		MOUSE_BUTTON_RIGHT = MOUSE_BUTTON_2,
+		MOUSE_BUTTON_MIDDLE = MOUSE_BUTTON_3,
+	};
+
+	enum class KeyMod {
+/*! @brief If this bit is set one or more Shift keys were held down.*/
+		MOD_SHIFT = 0x0001,
+/*! @brief If this bit is set one or more Control keys were held down.*/
+		MOD_CONTROL = 0x0002,
+/*! @brief If this bit is set one or more Alt keys were held down.*/
+		MOD_ALT = 0x0004,
+/*! @brief If this bit is set one or more Super keys were held down.*/
+		MOD_SUPER = 0x0008,
+/*! @brief If this bit is set the Caps Lock key is enabled.*/
+		MOD_CAPS_LOCK = 0x0010,
+/*! @brief If this bit is set the Num Lock key is enabled.*/
+		MOD_NUM_LOCK = 0x0020
+	};
+
 	class InputObserver;
 
 	class InputProvider : public Singleton<InputProvider> {
 		friend Singleton;
 		friend InputObserver;
 	public:
-		void fireEvent(InputKey key, InputEventType type);
+		inline void fireEvent(InputKey key, InputEventType type) const;
+		inline void fireEvent(Math::DVec2 mousePos, MouseButton key, InputEventType type) const;
+		inline void fireEvent(Math::DVec2 mousePos, Math::DVec2 mouseOffset) const;
+		inline void fireEvent(Math::DVec2 scrollOffset) const;
 
 	private:
-		void subscribe(InputObserver* observer);
-		void unsubscribe(InputObserver* observer);
+		inline void subscribe(InputObserver* observer);
+		inline void unsubscribe(InputObserver* observer);
 
 		InputProvider() = default;
-		~InputProvider() override = default;
 
 		std::vector<InputObserver*> mKeyObservers;
 	};
 
 	class InputObserver {
+		friend InputProvider;
 	public:
-		InputObserver() {
-			InputProvider::instance()->subscribe(this);
-		}
+		InputObserver(const InputObserver& other);
+		InputObserver(InputObserver&& other) noexcept;
 
-		virtual ~InputObserver() {
-			InputProvider::instance()->unsubscribe(this);
-		}
+		InputObserver& operator=(const InputObserver& other);
+		InputObserver& operator=(InputObserver&& other) noexcept;
 
+		InputObserver();
+
+		virtual ~InputObserver();
+
+	protected:
 		std::function<void(InputKey, InputEventType)> onKeyEvent;
+		std::function<void(Math::DVec2, MouseButton, InputEventType)> onMouseBtnEvent;
+
+		std::function<void(Math::DVec2)> onScrollEvent;
+		std::function<void(Math::DVec2, Math::DVec2)> onMouseEvent;
 	};
 
-	class InputHandler : public Singleton<InputHandler> {
-		friend Singleton;
+	class InputHandler {
 	public:
 		static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-		static void mouseCallback(GLFWwindow* window, double xpos, double ypos);
-		static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+		static void mouseCallback(GLFWwindow* window, double xPos, double yPos);
+		static void scrollCallback(GLFWwindow* window, double xOffset, double yOffset);
 		static void mouseBtnInput(GLFWwindow* w, int btn, int act, int mode);
-		void init() override;
+		static void init();
 
 	private:
-		InputHandler() = default;
-		~InputHandler() override = default;
+		inline static Math::DVec2 mMousePos = {};
 	};
 }
 

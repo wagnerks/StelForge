@@ -11,7 +11,6 @@ namespace Engine::Debug {
 		void shadersDebugDraw(bool& opened);
 	private:
 		~ShadersDebug() override = default;
-
 		std::vector<size_t> mOpenedShaderDebugWindows;
 	};
 }

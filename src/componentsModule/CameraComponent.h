@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "core/Projection.h"
 #include "componentsModule/ComponentBase.h"
+#include "core/BoundingVolume.h"
 
 namespace Engine::ComponentsModule {
 	class CameraComponent : public ecss::ComponentInterface {
@@ -11,8 +12,12 @@ namespace Engine::ComponentsModule {
 
 		void initProjection(float FOV, float aspect, float zNear, float zFar);
 		void initProjection(const ProjectionModule::PerspectiveProjection& projection);
+		void updateFrustum(const Math::Mat4& view);
+		const FrustumModule::Frustum& getFrustum() const;
 	private:
 		ProjectionModule::PerspectiveProjection mProjection;
+		FrustumModule::Frustum mFrustum;
+		Math::Vec3 extents{};
 	};
 }
 

@@ -1,3 +1,6 @@
 [submodule "src/submodules/ecss"]
 	path = src/submodules/ecss
 	url = https://github.com/wagnerks/ecss.git
+[submodule "src/submodules/myPhysicsEngine"]
+	path = src/submodules/myPhysicsEngine
+	url = git@github.com:wagnerks/myPhysicsEngine.git

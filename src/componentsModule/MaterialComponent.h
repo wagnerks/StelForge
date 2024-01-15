@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include <vector>
 
+#include "ComponentBase.h"
 #include "assetsModule/modelModule/Model.h"
+#include "ecss/Types.h"
 
 namespace Engine::ComponentsModule {
 	class MaterialComponent : public ecss::ComponentInterface {

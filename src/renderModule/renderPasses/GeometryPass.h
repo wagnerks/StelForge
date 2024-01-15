@@ -6,9 +6,12 @@
 
 #include "renderModule/RenderPass.h"
 
+class Batcher;
+
 namespace Engine::RenderModule::RenderPasses {
-	class GeometryPass : public RenderPass {
+	class GeometryPass : public RenderPassWithData {
 	public:
+		void prepare() override;
 		struct Data {
 			unsigned int mGBuffer = 0;
 			unsigned int gPosition = 0;
@@ -26,13 +29,15 @@ namespace Engine::RenderModule::RenderPasses {
 			unsigned int depth = 0;
 
 		};
-		void init();
-		void render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) override;
+		void init() override;
+		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	private:
 		bool mInited = false;
 		Data mData;
 		OutlinesData mOData;
 		bool needClearOutlines = false;
+
+
 
 	};
 }

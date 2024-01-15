@@ -7,41 +7,55 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "debugModule/ComponentsDebug.h"
 #include "debugModule/imguiDecorator.h"
-#include "assetsModule/shaderModule/ShaderController.h"
-#include "ecss/Registry.h"
 #include "systemsModule/SystemManager.h"
 #include "assetsModule/AssetsManager.h"
+#include "debugModule/Benchmark.h"
+#include "mathModule/Forward.h"
+
 
 using namespace Engine;
 using namespace Engine::CoreModule;
 
 void Core::update(float dt) {
+	FUNCTION_BENCHMARK
+	
 	Debug::ImGuiDecorator::preDraw();
-
-	ECSHandler::systemManager()->update(dt);
-
+	ECSHandler::systemManager().update(dt);
 	mDebugMenu.draw();
-
-	static auto threadID = std::this_thread::get_id();
-	if (threadID != std::this_thread::get_id()) {
-		int d = 0;
-	}
 	RenderModule::Renderer::instance()->draw();
-
-	ThreadPool::instance()->synchroUpdate();
-
-	Debug::ComponentsDebug::entitiesDebug();
+	ThreadPool::instance()->syncUpdate();
+	Debug::ComponentsDebug::instance()->entitiesDebug();
+	Debug::BenchmarkGUI::instance()->onGui();
 
 	Debug::ImGuiDecorator::draw();
-
 	RenderModule::Renderer::instance()->postDraw();
-
 }
 
 void Core::init() {
+	auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
 	ECSHandler::instance()->initSystems();
-	CoreModule::InputHandler::instance();
+	CoreModule::InputHandler::init();
 	RenderModule::Renderer::instance();
+
+	{
+		Math::Matrix<float, 2, 2> A {1, 4, 2, 4};
+		Math::Matrix<float, 2, 2> B {2, 6, 3, 7};
+		Math::Matrix<float, 2, 2> expectedC = { 14, 32, 17,40 };
+		
+		Math::Vec3 A1 = { 1,2,3 };
+		Math::Vec3 A2 = { 5,6,7 };
+		Math::Vec2 KEK = { 1.f,2.f };
+		Math::Vec2 expected = { 5,12 };
+		
+		auto A3 = A1 * A2;
+		A2 += A1;
+		A2 = -A2;
+
+		auto C = A * B;
+		auto D = A * KEK;
+		assert(C == expectedC);
+		assert(D == expected);
+	}
 }
 
 Core::~Core() {
@@ -49,11 +63,12 @@ Core::~Core() {
 	AssetsModule::TextureHandler::terminate();
 	AssetsModule::ModelLoader::terminate();
 	RenderModule::Renderer::terminate();
-	ECSHandler::terminate();
-	CoreModule::InputHandler::terminate();
+	
 	ThreadPool::terminate();
+	ECSHandler::terminate();
 
-	AssetsModule::AssetsManager::terminate();
+	Debug::ComponentsDebug::terminate();
+;	AssetsModule::AssetsManager::terminate();
 }
 
 Core::Core() {}

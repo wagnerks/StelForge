@@ -1,8 +1,6 @@
 ﻿#pragma once
 #include <mutex>
 #include <thread>
-#include <vec2.hpp>
-#include <vec3.hpp>
 #include <vector>
 
 #include "componentsModule/CascadeShadowComponent.h"
@@ -13,13 +11,16 @@
 
 namespace Engine::RenderModule::RenderPasses {
 
-	class CascadedShadowPass : public RenderPass {
+	class CascadedShadowPass : public RenderPassWithData {
 	public:
+		void prepare() override;
+
+
 		struct Data {
 			unsigned shadowMapTexture = std::numeric_limits<unsigned>::max();
-			glm::vec3 lightDirection = {};
-			glm::vec3 lightColor = {};
-			glm::vec2 resolution = {};
+			Math::Vec3 lightDirection = {};
+			Math::Vec3 lightColor = {};
+			Math::Vec2 resolution = {};
 			float cameraFarPlane = 0.f;
 			std::vector<float> shadowCascadeLevels;
 			ecss::EntityHandle shadows;
@@ -29,12 +30,15 @@ namespace Engine::RenderModule::RenderPasses {
 
 		CascadedShadowPass();
 		~CascadedShadowPass() override;
-		void init();
+		void init() override;
 		void initRender();
 		void freeBuffers() const;
 
-		void render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) override;
+		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	private:
+		void updateRenderData(SystemsModule::RenderData& renderDataHandle) const;
+		void debug(SystemsModule::RenderData& renderDataHandle);
+
 		unsigned lightFBO;
 		unsigned lightDepthMaps;
 		unsigned matricesUBO;

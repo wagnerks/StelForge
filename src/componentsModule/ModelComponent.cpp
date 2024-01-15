@@ -41,7 +41,7 @@ const AssetsModule::ModelObj& ModelComponent::getModel() {
 	return getModel(mLOD.getLodLevel());
 }
 
-AssetsModule::ModelObj& ModelComponent::getModel(size_t LOD) {
+AssetsModule::ModelObj& ModelComponent::getModel(size_t LOD) const {
 	if (!mModel || mModel->empty()) {
 		static AssetsModule::ModelObj empty;
 		return empty;

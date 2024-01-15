@@ -14,11 +14,18 @@ namespace Engine {
 		}
 
 		inline static void terminate() {
-			delete mInstance;
+			auto instance = mInstance;
 			mInstance = nullptr;
+			delete instance;
 		}
 
-		inline virtual void init() {};
+		inline static bool isAlive() {
+			return mInstance;
+		}
+
+		inline virtual void init() {}
+	protected:
+		//if need to override destructor - you need to declare Singleton class as friend in inherited class
 		inline virtual ~Singleton() = default;
 	private:
 		inline static T* mInstance = nullptr;

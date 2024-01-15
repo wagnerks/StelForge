@@ -2,11 +2,6 @@
 #include <functional>
 #include <string>
 #include <vector>
-#include "vec4.hpp"
-#include "vec2.hpp"
-#include "vec3.hpp"
-#include "mat3x3.hpp"
-#include "mat4x4.hpp"
 
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/shaderModule/Shader.h"
@@ -64,11 +59,11 @@ namespace Engine::ComponentsModule {
 
 		ShaderUniformVariables<int> integerUniforms;
 		ShaderUniformVariables<float> floatUniforms;
-		ShaderUniformVariables<glm::mat4> mat4Uniforms;
-		ShaderUniformVariables<glm::mat3> mat3Uniforms;
-		ShaderUniformVariables<glm::vec2> vec2Uniforms;
-		ShaderUniformVariables<glm::vec3> vec3Uniforms;
-		ShaderUniformVariables<glm::vec4> vec4Uniforms;
+		ShaderUniformVariables<Math::Mat4> mat4Uniforms;
+		ShaderUniformVariables<Math::Mat3> mat3Uniforms;
+		ShaderUniformVariables<Math::Vec2> vec2Uniforms;
+		ShaderUniformVariables<Math::Vec3> vec3Uniforms;
+		ShaderUniformVariables<Math::Vec4> vec4Uniforms;
 
 		ShaderUniformVariables<ShaderVariablesStruct> structUniforms;
 
@@ -87,27 +82,27 @@ namespace Engine::ComponentsModule {
 	inline double ShaderVariablesStruct::fromString(const std::string& value) { return std::atof(value.c_str()); }
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const glm::vec2& value) {
+	inline std::string ShaderVariablesStruct::toString(const Math::Vec2& value) {
 		return "{" + toString(value.x) + "," + toString(value.y) + "}";
 	}
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const glm::vec3& value) {
+	inline std::string ShaderVariablesStruct::toString(const Math::Vec3& value) {
 		return "{" + toString(value.x) + "," + toString(value.y) + "," + toString(value.z) + "}";
 	}
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const glm::vec4& value) {
+	inline std::string ShaderVariablesStruct::toString(const Math::Vec4& value) {
 		return "{" + toString(value.x) + "," + toString(value.y) + "," + toString(value.z) + "," + toString(value.w) + "}";
 	}
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const glm::mat3& value) {
+	inline std::string ShaderVariablesStruct::toString(const Math::Mat3& value) {
 		return "{[" + toString(value[0]) + "]" + "[" + toString(value[1]) + "]" + "[" + toString(value[2]) + "]}";
 	}
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const glm::mat4& value) {
+	inline std::string ShaderVariablesStruct::toString(const Math::Mat4& value) {
 		return "{[" + toString(value[0]) + "]" + "[" + toString(value[1]) + "]" + "[" + toString(value[2]) + "]" + "[" + toString(value[3]) + "]}";
 	}
 

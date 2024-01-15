@@ -3,23 +3,29 @@
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
-#include "systemsModule/RenderSystem.h"
+#include "systemsModule/systems/RenderSystem.h"
 #include "imgui.h"
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
+#include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 #include "renderModule/SceneGridFloor.h"
+#include "systemsModule/SystemsPriority.h"
 
 using namespace Engine::RenderModule::RenderPasses;
 
-void LightingPass::init() {}
 
-void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
+LightingPass::LightingPass() {
+
+}
+
+void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
 	if (!renderer) {
 		return;
 	}
-
+	FUNCTION_BENCHMARK
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	auto shaderLightingPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/deferred_shading.vs", "shaders/deferred_shading.fs");
 
@@ -34,13 +40,16 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	shaderLightingPass->setInt("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData.shadowEntities.size()));
 	shaderLightingPass->setInt("PointLightShadowMapArray", 30);
 
+	shaderLightingPass->setFloat("fogStart", Renderer::drawDistance * 0.9f);
+	shaderLightingPass->setFloat("drawDistance", Renderer::drawDistance);
+
 	int offsetSum = 0;
 	for (size_t i = 0; i < renderDataHandle.mPointPassData.shadowEntities.size(); i++) {
-		auto tc = ECSHandler::registry()->getComponent<TransformComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
-		auto lightComp = ECSHandler::registry()->getComponent<LightSourceComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
+		auto tc = ECSHandler::registry().getComponent<TransformComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
+		auto lightComp = ECSHandler::registry().getComponent<LightSourceComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
 
 		shaderLightingPass->setVec3(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
-		shaderLightingPass->setVec2(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), lightComp->getTexelSize());
+		shaderLightingPass->setVec2(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), Math::Vec2{lightComp->getTexelSize().x, lightComp->getTexelSize().y});
 		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].bias").c_str(), lightComp->getBias());
 		shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].samples").c_str(), lightComp->getSamples());
 		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].radius").c_str(), lightComp->mRadius);
@@ -106,7 +115,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 
 
-	static glm::vec3 sunDir;
+	static Math::Vec3 sunDir;
 	static float time = 0.f;
 	static float Br = 0.005f;
 	static float Bm = 0.001f;
@@ -137,8 +146,8 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	if (enableSky) {
 		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
 		sky->use();
-		sky->setMat4("view", renderDataHandle.mView);
-		sky->setMat4("projection", renderDataHandle.mProjection);
+		sky->setMat4("view", renderDataHandle.current.view);
+		sky->setMat4("projection", renderDataHandle.current.projection);
 		sky->setVec3("sun_direction", -renderDataHandle.mCascadedShadowsPassData.lightDirection);
 		sky->setFloat("time", time);
 
@@ -149,7 +158,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 		sky->setFloat("cirrus", cirrus);
 		sky->setFloat("cumulus", cumulus);
 
-		Utils::renderQuad();
+		Utils::renderQuad2();
 	}
 
 }

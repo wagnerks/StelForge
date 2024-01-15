@@ -77,8 +77,8 @@ void Mesh::bindMesh() {
 
 		glBindVertexArray(0);
 
-		auto minAABB = glm::vec3(std::numeric_limits<float>::max());
-		auto maxAABB = glm::vec3(std::numeric_limits<float>::min());
+		auto minAABB = Engine::Math::Vec3(std::numeric_limits<float>::max());
+		auto maxAABB = Engine::Math::Vec3(std::numeric_limits<float>::min());
 
 		for (auto& vertex : mData.mVertices) {
 			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
@@ -93,7 +93,7 @@ void Mesh::bindMesh() {
 		mBounds = Engine::FrustumModule::AABB(minAABB, maxAABB);
 	}
 	else {
-		Engine::ThreadPool::instance()->addTaskToSynchronization([this]()mutable { //easy crash 
+		Engine::ThreadPool::instance()->addTask<Engine::WorkerType::SYNC>([this]()mutable { //easy crash 
 			bindMesh();
 		});
 	}
@@ -111,7 +111,7 @@ void Mesh::unbindMesh() {
 		glDeleteBuffers(1, &mData.mEbo);
 	}
 	else {
-		Engine::ThreadPool::instance()->addTaskToSynchronization([vao = mData.mVao, vbo = mData.mVbo, ebo = mData.mEbo]()mutable {
+		Engine::ThreadPool::instance()->addTask<Engine::WorkerType::SYNC>([vao = mData.mVao, vbo = mData.mVbo, ebo = mData.mEbo]()mutable {
 			glDeleteVertexArrays(1, &vao);
 			glDeleteBuffers(1, &vbo);
 			glDeleteBuffers(1, &ebo);

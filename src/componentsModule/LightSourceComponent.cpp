@@ -2,7 +2,7 @@
 
 LightSourceComponent::LightSourceComponent(ecss::SectorId id, eLightType type) : ComponentInterface(id), mType(type) {
 }
-
+//offset - frustums count for light source, this offset used in light shader
 int LightSourceComponent::getTypeOffset(eLightType type) {
 	switch (type) {
 	case eLightType::NONE: return 0;
@@ -43,11 +43,11 @@ float LightSourceComponent::getIntensity() const {
 }
 
 
-void LightSourceComponent::setLightColor(const glm::vec3& lightColor) {
+void LightSourceComponent::setLightColor(const Engine::Math::Vec3& lightColor) {
 	mLightColor = lightColor;
 }
 
-const glm::vec3& LightSourceComponent::getLightColor() const {
+const Engine::Math::Vec3& LightSourceComponent::getLightColor() const {
 	return mLightColor;
 }
 
@@ -59,11 +59,11 @@ float LightSourceComponent::getBias() const {
 	return mBias;
 }
 
-void LightSourceComponent::setTexelSize(const glm::vec2& texelSize) {
+void LightSourceComponent::setTexelSize(const Engine::Math::Vec2& texelSize) {
 	mTexelSize = texelSize;
 }
 
-const glm::vec2& LightSourceComponent::getTexelSize() const {
+const Engine::Math::Vec2& LightSourceComponent::getTexelSize() const {
 	return mTexelSize;
 }
 

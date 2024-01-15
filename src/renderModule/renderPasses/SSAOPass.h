@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include <vec3.hpp>
+
 #include <vector>
 
 #include "renderModule/RenderPass.h"
@@ -8,7 +8,7 @@ namespace Engine::RenderModule::RenderPasses {
 	class SSAOPass : public RenderPass {
 	public:
 		struct Data {
-			std::vector<glm::vec3> mSsaoKernel;
+			std::vector<Math::Vec3> mSsaoKernel;
 			unsigned int mNoiseTexture = 0;
 			unsigned int mSsaoFbo = 0;
 			unsigned int mSsaoBlurFbo = 0;
@@ -27,8 +27,8 @@ namespace Engine::RenderModule::RenderPasses {
 			float sigmaL = 1.2f;
 		};
 
-		void init();
-		void render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) override;
+		void init() override;
+		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	private:
 
 		Data mData{};

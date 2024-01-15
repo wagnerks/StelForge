@@ -5,6 +5,7 @@
 #include "TypeName.h"
 #include "core/ECSHandler.h"
 #include "ecss/EntityHandle.h"
+#include "mathModule/Forward.h"
 
 namespace Engine::PropertiesModule {
 	class PropertiesSystem {
@@ -33,7 +34,7 @@ namespace Engine::PropertiesModule {
 		}
 		auto name = TypeName<T>::name().data();
 		if (properties.isMember(name)) {
-			ECSHandler::registry()->addComponent<T>(entity, entity.getID())->deserialize(properties[name]);
+			ECSHandler::registry().addComponent<T>(entity, entity.getID())->deserialize(properties[name]);
 		}
 	}
 
@@ -43,7 +44,7 @@ namespace Engine::PropertiesModule {
 			return;
 		}
 
-		if (auto component = ECSHandler::registry()->getComponent<T>(entity)) {
+		if (auto component = ECSHandler::registry().getComponent<T>(entity)) {
 			component->serialize(properties[TypeName<T>::name().data()]);
 		}
 
@@ -68,14 +69,14 @@ namespace Engine::PropertiesModule {
 			return nullptr;
 		}
 
-		inline glm::vec3 getVec3(const Json::Value& json) {
+		inline Math::Vec3 getVec3(const Json::Value& json) {
 			if (json.isArray()) {
 				return { json[0].asFloat(), json[1].asFloat(), json[2].asFloat() };
 			}
 			return {};
 		}
 
-		inline glm::vec2 getVec2(const Json::Value& json) {
+		inline Math::Vec2 getVec2(const Json::Value& json) {
 			if (json.isArray()) {
 				return { json[0].asFloat(), json[1].asFloat() };
 			}

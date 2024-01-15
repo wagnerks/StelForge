@@ -1,72 +1,29 @@
 ﻿#include "SystemManager.h"
 
-#include <algorithm>
-
-
-#include "ecss/Types.h"
-#include "SystemBase.h"
-#include "memoryModule/ECSMemoryStack.h"
+#include "systemsModule/SystemBase.h"
+#include "debugModule/Benchmark.h"
 
 using namespace ecss;
 
-SystemManager::SystemManager() {
-	const auto systemsSize = StaticTypeCounter<SystemInterface>::getSize();
-	mMemoryManager = new Engine::MemoryModule::ECSMemoryStack(systemsSize);
-
-	mSystemAllocator.init(systemsSize, mMemoryManager->allocate(systemsSize));
-}
-
 SystemManager::~SystemManager() {
-	for (const auto system : mWorkQueue) {
-		system->~SystemInterface();
+	for (const auto system : mSystemsMap) {
+		delete system;
 	}
-
-	delete mMemoryManager;
-}
-
-void SystemManager::sortWorkQueue() {
-	std::ranges::sort(mWorkQueue, [](const SystemInterface* a, const SystemInterface* b) {
-		return a->mPriority <  b->mPriority;
-	});
 }
 
 void SystemManager::update(float_t dt) {
-	systemsMutex.lock();
-	updating = true;
-	for (SystemInterface* system : mWorkQueue) {
-		system->mTimeSinceLastUpdate += dt;
-		if (!system->mEnabled) {
-			continue;
-		}
+	FUNCTION_BENCHMARK;
 
-		if (system->mTimeSinceLastUpdate > system->mUpdateInterval || system->mUpdateInterval == 0.f) {
-			system->preUpdate(dt);
-		}
-	}
-
-	for (SystemInterface* system : mWorkQueue) {
-		if (!system->mEnabled) {
-			continue;
-		}
-
-		if (system->mTimeSinceLastUpdate > system->mUpdateInterval || system->mUpdateInterval == 0.f) {
+	for (const auto system : mRenderRoot.children) {
+		if (system->mEnabled && (system->mTimeFromLastUpdate += dt) >= system->mUpdateInterval) {
+			system->mTimeFromLastUpdate = 0.f;
 			system->update(dt);
 		}
 	}
 
-	for (SystemInterface* system : mWorkQueue) {
-		if (!system->mEnabled) {
-			continue;
-		}
-
-		if (system->mTimeSinceLastUpdate > system->mUpdateInterval || system->mUpdateInterval == 0.f) {
-			system->postUpdate(dt);
-
-			system->mTimeSinceLastUpdate = 0.0f;
+	for (auto system : mSystemsMap) {
+		if (system->mEnabled) {
+			system->debugUpdate(dt);
 		}
 	}
-	updating = false;
-
-	systemsLock.notify_all();
-	systemsMutex.unlock();
 }

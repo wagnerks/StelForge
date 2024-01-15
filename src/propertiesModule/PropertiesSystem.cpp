@@ -6,6 +6,8 @@
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/DebugDataComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
+#include "componentsModule/ModelComponent.h"
+#include "componentsModule/TransformComponent.h"
 #include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
 #include "core/ThreadPool.h"
@@ -16,7 +18,7 @@ namespace Engine::PropertiesModule {
 			return {};
 		}
 
-		auto scene = ECSHandler::registry()->takeEntity();
+		auto scene = ECSHandler::registry().takeEntity();
 
 		fillTree(scene, FileSystem::readJson(path));
 
@@ -31,7 +33,7 @@ namespace Engine::PropertiesModule {
 			return;
 		}
 
-		deserializeProperty<TransformComponent>(entity, properties["Properties"]);
+		deserializeProperty<ComponentsModule::TransformComponent>(entity, properties["Properties"]);
 		deserializeProperty<ModelComponent>(entity, properties["Properties"]);
 	}
 
@@ -41,20 +43,20 @@ namespace Engine::PropertiesModule {
 		}
 
 		if (properties.isMember("id")) {
-			auto debugData = ECSHandler::registry()->addComponent<DebugDataComponent>(entity);
+			auto debugData = ECSHandler::registry().addComponent<DebugDataComponent>(entity);
 			debugData->stringId = properties["id"].asString();
 		}
 
-		ECSHandler::registry()->addComponent<IsDrawableComponent>(entity);
+		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
 		applyProperties(entity, properties);
-		auto treeComp = ECSHandler::registry()->addComponent<TreeComponent>(entity, entity.getID());
+		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity.getID());
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
-				auto child = ECSHandler::registry()->takeEntity();
-				ECSHandler::registry()->addComponent<IsDrawableComponent>(child);
+				auto child = ECSHandler::registry().takeEntity();
+				ECSHandler::registry().addComponent<IsDrawableComponent>(child);
 				fillTree(child, element);
-				ECSHandler::registry()->addComponent<TreeComponent>(child, child.getID());
+				ECSHandler::registry().addComponent<TreeComponent>(child, child.getID());
 				treeComp->addChildEntity(child.getID());
 			}
 		}
@@ -66,22 +68,22 @@ namespace Engine::PropertiesModule {
 			return result;
 		}
 
-		if (auto debugData = ECSHandler::registry()->getComponent<DebugDataComponent>(entity)) {
+		if (auto debugData = ECSHandler::registry().getComponent<DebugDataComponent>(entity)) {
 			result["id"] = debugData->stringId;
 		}
 		
 
-		serializeProperty<TransformComponent>(entity, result["Properties"]);
+		serializeProperty<ComponentsModule::TransformComponent>(entity, result["Properties"]);
 		serializeProperty<ModelComponent>(entity, result["Properties"]);
 		serializeProperty<CascadeShadowComponent>(entity, result["Properties"]);
 
-		auto treeComp = ECSHandler::registry()->getComponent<ComponentsModule::TreeComponent>(entity);
+		auto treeComp = ECSHandler::registry().getComponent<ComponentsModule::TreeComponent>(entity);
 		auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
 		if (!children.empty()) {
 			result["Children"] = Json::arrayValue;
 			auto& childrenJson = result["Children"];
 			for (auto node : children) {
-				childrenJson.append(serializeEntity(ECSHandler::registry()->getEntity(node)));
+				childrenJson.append(serializeEntity(ECSHandler::registry().getEntity(node)));
 			}
 		}
 

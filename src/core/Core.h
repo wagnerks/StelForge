@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include "debugModule/DebugMenu.h"
-#include "renderModule/Renderer.h"
 
 namespace Engine::CoreModule {
 	class Core {

@@ -8,15 +8,25 @@ file(GLOB_RECURSE SRC
 	"${CMAKE_SOURCE_DIR}/src/*.cc"
 )
 
+set(EXCLUDE_DIR_1 ${CMAKE_SOURCE_DIR}/src/submodules/JoltPhysics)
+
+foreach(EXCLUDE_DIR ${EXCLUDE_DIR_1})
+    file(GLOB_RECURSE EXCLUDE_FILES ${EXCLUDE_DIR}/*.cpp ${EXCLUDE_DIR}/*.h ${EXCLUDE_DIR}/*.hpp)
+    list(REMOVE_ITEM SRC ${EXCLUDE_FILES})
+endforeach()
+
 add_executable(${CMAKE_PROJECT_NAME} ${SRC})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC})
 
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/src/submodules")
+target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/src/submodules/JoltPhysics")
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/src")
 
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/lib/jsoncpp/include")
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/lib/glm")
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/lib/stb")
+
+target_link_libraries(${CMAKE_PROJECT_NAME} LINK_PUBLIC Jolt)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY CXX_STANDARD 20)

@@ -1,29 +1,93 @@
 ﻿#include "GeometryPass.h"
 
+#include "imgui.h"
 #include "componentsModule/ModelComponent.h"
 #include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "componentsModule/CameraComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/OutlineComponent.h"
 #include "componentsModule/ShaderComponent.h"
+#include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
 #include "core/ThreadPool.h"
+#include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 #include "logsModule/logger.h"
-#include "systemsModule/CameraSystem.h"
-#include "systemsModule/RenderSystem.h"
+#include "systemsModule/systems/CameraSystem.h"
+#include "systemsModule/systems/OcTreeSystem.h"
+#include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemManager.h"
+#include "systemsModule/SystemsPriority.h"
 
 using namespace Engine::RenderModule::RenderPasses;
+
+void GeometryPass::prepare() {
+	auto curPassData = getCurrentPassData();
+	mStatus = RenderPreparingStatus::PREPARING;
+
+	auto& renderData = ECSHandler::getSystem<Engine::SystemsModule::RenderSystem>()->getRenderData();
+	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, entities = std::vector<unsigned>()]() mutable {
+		FUNCTION_BENCHMARK
+		curPassData->getBatcher().drawList.clear();
+
+		{
+			FUNCTION_BENCHMARK_NAMED(octree);
+			constexpr size_t batchSize = 400;
+
+			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+			std::mutex addMtx;
+			auto aabbOctrees = octreeSys->getAABBOctrees(camFrustum.generateAABB());
+			ThreadPool::instance()->addBatchTasks(aabbOctrees.size(), 5, [aabbOctrees, octreeSys, &addMtx, &camFrustum, &entities](size_t it) {
+				if (auto treeIt = octreeSys->getOctree(aabbOctrees[it])) {
+					auto lock = treeIt->readLock();
+					treeIt->forEachObjectInFrustum(camFrustum, [&entities, &camFrustum, &addMtx](const auto& obj) {
+						if (FrustumModule::AABB::isOnFrustum(camFrustum, obj.pos, obj.size)) {
+							std::unique_lock lock(addMtx);
+							entities.emplace_back(obj.data.getID());
+						}
+					});
+				}
+				
+			}).waitAll();
+		}
+
+		if (entities.empty()) {
+			return;
+		}
+		std::ranges::sort(entities);
+
+		{
+			auto& batcher = curPassData->getBatcher();
+			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
+			for (auto [ent, transform, modelComp] : ECSHandler::registry().getComponentsArray<TransformComponent, ModelComponent>(entities)) {
+				if (!&modelComp) {
+					continue;
+				}
+
+				for (auto& mesh : modelComp.getModel().mMeshHandles) {
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
+				}
+			}
+			batcher.sort(camPos);
+		}
+
+		mStatus = RenderPreparingStatus::READY;
+	});
+}
 
 void GeometryPass::init() {
 	if (mInited) {
 		return;
 	}
 	mInited = true;
+
+
+	passData.push_back(new RenderPassData());
+	passData.push_back(new RenderPassData());
 
 	// configure g-buffer framebuffer
 	// ------------------------------
@@ -55,7 +119,7 @@ void GeometryPass::init() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, mData.gAlbedoSpec, 0);
 
-	// color + specular color buffer
+	// viewPos buffer
 	glGenTextures(1, &mData.gViewPosition);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gViewPosition);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
@@ -82,7 +146,7 @@ void GeometryPass::init() {
 
 	glGenTextures(1, &mData.gDepthTexture);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gDepthTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, mData.gDepthTexture, 0);
@@ -125,93 +189,81 @@ void GeometryPass::init() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, mData.gLights, 0);*/
 
-	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
+
 	constexpr unsigned int Oattachments[1] = { GL_COLOR_ATTACHMENT0 };
 	glDrawBuffers(1, Oattachments);
 
-	// finally check if framebuffer is complete
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		LogsModule::Logger::LOG_WARNING("Framebuffer not complete!");
 	}
-	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
-
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 }
 
-void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
+void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
 	if (!mInited) {
 		return;
 	}
+	FUNCTION_BENCHMARK
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	}
 
 
 	renderDataHandle.mGeometryPassData = mData;
-	auto batcher = renderer->getBatcher();
+	if (currentLock.valid()) {
+		FUNCTION_BENCHMARK_NAMED(_lock_wait)
+		currentLock.wait();
+	}
 
-	auto future = ThreadPool::instance()->addRenderTask([&](std::mutex& poolMutex) {
-		for (auto [enttgsf, isDraw, transform, modelComp] : ECSHandler::registry()->getComponentsArray<const IsDrawableComponent, const TransformComponent, ModelComponent>()) {
-			if (!&isDraw || !&modelComp) {
-				continue;
-			}
-			
-			for (auto& mesh : modelComp.getModel().mMeshHandles) {
-				if (mesh.mBounds && mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
-					batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
-				}
-			}
-		}
-	});
-		
-	
+	const auto curPassData = getCurrentPassData();
+	rotate();
+	prepare();
 
+	size_t count = 0;
+	for (auto& list : curPassData->getBatcher().drawList) {
+		count += list.transforms.size();
+	}
+	ImGui::Text("geometry %d", count);
+	if (count == 0) {
+		int d = 0;
+	}
 	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
-
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mGBuffer);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+	
 	auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 	shaderGeometryPass->use();
-	shaderGeometryPass->setMat4("P", renderDataHandle.mProjection);
-	shaderGeometryPass->setMat4("V", renderDataHandle.mView);
-	shaderGeometryPass->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
 	shaderGeometryPass->setInt("texture_diffuse1", 0);
 	shaderGeometryPass->setInt("normalMap", 1);
 	shaderGeometryPass->setBool("outline", false);
 
-	
-	
-	
-	auto curCam = ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
-	future.get();
+	curPassData->getBatcher().flushAll(true);
 
-	batcher->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(curCam)->getPos());
-
-	auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
-	lightObjectsPass->use();
-	lightObjectsPass->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
-
-	for (const auto& [entt, lightSource, transform, modelComp] : ECSHandler::registry()->getComponentsArray<LightSourceComponent, TransformComponent, ModelComponent>()) {
+	/*for (const auto& [entt, lightSource, transform, modelComp, aabb] : ECSHandler::registry().getComponentsArray<LightSourceComponent, TransformComponent, ModelComponent, ComponentsModule::AABBComponent>()) {
 		if (!&modelComp) {
 			continue;
 		}
-
+		int i = 0;
 		for (auto& mesh : modelComp.getModel().mMeshHandles) {
-			if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
-				batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
+			if (aabb.aabbs[i].isOnFrustum(renderDataHandle.mCamFrustum)) {
+				batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 			}
+			i++;
 		}
-		
+		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
+	}*/
+
+	if (!batcher.drawList.empty()) {
+		auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
+		lightObjectsPass->use();
+		batcher.flushAll(true);
 	}
+	
 
 	
-	batcher->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(ECSHandler::systemManager()->getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
-
-	
-	auto outlineNodes = ECSHandler::registry()->getComponentsArray<OutlineComponent>();
+	auto outlineNodes = ECSHandler::registry().getComponentsArray<OutlineComponent>();
 	if (!outlineNodes.empty()) {
 		needClearOutlines = true;
 
@@ -220,22 +272,28 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 
 		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
 		g_buffer_outlines->use();
-		g_buffer_outlines->setMat4("PV", renderDataHandle.mProjection * renderDataHandle.mView);
+		g_buffer_outlines->setMat4("PV", renderDataHandle.current.PV);
 
-		for (const auto& [entity, outline, transform, modelComp] : ECSHandler::registry()->getComponentsArray<OutlineComponent, TransformComponent, ModelComponent>()) {
-			if (!&modelComp || !&transform) {
+		for (const auto& [entity, outline, transform, modelComp, aabbcomp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent, ComponentsModule::AABBComponent>()) {
+			if (!&modelComp || !&transform || !&aabbcomp) {
+				continue;
+			}
+			if (aabbcomp.aabbs.empty()) {
 				continue;
 			}
 
 			auto& model = modelComp.getModel();
+			int i = 0;
 			for (auto& mesh : model.mMeshHandles) {
-				if (mesh.mBounds && mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform.getTransform())) {
-					batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
+				if (aabbcomp.aabbs[i].isOnFrustum(renderDataHandle.mCamFrustum)) {
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 				}
+				i++;
 			}
 		}
-		
-		batcher->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(curCam)->getPos());
+		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
+
+		batcher.flushAll(true);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
@@ -265,4 +323,5 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& r
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	}
+	
 }

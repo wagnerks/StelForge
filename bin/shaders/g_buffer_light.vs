@@ -10,9 +10,13 @@ layout(std430, binding = 1) buffer modelMatrices
     mat4 model[];
 };
 
-uniform mat4 PV;
+layout(std140, binding = 5) uniform SharedMatrices {
+    mat4 projection;
+    mat4 view;
+    mat4 PV;
+} matrices;
 
 void main()
 {
-    gl_Position = PV * model[gl_InstanceID] * vec4(aPos, 1.0);
+    gl_Position = matrices.PV * model[gl_InstanceID] * vec4(aPos, 1.0);
 }

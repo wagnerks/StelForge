@@ -1,9 +1,6 @@
 ﻿#pragma once
-#include <cassert>
-#include <mutex>
-#include <unordered_map>
 
-#include "memoryModule/Allocators.h"
+#include "systemsModule/SystemBase.h"
 
 namespace Engine {
 	namespace MemoryModule {
@@ -12,49 +9,52 @@ namespace Engine {
 }
 
 namespace ecss {
-	class EntityComponentSystem;
-	class SystemInterface;
+	struct SystemsGraph {
+		std::vector<System*> children;
+	};
 
 	class SystemManager final {
 		SystemManager(const SystemManager&) = delete;
 		SystemManager& operator=(SystemManager&) = delete;
 	public:
-		SystemManager();
+		SystemManager() = default;
 		~SystemManager();
 
 		void update(float_t dt);
-		void sortWorkQueue();
-
+		
 		template <class T>
 		T* getSystem() {
-			auto it = mSystemsMap.find(T::STATIC_SYSTEM_TYPE_ID);
-			if (it != mSystemsMap.end() && it->second) {
-				return static_cast<T*>(it->second);
+			if (mSystemsMap.size() > SystemTypeCounter::type<T>()) {
+				return static_cast<T*>(mSystemsMap[SystemTypeCounter::type<T>()]);
 			}
 
 			return nullptr;
 		}
 
 		template <class T, class... ARGS>
-		T* addSystem(ARGS&&... systemArgs) {
+		T* createSystem(ARGS&&... systemArgs) {
 			auto system = getSystem<T>();
 			if (system) {
 				return system;
 			}
 
-			void* pSystemMem = mSystemAllocator.allocate(sizeof(T), alignof(T));
-			if (!pSystemMem) {
-				assert(false);
-				return nullptr;
-			}
-
-			system = new(pSystemMem)T(std::forward<ARGS>(systemArgs)...);
-			mSystemsMap[T::STATIC_SYSTEM_TYPE_ID] = system;
-
-			mWorkQueue.push_back(system);
-			sortWorkQueue();
+			system = new T(std::forward<ARGS>(systemArgs)...);
+			system->mType = ecss::SystemTypeCounter::type<T>();
+			mSystemsMap.push_back(system);
 
 			return system;
+		}
+
+		template <class T, class... ARGS>
+		void setSystemDependencies() {
+			auto system = getSystem<T>();
+
+			(system->template addDependency<ARGS>(getSystem<ARGS>()), ...);
+		}
+		
+		template <class... ARGS>
+		void addRootSystems() {
+			(mRenderRoot.children.push_back(getSystem<ARGS>()), ...);
 		}
 
 		template <class T>
@@ -69,34 +69,15 @@ namespace ecss {
 		}
 
 		template <class T>
-		void setSystemUpdateInterval(float_t updateInterval) {
+		void setUpdateInterval(float_t updateInterval) {
 			if (auto system = getSystem<T>()) {
 				system->mUpdateInterval = updateInterval;
 			}
 		}
-
-		template <class T>
-		void setSystemPriority(uint16_t newPriority) {
-			if (auto system = getSystem<T>()) {
-				if (system->mPriority == newPriority) {
-					return;
-				}
-
-				system->mPriority = newPriority;
-
-				sortWorkQueue();
-			}
-		}
-
-		std::mutex systemsMutex;
-		std::condition_variable systemsLock;
-		std::atomic_bool updating = false;
+		
 	private:
-		Engine::MemoryModule::LinearAllocator mSystemAllocator;
+		SystemsGraph mRenderRoot;
 
-		std::unordered_map<uint64_t, SystemInterface*> mSystemsMap;
-		std::vector<SystemInterface*> mWorkQueue;
-
-		Engine::MemoryModule::ECSMemoryStack* mMemoryManager = nullptr;
+		std::vector<System*> mSystemsMap;
 	};
 }

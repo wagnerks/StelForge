@@ -1,10 +1,13 @@
 #pragma once
-#include "mat4x4.hpp"
+
 #include <vector>
 
+#include "ComponentBase.h"
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "core/BoundingVolume.h"
 #include "core/Projection.h"
+#include "propertiesModule/Serializable.h"
+
 
 namespace Engine::ComponentsModule {
 	struct ShadowCascade {
@@ -13,8 +16,8 @@ namespace Engine::ComponentsModule {
 		float bias = 0.f;
 		int samples = 64;
 
-		glm::vec2 zMult = { 1.f,1.f };
-		glm::vec2 texelSize = {};
+		Math::Vec2 zMult = { 1.f,1.f };
+		Math::Vec2 texelSize = {};
 	};
 
 	class CascadeShadowComponent : public ecss::ComponentInterface, PropertiesModule::Serializable {
@@ -22,21 +25,22 @@ namespace Engine::ComponentsModule {
 		CascadeShadowComponent(ecss::SectorId id) : ComponentInterface(id) {};
 
 		void updateCascades(const ProjectionModule::PerspectiveProjection& cameraProjection);
-		void updateLightSpaceMatrices(const glm::mat4& cameraView);
+		void updateLightSpaceMatrices(const Math::Mat4& cameraView);
 
-		static glm::mat4 getLightSpaceMatrix(const std::vector<glm::vec4>& corners, const glm::mat4& lightView, float nearMultiplier = 1.f, float farMultiplier = 1.f);
-		static std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
-		static std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& projView);
+		static Engine::Math::Mat4 getLightSpaceMatrix(const std::vector<Engine::Math::Vec4>& corners, const Engine::Math::Mat4& lightView, float nearMultiplier = 1.f, float farMultiplier = 1.f);
+		static std::vector<Math::Vec4> getFrustumCornersWorldSpace(const Math::Mat4& proj, const Math::Mat4& view);
+		static std::vector<Math::Vec4> getFrustumCornersWorldSpace(const Math::Mat4& projView);
 
 		std::vector<ShadowCascade> cascades;
 		std::vector<float> shadowCascadeLevels;
-		glm::vec2 resolution = {};
+		Math::Vec2 resolution = {};
 
 		ProjectionModule::PerspectiveProjection mCameraProjection = {};
 
 
 		void markDirty();
-		const std::vector<glm::mat4>& getLightSpaceMatrices();
+		void calculateLightSpaceMatrices(const ProjectionModule::PerspectiveProjection& projection, const Math::Mat4& view);
+		const std::vector<Math::Mat4>& getLightSpaceMatrices();
 
 		void serialize(Json::Value& data) override;
 		void deserialize(const Json::Value& data) override;
@@ -44,15 +48,15 @@ namespace Engine::ComponentsModule {
 
 		void cacheMatrices();
 
-		static const std::vector<glm::mat4>& getCacheLightSpaceMatrices();
-		static void debugDraw(const std::vector<glm::mat4>& lightSpaceMatrices, const glm::mat4& cameraProjection, const glm::mat4& cameraView);
+		static const std::vector<Math::Mat4>& getCacheLightSpaceMatrices();
+		static void debugDraw(const std::vector<Engine::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView);
 		static void clearCacheMatrices();
 	private:
-		static void drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader);
-		static inline std::vector<glm::mat4> mLightMatricesCache;
+		static void drawCascadeVolumeVisualizers(const std::vector<Engine::Math::Mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader);
+		static inline std::vector<Math::Mat4> mLightMatricesCache;
 
 
-		std::vector<glm::mat4> mLightSpaceMatrices;
+		std::vector<Math::Mat4> mLightSpaceMatrices;
 		bool mDirty = true;
 	};
 }

@@ -12,6 +12,7 @@ add_subdirectory(lib/imgui/)
 
 
 add_subdirectory(src)
+add_subdirectory(src/submodules/JoltPhysics/Build)
 
 set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
@@ -20,3 +21,5 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set_target_properties(glad imgui PROPERTIES FOLDER HiddenTargets)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES FOLDER AppTools)
+
+#set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "HelloWorld")

@@ -19,14 +19,18 @@ out mat3 TBN;
 
 uniform mat3 normalMatrix;
 
-uniform mat4 PV;
-uniform mat4 V;
+layout(std140, binding = 5) uniform SharedMatrices {
+    mat4 projection;
+    mat4 view;
+    mat4 PV;
+} matrices;
+
 
 void main()
 {
     
     vec4 worldPos = model[gl_InstanceID] * vec4(aPos, 1.0);
-    ViewPos = vec3(V * worldPos);
+    ViewPos = vec3(matrices.view * worldPos);
 
     FragPos = worldPos.xyz; 
     TexCoords = aTexCoords;
@@ -34,5 +38,5 @@ void main()
     Normal = normalize(transpose(inverse(mat3(model[gl_InstanceID]))) * aNormal);
     TBN = mat3 (aTangents, aBiTangents, Normal);
 
-    gl_Position = PV * worldPos;
+    gl_Position = matrices.PV * worldPos;
 }

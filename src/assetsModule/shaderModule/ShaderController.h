@@ -1,6 +1,5 @@
 ﻿#pragma once
 
-#include "renderModule/Renderer.h"
 #include "Shader.h"
 #include "core/Singleton.h"
 
@@ -22,6 +21,7 @@ namespace Engine::ShaderModule {
 		void useDefaultShader();
 		void deleteShaderGL(unsigned int ID);
 		void deleteShader(ShaderBase* shader);
+		void deleteShader(size_t shaderHash);
 
 		ShaderBase* defaultShader = nullptr;
 		void removeShader(ShaderBase* shader);
@@ -32,7 +32,7 @@ namespace Engine::ShaderModule {
 		std::unordered_map<size_t, ShaderBase*> shaders;
 		std::hash<std::string> hasher;
 
-		GLuint currentShader = 0;
+		unsigned int currentShader = 0;
 	};
 }
 

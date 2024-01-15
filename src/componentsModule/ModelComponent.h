@@ -3,8 +3,10 @@
 #include <vector>
 #include <json/value.h>
 
+#include "ComponentBase.h"
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/modelModule/Model.h"
+#include "ecss/Types.h"
 #include "propertiesModule/Serializable.h"
 
 
@@ -25,6 +27,10 @@ namespace Engine::ComponentsModule {
 		std::vector<float> mLodLevelValues;
 	};
 
+	struct AABBComponent {
+		std::vector<FrustumModule::AABB> aabbs;
+	};
+
 	class ModelComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
 		ModelComponent(ecss::SectorId id) : ComponentInterface(id) {};
@@ -34,7 +40,7 @@ namespace Engine::ComponentsModule {
 		}
 
 		const AssetsModule::ModelObj& getModel();
-		AssetsModule::ModelObj& getModel(size_t LOD);
+		AssetsModule::ModelObj& getModel(size_t LOD) const;
 		const AssetsModule::ModelObj& getModelLowestDetails() const;
 
 		void setModel(std::vector<AssetsModule::ModelObj>* data);

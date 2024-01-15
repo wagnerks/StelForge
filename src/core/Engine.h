@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <thread>
+
 #include "Core.h"
 #include "InputHandler.h"
 #include "Singleton.h"
@@ -19,6 +21,7 @@ namespace Engine {
 		bool isAlive() const;
 
 		GLFWwindow* getMainWindow() const;
+		GLFWwindow* getEditorWindow();
 
 		static bool isMainThread();
 
@@ -41,7 +44,8 @@ namespace Engine {
 		CoreModule::Core* mCore = nullptr;
 
 		GLFWwindow* mMainWindow = nullptr;
-
+		GLFWwindow* mEditorWindow = nullptr;
+		void editorUpdate();
 		inline static std::thread::id mMainThreadID;
 	};
 }

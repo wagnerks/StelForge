@@ -59,7 +59,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
 		stbi_image_free(data);
 	}
 	else {
-		Engine::ThreadPool::instance()->addTaskToSynchronization([id = texture->assetId, data, texWidth, texHeight]()mutable {
+		Engine::ThreadPool::instance()->addTask<Engine::WorkerType::SYNC>([id = texture->assetId, data, texWidth, texHeight]()mutable {
 			unsigned texID;
 
 			glGenTextures(1, &texID);

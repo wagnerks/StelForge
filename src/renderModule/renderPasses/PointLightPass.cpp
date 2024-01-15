@@ -1,6 +1,6 @@
 ﻿#include "PointLightPass.h"
 
-#include <mat4x4.hpp>
+#include <shared_mutex>
 
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
@@ -10,14 +10,18 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
+#include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 
 #include "logsModule/logger.h"
-#include "systemsModule/CameraSystem.h"
-#include "systemsModule/RenderSystem.h"
+#include "systemsModule/systems/CameraSystem.h"
+#include "systemsModule/systems/OcTreeSystem.h"
+#include "systemsModule/systems/RenderSystem.h"
+#include "systemsModule/SystemManager.h"
+#include "systemsModule/SystemsPriority.h"
 
 namespace Engine::RenderModule::RenderPasses {
-	void PointLightPass::initRender() {
+	void PointLightPass::init() {
 		lightProjection = Engine::ProjectionModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
 
@@ -56,7 +60,7 @@ namespace Engine::RenderModule::RenderPasses {
 		glGenBuffers(1, &mMatricesUBO);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, mMatricesUBO);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * maxShadowFaces, nullptr, GL_STATIC_DRAW);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(Math::Mat4) * maxShadowFaces, nullptr, GL_STATIC_DRAW);
 		glBindBufferBase(GL_UNIFORM_BUFFER, lightMatricesBinding, mMatricesUBO);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
@@ -70,19 +74,27 @@ namespace Engine::RenderModule::RenderPasses {
 		glDeleteBuffers(1, &mMatricesUBO);
 	}
 
-	void PointLightPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
+	void PointLightPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
 		if (!renderer) {
 			return;
 		}
 
+		FUNCTION_BENCHMARK
 		lightMatrices.clear();
 		frustums.clear();
+		
+	
 
 		renderDataHandle.mPointPassData.shadowEntities.clear();
 
 		offsets.clear();
-	
-		for (const auto& [entity,lightSource] : ECSHandler::registry()->getComponentsArray<LightSourceComponent>()) {
+		
+		for (const auto& [entity,lightSource, transform] : ECSHandler::registry().getComponentsArray<LightSourceComponent, TransformComponent>()) {
+			//todo check is light side frustum in camera frustum, and filter it to ignore light sources which is not on your screen
+			if (!FrustumModule::SquareAABB::isOnFrustum(renderDataHandle.mCamFrustum, transform.getPos(true), lightSource.mRadius)) {
+				continue;
+			}
+
 			//todo some dirty logic
 			switch (lightSource.getType()) {
 			case ComponentsModule::eLightType::DIRECTIONAL: {
@@ -98,7 +110,7 @@ namespace Engine::RenderModule::RenderPasses {
 				renderDataHandle.mPointPassData.shadowEntities.push_back(entity);
 				offsets.emplace_back(entity, lightSource.getTypeOffset(lightSource.getType()));
 				
-				fillMatrix(ECSHandler::registry()->getComponent<TransformComponent>(entity)->getPos(true), lightSource.mNear, lightSource.mRadius);
+				fillMatrix(transform.getPos(true), lightSource.mNear, lightSource.mRadius);
 				break;
 			}
 			case ComponentsModule::eLightType::PERSPECTIVE: {
@@ -111,9 +123,13 @@ namespace Engine::RenderModule::RenderPasses {
 			}
 		}
 
+		if (offsets.empty()) {
+			return;
+		}
+
 		if (!lightMatrices.empty()) {
 			glBindBuffer(GL_UNIFORM_BUFFER, mMatricesUBO);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4x4) * lightMatrices.size(), &lightMatrices[0]);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Math::Mat4) * lightMatrices.size(), &lightMatrices[0]);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
@@ -124,7 +140,6 @@ namespace Engine::RenderModule::RenderPasses {
 		glViewport(0, 0, static_cast<int>(shadowResolution), static_cast<int>(shadowResolution));
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		auto batcher = renderer->getBatcher();
 
 		int offsetSum = 0;
 		for (auto& offset : offsets) {
@@ -132,46 +147,69 @@ namespace Engine::RenderModule::RenderPasses {
 			simpleDepthShader->use();
 			simpleDepthShader->setInt("offset", offsetSum);
 
-			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry()->getComponentsArray<ModelComponent, IsDrawableComponent, TransformComponent>()) {
+			auto ocTreeSystem = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+			ocTreeSystem->readLock();
+
+			std::vector<ecss::SectorId> entities;
+ 
+			for (auto& [coords, tree] : ocTreeSystem->mOctrees) {
+				auto lock = tree.readLock();
+				tree.forEachObject([this, &entities, offsetSum, &offset](const auto& obj) {
+					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
+						if (FrustumModule::AABB::isOnFrustum(frustums[i], obj.pos + Engine::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size)){
+							entities.emplace_back(obj.data.getID());
+							break;
+						}
+					}
+						
+					
+					
+				}, [this, offsetSum, &offset](const Engine::Math::Vec3& pos, float size, auto&) {
+					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
+						if (OcTree<ecss::EntityHandle>::isOnFrustum(frustums[i], pos, size)) {
+							return true;
+						}
+					}
+					return false;
+				});
+			}
+
+			std::sort(entities.begin(), entities.end());
+			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().getComponentsArray<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
 				if (!&trans || !&mod || !&draw) {
 					continue;
 				}
 
 				const auto& transformMatrix = trans.getTransform();
 				for (auto& mesh : mod.getModelLowestDetails().mMeshHandles) {
-					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
-						if (mesh.mBounds->isOnFrustum(frustums[i], transformMatrix)) {
-							batcher->addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, false);
-							break;
-						}
-					}
-
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, false);
 				}
 			}
+			batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(offset.first)->getPos(true));
 
 			offsetSum += offset.second;
 			
-			renderer->getBatcher()->flushAll(true, ECSHandler::registry()->getComponent<TransformComponent>(offset.first)->getPos(true));
+			batcher.flushAll(true);
 		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glViewport(0, 0, Engine::RenderModule::Renderer::SCR_WIDTH, Engine::RenderModule::Renderer::SCR_HEIGHT);
 	}
 
-	void PointLightPass::fillMatrix(glm::vec3 globalLightPos, float lightNear, float lightRadius) {
+	void PointLightPass::fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius) {
 		lightProjection.setNearFar(lightNear, lightRadius);
 
-		const auto transform = glm::translate(glm::mat4(1.0f), globalLightPos);
+		const auto transform = Math::translate(Math::Mat4(1.0f), globalLightPos);
 
 		for (auto angle : { 0.f, 90.f, -90.f, 180.f }) {
-			auto res = glm::rotate(transform, glm::radians(angle), { 0.f,1.f,0.f });//todo rotate matrix instead creating rotated copy
-			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * glm::inverse(res));
+			//todo rotate matrix instead creating rotated copy
+			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * Math::inverse(Math::rotate(transform, Math::radians(angle), { 0.f,1.f,0.f })));
 			frustums.push_back(Engine::FrustumModule::createFrustum(lightMatrices.back()));
 		}
 
 		for (auto angle : { 90.f, -90.f }) {
-			auto res = glm::rotate(transform, glm::radians(angle), { 1.f,0.f,0.f });
-			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * glm::inverse(res));
+			auto res = Math::rotate(transform, Math::radians(angle), { 1.f,0.f,0.f });
+			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * Math::inverse(res));
 			frustums.push_back(Engine::FrustumModule::createFrustum(lightMatrices.back()));
 		}
 	}

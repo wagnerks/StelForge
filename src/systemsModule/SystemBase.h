@@ -1,72 +1,219 @@
 ﻿#pragma once
 
+#include <shared_mutex>
+
 #include "ecss/Types.h"
-#include <type_traits>
+#include <vector>
+#include "core/ThreadPool.h"
 
 namespace ecss {
+	using SystemType = uint16_t;
 
-	template <class T>
-	class StaticTypeCounter {
-	private:
-		inline static ECSType mCounter = 0;
-		inline static size_t mSize = 0;
+	class SystemTypeCounter {
+		inline static SystemType mCounter = 0;
+
 	public:
 		template <class U>
-		static ECSType get() {
-			static const ECSType STATIC_TYPE_ID{mCounter++};
+		static SystemType type() {
+			static const SystemType STATIC_TYPE_ID{mCounter++};
 			return STATIC_TYPE_ID;
 		}
-
-		template <class U>
-		static size_t getSize() {
-			if (std::is_const<U>::value) {
-				return 0;
-			}
-			static const size_t STATIC_TYPE_SIZE{sizeof(U) + alignof(U)};
-			mSize += STATIC_TYPE_SIZE;
-			return STATIC_TYPE_SIZE;
-		}
-
-		static ECSType getCount() {
-			return mCounter;
-		}
-
-		static size_t getSize() {
-			return mSize;
-		}
 	};
 
-	class EntityComponentSystem;
+	template<typename T, typename KeyType = size_t>
+	struct SparseSet {
+		constexpr static inline KeyType INVALID_IDX = std::numeric_limits<KeyType>::max();
 
-	class SystemInterface {
-		friend class SystemManager;
-	protected:
-		SystemInterface() = default;
-		virtual ~SystemInterface() = default;
+		T& operator[](KeyType key) {
+			auto idx = getIndex(key);
+			if (idx == INVALID_IDX) {
+				mDense.emplace_back(T{});
+				if (mSparce.size() <= key) {
+					mSparce.resize(key + 1, INVALID_IDX);
+				}
+				idx = mDense.size() - 1;
+				mSparce[key] = static_cast<KeyType>(idx);
+			}
 
-	public:
-		virtual void preUpdate(float dt) = 0;
-		virtual void update(float dt) = 0;
-		virtual void postUpdate(float dt) = 0;
+			return mDense[idx];
+		}
+
+		KeyType getKey(size_t index) const {
+			for (auto i = 0u; i < mSparce.size(); i++) {
+				if (mSparce[i] == index) {
+					return i;
+				}
+			}
+
+			return INVALID_IDX;
+		}
+
+		void insert(KeyType key, const T& obj) {
+			auto idx = getIndex(key);
+			if (idx != INVALID_IDX) {
+				return;
+			}
+
+			mDense.emplace_back(obj);
+			if (mSparce.size() <= key) {
+				mSparce.resize(key + 1, INVALID_IDX);
+			}
+			mSparce[key] = static_cast<KeyType>(mDense.size() - 1);
+		}
+
+		typename std::vector<T>::iterator begin() {
+			return mDense.begin();
+		}
+		typename std::vector<T>::iterator end() {
+			return mDense.end();
+		}
 
 	private:
-		//variables should be set through systemManager
-		float  mTimeSinceLastUpdate = 0.f;
-		float  mUpdateInterval = 0.f;
 
-		uint16_t mPriority = 0;
-
-		bool	 mEnabled = true;
+		inline size_t getIndex(KeyType key) const {
+			return static_cast<size_t>(key >= mSparce.size() ? INVALID_IDX : mSparce[key]);
+		}
+		
+		std::vector<KeyType> mSparce;//indexes
+		std::vector<T> mDense;//entities
 	};
 
-	template <class T>
-	class System : public SystemInterface {
-	public:
-		inline static const auto STATIC_SYSTEM_TYPE_ID = StaticTypeCounter<SystemInterface>::get<T>();
-		inline static const auto STATIC_SYSTEM_SIZE = StaticTypeCounter<SystemInterface>::getSize<T>();
+	class System {
+		friend class SystemManager;
 
-		void preUpdate(float dt) override {}
-		void update(float dt) override {}
-		void postUpdate(float dt) override {}
+	public:
+		virtual void update(float dt) {}
+		virtual void debugUpdate(float dt) {}
+		virtual void update(const std::vector<SectorId>& entitiesToProcess) {}
+
+	protected:
+		SystemType mType;
+
+		System() = default;
+		virtual ~System() = default;
+
+		virtual void sync() {
+			std::vector<ecss::SectorId> newEntities;
+			for (auto& [mutex, container] : mUpdatedEntities) {
+				mutex.lock();
+				for (auto entity : container) {
+					newEntities.push_back(entity);
+				}
+				container.clear();
+				mutex.unlock();
+			}
+
+			mEntitiesToProcess.clear();
+			if (!newEntities.empty()) {
+				std::sort(newEntities.begin(), newEntities.end());
+				mEntitiesToProcess.reserve(newEntities.size());
+				mEntitiesToProcess.push_back(newEntities[0]);
+
+				for (auto i = 1; i < newEntities.size(); i++) {
+					if (newEntities[i - 1] != newEntities[i]) {
+						mEntitiesToProcess.push_back(newEntities[i]);
+					}
+				}
+			}
+			mEntitiesToProcess.shrink_to_fit();
+		}
+
+		virtual void onDependentUpdate() {
+			if (mIsWorking) {
+				return;
+			}
+			mIsWorking = true;
+
+			sync();
+			if (mEntitiesToProcess.empty()) {
+				mIsWorking = false;
+				return;
+			}
+
+			Engine::ThreadPool::instance()->addTask([this] {
+				while (!mEntitiesToProcess.empty()) {
+					update(mEntitiesToProcess);
+
+					sync();
+				}
+
+				mIsWorking = false;
+			});
+		}
+
+		virtual void onDependentParentUpdate(SystemType systemType, const std::vector<SectorId>& updatedEntities) {
+			auto& entities = mUpdatedEntities[systemType];
+
+			entities.mutex.lock();
+			entities.entities.insert(entities.entities.end(), updatedEntities.begin(), updatedEntities.end());
+			entities.mutex.unlock();
+
+			onDependentUpdate();
+		}
+
+		virtual void onDependentParentUpdate(SystemType systemType, const SectorId updatedEntities) {
+			auto& entities = mUpdatedEntities[systemType];
+			
+			entities.mutex.lock();
+			entities.entities.push_back(updatedEntities);
+			entities.mutex.unlock();
+
+			onDependentUpdate();
+		}
+		
+		virtual void updateDependents(const std::vector<SectorId>& updatedEntities) const {
+			for (const auto system : mDependentSystems) {
+				system->onDependentParentUpdate(mType, updatedEntities);
+			}
+		}
+
+		virtual void updateDependents(const SectorId updatedEntities) const {
+			for (const auto system : mDependentSystems) {
+				system->onDependentParentUpdate(mType, updatedEntities);
+			}
+		}
+
+	private:
+		struct EntitiesContainer {
+			EntitiesContainer() = default;
+			EntitiesContainer(const EntitiesContainer& other) {}
+			EntitiesContainer(EntitiesContainer&& other) noexcept {}
+
+			EntitiesContainer& operator=(const EntitiesContainer& other) {
+				if (this == &other)
+					return *this;
+				return *this;
+			}
+
+			EntitiesContainer& operator=(EntitiesContainer&& other) noexcept {
+				if (this == &other)
+					return *this;
+				return *this;
+			}
+
+			std::shared_mutex mutex;
+			std::vector<SectorId> entities;
+		};
+		
+		SparseSet<EntitiesContainer, SystemType> mUpdatedEntities;
+
+		template<typename SystemT>
+		void addDependency(System* system) {
+			mDependentSystems.emplace_back(system);
+			mUpdatedEntities[ecss::SystemTypeCounter::type<SystemT>()];
+		}
+
+		std::vector<System*> mDependentSystems;
+
+	private:
+		std::vector<SectorId> mEntitiesToProcess;
+
+		std::atomic_bool mIsWorking = false;
+
+		//variables should be set through systemManager
+		float mTimeFromLastUpdate = 0.f;
+		float mUpdateInterval = 0.f;
+
+		bool  mEnabled = true;		
 	};
 }

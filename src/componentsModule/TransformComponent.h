@@ -1,55 +1,76 @@
 ﻿#pragma once
-#include <fwd.hpp>
-#include <vector>
-#include <detail/type_quat.hpp>
 
-#include "matrix.hpp"
+#include <shared_mutex>
+
+#include "mathModule/Forward.h"
+#include "mathModule/Quaternion.h"
 
 #include "componentsModule/ComponentBase.h"
 #include "propertiesModule/Serializable.h"
 
-
 namespace Engine::ComponentsModule {
-
-	class DirtyTransform {};
-
 	class TransformComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
-		TransformComponent(ecss::SectorId id) : ComponentInterface(id) {};
+		TransformComponent(TransformComponent&& other) noexcept
+			: ecss::ComponentInterface(std::move(other)),
+			  PropertiesModule::Serializable(std::move(other)),
+			  mDirty(true),
+			  mRotateQuaternion(std::move(other.mRotateQuaternion)),
+		      mTransform(std::move(other.mTransform)),
+			  mPos(std::move(other.mPos)),
+			  mScale(std::move(other.mScale)),
+			  mRotate(std::move(other.mRotate)){}
+
+		TransformComponent& operator=(TransformComponent&& other) noexcept {
+			if (this == &other)
+				return *this;
+			ecss::ComponentInterface::operator =(std::move(other));
+			PropertiesModule::Serializable::operator =(std::move(other));
+			mDirty = true;
+			mTransform = std::move(other.mTransform);
+			mRotateQuaternion = std::move(other.mRotateQuaternion);
+			mPos = std::move(other.mPos);
+			mScale = std::move(other.mScale);
+			mRotate = std::move(other.mRotate);
+			return *this;
+		}
+
+		TransformComponent(ecss::SectorId id) : ComponentInterface(id) { markDirty(); };
 		~TransformComponent() override;
 
-		const glm::vec3& getPos(bool global = false) const;
+		const Math::Vec3& getPos(bool global = false) const;
 		void setX(float x);
 		void setY(float y);
 		void setZ(float z);
 
-		void setPos(const glm::vec3& pos);
+		void setPos(const Math::Vec3& pos);
 
-		const glm::vec3& getRotate() const;
-		void setRotateX(float x);
-		void setRotateY(float y);
-		void setRotateZ(float z);
-		void setRotate(const glm::vec3& rotate);
-		void setRotation(const glm::quat& rotate);
+		const Math::Vec3& getRotate() const;
+		void setPitch(float x);
+		void setYaw(float y);
+		void setRoll(float z);
+		void setRotate(const Math::Vec3& rotate);
 
-		const glm::vec3& getScale(bool global = false) const;
+		const Math::Vec3& getScale() const;
+		Math::Vec3 getGlobalScale() const;
+
 		void setScaleX(float x);
 		void setScaleY(float y);
 		void setScaleZ(float z);
-		void setScale(const glm::vec3& scale);
+		void setScale(const Math::Vec3& scale);
 
-		const glm::mat4& getTransform() const;
-		void setTransform(const glm::mat4& transform);
+		const Math::Mat4& getTransform() const;
+		void setTransform(const Math::Mat4& transform);
 
-		glm::mat4 getRotationMatrix() const;
-		glm::quat getRotationMatrixQuaternion() const;
-		glm::mat4 getLocalTransform() const;
-		const glm::mat4& getViewMatrix() const;
+		Math::Mat4 getRotationMatrix() const;
+		const Math::Quaternion<float>& getQuaternion() const;
+		Math::Mat4 getLocalTransform() const;
+		Math::Mat4 getViewMatrix() const;
 
-		glm::vec3 getRight();
-		glm::vec3 getUp();
-		glm::vec3 getBackward();
-		glm::vec3 getForward();
+		Math::Vec3 getRight();
+		Math::Vec3 getUp();
+		Math::Vec3 getBackward();
+		Math::Vec3 getForward();
 
 		void reloadTransform();
 
@@ -58,23 +79,21 @@ namespace Engine::ComponentsModule {
 
 		void deserialize(const Json::Value& data) override;
 		void serialize(Json::Value& data) override;
+
 	private:
-		glm::vec3 calculateGlobalScale();
+		bool mDirty = false;
 
-		bool dirty = true;
-		glm::mat4 transform = glm::mat4(1.0f);
-		glm::mat4 view = glm::mat4(1.0f);
+		Math::Quaternion<float> mRotateQuaternion;
+		Math::Mat4 mTransform = Math::Mat4{ 1.f };
 
-		glm::quat rotateQuat = {};
-		glm::vec3 pos = glm::vec3(0.0f, 0.0f, 0.0f);
-		glm::vec3 scale = glm::vec3(1.0f, 1.0f, 1.0f);
-		glm::vec3 rotate = glm::vec3(0.0f, 0.0f, 0.0f);
-
-		glm::vec3 globalScale = glm::vec3(1.0f, 1.0f, 1.0f);
-		glm::vec3 globalPos = glm::vec3(1.0f, 1.0f, 1.0f);
+		Math::Vec3 mPos = {0.f};
+		Math::Vec3 mScale = { 1.f };
+		Math::Vec3 mRotate = { 0.f }; 
+		
+		mutable std::shared_mutex mtx;
 	};
 
 }
 
 using Engine::ComponentsModule::TransformComponent;
-using Engine::ComponentsModule::DirtyTransform;
+//using Engine::ComponentsModule::DirtyTransform;

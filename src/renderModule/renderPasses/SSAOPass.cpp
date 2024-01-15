@@ -1,5 +1,6 @@
 ﻿#include "SSAOPass.h"
 
+#include <random>
 #include <gtc/random.hpp>
 
 #include "imgui.h"
@@ -7,8 +8,10 @@
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "debugModule/Benchmark.h"
 #include "logsModule/logger.h"
-#include "systemsModule/RenderSystem.h"
+#include "systemsModule/systems/RenderSystem.h"
+#include "systemsModule/SystemsPriority.h"
 
 using namespace Engine::RenderModule::RenderPasses;
 
@@ -48,10 +51,17 @@ void SSAOPass::init() {
 	// generate sample kernel
 	// ----------------------
 
+	std::random_device rd;
+	std::mt19937 generator(rd());
+
+	// Define the distribution for the range -5.0f to 15.0f
+	std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+	std::uniform_real_distribution<float> distribution2(0.0f, 1.0f);
+
 	for (unsigned int i = 0; i < 64; ++i) {
-		glm::vec3 sample(glm::linearRand(-1.f, 1.f), glm::linearRand(-1.f, 1.f), glm::linearRand(0.f, 1.f));
-		sample = glm::normalize(sample);
-		sample *= glm::linearRand(0.f, 1.f);
+		Math::Vec3 sample(distribution(generator), distribution(generator), distribution2(generator));
+		sample = Math::normalize(Math::Vec3{ sample.x, sample.y, sample.z });
+		sample *= distribution(generator);
 		float scale = float(i) / 64.0f;
 
 		// scale samples s.t. they're more aligned to center of kernel
@@ -62,9 +72,9 @@ void SSAOPass::init() {
 
 	// generate noise texture
 	// ----------------------
-	std::vector<glm::vec3> ssaoNoise;
+	std::vector<Math::Vec3> ssaoNoise;
 	for (unsigned int i = 0; i < 16; i++) {
-		glm::vec3 noise(glm::linearRand(-1.f, 1.f), glm::linearRand(-1.f, 1.f), 0.0f);
+		Math::Vec3 noise(distribution(generator), distribution(generator), 0.0f);
 		// rotate around z-axis (in tangent space)
 		ssaoNoise.push_back(noise);
 	}
@@ -86,7 +96,7 @@ void SSAOPass::init() {
 	shaderSSAO->setInt("kernelSize", mData.mKernelSize);
 	shaderSSAO->setFloat("radius", mData.mRadius);
 	shaderSSAO->setFloat("bias", mData.mBias);
-	shaderSSAO->setVec2("noiseScale", glm::vec2(static_cast<float>(Renderer::SCR_WIDTH) / 4.f, static_cast<float>(Renderer::SCR_WIDTH) / 4.f));
+	shaderSSAO->setVec2("noiseScale", Math::Vec2{static_cast<float>(Renderer::SCR_WIDTH) / 4.f, static_cast<float>(Renderer::SCR_WIDTH) / 4.f});
 	for (unsigned int i = 0; i < 64; ++i) {
 		shaderSSAO->setVec3(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
 	}
@@ -105,7 +115,8 @@ void SSAOPass::init() {
 
 }
 
-void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) {
+void SSAOPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
+	FUNCTION_BENCHMARK
 	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
 
@@ -158,7 +169,7 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderDataHandle& rende
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAO->use();
-	shaderSSAO->setMat4("projection", renderDataHandle.mProjection);
+	shaderSSAO->setMat4("projection", renderDataHandle.current.projection);
 
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);

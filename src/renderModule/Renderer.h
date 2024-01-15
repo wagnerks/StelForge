@@ -24,6 +24,7 @@ namespace Engine::RenderModule {
 
 		inline static int SCR_WIDTH = 1920;
 		inline static int SCR_HEIGHT = 1080;
+		inline static float drawDistance = 5000.f;
 		inline static size_t mDrawCallsCount = 0;
 		inline static size_t mDrawVerticesCount = 0;
 	private:

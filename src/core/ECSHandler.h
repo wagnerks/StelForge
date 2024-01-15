@@ -1,19 +1,27 @@
 ﻿#pragma once
 #include "Singleton.h"
+#include "ecss/Registry.h"
+#include "systemsModule/SystemManager.h"
 
-namespace ecss {
-	class Registry;
-	class SystemManager;
-}
 
-class ECSHandler : public Engine::Singleton<ECSHandler> {
+class ECSHandler final : public Engine::Singleton<ECSHandler> {
 public:
-	ECSHandler();;
-	~ECSHandler();
-	static ecss::SystemManager* systemManager();
-	static ecss::Registry* registry();
+	template<class SystemType>
+	inline static SystemType* getSystem() {
+		return systemManager().getSystem<SystemType>();
+	}
+
+	inline static ecss::SystemManager& systemManager() {
+		return instance()->mSystemManager;
+	}
+
+	inline static ecss::Registry& registry() {
+		return instance()->mRegistry;
+	}
+
 	void initSystems();
+
 private:
-	ecss::SystemManager* mSystemManager = nullptr;
-	ecss::Registry* mRegistry = nullptr;
+	ecss::SystemManager mSystemManager;
+	ecss::Registry mRegistry;
 };

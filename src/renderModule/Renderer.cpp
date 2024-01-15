@@ -1,7 +1,9 @@
 ﻿#include "Renderer.h"
 
 #include <deque>
+#include <random>
 
+#include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/TreeComponent.h"
@@ -10,6 +12,8 @@
 #include "core/ThreadPool.h"
 #include "ecss/Registry.h"
 #include "componentsModule/FrustumComponent.h"
+#include "componentsModule/OcTreeComponent.h"
+#include "debugModule/Benchmark.h"
 #include "logsModule/logger.h"
 
 #include "gtc/random.hpp"
@@ -36,32 +40,12 @@ void Renderer::draw() {
 }
 
 void Renderer::postDraw() {
+	FUNCTION_BENCHMARK;
 	glfwSwapBuffers(UnnamedEngine::instance()->getMainWindow());
 	glfwPollEvents();
 }
 
 void Renderer::init() {
-
-	auto reg = ECSHandler::registry();
-	//reg->reserve<TransformComponent, IsDrawableComponent, ModelComponent, TreeComponent, DirtyTransform, DebugDataComponent>(100000);
-	/*reg->reserve<TreeComponent, TransformComponent, IsDrawableComponent, FrustumComponent>(1000000);
-	for (auto i = 0; i < 1000000; i++) {
-		auto ent = reg->takeEntity();
-		reg->addComponent<TransformComponent>(ent);
-		reg->addComponent<IsDrawableComponent>(ent);
-		reg->addComponent<FrustumComponent>(ent);
-	}*/
-
-	//ThreadPool::instance()->addTask([](std::mutex&) {
-	//	auto root = PropertiesModule::PropertiesSystem::loadScene("scene.json");
-	//auto root = PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json"); 
-		auto root = PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
-	//});
-
-
-
-
-
 	mBatcher = new Batcher();
 }
 
@@ -129,6 +113,11 @@ GLFWwindow* Renderer::initGLFW() {
 
 	glfwSwapInterval(0);
 
+	/*glEnable(GL_LINE_SMOOTH);
+	glEnable(GL_POLYGON_SMOOTH);*/
+	/*glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);*/
+
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 	//glDepthFunc(GL_LESS);
@@ -137,7 +126,7 @@ GLFWwindow* Renderer::initGLFW() {
 	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glEnable(GL_CULL_FACE);
-	glClearDepth(5000.0);
+	glClearDepth(drawDistance);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 

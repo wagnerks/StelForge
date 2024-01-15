@@ -3,6 +3,7 @@
 #include <string>
 
 #include "imgui.h"
+#include "assetsModule/TextureHandler.h"
 
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "assetsModule/shaderModule/GeometryShader.h"

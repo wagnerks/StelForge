@@ -1,10 +1,9 @@
 ﻿#pragma once
 #include <limits>
-#include <vec2.hpp>
-#include <vec3.hpp>
 
 #include "core/BoundingVolume.h"
 #include "core/Projection.h"
+#include "ecss/Types.h"
 #include "renderModule/RenderPass.h"
 
 namespace Engine::RenderModule::RenderPasses {
@@ -14,18 +13,18 @@ namespace Engine::RenderModule::RenderPasses {
 			std::vector<ecss::SectorId> shadowEntities;
 		};
 
-		void initRender();
+		void init() override;
 		void freeBuffers() const;
 
-		void render(Renderer* renderer, SystemsModule::RenderDataHandle& renderDataHandle) override;
+		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	private:
 		unsigned mFramebufferID = 0;
 		unsigned mLightDepthMaps = 0;
 		unsigned mMatricesUBO = 0;
 
-		void fillMatrix(glm::vec3 globalLightPos, float lightNear, float lightRadius);
+		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
 		Engine::ProjectionModule::PerspectiveProjection lightProjection;
-		std::vector<glm::mat4> lightMatrices;
+		std::vector<Math::Mat4> lightMatrices;
 		std::vector<FrustumModule::Frustum> frustums;
 		std::vector<std::pair<ecss::SectorId, int>> offsets;
 
