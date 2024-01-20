@@ -7,3 +7,6 @@
 [submodule "src/submodules/JoltPhysics"]
 	path = src/submodules/JoltPhysics
 	url = https://github.com/wagnerks/JoltPhysics
+[submodule "lib/imgui"]
+	path = lib/imgui
+	url = https://github.com/wagnerks/imgui

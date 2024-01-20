@@ -5,8 +5,8 @@
 #include <thread>
 
 #include "Core.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
 #include "InputHandler.h"
 #include "ThreadPool.h"
 #include "assetsModule/shaderModule/ShaderController.h"

@@ -229,7 +229,7 @@ void ComponentsDebug::entitiesDebug() {
 			separatorPos = ImGui::GetWindowHeight() * 0.1f;
 		}
 
-		ImGui::BeginChild("##mEntities", { ImGui::GetWindowContentRegionWidth(), separatorPos });
+		ImGui::BeginChild("##mEntities", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, separatorPos });
 		{
 			size_t i = 0;
 			auto entities = ECSHandler::registry().getAllEntities();
@@ -373,7 +373,7 @@ void ComponentsDebug::entitiesDebug() {
 		}
 
 		ImGui::Separator();
-		ImGui::Button("--", { ImGui::GetWindowContentRegionWidth(), 5.f });
+		ImGui::Button("--", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 5.f });
 
 		if (ImGui::IsItemClicked()) {
 			clickedSeparator = true;

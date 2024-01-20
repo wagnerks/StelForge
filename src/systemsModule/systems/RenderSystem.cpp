@@ -135,7 +135,7 @@ namespace Engine::SystemsModule {
 
 		if (mGeometryPassDataWindow) {
 			if (ImGui::Begin("geometry pass result", &mGeometryPassDataWindow)) {
-				float size = ImGui::GetWindowContentRegionWidth();
+				float size = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
 				if (ImGui::TreeNode("gAlbedoSpec")) {
 					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.gAlbedoSpec)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();

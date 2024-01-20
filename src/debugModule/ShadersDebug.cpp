@@ -109,10 +109,10 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 		if (fShader) {
 			ImGui::BeginChild("##shaders code", { 0.f, ImGui::GetWindowHeight() * 0.75f });
 			ImGui::Text("vertex");
-			ImGui::InputTextMultiline(("##vertex" + strId).c_str(), &fShader->vertexCode, { ImGui::GetWindowContentRegionWidth() - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() * 0.8f * (1.f - separatorPos) });
+			ImGui::InputTextMultiline(("##vertex" + strId).c_str(), &fShader->vertexCode, { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() * 0.8f * (1.f - separatorPos) });
 
-			ImGui::Button("--", { ImGui::GetWindowContentRegionWidth(), 5.f });
-
+			ImGui::Button("--", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 5.f });
+			
 			if (ImGui::IsItemClicked()) {
 				clickedSeparator = true;
 				mousePos = ImGui::GetMousePos();
@@ -141,7 +141,7 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 			}
 
 			ImGui::Text("fragment");
-			ImGui::InputTextMultiline(("##fragment" + strId).c_str(), &fShader->fragmentCode, { ImGui::GetWindowContentRegionWidth() - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() * 0.8f * separatorPos });
+			ImGui::InputTextMultiline(("##fragment" + strId).c_str(), &fShader->fragmentCode, { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() * 0.8f * separatorPos });
 			ImGui::EndChild();
 
 			if (ImGui::Button("compile")) {
