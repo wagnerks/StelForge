@@ -36,7 +36,7 @@ namespace AssetsModule {
 		friend Singleton;
 	public:
 		void bindTexture(unsigned slot, unsigned type, unsigned int id);
-		unsigned getCurentTexture(unsigned slot) { return mBindedTextures[slot]; }
+		unsigned getCurrentTexture(unsigned slot) { return mBindedTextures[slot]; }
 		Texture mDefaultTex;
 
 		Texture* loadTexture(const std::string& path, bool flip = false);

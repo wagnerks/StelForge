@@ -34,6 +34,8 @@ namespace Engine::Debug {
 		void componentEditorInternal(ComponentsModule::PhysicsComponent* component);
 
 		ecss::SectorId mSelectedId = ecss::INVALID_ID;
+
+		bool editorOpened = true;
 	};
 
 }

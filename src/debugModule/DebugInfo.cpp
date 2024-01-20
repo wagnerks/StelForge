@@ -15,7 +15,7 @@ using namespace Engine::Debug;
 void DebugInfo::drawInfo(DebugInfoType type) {
 	ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
 	auto pos = ImGui::GetMainViewport()->Pos;
-	pos.y += 20.f;
+	pos.y += 25.f;
 	ImGui::SetNextWindowPos(pos, 0, { 0.f,0.f });
 	ImGui::SetNextWindowBgAlpha(0.3f);
 	const auto& camera = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();

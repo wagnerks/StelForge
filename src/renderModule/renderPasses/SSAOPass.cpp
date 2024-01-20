@@ -119,52 +119,67 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataH
 	FUNCTION_BENCHMARK
 	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
-
-	if (ImGui::Begin("SSAO")) {
-		shaderSSAO->use();
-		if (ImGui::DragInt("kernelSize", &mData.mKernelSize)) {
-			shaderSSAO->setInt("kernelSize", mData.mKernelSize);
+	{
+		if (ImGui::BeginMainMenuBar()) {
+			if (ImGui::BeginMenu("Debug")) {
+				if (ImGui::BeginMenu("Systems debug")) {
+					ImGui::Checkbox("SSAO", &ssaoDebugWindow);
+					ImGui::EndMenu();
+				}
+				ImGui::EndMenu();
+			}
 		}
-		if (ImGui::DragFloat("radius", &mData.mRadius, 0.01f)) {
-			shaderSSAO->setFloat("radius", mData.mRadius);
-		}
-		if (ImGui::DragFloat("bias", &mData.mBias, 0.001f)) {
-			shaderSSAO->setFloat("BIAS", mData.mBias);
-		}
-		if (ImGui::DragFloat("intencity", &mData.intencity, 0.1f)) {
-			shaderSSAO->setFloat("INTENSITY", mData.intencity);
-		}
-
-		if (ImGui::DragFloat("scale", &mData.scale, 0.1f)) {
-			shaderSSAO->setFloat("SCALE", mData.scale);
-		}
-
-		if (ImGui::DragFloat("sample_rad", &mData.sample_rad, 0.1f)) {
-			shaderSSAO->setFloat("SAMPLE_RAD", mData.sample_rad);
-		}
-
-		if (ImGui::DragFloat("max_distance", &mData.max_distance, 0.1f)) {
-			shaderSSAO->setFloat("MAX_DISTANCE", mData.max_distance);
-		}
-		if (ImGui::DragInt("samples", &mData.samples)) {
-			shaderSSAO->setInt("SAMPLES", mData.samples);
-		}
-
-		if (ImGui::DragFloat("sigmaS", &mData.sigmaS, 0.01f, 0.000001f)) {
-			shaderSSAOBlur->use();
-			float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
-
-			shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
-			shaderSSAOBlur->setFloat("facS", facS);
-		}
-		if (ImGui::DragFloat("sigmaL", &mData.sigmaL, 0.01f, 0.000001f)) {
-			shaderSSAOBlur->use();
-			float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
-			shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
-			shaderSSAOBlur->setFloat("facL", facL);
-		}
+		ImGui::EndMainMenuBar();
 	}
-	ImGui::End();
+
+	if (ssaoDebugWindow) {
+		if (ImGui::Begin("SSAO", &ssaoDebugWindow)) {
+			shaderSSAO->use();
+			if (ImGui::DragInt("kernelSize", &mData.mKernelSize)) {
+				shaderSSAO->setInt("kernelSize", mData.mKernelSize);
+			}
+			if (ImGui::DragFloat("radius", &mData.mRadius, 0.01f)) {
+				shaderSSAO->setFloat("radius", mData.mRadius);
+			}
+			if (ImGui::DragFloat("bias", &mData.mBias, 0.001f)) {
+				shaderSSAO->setFloat("BIAS", mData.mBias);
+			}
+			if (ImGui::DragFloat("intencity", &mData.intencity, 0.1f)) {
+				shaderSSAO->setFloat("INTENSITY", mData.intencity);
+			}
+
+			if (ImGui::DragFloat("scale", &mData.scale, 0.1f)) {
+				shaderSSAO->setFloat("SCALE", mData.scale);
+			}
+
+			if (ImGui::DragFloat("sample_rad", &mData.sample_rad, 0.1f)) {
+				shaderSSAO->setFloat("SAMPLE_RAD", mData.sample_rad);
+			}
+
+			if (ImGui::DragFloat("max_distance", &mData.max_distance, 0.1f)) {
+				shaderSSAO->setFloat("MAX_DISTANCE", mData.max_distance);
+			}
+			if (ImGui::DragInt("samples", &mData.samples)) {
+				shaderSSAO->setInt("SAMPLES", mData.samples);
+			}
+
+			if (ImGui::DragFloat("sigmaS", &mData.sigmaS, 0.01f, 0.000001f)) {
+				shaderSSAOBlur->use();
+				float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
+
+				shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
+				shaderSSAOBlur->setFloat("facS", facS);
+			}
+			if (ImGui::DragFloat("sigmaL", &mData.sigmaL, 0.01f, 0.000001f)) {
+				shaderSSAOBlur->use();
+				float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
+				shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
+				shaderSSAOBlur->setFloat("facL", facL);
+			}
+		}
+		ImGui::End();
+	}
+	
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
 	glClear(GL_COLOR_BUFFER_BIT);

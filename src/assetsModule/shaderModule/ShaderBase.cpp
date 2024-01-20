@@ -1,9 +1,6 @@
 ﻿#include "ShaderBase.h"
 
-#include <fstream>
-#include <sstream>
 #include <glad/glad.h>
-#include <gtc/type_ptr.hpp>
 
 #include "ShaderController.h"
 #include "core/FileSystem.h"
@@ -84,6 +81,7 @@ void ShaderBase::setVec4(const char* name, const Engine::Math::Vec4& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
+	
 	glUniform4fv(getUniformLocation(name), 1, val.data());
 }
 

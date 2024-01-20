@@ -5,7 +5,7 @@ in vec2 TexCoords;
 
 uniform vec3 viewPos;
 
-uniform float ambientColor = 1.0;
+uniform vec3 ambientColor = vec3(1.0);
 uniform float shadowIntensity = 1.0;
 
 uniform float drawDistance = 5000.0;
@@ -241,7 +241,7 @@ void main() {
         }
     }
 
-    lighting *= (1.0 - (shadowIntensity * shadow * 0.9));
+    lighting *= (1.0 - (shadowIntensity * shadow * 1.9));
     //lighting *= AmbientOcclusion;
     const float gamma = 1.0;
     const float exposure = 1.2;
@@ -264,5 +264,4 @@ void main() {
     float fogFactor = smoothstep(fogStart, drawDistance, Depth);
     vec3 fogColor = vec3(0.0,0.0,0.0);
     FragColor = mix(vec4(mapped, 1.0), vec4(fogColor, 1.0), fogFactor);
-
 }

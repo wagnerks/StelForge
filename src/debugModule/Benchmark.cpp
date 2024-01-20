@@ -5,7 +5,20 @@
 
 namespace Engine::Debug {
 	void BenchmarkGUI::onGui() {
-		if (ImGui::Begin("performance stats")) {
+		{
+			if (ImGui::BeginMainMenuBar()) {
+				if (ImGui::BeginMenu("Debug")) {
+					ImGui::Checkbox("benchmark", &windowOpened);
+					ImGui::EndMenu();
+				}
+			}
+			ImGui::EndMainMenuBar();
+		}
+		if (!windowOpened) {
+			return;
+		}
+
+		if (ImGui::Begin("performance stats", &windowOpened)) {
 			if (ImGui::InputText("Filter", &filter)) {
 				std::transform(filter.begin(), filter.end(), filter.begin(), [](unsigned char c) {
 					return std::tolower(c);

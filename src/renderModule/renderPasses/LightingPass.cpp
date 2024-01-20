@@ -74,7 +74,8 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	}
 
 	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
-		shaderLightingPass->setFloat("ambientColor", 1.f);//todo 0 for night and 1 for day, some time system
+
+		shaderLightingPass->setVec3("ambientColor", renderDataHandle.mCascadedShadowsPassData.lightColor);//todo 0 for night and 1 for day, some time system
 		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE31, GL_TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData.shadowMapTexture);
 		shaderLightingPass->setInt("cascadedShadow.shadowMap", 31);
 		shaderLightingPass->setVec3("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData.lightDirection);
@@ -125,23 +126,35 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	static bool enableSky = 0.0f;
 	time += 0.01f;
 
-	if (ImGui::Begin("sky params")) {
-		float sunDirCont[3] = { sunDir.x, sunDir.y, sunDir.z };
-		if (ImGui::DragFloat3("sun_Dir", sunDirCont, 0.01f, 0.f, 1.f)) {
-			sunDir.x = sunDirCont[0];
-			sunDir.y = sunDirCont[1];
-			sunDir.z = sunDirCont[2];
+	{
+		if (ImGui::BeginMainMenuBar()) {
+			if (ImGui::BeginMenu("Debug")) {
+				ImGui::Checkbox("skyParams", &skyParams);
+				ImGui::EndMenu();
+			}
 		}
-		ImGui::Checkbox("skyEnabled", &enableSky);
-		ImGui::DragFloat("time", &time, 0.01f);
-		ImGui::DragFloat("Br", &Br, 0.0001f);
-		ImGui::DragFloat("Bm", &Bm, 0.0001f);
-		ImGui::DragFloat("g", &g, 0.01f);
-		ImGui::DragFloat("cirrus", &cirrus, 0.01f);
-		ImGui::DragFloat("cumulus", &cumulus, 0.01f);
-
+		ImGui::EndMainMenuBar();
 	}
-	ImGui::End();
+	if (skyParams) {
+		if (ImGui::Begin("sky params", &skyParams)) {
+			float sunDirCont[3] = { sunDir.x, sunDir.y, sunDir.z };
+			if (ImGui::DragFloat3("sun_Dir", sunDirCont, 0.01f, 0.f, 1.f)) {
+				sunDir.x = sunDirCont[0];
+				sunDir.y = sunDirCont[1];
+				sunDir.z = sunDirCont[2];
+			}
+			ImGui::Checkbox("skyEnabled", &enableSky);
+			ImGui::DragFloat("time", &time, 0.01f);
+			ImGui::DragFloat("Br", &Br, 0.0001f);
+			ImGui::DragFloat("Bm", &Bm, 0.0001f);
+			ImGui::DragFloat("g", &g, 0.01f);
+			ImGui::DragFloat("cirrus", &cirrus, 0.01f);
+			ImGui::DragFloat("cumulus", &cumulus, 0.01f);
+
+		}
+		ImGui::End();
+	}
+	
 
 	if (enableSky) {
 		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");

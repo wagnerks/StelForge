@@ -27,6 +27,12 @@ void DebugMenu::draw() {
 				auto camComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID());
 				camComp->initProjection(camComp->getProjection().getFOV(), camComp->getProjection().getAspect(), camComp->getProjection().getNear(), RenderModule::Renderer::drawDistance);
 			}
+
+			if (ImGui::DragFloat("near", &RenderModule::Renderer::nearDistance, 0.1f)) {
+				auto camComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID());
+				camComp->initProjection(camComp->getProjection().getFOV(), camComp->getProjection().getAspect(), RenderModule::Renderer::nearDistance, RenderModule::Renderer::drawDistance);
+			}
+
 			ImGui::Separator();
 			ImGui::Checkbox("debug info", &debugInfoOpened);
 			if (ImGui::BeginMenu("Debug info type")) {

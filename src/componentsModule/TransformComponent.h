@@ -38,7 +38,7 @@ namespace Engine::ComponentsModule {
 		TransformComponent(ecss::SectorId id) : ComponentInterface(id) { markDirty(); };
 		~TransformComponent() override;
 
-		const Math::Vec3& getPos(bool global = false) const;
+		const Math::Vec3 getPos(bool global = false) const;
 		void setX(float x);
 		void setY(float y);
 		void setZ(float z);

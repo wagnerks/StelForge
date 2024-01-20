@@ -26,11 +26,12 @@ namespace Engine::RenderModule::RenderPasses {
 			float sigmaS = 1.0f;
 			float sigmaL = 1.2f;
 		};
-
+		
 		void init() override;
 		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	private:
 
+		bool ssaoDebugWindow = false;
 		Data mData{};
 	};
 }

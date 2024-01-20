@@ -1,7 +1,6 @@
 ﻿#include "ComponentsDebug.h"
 
 #include <algorithm>
-#include <gtx/quaternion.hpp>
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -31,6 +30,7 @@
 #include <Jolt/Jolt.h>
 
 #include "Benchmark.h"
+#include "componentsModule/ActionComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/PhysicsComponent.h"
@@ -56,8 +56,8 @@ void ComponentsDebug::init() {
 			auto mView = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID())->getViewMatrix();
 
 
-			auto normalizedX = (2.0 * mPos.x) / RenderModule::Renderer::SCR_WIDTH - 1.0;
-			auto normalizedY = 1.0 - (2.0 * mPos.y) / RenderModule::Renderer::SCR_HEIGHT;
+			float normalizedX = (2.0f * static_cast<float>(mPos.x)) / RenderModule::Renderer::SCR_WIDTH - 1.0f;
+			float normalizedY = 1.0f - (2.0f * static_cast<float>(mPos.y)) / RenderModule::Renderer::SCR_HEIGHT;
 			auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
 			auto ndc = Math::inverse(mProjection) * clipCoords;
 			ndc /= ndc.w;
@@ -68,22 +68,30 @@ void ComponentsDebug::init() {
 			auto mCamFrustum = FrustumModule::createFrustum(mProjection * mView);
 			auto aabbOctrees = octrSys->getAABBOctrees(mCamFrustum.generateAABB());
 
+			float minDistance = std::numeric_limits<float>::max();
+
 			for (auto& tree : aabbOctrees) {
 				if (auto treeIt = octrSys->getOctree(tree)) {
 					auto res = treeIt->findCollisions(viewCoords, rayDirection, [](const auto& data) {
 						return data.data != ecss::INVALID_ID;
 					});
-					for (auto& obj : res) {
-						auto id = obj.second.data.getID();
-						if (ECSHandler::registry().getComponent<OutlineComponent>(id)) {
-							ECSHandler::registry().removeComponent<OutlineComponent>(id);
-						}
-						else {
-							ECSHandler::registry().addComponent<OutlineComponent>(id);
-						}
 
-						mSelectedId = id;
+					for (auto& [collisionPos, object] : res) {
+						auto dist = Math::lengthSquared(collisionPos - pos);
+						if (dist < minDistance) {
+							minDistance = dist;
+							mSelectedId = object.data.getID();
+						}
 					}
+				}
+			}
+
+			if (minDistance < std::numeric_limits<float>::max()) {
+				if (ECSHandler::registry().getComponent<OutlineComponent>(mSelectedId)) {
+					ECSHandler::registry().removeComponent<OutlineComponent>(mSelectedId);
+				}
+				else {
+					ECSHandler::registry().addComponent<OutlineComponent>(mSelectedId);
 				}
 			}
 		}
@@ -94,6 +102,7 @@ void ComponentsDebug::init() {
 	};
 
 	onMouseEvent = [this](Math::DVec2 mPos, Math::DVec2 mouseOffset) {
+		return;
 		if (leftM) {
 			auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 
@@ -103,13 +112,13 @@ void ComponentsDebug::init() {
 			auto mView = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID())->getViewMatrix();
 
 
-			auto normalizedX = (2.0f * mPos.x) / RenderModule::Renderer::SCR_WIDTH - 1.0f;
-			auto normalizedY = 1.0f - (2.0f * mPos.y) / RenderModule::Renderer::SCR_HEIGHT;
-			auto clipCoords = Math::DVec4(normalizedX, normalizedY, -1.0, 1.0);
+			float normalizedX = (2.0f * static_cast<float>(mPos.x)) / RenderModule::Renderer::SCR_WIDTH - 1.0f;
+			float normalizedY = 1.0f - (2.0f * static_cast<float>(mPos.y)) / RenderModule::Renderer::SCR_HEIGHT;
+			auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
 			auto ndc = Math::inverse(mProjection) * clipCoords;
 			ndc /= ndc.w;
-			auto viewCoords = Math::inverse(mView) * Math::DVec4(Math::DVec3(ndc), 1.0);
-			auto rayDirection = Math::normalize(Math::DVec3(viewCoords) - pos);
+			auto viewCoords = Math::inverse(mView) * Math::Vec4(Math::Vec3(ndc), 1.0f);
+			auto rayDirection = Math::normalize(Math::Vec3(viewCoords) - pos);
 
 			auto octrSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
 
@@ -145,7 +154,6 @@ void ComponentsDebug::init() {
 			}
 		}
 	};
-
 }
 
 void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID) {
@@ -192,8 +200,20 @@ void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId&
 void ComponentsDebug::entitiesDebug() {
 	FUNCTION_BENCHMARK;
 	auto& compManager = ECSHandler::registry();
+	{
+		if (ImGui::BeginMainMenuBar()) {
+			if (ImGui::BeginMenu("Debug")) {
+				ImGui::Checkbox("entities editor", &editorOpened);
+				ImGui::EndMenu();
+			}
+		}
+		ImGui::EndMainMenuBar();
+	}
+	if (!editorOpened) {
+		return;
+	}
 
-	if (ImGui::Begin("Entities Editor")) {
+	if (ImGui::Begin("Entities Editor", &editorOpened)) {
 
 		static bool clickedSeparator = false;
 		static float separatorPos = 100.f;
@@ -214,9 +234,7 @@ void ComponentsDebug::entitiesDebug() {
 			size_t i = 0;
 			auto entities = ECSHandler::registry().getAllEntities();
 			for (auto entityIt : entities) {
-
-				auto treeComp = compManager.getComponent<ComponentsModule::TreeComponent>(entityIt);
-				if (treeComp) {
+				if (auto treeComp = compManager.getComponent<ComponentsModule::TreeComponent>(entityIt)) {
 					if (treeComp->getParent() != ecss::INVALID_ID) {
 						continue;
 					}
@@ -252,7 +270,7 @@ void ComponentsDebug::entitiesDebug() {
 		}
 
 		ImGui::SameLine();
-		std::vector<std::string> items {"transform", "light", "ph_box", "ph_sphere", "ph_capsule", "ph_floor"};
+		std::vector<std::string> items {"transform", "light", "ph_box", "ph_sphere", "ph_capsule", "ph_floor", "action"};
 		static std::string current_item = items.front();
 		if (ImGui::BeginCombo("##comps", "component")) {
 			for (int n = 0; n < items.size(); n++)
@@ -326,7 +344,11 @@ void ComponentsDebug::entitiesDebug() {
 							auto comp = ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
 					}
-
+					else if (current_item == "action") {
+						if (auto entity = compManager.getEntity(mSelectedId)) {
+							compManager.addComponent<ComponentsModule::ActionComponent>(mSelectedId);
+						}
+					}
 				}
 
 				if (is_selected) {
@@ -462,7 +484,7 @@ void ComponentsDebug::entitiesDebug() {
 
 
 				model *= Math::translate(Math::Mat4(1.0f), pos) * Math::Mat4(rotQuat.toRotateMatrix3()) * S;
-				xyzLines->setMat4("PVM", PV * Math::Mat4{ Math::Vec4{model[0]}, Math::Vec4{model[1] }, Math::Vec4{model[2] }, Math::Vec4{model[3]} });
+				xyzLines->setMat4("PVM", PV * Math::Mat4{ model });
 				Math::Vec3 start = {};
 				Math::Vec3 end = { 0.f,0.f, -150.f };
 
@@ -629,8 +651,8 @@ void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
 	auto pos = component->getPos();
 	auto scale = component->getScale();
 
-	float posV[] = { pos.x, pos.y, pos.z };
-	float scaleV[] = { scale.x, scale.y, scale.z };
+	float posV[] = { (float)pos.x, (float)pos.y, (float)pos.z };
+	float scaleV[] = { (float)scale.x, (float)scale.y, (float)scale.z };
 
 	if (ImGui::DragFloat3("Pos", posV, 0.1f)) {
 		component->setPos({ posV[0], posV[1], posV[2] });
@@ -711,7 +733,7 @@ void ComponentsDebug::componentEditorInternal(CascadeShadowComponent* component)
 		return std::string(name + "##" + std::to_string(idx));
 	};
 
-	float resolution[2] = { component->resolution.x, component->resolution.y };
+	float resolution[2] = { (float)component->resolution.x, (float)component->resolution.y };
 
 	if (ImGui::DragFloat2("resolution", resolution)) {
 		component->resolution.x = resolution[0];
@@ -736,15 +758,15 @@ void ComponentsDebug::componentEditorInternal(CascadeShadowComponent* component)
 				ImGui::DragFloat(nameCreator("bias", i).c_str(), &cascade.bias);
 				ImGui::DragInt(nameCreator("samples", i).c_str(), &cascade.samples);
 
-				float texel[2] = { cascade.texelSize.x, cascade.texelSize.y };
+				float texel[2] = { (float)cascade.texelSize.x, (float)cascade.texelSize.y };
 
 				if (ImGui::DragFloat2(nameCreator("texel size", i).c_str(), texel)) {
 					cascade.texelSize.x = texel[0];
 					cascade.texelSize.y = texel[1];
 				}
 
-				ImGui::DragFloat(nameCreator("z mult near", i).c_str(), &cascade.zMult.x);
-				ImGui::DragFloat(nameCreator("z mult far", i).c_str(), &cascade.zMult.y);
+				/*ImGui::DragFloat(nameCreator("z mult near", i).c_str(), &cascade.zMult.x);
+				ImGui::DragFloat(nameCreator("z mult far", i).c_str(), &cascade.zMult.y);*/
 
 				ImGui::TreePop();
 			}
@@ -1054,7 +1076,7 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ShaderComponent*
 			};
 
 
-			findUniforms(shader->vertexCode);
+			/*findUniforms(shader->vertexCode);
 			findUniforms(shader->fragmentCode);
 			std::function<void(const std::vector<ShaderVariable>& uniforms, ComponentsModule::ShaderVariablesStruct& variables)> fillComponentUniforms;
 			fillComponentUniforms = [&fillComponentUniforms, &structs](const std::vector<ShaderVariable>& uniforms, ComponentsModule::ShaderVariablesStruct& variables) {
@@ -1100,65 +1122,65 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ShaderComponent*
 				}
 			};
 
-			fillComponentUniforms(uniforms, component->variables);
+			fillComponentUniforms(uniforms, component->variables);*/
 
 		}
 
-		std::function<void(ComponentsModule::ShaderVariablesStruct&)> drawShaderVirables = nullptr;
-		drawShaderVirables = [&drawShaderVirables](ComponentsModule::ShaderVariablesStruct& variables) {
-			for (auto& variable : variables.floatUniforms.data) {
-				if (variable.value.size() > 1) {
-					for (auto idx = 0u; idx < variable.value.size(); idx++) {
-						ImGui::DragFloat((variable.name + "[" + std::to_string(idx) + "]").c_str(), &variable.value[idx]);
-					}
-				}
-				else {
-					ImGui::DragFloat((variable.name).c_str(), &variable.value.front());
-				}
-			}
+		//std::function<void(ComponentsModule::ShaderVariablesStruct&)> drawShaderVirables = nullptr;
+		//drawShaderVirables = [&drawShaderVirables](ComponentsModule::ShaderVariablesStruct& variables) {
+		//	for (auto& variable : variables.floatUniforms.data) {
+		//		if (variable.value.size() > 1) {
+		//			for (auto idx = 0u; idx < variable.value.size(); idx++) {
+		//				ImGui::DragFloat((variable.name + "[" + std::to_string(idx) + "]").c_str(), &variable.value[idx]);
+		//			}
+		//		}
+		//		else {
+		//			ImGui::DragFloat((variable.name).c_str(), &variable.value.front());
+		//		}
+		//	}
 
-			for (auto& variable : variables.integerUniforms.data) {
-				if (variable.value.size() > 1) {
-					for (auto idx = 0u; idx < variable.value.size(); idx++) {
-						ImGui::DragInt((variable.name + "[" + std::to_string(idx) + "]").c_str(), &variable.value[idx]);
-					}
-				}
-				else {
-					ImGui::DragInt((variable.name).c_str(), &variable.value.front());
-				}
-			}
-
-
-			for (auto& str : variables.structUniforms.data) {
-				if (ImGui::TreeNode(str.name.c_str())) {
-					size_t i = 0;
-					for (auto& val : str.value) {
-						if (ImGui::TreeNode((str.name + "[" + std::to_string(i) + "]").c_str())) {
-							drawShaderVirables(val);
-							ImGui::TreePop();
-						}
-						i++;
-					}
-
-					ImGui::TreePop();
-				}
+		//	for (auto& variable : variables.integerUniforms.data) {
+		//		if (variable.value.size() > 1) {
+		//			for (auto idx = 0u; idx < variable.value.size(); idx++) {
+		//				ImGui::DragInt((variable.name + "[" + std::to_string(idx) + "]").c_str(), &variable.value[idx]);
+		//			}
+		//		}
+		//		else {
+		//			ImGui::DragInt((variable.name).c_str(), &variable.value.front());
+		//		}
+		//	}
 
 
-			}
+		//	for (auto& str : variables.structUniforms.data) {
+		//		if (ImGui::TreeNode(str.name.c_str())) {
+		//			size_t i = 0;
+		//			for (auto& val : str.value) {
+		//				if (ImGui::TreeNode((str.name + "[" + std::to_string(i) + "]").c_str())) {
+		//					drawShaderVirables(val);
+		//					ImGui::TreePop();
+		//				}
+		//				i++;
+		//			}
 
-			/*for (auto variable : variables.mat4Uniforms.data) {
-				if (variable.value.size() > 1) {
-					for (auto idx = 0u; idx < variable.value.size(); idx++) {
-						ImGui::DragFloat4((variable.name + "[" + std::to_string(idx) + "]").c_str(), &variable.value[idx]);
-					}
-				}
-				else {
-					ImGui::DragInt((variable.name).c_str(), &variable.value.front());
-				}
-			}*/
-		};
+		//			ImGui::TreePop();
+		//		}
 
-		drawShaderVirables(component->variables);
+
+		//	}
+
+		//	/*for (auto variable : variables.mat4Uniforms.data) {
+		//		if (variable.value.size() > 1) {
+		//			for (auto idx = 0u; idx < variable.value.size(); idx++) {
+		//				ImGui::DragFloat4((variable.name + "[" + std::to_string(idx) + "]").c_str(), &variable.value[idx]);
+		//			}
+		//		}
+		//		else {
+		//			ImGui::DragInt((variable.name).c_str(), &variable.value.front());
+		//		}
+		//	}*/
+		//};
+
+		//drawShaderVirables(component->variables);
 
 		auto& vertex = shader->vertexCode;
 		auto& fragment = shader->fragmentCode;

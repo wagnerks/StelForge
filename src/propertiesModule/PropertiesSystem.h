@@ -10,7 +10,6 @@
 namespace Engine::PropertiesModule {
 	class PropertiesSystem {
 	public:
-		//ecss::EntityInterface* takeEntity(Json::Value properties);
 		static ecss::EntityHandle loadScene(std::string_view path);
 
 		static void applyProperties(const ecss::EntityHandle& entity, const Json::Value& properties);

@@ -7,6 +7,7 @@
 #include "componentsModule/DebugDataComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
@@ -47,16 +48,16 @@ namespace Engine::PropertiesModule {
 			debugData->stringId = properties["id"].asString();
 		}
 
+		ECSHandler::registry().addComponent<ComponentsModule::AABBComponent>(entity);
+		ECSHandler::registry().addComponent<OcTreeComponent>(entity);
 		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
 		applyProperties(entity, properties);
 		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity.getID());
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
-				auto child = ECSHandler::registry().takeEntity();
-				ECSHandler::registry().addComponent<IsDrawableComponent>(child);
+				auto child = ECSHandler::registry().takeEntity();				
 				fillTree(child, element);
-				ECSHandler::registry().addComponent<TreeComponent>(child, child.getID());
 				treeComp->addChildEntity(child.getID());
 			}
 		}

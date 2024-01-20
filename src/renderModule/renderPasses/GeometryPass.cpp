@@ -220,14 +220,6 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	rotate();
 	prepare();
 
-	size_t count = 0;
-	for (auto& list : curPassData->getBatcher().drawList) {
-		count += list.transforms.size();
-	}
-	ImGui::Text("geometry %d", count);
-	if (count == 0) {
-		int d = 0;
-	}
 	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mGBuffer);
@@ -285,9 +277,11 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 			auto& model = modelComp.getModel();
 			int i = 0;
 			for (auto& mesh : model.mMeshHandles) {
+				aabbcomp.mtx.lock_shared();
 				if (aabbcomp.aabbs[i].isOnFrustum(renderDataHandle.mCamFrustum)) {
 					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
 				}
+				aabbcomp.mtx.unlock_shared();
 				i++;
 			}
 		}

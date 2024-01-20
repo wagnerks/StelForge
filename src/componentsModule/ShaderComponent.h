@@ -57,7 +57,7 @@ namespace Engine::ComponentsModule {
 		template<typename T>
 		static T fromString(const std::string& value) { return T{}; }
 
-		ShaderUniformVariables<int> integerUniforms;
+		/*ShaderUniformVariables<int> integerUniforms;
 		ShaderUniformVariables<float> floatUniforms;
 		ShaderUniformVariables<Math::Mat4> mat4Uniforms;
 		ShaderUniformVariables<Math::Mat3> mat3Uniforms;
@@ -65,7 +65,7 @@ namespace Engine::ComponentsModule {
 		ShaderUniformVariables<Math::Vec3> vec3Uniforms;
 		ShaderUniformVariables<Math::Vec4> vec4Uniforms;
 
-		ShaderUniformVariables<ShaderVariablesStruct> structUniforms;
+		ShaderUniformVariables<ShaderVariablesStruct> structUniforms;*/
 
 		void apply(ShaderModule::ShaderBase* shader, std::string prefix = "");
 	};
@@ -79,20 +79,41 @@ namespace Engine::ComponentsModule {
 	inline std::string ShaderVariablesStruct::toString(const float& value) { return std::to_string(value); }
 
 	template<>
-	inline double ShaderVariablesStruct::fromString(const std::string& value) { return std::atof(value.c_str()); }
+	inline std::string ShaderVariablesStruct::toString(const double& value) { return std::to_string(value); }
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const Math::Vec2& value) {
+	inline std::string ShaderVariablesStruct::toString(const long double& value) { return std::to_string(value); }
+
+	template<>
+	inline double ShaderVariablesStruct::fromString(const std::string& value) { return std::atof(value.c_str()); }
+
+	/*template<>
+	inline std::string ShaderVariablesStruct::toString(const Math::Vector<float,2>& value) {
 		return "{" + toString(value.x) + "," + toString(value.y) + "}";
 	}
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const Math::Vec3& value) {
+	inline std::string ShaderVariablesStruct::toString(const Math::Vector<double, 2>& value) {
+		return "{" + toString(value.x) + "," + toString(value.y) + "}";
+	}
+
+	template<>
+	inline std::string ShaderVariablesStruct::toString(const Math::Vector<double, 3>& value) {
 		return "{" + toString(value.x) + "," + toString(value.y) + "," + toString(value.z) + "}";
 	}
 
 	template<>
-	inline std::string ShaderVariablesStruct::toString(const Math::Vec4& value) {
+	inline std::string ShaderVariablesStruct::toString(const Math::Vector<float,3>& value) {
+		return "{" + toString(value.x) + "," + toString(value.y) + "," + toString(value.z) + "}";
+	}
+
+	template<>
+	inline std::string ShaderVariablesStruct::toString(const Math::Vector<double,4>& value) {
+		return "{" + toString(value.x) + "," + toString(value.y) + "," + toString(value.z) + "," + toString(value.w) + "}";
+	}
+
+	template<>
+	inline std::string ShaderVariablesStruct::toString(const Math::Vector<float,4>& value) {
 		return "{" + toString(value.x) + "," + toString(value.y) + "," + toString(value.z) + "," + toString(value.w) + "}";
 	}
 
@@ -104,17 +125,17 @@ namespace Engine::ComponentsModule {
 	template<>
 	inline std::string ShaderVariablesStruct::toString(const Math::Mat4& value) {
 		return "{[" + toString(value[0]) + "]" + "[" + toString(value[1]) + "]" + "[" + toString(value[2]) + "]" + "[" + toString(value[3]) + "]}";
-	}
+	}*/
 
 	inline void ShaderVariablesStruct::apply(ShaderModule::ShaderBase* shader, std::string prefix) {
-		integerUniforms.apply(shader, prefix);
+		/*integerUniforms.apply(shader, prefix);
 		floatUniforms.apply(shader, prefix);
 		mat4Uniforms.apply(shader, prefix);
 		mat3Uniforms.apply(shader, prefix);
 		vec2Uniforms.apply(shader, prefix);
 		vec3Uniforms.apply(shader, prefix);
 		vec4Uniforms.apply(shader, prefix);
-		structUniforms.apply(shader, prefix);
+		structUniforms.apply(shader, prefix);*/
 	}
 
 	class ShaderComponent {

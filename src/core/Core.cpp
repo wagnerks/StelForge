@@ -17,7 +17,7 @@ using namespace Engine;
 using namespace Engine::CoreModule;
 
 void Core::update(float dt) {
-	FUNCTION_BENCHMARK
+	FUNCTION_BENCHMARK;
 	
 	Debug::ImGuiDecorator::preDraw();
 	ECSHandler::systemManager().update(dt);
@@ -37,7 +37,7 @@ void Core::init() {
 	CoreModule::InputHandler::init();
 	RenderModule::Renderer::instance();
 
-	{
+	/*{
 		Math::Matrix<float, 2, 2> A {1, 4, 2, 4};
 		Math::Matrix<float, 2, 2> B {2, 6, 3, 7};
 		Math::Matrix<float, 2, 2> expectedC = { 14, 32, 17,40 };
@@ -55,7 +55,7 @@ void Core::init() {
 		auto D = A * KEK;
 		assert(C == expectedC);
 		assert(D == expected);
-	}
+	}*/
 }
 
 Core::~Core() {

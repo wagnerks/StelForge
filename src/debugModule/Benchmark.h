@@ -9,7 +9,9 @@
 #include "core/Singleton.h"
 #include "logsModule/logger.h"
 
-#ifdef BENCHMARK_ENABLED
+#define BENCHMARK_ENABLED 0
+
+#if !BENCHMARK_ENABLED
 #define FUNCTION_BENCHMARK 
 #define FUNCTION_BENCHMARK_NAMED(name) 
 #else
@@ -106,6 +108,8 @@ namespace Engine::Debug {
 		std::map<std::string, MeasureData> measurements;
 		std::string filter;
 		std::shared_mutex mtx;
+
+		bool windowOpened = false;
 	};
 
 	class BenchmarkFunc final {

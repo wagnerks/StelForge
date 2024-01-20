@@ -6,5 +6,7 @@ namespace Engine::RenderModule::RenderPasses {
 	public:
 		LightingPass();
 		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
+	private:
+		bool skyParams = false;
 	};
 }

@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <shared_mutex>
 #include <vector>
 #include <json/value.h>
 
@@ -28,7 +29,29 @@ namespace Engine::ComponentsModule {
 	};
 
 	struct AABBComponent {
+		AABBComponent() = default;
+		AABBComponent(const AABBComponent& other)
+			: aabbs(other.aabbs) {}
+
+		AABBComponent(AABBComponent&& other) noexcept
+			: aabbs(std::move(other.aabbs)) {}
+
+		AABBComponent& operator=(const AABBComponent& other) {
+			if (this == &other)
+				return *this;
+			aabbs = other.aabbs;
+			return *this;
+		}
+
+		AABBComponent& operator=(AABBComponent&& other) noexcept {
+			if (this == &other)
+				return *this;
+			aabbs = std::move(other.aabbs);
+			return *this;
+		}
+
 		std::vector<FrustumModule::AABB> aabbs;
+		std::shared_mutex mtx;
 	};
 
 	class ModelComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {

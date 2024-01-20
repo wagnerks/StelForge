@@ -8,10 +8,10 @@
 #include "systemsModule/systems/TransformSystem.h"
 
 namespace Engine::ComponentsModule {
-	const Math::Vec3& TransformComponent::getPos(bool global) const {
+	const Math::Vec3 TransformComponent::getPos(bool global) const {
 		std::shared_lock lock(mtx);
 		if (global) {
-			return mTransform[3].xyz;
+			return Math::Vec3(mTransform[3]);
 		}
 		return mPos;
 	}
@@ -60,7 +60,8 @@ namespace Engine::ComponentsModule {
 	}
 
 	Math::Vec3 TransformComponent::getGlobalScale() const {
-		return { mTransform[0].length(), mTransform[1].length(), mTransform[2].length() };
+		//return { glm::length(mTransform[0]), glm::length(mTransform[1]), glm::length(mTransform[2]) };
+		return { Math::length(mTransform[0]), Math::length(mTransform[1]), Math::length(mTransform[2]) };
 	}
 	void TransformComponent::setScaleX(float x) {
 		setScale({ x, mScale.y, mScale.z });
@@ -112,13 +113,13 @@ namespace Engine::ComponentsModule {
 		
 
 		if (const auto tree = ECSHandler::registry().getComponent<TreeComponent>(getEntityId())) {
-			if (const auto parentTransform = ECSHandler::registry().getComponent<TransformComponent>(tree->getParent())) {
+			if (const auto parentTransform = ECSHandler::registry().getComponentForce<TransformComponent>(tree->getParent())) {
 				std::unique_lock lock(mtx);
 				mTransform = parentTransform->getTransform() * mTransform;
 			}
 
 			for (const auto childTransform : tree->getChildren()) {
-				if (auto transformPtr = ECSHandler::registry().getComponent<TransformComponent>(childTransform)) {
+				if (auto transformPtr = ECSHandler::registry().getComponentForce<TransformComponent>(childTransform)) {
 					transformPtr->mDirty = true;
 					transformPtr->reloadTransform();
 				}
@@ -127,7 +128,7 @@ namespace Engine::ComponentsModule {
 	}
 
 	Engine::Math::Mat4 TransformComponent::getLocalTransform() const {
-		return Math::translate({1.f}, mPos) * mRotateQuaternion.toMat4() * Math::scale({ 1.f }, mScale);
+		return Math::translate(Math::Mat4{1.f}, mPos) * mRotateQuaternion.toMat4() * Math::scale(Math::Mat4{ 1.f }, mScale);
 	}
 
 	Engine::Math::Mat4 TransformComponent::getViewMatrix() const {

@@ -35,37 +35,6 @@ namespace Engine {
 				glfwSetWindowShouldClose(mMainWindow, true);
 			}
 		};
-
-		//lol = std::thread([this]() {
-		//	glfwInit();
-		//	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-		//	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-		//	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-		//	mEditorWindow = glfwCreateWindow(1024, 768, "GameEngine", nullptr, nullptr);
-
-		//	glfwMakeContextCurrent(mEditorWindow);
-		//	glfwSetFramebufferSizeCallback(mEditorWindow, [](GLFWwindow* window, int width, int height) {
-		//		glViewport(0, 0, width, height);
-		//	});
-
-
-		//	glfwSwapInterval(0);
-		//	
-		//	glClearDepth(50.0);
-		//	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-
-
-
-
-		//	while(true) {
-		//		editorUpdate();
-
-		//		glfwSwapBuffers(mEditorWindow);
-		//		glfwPollEvents();
-		//	}
-		//});
 	}
 
 	void UnnamedEngine::update() {
@@ -113,16 +82,9 @@ namespace Engine {
 		mAlive = !glfwWindowShouldClose(mMainWindow);
 	}
 
-	void UnnamedEngine::editorUpdate() {
-
-	}
 
 	GLFWwindow* UnnamedEngine::getMainWindow() const {
 		return mMainWindow;
-	}
-
-	GLFWwindow* UnnamedEngine::getEditorWindow() {
-		return mEditorWindow;
 	}
 
 	bool UnnamedEngine::isMainThread() {
