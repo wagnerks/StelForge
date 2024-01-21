@@ -1,4 +1,4 @@
-﻿#include "GeometryPass.h"
+#include "GeometryPass.h"
 
 #include "imgui.h"
 #include "componentsModule/ModelComponent.h"
@@ -225,6 +225,9 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	
 	auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 	shaderGeometryPass->use();
+   
+    shaderGeometryPass->setMat4("view",  renderDataHandle.current.view);
+    shaderGeometryPass->setMat4("PV",  renderDataHandle.current.PV);
 	shaderGeometryPass->setInt("texture_diffuse1", 0);
 	shaderGeometryPass->setInt("normalMap", 1);
 	shaderGeometryPass->setBool("outline", false);

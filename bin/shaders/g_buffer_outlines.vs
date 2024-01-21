@@ -1,10 +1,10 @@
-#version 430 core
+#version 410 core
 layout (location = 0) in vec3 aPos;
 
 
-layout(std430, binding = 1) buffer modelMatrices
+layout(std140) uniform modelMatrices
 {
-    mat4 model[];
+    mat4 model[50];
 };
 
 uniform mat4 PV;

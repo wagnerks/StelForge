@@ -1,4 +1,4 @@
-﻿#include "CascadedShadowPass.h"
+#include "CascadedShadowPass.h"
 
 #include "imgui.h"
 #include "componentsModule/FrustumComponent.h"
@@ -246,7 +246,10 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderData& r
 
 	const auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
 	simpleDepthShader->use();
-
+    for (size_t i = 0; i < lightMatrices.size(); i++) {
+        simpleDepthShader->setMat4(("lightSpaceMatrices[" + std::to_string(i) + "]").c_str(), lightMatrices[i]);
+    }
+    
 	curPassData->getBatcher().flushAll(true);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);

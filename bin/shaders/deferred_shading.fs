@@ -1,4 +1,4 @@
-#version 430 core
+#version 410 core
 
 out vec4 FragColor;
 in vec2 TexCoords;
@@ -49,18 +49,18 @@ struct CascadedShadow {
 };
 uniform CascadedShadow cascadedShadow;
 
-layout (std140, binding = 0) uniform LightSpaceMatrices {
+layout (std140) uniform LightSpaceMatrices {
     mat4 lightSpaceMatrices[6];
 };
 
-layout (std140, binding = 3) uniform PointLightMatrices {
+layout (std140) uniform PointLightMatrices {
     mat4 pointLightMatrices[36];
 };
 
 
 
 vec2 vogel_disk_sample(uint sample_index, int sample_count, float angle) {
-  const float golden_angle = 2.399963f; // radians
+  float golden_angle = 2.399963f; // radians
   float r                  = sqrt(sample_index + 0.5f) / sqrt(sample_count);
   float theta              = sample_index * golden_angle + angle;
   float sine, cosine;
@@ -73,19 +73,19 @@ vec2 vogel_disk_sample(uint sample_index, int sample_count, float angle) {
 float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
     float shadow = 0.f; 
 
-    const float penumbra        = 1.0f;
+    float penumbra        = 1.0f;
     
-    const float temporal_offset = 0.0;
-    const float temporal_angle  = temporal_offset * 3.14 * 2;
-    const float g_shadow_filter_size = 1.0;
-    const float g_shadow_samples_rpc = 1.0 / cascadedShadow.samples[layer];
+    float temporal_offset = 0.0;
+    float temporal_angle  = temporal_offset * 3.14 * 2;
+    float g_shadow_filter_size = 1.0;
+    float g_shadow_samples_rpc = 1.0 / cascadedShadow.samples[layer];
 
     
 
     for (uint i = 0; i < cascadedShadow.samples[layer]; i++) {
-        const vec2 offset = vogel_disk_sample(i, cascadedShadow.samples[layer], temporal_angle) * (cascadedShadow.texelSize[layer]) *  g_shadow_filter_size * penumbra;
+        vec2 offset = vogel_disk_sample(i, cascadedShadow.samples[layer], temporal_angle) * (cascadedShadow.texelSize[layer]) *  g_shadow_filter_size * penumbra;
         
-        const float depth = texture(cascadedShadow.shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z));
+        float depth = texture(cascadedShadow.shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z));
         shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
     } 
 
@@ -95,19 +95,19 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
 float TechniqueVogelPoint(PointLight light, int layer, float bias, vec3 projCoords) {
     float shadow = 0.f; 
 
-    const float penumbra        = 1.0f;
+    float penumbra        = 1.0f;
     
-    const float temporal_offset = 0.0;
-    const float temporal_angle  = temporal_offset * 3.14 * 2;
-    const float g_shadow_filter_size = 1.0;
-    const float g_shadow_samples_rpc = 1.0 / light.samples;
+    float temporal_offset = 0.0;
+    float temporal_angle  = temporal_offset * 3.14 * 2;
+    float g_shadow_filter_size = 1.0;
+    float g_shadow_samples_rpc = 1.0 / light.samples;
 
     
 
     for (uint i = 0; i < light.samples; i++) {
-        const vec2 offset = vogel_disk_sample(i, light.samples, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
+        vec2 offset = vogel_disk_sample(i, light.samples, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
         
-        const float depth = texture(PointLightShadowMapArray, vec4(projCoords.xy + offset, layer + light.offset, projCoords.z));
+        float depth = texture(PointLightShadowMapArray, vec4(projCoords.xy + offset, layer + light.offset, projCoords.z));
         shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
     } 
 
@@ -134,8 +134,8 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) { //return 
         return 0.0;//light, cause all what is not under sun should be light by default
     }
 
-    const float illumination = -dot(Normal, cascadedShadow.direction); // -1 = darkest, 1 = lightest
-    const float illuminationKoef = 1.0 - illumination; // 0 - dark, 1 - light
+    float illumination = -dot(Normal, cascadedShadow.direction); // -1 = darkest, 1 = lightest
+    float illuminationKoef = 1.0 - illumination; // 0 - dark, 1 - light
     
     float bias = cascadedShadow.bias[layer] * (-illumination);
    
@@ -146,8 +146,8 @@ float PointLightCalculation(PointLight light, vec3 fragPosWorldSpace, vec3 Norma
     vec4 fragPosLightSpace;
     vec3 projCoords;
 
-    const vec3 lightDir  = normalize(light.Position - fragPosWorldSpace);
-    const float illumination = -dot(Normal, -lightDir); // -1 = darkest, 1 = lightest
+    vec3 lightDir  = normalize(light.Position - fragPosWorldSpace);
+    float illumination = -dot(Normal, -lightDir); // -1 = darkest, 1 = lightest
     float bias = light.bias * (-illumination);
 
     int layer = 0;
@@ -181,7 +181,7 @@ vec3 calculateLighting(vec3 Normal, vec3 lightDirection, vec3 viewDirection, vec
 }
 
 vec2 calculateIllumination(vec3 lightDir, vec3 normal){
-    const float illumination = -dot(normal, lightDir); // -1 = darkest, 1 = lightest
+    float illumination = -dot(normal, lightDir); // -1 = darkest, 1 = lightest
     float illuminationKoef = illumination; // 0 - dark, 1 - light
     if (illuminationKoef < 0.0){
         illuminationKoef = 0.0;
@@ -195,14 +195,14 @@ float customMix(float x, float y, float a) {
 
 void main() {
     // retrieve data from gbuffer
-    const vec3 FragPos = texture(gPosition, TexCoords).rgb;
-    const vec3 Normal = texture(gNormal, TexCoords).rgb;
-    const float Depth = texture(gNormal, TexCoords).a;
+    vec3 FragPos = texture(gPosition, TexCoords).rgb;
+    vec3 Normal = texture(gNormal, TexCoords).rgb;
+    float Depth = texture(gNormal, TexCoords).a;
     vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
-    const float Specular = texture(gAlbedoSpec, TexCoords).a;
-    const float AmbientOcclusion = texture(ssao, TexCoords).r;
+    float Specular = texture(gAlbedoSpec, TexCoords).a;
+    float AmbientOcclusion = texture(ssao, TexCoords).r;
     
-    const vec3 viewDir  = normalize(viewPos - FragPos);
+    vec3 viewDir  = normalize(viewPos - FragPos);
     vec3 lighting = vec3(Diffuse * ambientColor);
     lighting += calculateLighting(Normal, cascadedShadow.direction, viewDir, Diffuse, cascadedShadow.color, Specular) * 0.5f; 
     
@@ -230,7 +230,7 @@ void main() {
             //if (pointLight[idx].Type == 0){
                 shadow = customMix(shadow, max(point.y, PointLightCalculation(pointLight[idx], FragPos, Normal)) * pow(1.0 - k, 0.2), 1.0 - k);
            
-                const float attenuation = 1.0 / (1.0 + pointLight[idx].Linear * distance + pointLight[idx].Quadratic * distance * distance);
+                float attenuation = 1.0 / (1.0 + pointLight[idx].Linear * distance + pointLight[idx].Quadratic * distance * distance);
             
                 lighting += (calculateLightDiffuse(Normal, -lightDir, Diffuse, pointLight[idx].Color) + calculateSpecular(Normal, -lightDir, viewDir, pointLight[idx].Color, Specular)) * attenuation;
                 
@@ -243,10 +243,10 @@ void main() {
 
     lighting *= (1.0 - (shadowIntensity * shadow * 1.9));
     //lighting *= AmbientOcclusion;
-    const float gamma = 1.0;
-    const float exposure = 1.2;
+    float gamma = 1.0;
+    float exposure = 1.2;
     
-    const float outlines = texture(gOutlines, TexCoords).b;
+    float outlines = texture(gOutlines, TexCoords).b;
 
     // exposure tone mapping
     vec3 mapped = vec3(1.0) - exp(-lighting * exposure);

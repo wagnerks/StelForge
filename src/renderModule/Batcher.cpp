@@ -1,4 +1,4 @@
-﻿#include "Batcher.h"
+#include "Batcher.h"
 
 #include <algorithm>
 
@@ -62,11 +62,12 @@ void Batcher::flushAll(bool clear) {
 
 	for (auto& drawObjects : drawList) {
 		glBindVertexArray(drawObjects.VAO);
+        
+        glGenBuffers(1, &drawObjects.transformsBuffer);
+        glBindBuffer(GL_UNIFORM_BUFFER, drawObjects.transformsBuffer);
+        glBufferData(GL_UNIFORM_BUFFER,  sizeof(Engine::Math::Mat4) * drawObjects.transforms.size(), drawObjects.transforms.data(), GL_DYNAMIC_DRAW);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, drawObjects.transformsBuffer);
 
-		glGenBuffers(1, &drawObjects.transformsBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawObjects.transformsBuffer);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, drawObjects.transformsBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Engine::Math::Mat4) * drawObjects.transforms.size(), drawObjects.transforms.data(), GL_DYNAMIC_DRAW);
 
 
 		if (drawObjects.material.mDiffuse.mTexture->isValid()) {
