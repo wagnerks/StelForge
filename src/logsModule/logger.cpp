@@ -31,24 +31,24 @@ void Logger::logMessage(const eLogLevel level, const char* msg) {
 	switch (level) {
 	case eLogLevel::WARNING:
 #ifdef __APPLE__
-            logType = OS_LOG_TYPE_ERROR;
+		logType = OS_LOG_TYPE_ERROR;
 #endif
 		oss << "WARNING:  ";
 		break;
 	case eLogLevel::ERROR_:
 #ifdef __APPLE__
-            logType = OS_LOG_TYPE_ERROR;
+		logType = OS_LOG_TYPE_ERROR;
 #endif
 		oss << "ERROR:  ";
 		break;
 	case eLogLevel::INFO:
 #ifdef __APPLE__
-            logType = OS_LOG_TYPE_INFO;
+		logType = OS_LOG_TYPE_INFO;
 #endif
 		break;
 	case eLogLevel::FATAL:
 #ifdef __APPLE__
-            logType = OS_LOG_TYPE_FAULT;
+		logType = OS_LOG_TYPE_FAULT;
 #endif
 		oss << "FATAL:  ";
 	}
