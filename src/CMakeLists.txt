@@ -33,41 +33,62 @@ if (CMAKE_VERSION VERSION_GREATER 3.12)
 endif()
 
 find_package(OpenGL REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME}
-	PUBLIC
-	glad
-	imgui
-	"${CMAKE_SOURCE_DIR}/lib/glfw/glfw3.lib"
-	OpenGL::GL
-	debug
-	"${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsoncpp.lib"
-	optimized
-	"${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/release/jsoncpp.lib"
-	debug
-	"${CMAKE_SOURCE_DIR}/lib/assimp/Debug/assimp-vc143-mtd.lib"
-	optimized
-	"${CMAKE_SOURCE_DIR}/lib/assimp/Release/assimp-vc143-mt.lib"
-	optimized
-	MSVCRT
-)
 
 include_directories("${CMAKE_SOURCE_DIR}/lib/glfw/include")
 include_directories("${CMAKE_SOURCE_DIR}/lib/assimp/include")
 
-set(CMAKE_EXE_LINKER_FLAGS "/NODEFAULTLIB:MSVCRT")
 if(MSVC)
+	target_link_libraries(${CMAKE_PROJECT_NAME}
+		PUBLIC
+		glad
+		imgui
+		"${CMAKE_SOURCE_DIR}/lib/glfw/glfw3.lib"
+		OpenGL::GL
+	debug
+		"${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsoncpp.lib"
+	optimized
+		"${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/release/jsoncpp.lib"
+	debug
+		"${CMAKE_SOURCE_DIR}/lib/assimp/Debug/assimp-vc143-mtd.lib"
+	optimized
+		"${CMAKE_SOURCE_DIR}/lib/assimp/Release/assimp-vc143-mt.lib"
+	optimized
+		MSVCRT
+	)
+	set(CMAKE_EXE_LINKER_FLAGS "/NODEFAULTLIB:MSVCRT")
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
 	set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
+
+	add_custom_command(TARGET ${CMAKE_PROJECT_NAME}
+	POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/assimp/Release/assimp-vc143-mt.dll ${CMAKE_SOURCE_DIR}/.
+		COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/assimp/Debug/assimp-vc143-mtd.dll ${CMAKE_SOURCE_DIR}/.
+		COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsoncpp_d.dll ${CMAKE_SOURCE_DIR}/.
+		COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/release/jsoncpp.dll ${CMAKE_SOURCE_DIR}/.
+	)
+elseif(XCODE)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
+	add_definitions(-std=c++20)
+
+	target_link_libraries(${CMAKE_PROJECT_NAME}
+		PUBLIC
+		imgui
+		glad
+		${CMAKE_SOURCE_DIR}/lib/glfw/lib-arm64/libglfw.3.dylib
+		${CMAKE_SOURCE_DIR}/lib/glfw/lib-arm64/libglfw3.a
+		
+		OpenGL::GL
+		pthread
+	debug
+		${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/macos/debug/libjsoncpp.dylib
+	optimized
+		${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/macos/release/libjsoncpp.dylib
+	debug
+		${CMAKE_SOURCE_DIR}/lib/assimp/macos/debug/libassimpd.dylib
+	optimized
+		${CMAKE_SOURCE_DIR}/lib/assimp/macos/release/libassimp.dylib
+	)
 endif()
-
-
-add_custom_command(TARGET ${CMAKE_PROJECT_NAME}
-POST_BUILD
-COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/assimp/Release/assimp-vc143-mt.dll ${CMAKE_SOURCE_DIR}/.
-COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/assimp/Debug/assimp-vc143-mtd.dll ${CMAKE_SOURCE_DIR}/.
-COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsoncpp_d.dll ${CMAKE_SOURCE_DIR}/.
-COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/release/jsoncpp.dll ${CMAKE_SOURCE_DIR}/.
-)
 
 if(VLD)
 	include_directories("${CMAKE_SOURCE_DIR}/utils/VisualLeakDetector/include")

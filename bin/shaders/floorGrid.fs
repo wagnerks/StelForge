@@ -1,16 +1,11 @@
-#version 430
+#version 410
 
 in vec4 worldPos;
 
 out vec4 fragColor;
 
-layout(std140, binding = 5) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
-} matrices;
-
 uniform vec3 cameraPos;
+uniform mat4 PV;
 uniform float far;
 uniform float near;
 
@@ -39,7 +34,7 @@ vec4 grid(vec3 fragPos3D, float scale) {
 }
 
 float computeLinearDepth(vec3 pos) {
-    vec4 clip_space_pos = matrices.PV * vec4(pos.xyz, 1.0);
+    vec4 clip_space_pos = PV * vec4(pos.xyz, 1.0);
     float clip_space_depth = (clip_space_pos.z / clip_space_pos.w) * 2.0 - 1.0; // put back between -1 and 1
     float linearDepth = (2.0 * near * far) / (far + near - clip_space_depth * (far - near)); // get linear value between 0.01 and 100
     return linearDepth / far; // normalize

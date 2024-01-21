@@ -1,4 +1,9 @@
-﻿#pragma once
+#pragma once
+#include <cstddef>
+#include <cstdio>
+#include <cwchar>
+#include <stdio.h>
+#include <wchar.h>
 
 namespace Engine::LogsModule {
 	enum class eLogLevel {
@@ -13,7 +18,7 @@ namespace Engine::LogsModule {
 
 		template <typename... Args>
 		static const char* format_internal(const char* msg,const Args&... args) {
-			sprintf_s(msgBuf, 2048, msg, args...);
+			snprintf(msgBuf, 2048, msg, args...);
 			return msgBuf;
 		}
 
