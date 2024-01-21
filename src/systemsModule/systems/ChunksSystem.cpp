@@ -188,7 +188,7 @@ namespace Engine::SystemsModule {
 			// Define the distribution for the range -5.0f to 15.0f
 			std::uniform_real_distribution<float> distribution(-5.0f, 15.0f);
 			std::uniform_real_distribution<float> distribution1(1.f, 3.0f);
-			std::uniform_int<int> distribution2(0, 1);
+			std::uniform_int_distribution<int> distribution2(0, 1);
 
 			//ECSHandler::registry().reserve<Engine::ComponentsModule::AABBComponent, OcTreeComponent, ModelComponent, TransformComponent>(24*24*24);
 
