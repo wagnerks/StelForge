@@ -15,43 +15,43 @@ using namespace Engine::Debug;
 void ShadersDebug::shadersDebugDraw(bool& opened) {
 	if (opened) {
 		ImGui::Begin("shaders", &opened);
-		for (auto& [hash, shader] : SHADER_CONTROLLER->getShaders()) {
+		for (auto [hash, shaderBase] : SHADER_CONTROLLER->getShaders()) {
 			ImGui::PushStyleColor(ImGuiCol_Button, { 0,0,0,0 });
-			auto btnId = "recompile##" + std::to_string(shader->getID());
+			auto btnId = "recompile##" + std::to_string(shaderBase->getID());
 			auto updateTex = AssetsModule::TextureHandler::instance()->loadTexture("icons/update-12-32.png");
 			auto editTex = AssetsModule::TextureHandler::instance()->loadTexture("icons/edit-47-32.png");
 
 			auto size = ImGui::GetTextLineHeight() - 4;
 			static ImVec4 icoColor = { 1,1,1,1 };
 
-			auto drawUpdateBtn = [size, updateTex, shader, btnId]() {
+			auto drawUpdateBtn = [size, updateTex, shaderBase = shaderBase, btnId]() {
 
 				ImGui::SameLine(0, 20);
 				ImGui::PushID(btnId.c_str());
 				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(updateTex->mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
-					SHADER_CONTROLLER->recompileShader(shader);
+					SHADER_CONTROLLER->recompileShader(shaderBase);
 				}
 				ImGui::PopID();
 			};
 
-			auto drawEditBtn = [this, size, editTex, shader]() {
-				auto btnId = "edit##" + std::to_string(shader->getID());
+			auto drawEditBtn = [this, size, editTex, shaderBase = shaderBase]() {
+				auto btnId = "edit##" + std::to_string(shaderBase->getID());
 				ImGui::SameLine();
 				ImGui::PushID(btnId.c_str());
 				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(editTex->mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
-					if (auto it = std::find(mOpenedShaderDebugWindows.begin(), mOpenedShaderDebugWindows.end(), shader->getID()); it == mOpenedShaderDebugWindows.end()) {
-						mOpenedShaderDebugWindows.push_back(shader->getID());
+					if (auto it = std::find(mOpenedShaderDebugWindows.begin(), mOpenedShaderDebugWindows.end(), shaderBase->getID()); it == mOpenedShaderDebugWindows.end()) {
+						mOpenedShaderDebugWindows.push_back(shaderBase->getID());
 					}
 				}
 				ImGui::PopID();
 			};
 
-			if (auto vfShader = dynamic_cast<ShaderModule::Shader*>(shader)) {
-				if (ImGui::TreeNode((std::to_string(shader->getID()) + " : " + std::string(vfShader->getFragmentPath())).c_str())) {
+			if (auto vfShader = dynamic_cast<ShaderModule::Shader*>(shaderBase)) {
+				if (ImGui::TreeNode((std::to_string(shaderBase->getID()) + " : " + std::string(vfShader->getFragmentPath())).c_str())) {
 					drawUpdateBtn();
 					drawEditBtn();
 
-					ImGui::Text("VERTEX FRAGMENT SHADER:  ID: %s", std::to_string(shader->getID()).c_str());
+					ImGui::Text("VERTEX FRAGMENT SHADER:  ID: %s", std::to_string(shaderBase->getID()).c_str());
 
 					ImGui::Text("vertexPath: %s", vfShader->getVertexPath().data());
 					ImGui::Text("fragmentPath: %s", vfShader->getFragmentPath().data());
@@ -65,13 +65,13 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 					drawEditBtn();
 				}
 			}
-			else if (auto gShader = dynamic_cast<ShaderModule::GeometryShader*>(shader)) {
+			else if (auto gShader = dynamic_cast<ShaderModule::GeometryShader*>(shaderBase)) {
 
 
-				if (ImGui::TreeNode((std::to_string(shader->getID()) + " : " + std::string(gShader->getFragmentPath())).c_str())) {
+				if (ImGui::TreeNode((std::to_string(shaderBase->getID()) + " : " + std::string(gShader->getFragmentPath())).c_str())) {
 					drawUpdateBtn();
 					drawEditBtn();
-					ImGui::Text("GEOMETRY SHADER:  ID: %s", std::to_string(shader->getID()).c_str());
+					ImGui::Text("GEOMETRY SHADER:  ID: %s", std::to_string(shaderBase->getID()).c_str());
 
 					ImGui::Text("vertexPath: %s", gShader->getVertexPath().data());
 					ImGui::Text("fragmentPath: %s", gShader->getFragmentPath().data());

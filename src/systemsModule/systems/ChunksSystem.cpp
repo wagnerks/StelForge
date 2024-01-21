@@ -132,8 +132,8 @@ namespace Engine::SystemsModule {
 		if (mChunksDebugOpened) {
 			if (ImGui::Begin("chunks debug", &mChunksDebugOpened)) {
 				ImGui::Text("cur chunk %f, %f, %f", mCurrentChunk.x, mCurrentChunk.y, mCurrentChunk.z);
-				ImGui::Text("deleted %d", mDeleted.load());
-				ImGui::Text("created %d", mCreated.load());
+				ImGui::Text("deleted %zu", mDeleted.load());
+				ImGui::Text("created %zu", mCreated.load());
 				ImGui::Checkbox("create", &mCreate);
 				ImGui::Checkbox("clear", &mClear);
 				ImGui::Checkbox("draw chunks borders", &mChunksDraw);

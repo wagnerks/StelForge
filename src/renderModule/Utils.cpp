@@ -283,7 +283,7 @@ void Utils::renderCapsule(const Math::Vec3& start, const Math::Vec3& end, float 
 
 	// Calculate the capsule's axis and length
 	Math::Vec3 axis = end - start;
-	float length = Math::distance(start, end);
+	//float length = Math::distance(start, end);
 
 	// Initialize the vertices array for the capsule.
 	std::vector<float> vertices;

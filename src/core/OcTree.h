@@ -234,6 +234,9 @@ namespace Engine {
 			return !(operator==(rhs));
 		}
 
+		Object(const Math::Vec3& pos, const Math::Vec3& size, const DataType& data) : pos(pos), size(size), data(data) {}
+		Object() = default;
+
 		Math::Vec3 pos;
 		Math::Vec3 size;
 		DataType data;
@@ -395,7 +398,7 @@ namespace Engine {
 		std::vector<ObjectType> data;
 	};
 
-	template<typename DataType, size_t Deep = 4, float Size = 256.f>
+	template<typename DataType, size_t Deep = 4, size_t Size = 256>
 	struct OcTree : public ThreadSynchronizer {
 	public:
 		using NodeType = OcTreeNode<DataType>;
@@ -884,7 +887,7 @@ namespace Engine {
 		}
 
 	public:
-		float mSize = Size;
+		float mSize = static_cast<float>(Size);
 		Math::Vec3 mPos; //LTF left top far point //todo instead LTF use minimum
 
 		NodeType root;

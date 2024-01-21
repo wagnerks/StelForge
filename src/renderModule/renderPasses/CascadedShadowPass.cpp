@@ -54,7 +54,6 @@ void CascadedShadowPass::prepare() {
 		shadowsComp->calculateLightSpaceMatrices(camProj, view);
 		{
 			FUNCTION_BENCHMARK_NAMED(octree);
-			constexpr size_t batchSize = 100;
 
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
 			std::mutex addMtx;
@@ -285,9 +284,9 @@ void CascadedShadowPass::debug(SystemsModule::RenderData& renderDataHandle) {
 					}
 					static float sunProgress = 0.4f;
 					if (ImGui::DragFloat("sun pos", &sunProgress, 0.001f, 0.f)) {
-						auto x = cosf(Math::radians(-sunProgress * 180.f));
+						/*auto x = cosf(Math::radians(-sunProgress * 180.f));
 						auto y = sinf(Math::radians(sunProgress * 180.f));
-						auto z = sinf(Math::radians(sunProgress * 180.f));
+						auto z = sinf(Math::radians(sunProgress * 180.f));*/
 						ECSHandler::registry().getComponent<TransformComponent>(mShadowSource)->setRotate({ -sunProgress * 180.f,0.f, sunProgress * 5.f });
 					}
 				}

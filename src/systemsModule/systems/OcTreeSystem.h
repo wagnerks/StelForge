@@ -13,7 +13,7 @@ namespace Engine {
 namespace Engine::SystemsModule {
 	class OcTreeSystem : public ecss::System, public ThreadSynchronizer {
 	public:
-		inline static constexpr float OCTREE_SIZE = 4096.f;
+		inline static constexpr size_t OCTREE_SIZE = 4096;
 		using SysOcTree = OcTree<ecss::EntityHandle, 5, OCTREE_SIZE>;
 
 		OcTreeSystem();

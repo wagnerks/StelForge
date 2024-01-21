@@ -101,7 +101,7 @@ void ComponentsDebug::init() {
 		}
 	};
 
-	onMouseEvent = [this](Math::DVec2 mPos, Math::DVec2 mouseOffset) {
+	onMouseEvent = [](Math::DVec2 mPos, Math::DVec2 mouseOffset) {
 		return;
 		if (leftM) {
 			auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
@@ -146,7 +146,7 @@ void ComponentsDebug::init() {
 
 								auto mBodyID = body_interface.CreateAndAddBody(cube_settings, EActivation::Activate);
 								body_interface.SetRestitution(mBodyID, 0.5f);
-								auto comp = ECSHandler::registry().addComponent<PhysicsComponent>(obj.second.data.getID(), mBodyID);
+								ECSHandler::registry().addComponent<PhysicsComponent>(obj.second.data.getID(), mBodyID);
 							}
 						}
 					}
@@ -295,7 +295,7 @@ void ComponentsDebug::entitiesDebug() {
 							BodyCreationSettings sphere_settings(new CapsuleShape(100.f, 100.f), RVec3(pos.x, pos.y, pos.z), Quat(quat.x, quat.y, quat.z, quat.w), EMotionType::Dynamic, Layers::MOVING);
 							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
-							auto comp = ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
+							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
 					}
 					else if (current_item == "ph_sphere") {
@@ -309,7 +309,7 @@ void ComponentsDebug::entitiesDebug() {
 							BodyCreationSettings sphere_settings(new SphereShape(100.f), RVec3(pos.x, pos.y, pos.z), Quat(quat.x, quat.y, quat.z, quat.w), EMotionType::Dynamic, Layers::MOVING);
 							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
-							auto comp = ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
+							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
 					}
 					else if (current_item == "ph_box") {
@@ -325,7 +325,7 @@ void ComponentsDebug::entitiesDebug() {
 
 							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
-							auto comp = ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
+							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
 					}
 					else if (current_item == "ph_floor") {
@@ -341,7 +341,7 @@ void ComponentsDebug::entitiesDebug() {
 
 							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
-							auto comp = ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
+							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
 					}
 					else if (current_item == "action") {
@@ -804,8 +804,8 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* 
 		auto treeLabel = "LOD " + std::to_string(i) + "##meshLod";
 		if (ImGui::TreeNode(std::to_string(i).c_str())) {
 
-			ImGui::Text("vertices: %d", lod.mData->mVertices.size());
-			ImGui::Text("indices: %d", lod.mData->mIndices.size());
+			ImGui::Text("vertices: %zu", lod.mData->mVertices.size());
+			ImGui::Text("indices: %zu", lod.mData->mIndices.size());
 			ImGui::Spacing();
 
 			static std::string diffusePath = "";

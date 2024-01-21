@@ -1,4 +1,3 @@
-#pragma once
 #include "propertiesModule/PropertiesSystem.h"
 #include "core/FileSystem.h"
 

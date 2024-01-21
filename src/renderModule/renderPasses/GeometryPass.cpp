@@ -36,8 +36,6 @@ void GeometryPass::prepare() {
 
 		{
 			FUNCTION_BENCHMARK_NAMED(octree);
-			constexpr size_t batchSize = 400;
-
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
 			std::mutex addMtx;
 			auto aabbOctrees = octreeSys->getAABBOctrees(camFrustum.generateAABB());

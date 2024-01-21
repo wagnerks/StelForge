@@ -73,7 +73,7 @@ MeshNode ModelLoader::loadModel(const std::string& path) {
 	MeshNode rawModel;
 	processNode(scene->mRootNode, scene, TextureHandler::instance(), directory, rawModel);
 
-	return std::move(rawModel);
+	return rawModel;
 }
 
 void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureHandler* loader, const std::string& directory, MeshNode& rawModel) {

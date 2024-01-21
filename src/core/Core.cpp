@@ -32,7 +32,7 @@ void Core::update(float dt) {
 }
 
 void Core::init() {
-	auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
+	AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
 	ECSHandler::instance()->initSystems();
 	CoreModule::InputHandler::init();
 	RenderModule::Renderer::instance();
