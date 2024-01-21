@@ -1,4 +1,4 @@
-﻿#include "ShaderBase.h"
+#include "ShaderBase.h"
 
 #include <glad/glad.h>
 
@@ -118,7 +118,7 @@ bool ShaderBase::checkCompileErrors(unsigned int shader, std::string_view type) 
 		if (!success) {
 			glGetShaderInfoLog(shader, 1024, NULL, infoLog);
 
-			LogsModule::Logger::LOG_ERROR("SHADER_COMPILATION_ERROR of type: %s\n%s\n-- --------------------------------------------------- --", type.data(), infoLog);
+			LogsModule::Logger::LOG_ERROR("%s SHADER_COMPILATION_ERROR:\n%s\n-- --------------------------------------------------- --", type.data(), infoLog);
 		}
 	}
 	else {
@@ -126,7 +126,7 @@ bool ShaderBase::checkCompileErrors(unsigned int shader, std::string_view type) 
 		if (!success) {
 			glGetProgramInfoLog(shader, 1024, NULL, infoLog);
 
-			LogsModule::Logger::LOG_ERROR("PROGRAM_LINKING_ERROR of type: %s\n%s\n-- --------------------------------------------------- --", type.data(), infoLog);
+			LogsModule::Logger::LOG_ERROR("%s LINKING_ERROR:\n%s\n", type.data(), infoLog);
 		}
 	}
 

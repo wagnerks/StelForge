@@ -1,4 +1,4 @@
-﻿#include "SceneGridFloor.h"
+#include "SceneGridFloor.h"
 
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
@@ -73,6 +73,7 @@ void SceneGridFloor::draw() {
 	//cameraTransform->reloadTransform();
 	
 	floorShader->setMat4("PVM", renderData.current.PV * transform);
+    floorShader->setMat4("PV", renderData.current.PV);
 	floorShader->setMat4("model", transform);
 	
 	floorShader->setVec3("cameraPos", Math::Vec3{renderData.mCameraPos});

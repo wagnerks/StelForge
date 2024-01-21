@@ -1,5 +1,6 @@
-﻿#pragma once
+#pragma once
 #include <cstdint>
+#include <stddef.h>
 
 namespace Engine::MemoryModule {
 

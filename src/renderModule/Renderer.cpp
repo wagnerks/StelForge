@@ -1,4 +1,4 @@
-﻿#include "Renderer.h"
+#include "Renderer.h"
 
 #include <deque>
 #include <random>
@@ -21,7 +21,11 @@
 #include "propertiesModule/PropertiesSystem.h"
 
 constexpr int GLFW_CONTEXT_VER_MAJ = 4;
+#ifdef __APPLE__
+constexpr int GLFW_CONTEXT_VER_MIN = 1;
+#else
 constexpr int GLFW_CONTEXT_VER_MIN = 6;
+#endif
 
 
 using namespace Engine;
@@ -81,7 +85,12 @@ GLFWwindow* Renderer::initGLFW() {
 	}
 	mGLFWInited = true;
 
-	glfwInit();
+    if (!glfwInit()){
+        LogsModule::Logger::LOG_ERROR("Failed to init GLFW window");
+        glfwTerminate();
+        return nullptr;
+    }
+    
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GLFW_CONTEXT_VER_MAJ);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GLFW_CONTEXT_VER_MIN);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -92,7 +101,10 @@ GLFWwindow* Renderer::initGLFW() {
 
 	auto window = glfwCreateWindow(Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, "GameEngine", nullptr, nullptr);
 	if (window == nullptr) {
-		LogsModule::Logger::LOG_ERROR("Failed to create GLFW window");
+        const char* error;
+        glfwGetError(&error);
+        
+		LogsModule::Logger::LOG_ERROR("Failed to create GLFW window %s", error );
 		glfwTerminate();
 		return nullptr;
 	}
