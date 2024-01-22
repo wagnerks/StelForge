@@ -18,7 +18,7 @@ Which means really big open world, atmospheres, stars, lights, may be some proce
 - [x] deferred shading
 - [x] directional ortho light shadows
 - [ ] perspective ortho light
-- [ ] point light
+- [x] point light
 - [ ] sky (don't like current realisation) 
 - [ ] invent engine name (KillReallGameEngine not bad, but is the best?)
 - [x] frustum culling
@@ -30,7 +30,6 @@ Which means really big open world, atmospheres, stars, lights, may be some proce
 - [ ] custom allocator for game data (models, sprites etc)
 - [x] custom allocator for ECS
 - [ ] entities actions
-- [ ] physics engine (want my own)
 - [x] ability to draw object via custom shader which ok with deferred shading
 - [ ] precompile models format and faster models loading in game
 - [ ] own gui (imgui good, but not very fast)
@@ -40,7 +39,7 @@ Which means really big open world, atmospheres, stars, lights, may be some proce
 - [x] added converting normals to engine coordinates system
 - [ ] 3d objects visual redactor utils
 - [ ] drag and drop
-- [ ] choose object by click
+- [x] choose object by click
 - [x] outlines
 - [x] multithread integration, first of all add ability to update systems in parallel(almost done but no pushed yet)
 - [x] Shadows (don't like how it looks now, but it works) 
