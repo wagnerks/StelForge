@@ -2,7 +2,7 @@
 
 #include "mathModule/Forward.h"
 
-namespace Engine::ProjectionModule {
+namespace SFE::ProjectionModule {
 	enum eProjectionType {
 		NONE,
 		ORTHO,
@@ -22,7 +22,7 @@ namespace Engine::ProjectionModule {
 		Projection(float near, float far) : mNear(near), mFar(far) {}
 		virtual ~Projection() = default;
 
-		const Engine::Math::Mat4& getProjectionsMatrix() const;
+		const SFE::Math::Mat4& getProjectionsMatrix() const;
 		virtual void initProjection() = 0;
 
 		float getNear() const;
@@ -33,7 +33,7 @@ namespace Engine::ProjectionModule {
 
 		void setNearFar(float near, float far);
 	protected:
-		Engine::Math::Mat4 mProjectionMatrix = {};
+		SFE::Math::Mat4 mProjectionMatrix = {};
 	private:
 
 		float mNear = 0.1f;

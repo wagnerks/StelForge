@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <wchar.h>
 
-namespace Engine::LogsModule {
+namespace SFE::LogsModule {
 	enum class eLogLevel {
 		INFO,
 		WARNING,

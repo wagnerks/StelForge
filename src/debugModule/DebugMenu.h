@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "DebugInfo.h"
 
-namespace Engine::Debug {
+namespace SFE::Debug {
 	class DebugMenu {
 	public:
 		~DebugMenu();

@@ -6,7 +6,7 @@
 #include "core/FileSystem.h"
 #include "logsModule/logger.h"
 
-using namespace Engine::ShaderModule;
+using namespace SFE::ShaderModule;
 
 bool ShaderBase::compileShader(const char* shaderCode, unsigned type) {
 	const auto shader = glCreateShader(type);
@@ -63,21 +63,21 @@ void ShaderBase::setFloat(const char* name, float val) {
 	glUniform1f(getUniformLocation(name), val);
 }
 
-void ShaderBase::setVec2(const char* name, const Engine::Math::Vec2& val) {
+void ShaderBase::setVec2(const char* name, const SFE::Math::Vec2& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
 	glUniform2fv(getUniformLocation(name), 1, val.data());
 }
 
-void ShaderBase::setVec3(const char* name, const Engine::Math::Vec3& val) {
+void ShaderBase::setVec3(const char* name, const SFE::Math::Vec3& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}
 	glUniform3fv(getUniformLocation(name), 1, val.data());
 }
 
-void ShaderBase::setVec4(const char* name, const Engine::Math::Vec4& val) {
+void ShaderBase::setVec4(const char* name, const SFE::Math::Vec4& val) {
 	if (getUniformLocation(name) == -1) {
 		return;
 	}

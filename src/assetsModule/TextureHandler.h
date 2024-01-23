@@ -32,7 +32,7 @@ namespace AssetsModule {
 		bool isValid() const;
 	};
 
-	class TextureHandler : public Engine::Singleton<TextureHandler> {
+	class TextureHandler : public SFE::Singleton<TextureHandler> {
 		friend Singleton;
 	public:
 		void bindTexture(unsigned slot, unsigned type, unsigned int id);

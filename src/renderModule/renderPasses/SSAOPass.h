@@ -4,7 +4,7 @@
 
 #include "renderModule/RenderPass.h"
 
-namespace Engine::RenderModule::RenderPasses {
+namespace SFE::RenderModule::RenderPasses {
 	class SSAOPass : public RenderPass {
 	public:
 		struct Data {

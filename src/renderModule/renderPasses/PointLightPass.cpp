@@ -20,9 +20,9 @@
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
-namespace Engine::RenderModule::RenderPasses {
+namespace SFE::RenderModule::RenderPasses {
 	void PointLightPass::init() {
-		lightProjection = Engine::ProjectionModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
+		lightProjection = SFE::ProjectionModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
 
 		glGenFramebuffers(1, &mFramebufferID);
@@ -54,7 +54,7 @@ namespace Engine::RenderModule::RenderPasses {
 		glReadBuffer(GL_NONE);
 
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-			Engine::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
+			SFE::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
 		}
 
 		glGenBuffers(1, &mMatricesUBO);
@@ -100,10 +100,10 @@ namespace Engine::RenderModule::RenderPasses {
 			case ComponentsModule::eLightType::DIRECTIONAL: {
 				/*float shadowHeight = 100.f;
 				float shadowWidth = 100.f;
-				Engine::ProjectionModule::OrthoProjection proj = Engine::ProjectionModule::OrthoProjection({ -shadowWidth * 0.5f, -shadowHeight * 0.5f }, { shadowWidth * 0.5f, shadowHeight * 0.5f }, 0.01f, lightSource.mRadius);
+				SFE::ProjectionModule::OrthoProjection proj = SFE::ProjectionModule::OrthoProjection({ -shadowWidth * 0.5f, -shadowHeight * 0.5f }, { shadowWidth * 0.5f, shadowHeight * 0.5f }, 0.01f, lightSource.mRadius);
 
 				lightMatrices.push_back(proj.getProjectionsMatrix() * owner->getComponent<TransformComponent>()->getViewMatrix());
-				frustums.push_back(Engine::FrustumModule::createFrustum(lightMatrices.back()));*/
+				frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));*/
 				break;
 			}
 			case ComponentsModule::eLightType::POINT: {
@@ -116,7 +116,7 @@ namespace Engine::RenderModule::RenderPasses {
 			case ComponentsModule::eLightType::PERSPECTIVE: {
 				//lightProjection.setFar(lightSource.mRadius);//here possible some fov settings
 				//lightMatrices.push_back(lightProjection.getProjectionsMatrix() * owner->getComponent<TransformComponent>()->getViewMatrix());
-				//frustums.push_back(Engine::FrustumModule::createFrustum(lightMatrices.back()));
+				//frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));
 				break;
 			}
 			default:;
@@ -156,7 +156,7 @@ namespace Engine::RenderModule::RenderPasses {
 				auto lock = tree.readLock();
 				tree.forEachObject([this, &entities, offsetSum, &offset](const auto& obj) {
 					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
-						if (FrustumModule::AABB::isOnFrustum(frustums[i], obj.pos + Engine::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size)){
+						if (FrustumModule::AABB::isOnFrustum(frustums[i], obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size)){
 							entities.emplace_back(obj.data.getID());
 							break;
 						}
@@ -164,7 +164,7 @@ namespace Engine::RenderModule::RenderPasses {
 						
 					
 					
-				}, [this, offsetSum, &offset](const Engine::Math::Vec3& pos, float size, auto&) {
+				}, [this, offsetSum, &offset](const SFE::Math::Vec3& pos, float size, auto&) {
 					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
 						if (OcTree<ecss::EntityHandle>::isOnFrustum(frustums[i], pos, size)) {
 							return true;
@@ -193,7 +193,7 @@ namespace Engine::RenderModule::RenderPasses {
 		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, Engine::RenderModule::Renderer::SCR_WIDTH, Engine::RenderModule::Renderer::SCR_HEIGHT);
+		glViewport(0, 0, SFE::RenderModule::Renderer::SCR_WIDTH, SFE::RenderModule::Renderer::SCR_HEIGHT);
 	}
 
 	void PointLightPass::fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius) {
@@ -204,13 +204,13 @@ namespace Engine::RenderModule::RenderPasses {
 		for (auto angle : { 0.f, 90.f, -90.f, 180.f }) {
 			//todo rotate matrix instead creating rotated copy
 			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * Math::inverse(Math::rotate(transform, Math::radians(angle), { 0.f,1.f,0.f })));
-			frustums.push_back(Engine::FrustumModule::createFrustum(lightMatrices.back()));
+			frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));
 		}
 
 		for (auto angle : { 90.f, -90.f }) {
 			auto res = Math::rotate(transform, Math::radians(angle), { 1.f,0.f,0.f });
 			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * Math::inverse(res));
-			frustums.push_back(Engine::FrustumModule::createFrustum(lightMatrices.back()));
+			frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));
 		}
 	}
 }

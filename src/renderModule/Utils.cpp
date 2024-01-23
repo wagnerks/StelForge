@@ -4,9 +4,9 @@
 #include "Renderer.h"
 #include "systemsModule/SystemManager.h"
 
-using namespace Engine::RenderModule;
+using namespace SFE::RenderModule;
 
-std::vector<Engine::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color) {
+std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color) {
 	auto it = std::find_if(renderVertices.begin(), renderVertices.end(), [color](std::pair<Math::Vec4, std::vector<Math::Vec3>>& a) {
 		return a.first == color;
 	});

@@ -3,7 +3,7 @@
 
 #include "MemoryManager.h"
 
-namespace Engine::MemoryModule {
+namespace SFE::MemoryModule {
 
 	class GlobalMemoryUser {
 		GlobalMemoryUser(const GlobalMemoryUser&) = delete;

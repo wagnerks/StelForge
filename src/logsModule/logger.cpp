@@ -12,7 +12,7 @@
 #include <ctime>
 #include <iomanip>
 
-using namespace Engine::LogsModule;
+using namespace SFE::LogsModule;
 
 void Logger::logMessage(const eLogLevel level, const char* msg) {
 	auto t = time(nullptr);

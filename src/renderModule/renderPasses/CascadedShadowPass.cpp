@@ -32,7 +32,7 @@
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
-using namespace Engine::RenderModule::RenderPasses;
+using namespace SFE::RenderModule::RenderPasses;
 
 void CascadedShadowPass::prepare() {
 	if (!ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource)) {
@@ -65,12 +65,12 @@ void CascadedShadowPass::prepare() {
 					auto lock = treeIt->readLock();
 					treeIt->forEachObject([&addMtx, &cascades, &entities](const auto& obj) {
 						if (std::find_if(cascades.crbegin(), cascades.crend(), [&obj](const ComponentsModule::ShadowCascade& shadow) {
-							return FrustumModule::AABB::isOnFrustum(shadow.frustum, obj.pos + Engine::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size);
+							return FrustumModule::AABB::isOnFrustum(shadow.frustum, obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size);
 						}) != cascades.crend()) {
 							std::unique_lock lock(addMtx);
 							entities.emplace_back(obj.data.getID());
 						}
-					}, [&cascades](const Engine::Math::Vec3& pos, float size, auto&) {
+					}, [&cascades](const SFE::Math::Vec3& pos, float size, auto&) {
 						return std::find_if(cascades.crbegin(), cascades.crend(), [pos, size](const ComponentsModule::ShadowCascade& shadow) {
 							return OcTree<ecss::EntityHandle>::isOnFrustum(shadow.frustum, pos, size);
 						}) != cascades.crend();
@@ -123,7 +123,7 @@ void CascadedShadowPass::init() {
 	mShadowSource = ECSHandler::registry().takeEntity();
 	
 	ECSHandler::registry().addComponent<ComponentsModule::TransformComponent>(mShadowSource, mShadowSource.getID());
-	ECSHandler::registry().addComponent<LightSourceComponent>(mShadowSource, mShadowSource.getID(), Engine::ComponentsModule::eLightType::WORLD);
+	ECSHandler::registry().addComponent<LightSourceComponent>(mShadowSource, mShadowSource.getID(), SFE::ComponentsModule::eLightType::WORLD);
 
 	auto cmp = ECSHandler::registry().addComponent<CascadeShadowComponent>(mShadowSource, mShadowSource.getID());
 	cmp->resolution = Math::Vec2{ 4096.f, 4096.f };
@@ -131,7 +131,7 @@ void CascadedShadowPass::init() {
 	auto debugData = ECSHandler::registry().addComponent<DebugDataComponent>(mShadowSource);
 	debugData->stringId = "cascadeShadows";
 
-	auto cam = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto cam = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(cam)->getProjection();
 
 	cmp->shadowCascadeLevels = { cameraProjection.getNear(), 50.f, 150.f, 500.f, 5000.f };
@@ -150,7 +150,7 @@ void CascadedShadowPass::initRender() {
 	freeBuffers();
 
 	auto cmp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
-	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
+	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
 
 	cmp->updateCascades(cameraProjection);
 
@@ -183,7 +183,7 @@ void CascadedShadowPass::initRender() {
 	glReadBuffer(GL_NONE);
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-		Engine::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
+		SFE::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
 	}
 
 	glGenBuffers(1, &matricesUBO);
@@ -211,7 +211,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderData& r
 	FUNCTION_BENCHMARK;
 
 	if (mUpdateTimer <= mUpdateDelta) {
-		mUpdateTimer += UnnamedEngine::instance()->getDeltaTime();
+		mUpdateTimer += Engine::instance()->getDeltaTime();
 		updateRenderData(renderDataHandle);
 		return;
 	}
@@ -250,7 +250,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderData& r
 	curPassData->getBatcher().flushAll(true);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, Engine::RenderModule::Renderer::SCR_WIDTH, Engine::RenderModule::Renderer::SCR_HEIGHT);
+	glViewport(0, 0, SFE::RenderModule::Renderer::SCR_WIDTH, SFE::RenderModule::Renderer::SCR_HEIGHT);
 
 	updateRenderData(renderDataHandle);
 }

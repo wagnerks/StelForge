@@ -13,7 +13,7 @@
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemsPriority.h"
 
-using namespace Engine::RenderModule::RenderPasses;
+using namespace SFE::RenderModule::RenderPasses;
 
 float lerp(float a, float b, float f) {
 	return a + f * (b - a);

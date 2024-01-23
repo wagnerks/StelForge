@@ -12,7 +12,7 @@
 #include "core/BoundingVolume.h"
 #include "ThreadPool.h"
 
-namespace Engine {
+namespace SFE {
 	enum Octant : uint8_t {
 		LTN = 0,
 		RTN = 1,
@@ -105,7 +105,7 @@ namespace Engine {
 		}
 	};
 
-	inline static bool isPointInBox(const Engine::Math::Vec3& pos, const Engine::Math::Vec3& nodePos, float nodeSize) {
+	inline static bool isPointInBox(const SFE::Math::Vec3& pos, const SFE::Math::Vec3& nodePos, float nodeSize) {
 		if (pos.x >= nodePos.x && pos.x <= nodePos.x + nodeSize) {
 			if (pos.y <= nodePos.y && pos.y >= nodePos.y - nodeSize) {
 				if (pos.z >= nodePos.z && pos.z <= nodePos.z + nodeSize) {
@@ -117,7 +117,7 @@ namespace Engine {
 		return false;
 	}
 
-	inline static bool isBoxInBox(const Engine::Math::Vec3& pos, const Engine::Math::Vec3& nodePos, const Engine::Math::Vec3& nodeSize) {
+	inline static bool isBoxInBox(const SFE::Math::Vec3& pos, const SFE::Math::Vec3& nodePos, const SFE::Math::Vec3& nodeSize) {
 		if (pos.x >= nodePos.x - nodeSize.x && pos.x <= nodePos.x + nodeSize.x) {
 			if (pos.y <= nodePos.y + nodeSize.y && pos.y >= nodePos.y - nodeSize.y) {
 				if (pos.z >= nodePos.z - nodeSize.z && pos.z <= nodePos.z + nodeSize.z) {
@@ -358,7 +358,7 @@ namespace Engine {
 			}
 		}
 
-		inline void forEachNode(const Engine::Math::Vec3& nodePos, float nodeSize, std::function<void(const Engine::Math::Vec3&, float, OcTreeNode&)> func) {
+		inline void forEachNode(const SFE::Math::Vec3& nodePos, float nodeSize, std::function<void(const SFE::Math::Vec3&, float, OcTreeNode&)> func) {
 			std::shared_lock lock(mtx);
 			if (children.empty()) {
 				return;
@@ -370,7 +370,7 @@ namespace Engine {
 			}
 		}
 
-		inline void forEachNode(const Engine::Math::Vec3& nodePos, float nodeSize, std::function<void(const ObjectType&)> func, std::function<bool(const Engine::Math::Vec3&, float, OcTreeNode&)> pred = nullptr) {
+		inline void forEachNode(const SFE::Math::Vec3& nodePos, float nodeSize, std::function<void(const ObjectType&)> func, std::function<bool(const SFE::Math::Vec3&, float, OcTreeNode&)> pred = nullptr) {
 			if (pred) {
 				if (!pred(nodePos, nodeSize, *this)) {
 					return;
@@ -381,7 +381,7 @@ namespace Engine {
 				func(object);
 			}
 
-			forEachNode(nodePos, nodeSize, [func, pred](const Engine::Math::Vec3& pos, float size, OcTreeNode& node) {
+			forEachNode(nodePos, nodeSize, [func, pred](const SFE::Math::Vec3& pos, float size, OcTreeNode& node) {
 				node.forEachNode(pos, size, func, pred);
 			});
 		}
@@ -409,7 +409,7 @@ namespace Engine {
 		OcTree() : mPos{} {}
 
 	public:
-		static inline CardinalDirection getSourceCardinalDirection(const Engine::Math::Vec3& nodePos, float nodeSize, const Engine::Math::Vec3& srcPoint) {
+		static inline CardinalDirection getSourceCardinalDirection(const SFE::Math::Vec3& nodePos, float nodeSize, const SFE::Math::Vec3& srcPoint) {
 			bool left = false;
 			bool xMid = false;
 			if (srcPoint.x >= nodePos.x && srcPoint.x <= nodePos.x + nodeSize) {
@@ -589,7 +589,7 @@ namespace Engine {
 			auto octreeDiagonal = 3 * nodeSize * nodeSize;
 			auto nodeDiagonal = size.x * size.x + size.y * size.y + size.z * size.z;
 			auto diagonalsDistance = octreeDiagonal + nodeDiagonal;
-			if (diagonalsDistance < Engine::Math::lengthSquared(nodePos - pos)) {
+			if (diagonalsDistance < SFE::Math::lengthSquared(nodePos - pos)) {
 				return false;
 			}
 
@@ -686,7 +686,7 @@ namespace Engine {
 			auto octreeDiagonal = 3 * nodeSize * nodeSize;
 			auto nodeDiagonal = size.x * size.x + size.y * size.y + size.z * size.z;
 			auto diagonalsDistance = octreeDiagonal + nodeDiagonal;
-			if (diagonalsDistance < Engine::Math::lengthSquared(nodePos - pos)) {
+			if (diagonalsDistance < SFE::Math::lengthSquared(nodePos - pos)) {
 				return false;
 			}
 			return isPointInBox(pos - size, nodePos, nodeSize) && isPointInBox(pos + size, nodePos, nodeSize);
@@ -696,7 +696,7 @@ namespace Engine {
 			return ltfPos + Math::Vec3(size, -size, size) * 0.5f;
 		}
 
-		static inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum, const Engine::Math::Vec3& ltf, float size) {
+		static inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
 			return FrustumModule::SquareAABB::isOnFrustum(camFrustum, calculateCenter(ltf, size), size * 0.5f);
 		}
 
@@ -754,13 +754,13 @@ namespace Engine {
 		}
 
 	public:
-		inline void forEachObjectInFrustum(const Engine::FrustumModule::Frustum& frustum, std::function<void(const ObjectType&)> func) {
-			root.forEachNode(mPos, mSize, func, [&frustum](const Engine::Math::Vec3& pos, float size, NodeType& node) {
+		inline void forEachObjectInFrustum(const SFE::FrustumModule::Frustum& frustum, std::function<void(const ObjectType&)> func) {
+			root.forEachNode(mPos, mSize, func, [&frustum](const SFE::Math::Vec3& pos, float size, NodeType& node) {
 				return isOnFrustum(frustum, pos, size);
 			});
 		}
 
-		inline void forEachObject(std::function<void(const ObjectType&)> func, std::function<bool(const Engine::Math::Vec3&, float, NodeType&)> pred) {
+		inline void forEachObject(std::function<void(const ObjectType&)> func, std::function<bool(const SFE::Math::Vec3&, float, NodeType&)> pred) {
 			root.forEachNode(mPos, mSize, func, pred);
 		}
 
@@ -789,7 +789,7 @@ namespace Engine {
 			root.erase(data);
 		}
 
-		bool insert(const Engine::Math::Vec3& globalPos, const Engine::Math::Vec3& size, const DataType& data) {
+		bool insert(const SFE::Math::Vec3& globalPos, const SFE::Math::Vec3& size, const DataType& data) {
 			if (!isAABBInBoxAny(globalPos, size, mPos, mSize)) {
 				return false;
 			}
@@ -802,7 +802,7 @@ namespace Engine {
 			return true;
 		}
 
-		bool insertRecursive(NodeType& node, const Engine::Math::Vec3& nodePos, const Engine::Math::Vec3& localPos, const Engine::Math::Vec3& size, size_t step, float nodeSize, const DataType& data) {
+		bool insertRecursive(NodeType& node, const SFE::Math::Vec3& nodePos, const SFE::Math::Vec3& localPos, const SFE::Math::Vec3& size, size_t step, float nodeSize, const DataType& data) {
 			if (!isAABBInBox(localPos, size, nodePos, nodeSize)) {
 				return false;
 			}
@@ -830,18 +830,18 @@ namespace Engine {
 		}
 
 	public:
-		std::vector<std::pair<Engine::Math::Vec3, ObjectType>> findCollisions(const Engine::Math::Vec3& src, const Math::Vec3& dir, const std::function<bool(const ObjectType& data)>& pred = nullptr) {
-			std::vector<std::pair<Engine::Math::Vec3, ObjectType>> result;
+		std::vector<std::pair<SFE::Math::Vec3, ObjectType>> findCollisions(const SFE::Math::Vec3& src, const Math::Vec3& dir, const std::function<bool(const ObjectType& data)>& pred = nullptr) {
+			std::vector<std::pair<SFE::Math::Vec3, ObjectType>> result;
 			findCollisions(root, result, src, dir, mPos, mSize, pred);
 
-			std::sort(result.begin(), result.end(), [src](const std::pair<Engine::Math::Vec3, ObjectType>& a, const std::pair<Engine::Math::Vec3, ObjectType>& b) {
-				return Engine::Math::lengthSquared(src - a.first) < Engine::Math::lengthSquared(src - b.first);
+			std::sort(result.begin(), result.end(), [src](const std::pair<SFE::Math::Vec3, ObjectType>& a, const std::pair<SFE::Math::Vec3, ObjectType>& b) {
+				return SFE::Math::lengthSquared(src - a.first) < SFE::Math::lengthSquared(src - b.first);
 			});
 
 			return result;
 		}
 
-		bool findCollisions(const NodeType& node, std::vector<std::pair<Engine::Math::Vec3, ObjectType>>& collisions, const Engine::Math::Vec3& src, const Engine::Math::Vec3& dir, Engine::Math::Vec3 nodePos, float nodeSize, const std::function<bool(const ObjectType& data)>& pred) {
+		bool findCollisions(const NodeType& node, std::vector<std::pair<SFE::Math::Vec3, ObjectType>>& collisions, const SFE::Math::Vec3& src, const SFE::Math::Vec3& dir, SFE::Math::Vec3 nodePos, float nodeSize, const std::function<bool(const ObjectType& data)>& pred) {
 			const auto octant = getSourceCardinalDirection(nodePos, nodeSize, src);
 
 			nodeSize *= 0.5f;
@@ -887,6 +887,19 @@ namespace Engine {
 		}
 
 	public:
+//		LTF*------------*RTF
+//		 / |           /|
+//      /  |          / |
+//     /   |         /  |
+// LTN*-----------*RTN  |
+//    |    |        |   |
+//    |    |        |   |
+//    |    *LBF-----|---*RBF
+//    |   /         |  /
+//    |  /          | /
+//    | /           |/
+// LBN*-------------*RBN
+
 		float mSize = static_cast<float>(Size);
 		Math::Vec3 mPos; //LTF left top far point //todo instead LTF use minimum
 

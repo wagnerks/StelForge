@@ -11,8 +11,8 @@
 #include "ThreadPool.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 
-namespace Engine {
-	void UnnamedEngine::init() {
+namespace SFE {
+	void Engine::init() {
 		mMainThreadID = std::this_thread::get_id();
 		mMainWindow = RenderModule::Renderer::initGLFW();
 		if (!mMainWindow) {
@@ -37,7 +37,7 @@ namespace Engine {
 		};
 	}
 
-	void UnnamedEngine::update() {
+	void Engine::update() {
 		if (!mAlive) {
 			return;
 		}
@@ -52,15 +52,15 @@ namespace Engine {
 		}
 	}
 
-	float UnnamedEngine::getDeltaTime() const {
+	float Engine::getDeltaTime() const {
 		return mDeltaTime;
 	}
 
-	int UnnamedEngine::getFPS() const {
+	int Engine::getFPS() const {
 		return mFPS;
 	}
 
-	void UnnamedEngine::updateDelta() {
+	void Engine::updateDelta() {
 		const auto currentFrame = static_cast<float>(glfwGetTime());
 		mDeltaTime = currentFrame - mLastFrame;
 		mLastFrame = currentFrame;
@@ -74,24 +74,24 @@ namespace Engine {
 		}
 	}
 
-	bool UnnamedEngine::isAlive() const {
+	bool Engine::isAlive() const {
 		return mAlive;
 	}
 
-	void UnnamedEngine::checkNeedClose() {
+	void Engine::checkNeedClose() {
 		mAlive = !glfwWindowShouldClose(mMainWindow);
 	}
 
 
-	GLFWwindow* UnnamedEngine::getMainWindow() const {
+	GLFWwindow* Engine::getMainWindow() const {
 		return mMainWindow;
 	}
 
-	bool UnnamedEngine::isMainThread() {
+	bool Engine::isMainThread() {
 		return mMainThreadID == std::this_thread::get_id();
 	}
 
-	UnnamedEngine::~UnnamedEngine() {
+	Engine::~Engine() {
 		delete mCore;
 		glfwDestroyWindow(getMainWindow());
 	}

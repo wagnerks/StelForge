@@ -4,7 +4,7 @@
 #include "componentsModule/ComponentBase.h"
 #include "nodeModule/TreeNode.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class TreeComponent : public ecss::ComponentInterface {
 	public:
 		TreeComponent(ecss::SectorId id) : ComponentInterface(id) {};
@@ -29,4 +29,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::TreeComponent;
+using SFE::ComponentsModule::TreeComponent;

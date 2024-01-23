@@ -4,7 +4,7 @@
 #include "core/Projection.h"
 #include "ecss/Types.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class FrustumComponent : public ecss::ComponentInterface {
 	public:
 		FrustumComponent(ecss::SectorId id) : ComponentInterface(id) {};
@@ -18,4 +18,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::FrustumComponent;
+using SFE::ComponentsModule::FrustumComponent;

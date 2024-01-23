@@ -1,12 +1,12 @@
 ﻿#include "BoundingVolume.h"
 #include <assetsModule/modelModule/Mesh.h>
 
-namespace Engine::FrustumModule  {
+namespace SFE::FrustumModule  {
 	AABB Frustum::generateAABB() {
 		return AABB(minPoint, maxPoint);
 	}
 
-	AABB Engine::FrustumModule::generateAABB(const AssetsModule::Mesh& mesh) {
+	AABB SFE::FrustumModule::generateAABB(const AssetsModule::Mesh& mesh) {
 		Math::Vec3 minAABB = Math::Vec3(std::numeric_limits<float>::max());
 		Math::Vec3 maxAABB = Math::Vec3(std::numeric_limits<float>::min());
 
@@ -25,7 +25,7 @@ namespace Engine::FrustumModule  {
 		return AABB(minAABB, maxAABB);
 	}
 
-	Sphere Engine::FrustumModule::generateSphereBV(const AssetsModule::Mesh& mesh) {
+	Sphere SFE::FrustumModule::generateSphereBV(const AssetsModule::Mesh& mesh) {
 		Math::Vec3 minAABB = Math::Vec3(std::numeric_limits<float>::max());
 		Math::Vec3 maxAABB = Math::Vec3(std::numeric_limits<float>::min());
 

@@ -1,11 +1,11 @@
 ﻿#pragma once
 #include "assetsModule/modelModule/Mesh.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class IsDrawableComponent {
 	public:
 		//std::vector<DrawableData> meshes;
 	}; //
 }
 
-using Engine::ComponentsModule::IsDrawableComponent;
+using SFE::ComponentsModule::IsDrawableComponent;

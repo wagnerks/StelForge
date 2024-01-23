@@ -40,7 +40,7 @@
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/PhysicsSystem.h"
 
-using namespace Engine::Debug;
+using namespace SFE::Debug;
 
 void ComponentsDebug::init() {
 	static bool leftM = false;
@@ -136,7 +136,7 @@ void ComponentsDebug::init() {
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(obj.second.data.getID());
 							if (auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(obj.second.data.getID())) {
 								ECSHandler::registry().addComponent<OutlineComponent>(obj.second.data.getID());
-								JPH::BodyInterface& body_interface = ECSHandler::getSystem<Engine::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+								JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 
 								auto pos = tr->getPos(true);
 								auto quat = tr->getQuaternion();
@@ -287,7 +287,7 @@ void ComponentsDebug::entitiesDebug() {
 					else if (current_item == "ph_capsule") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
 
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<Engine::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
 							auto pos = tr->getPos(true);
 							auto quat = tr->getQuaternion();
@@ -301,7 +301,7 @@ void ComponentsDebug::entitiesDebug() {
 					else if (current_item == "ph_sphere") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
 
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<Engine::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
 							auto pos = tr->getPos(true);
 							auto quat = tr->getQuaternion();
@@ -314,7 +314,7 @@ void ComponentsDebug::entitiesDebug() {
 					}
 					else if (current_item == "ph_box") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<Engine::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
 							auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(entity);
 
@@ -330,7 +330,7 @@ void ComponentsDebug::entitiesDebug() {
 					}
 					else if (current_item == "ph_floor") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<Engine::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
 							tr->setScale({ 100.f, 0.05f, 100.f });
 							auto pos = tr->getPos(true);

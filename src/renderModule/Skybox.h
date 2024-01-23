@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "assetsModule/shaderModule/Shader.h"
 
-namespace Engine::RenderModule {
+namespace SFE::RenderModule {
 	class Skybox {
 	public:
 		Skybox(std::string_view path);

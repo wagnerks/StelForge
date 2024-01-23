@@ -10,7 +10,7 @@
 #include "systemsModule/SystemManager.h"
 
 
-using namespace Engine::Debug;
+using namespace SFE::Debug;
 
 void DebugInfo::drawInfo(DebugInfoType type) {
 	ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
@@ -18,12 +18,12 @@ void DebugInfo::drawInfo(DebugInfoType type) {
 	pos.y += 25.f;
 	ImGui::SetNextWindowPos(pos, 0, { 0.f,0.f });
 	ImGui::SetNextWindowBgAlpha(0.3f);
-	const auto& camera = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	const auto& camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 
 	ImGui::Begin("Perf", &opened, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
 	if (type == DebugInfoType::Small || type == DebugInfoType::Middle || type == DebugInfoType::Big) {
-		ImGui::Text("FPS: %d", UnnamedEngine::instance()->getFPS());
-		ImGui::Text("dt: %.4f", static_cast<double>(UnnamedEngine::instance()->getDeltaTime()));
+		ImGui::Text("FPS: %d", Engine::instance()->getFPS());
+		ImGui::Text("dt: %.4f", static_cast<double>(Engine::instance()->getDeltaTime()));
 	}
 
 	if (type == DebugInfoType::Middle || type == DebugInfoType::Big) {

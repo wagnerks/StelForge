@@ -130,7 +130,7 @@ namespace ecss {
 				return;
 			}
 
-			Engine::ThreadPool::instance()->addTask([this] {
+			SFE::ThreadPool::instance()->addTask([this] {
 				while (!mEntitiesToProcess.empty()) {
 					update(mEntitiesToProcess);
 

@@ -2,7 +2,7 @@
 
 #include "systemsModule/SystemBase.h"
 
-namespace Engine {
+namespace SFE {
 	namespace MemoryModule {
 		class ECSMemoryStack;
 	}

@@ -2,7 +2,7 @@
 
 #include "assetsModule/shaderModule/ShaderBase.h"
 
-namespace Engine::RenderModule {
+namespace SFE::RenderModule {
 	class SceneGridFloor {
 	public:
 		SceneGridFloor();
@@ -11,7 +11,7 @@ namespace Engine::RenderModule {
 		void draw();
 	private:
 		void init();
-		Engine::ShaderModule::ShaderBase* floorShader = nullptr;
+		SFE::ShaderModule::ShaderBase* floorShader = nullptr;
 		size_t floorShaderHash;
 		unsigned VAO = 0;
 		unsigned VBO = 0;

@@ -4,13 +4,13 @@
 
 #include "Batcher.h"
 
-namespace Engine {
+namespace SFE {
 	namespace SystemsModule {
 		struct RenderData;
 	}
 }
 
-namespace Engine::RenderModule {
+namespace SFE::RenderModule {
 	class Renderer;
 
 	enum class RenderPreparingStatus {

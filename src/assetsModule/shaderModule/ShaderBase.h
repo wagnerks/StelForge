@@ -5,7 +5,7 @@
 
 #include "mathModule/Forward.h"
 
-namespace Engine::ShaderModule {
+namespace SFE::ShaderModule {
 	class ShaderBase {
 		friend class ShaderController;
 	public:
@@ -23,9 +23,9 @@ namespace Engine::ShaderModule {
 
 		void setMat3(const char* name, const Math::Mat3& val);
 		void setMat4(const char* name, const Math::Mat4& val);
-		void setVec2(const char* name, const Engine::Math::Vec2& val);
-		void setVec3(const char* name, const Engine::Math::Vec3& val);
-		void setVec4(const char* name, const Engine::Math::Vec4& val);
+		void setVec2(const char* name, const SFE::Math::Vec2& val);
+		void setVec3(const char* name, const SFE::Math::Vec3& val);
+		void setVec4(const char* name, const SFE::Math::Vec4& val);
 
 		void setFloat(const char* name, float val);
 		void setUniformBlockIdx(const char* name, unsigned val);

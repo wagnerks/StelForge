@@ -7,7 +7,7 @@
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/systems/TransformSystem.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	const Math::Vec3 TransformComponent::getPos(bool global) const {
 		std::shared_lock lock(mtx);
 		if (global) {
@@ -47,7 +47,7 @@ namespace Engine::ComponentsModule {
 	void TransformComponent::setRoll(float z) {
 		setRotate({ mRotate.x, mRotate.y, z });
 	}
-	void TransformComponent::setRotate(const Engine::Math::Vec3& rotate) {
+	void TransformComponent::setRotate(const SFE::Math::Vec3& rotate) {
 		std::unique_lock lock(mtx);
 		if (this->mRotate != rotate) { markDirty(); }
 
@@ -72,7 +72,7 @@ namespace Engine::ComponentsModule {
 	void TransformComponent::setScaleZ(float z) {
 		setScale({ mScale.x, mScale.y, z });
 	}
-	void TransformComponent::setScale(const Engine::Math::Vec3& scale) {
+	void TransformComponent::setScale(const SFE::Math::Vec3& scale) {
 		std::unique_lock lock(mtx);
 		if (mScale != scale) { markDirty();	}
 
@@ -84,7 +84,7 @@ namespace Engine::ComponentsModule {
 		return mTransform;
 	}
 
-	void TransformComponent::setTransform(const Engine::Math::Mat4& transform) {
+	void TransformComponent::setTransform(const SFE::Math::Mat4& transform) {
 		std::unique_lock lock(mtx);
 		mTransform = transform;
 	}
@@ -127,31 +127,31 @@ namespace Engine::ComponentsModule {
 		}
 	}
 
-	Engine::Math::Mat4 TransformComponent::getLocalTransform() const {
+	SFE::Math::Mat4 TransformComponent::getLocalTransform() const {
 		return Math::translate(Math::Mat4{1.f}, mPos) * mRotateQuaternion.toMat4() * Math::scale(Math::Mat4{ 1.f }, mScale);
 	}
 
-	Engine::Math::Mat4 TransformComponent::getViewMatrix() const {
+	SFE::Math::Mat4 TransformComponent::getViewMatrix() const {
 		std::shared_lock lock(mtx);
 		return inverse(mTransform);;
 	}
 
-	Engine::Math::Vec3 TransformComponent::getRight() {
+	SFE::Math::Vec3 TransformComponent::getRight() {
 		std::shared_lock lock(mtx);
 		return mTransform[0];
 	}
 
-	Engine::Math::Vec3 TransformComponent::getUp() {
+	SFE::Math::Vec3 TransformComponent::getUp() {
 		std::shared_lock lock(mtx);
 		return mTransform[1];
 	}
 
-	Engine::Math::Vec3 TransformComponent::getBackward() {
+	SFE::Math::Vec3 TransformComponent::getBackward() {
 		std::shared_lock lock(mtx);
 		return mTransform[2];
 	}
 
-	Engine::Math::Vec3 TransformComponent::getForward() {
+	SFE::Math::Vec3 TransformComponent::getForward() {
 		std::shared_lock lock(mtx);
 		return -mTransform[2];
 	}

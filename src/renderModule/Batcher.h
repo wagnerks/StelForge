@@ -24,21 +24,21 @@ struct DrawObject {
 	size_t verticesCount;
 	size_t indicesCount;
 	AssetsModule::Material material;
-	std::vector<Engine::Math::Mat4> transforms;
+	std::vector<SFE::Math::Mat4> transforms;
 
 	bool transparentForShadow = false;
-	Engine::Math::Vec3 sortedPos = {};
+	SFE::Math::Vec3 sortedPos = {};
 	unsigned transformsBuffer;
 	size_t transformsCount = 0;
-	void sortTransformAccordingToView(const Engine::Math::Vec3& viewPos);
+	void sortTransformAccordingToView(const SFE::Math::Vec3& viewPos);
 };
 
 
 class Batcher {
 public:
 	Batcher();
-	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& material, const Engine::Math::Mat4&  transform, bool transparentForShadow);
-	void sort(const Engine::Math::Vec3& viewPos = {});
+	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& material, const SFE::Math::Mat4&  transform, bool transparentForShadow);
+	void sort(const SFE::Math::Vec3& viewPos = {});
 	void flushAll(bool clear = false);
 
 	std::vector<DrawObject> drawList;

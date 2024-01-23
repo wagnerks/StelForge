@@ -12,7 +12,7 @@
 
 #include "Singleton.h"
 
-namespace Engine {
+namespace SFE {
 
 	class ThreadSynchronizer {
 	public:

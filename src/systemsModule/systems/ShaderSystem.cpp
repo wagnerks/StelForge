@@ -7,7 +7,7 @@
 #include "core/ECSHandler.h"
 #include "ecss/Registry.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	void ShaderSystem::update(float_t dt) {
 		auto compsArr = ECSHandler::registry().getComponentsArray<ComponentsModule::ShaderComponent>();
 		if (!compsArr.empty()) {

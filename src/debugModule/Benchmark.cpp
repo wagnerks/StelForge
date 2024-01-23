@@ -3,7 +3,7 @@
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
 
-namespace Engine::Debug {
+namespace SFE::Debug {
 	void BenchmarkGUI::onGui() {
 		{
 			if (ImGui::BeginMainMenuBar()) {

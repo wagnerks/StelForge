@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace Engine {
+namespace SFE {
 	template<class T>
 	class Singleton {
 	public:

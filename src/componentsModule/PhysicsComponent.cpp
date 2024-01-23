@@ -5,7 +5,7 @@
 
 PhysicsComponent::~PhysicsComponent() {
 	if (ECSHandler::isAlive()) {
-		if (auto system = ECSHandler::getSystem<Engine::SystemsModule::Physics>()) {
+		if (auto system = ECSHandler::getSystem<SFE::SystemsModule::Physics>()) {
 			JPH::BodyInterface& body_interface = system->physics_system->GetBodyInterface();
 
 			body_interface.RemoveBody(mBodyID);

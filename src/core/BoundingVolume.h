@@ -8,7 +8,7 @@ namespace AssetsModule {
 	class Mesh;
 }
 
-namespace Engine::FrustumModule {
+namespace SFE::FrustumModule {
 
 	struct AABB;
 

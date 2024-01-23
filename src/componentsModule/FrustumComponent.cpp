@@ -16,6 +16,6 @@ bool FrustumComponent::isOnFrustum(const FrustumModule::BoundingVolume& bVolume)
 	return bVolume.isOnFrustum(mFrustum);
 }
 
-Engine::FrustumModule::Frustum* FrustumComponent::getFrustum() {
+SFE::FrustumModule::Frustum* FrustumComponent::getFrustum() {
 	return &mFrustum;
 }

@@ -5,7 +5,7 @@
 #include "Engine.h"
 #include "imgui_internal.h"
 
-namespace Engine::CoreModule {
+namespace SFE::CoreModule {
 	void InputProvider::subscribe(InputObserver* observer) {
 		const auto it = std::find(mKeyObservers.cbegin(), mKeyObservers.cend(), observer);
 		if (it == mKeyObservers.cend()) {
@@ -123,11 +123,11 @@ namespace Engine::CoreModule {
 	}
 
 	void InputHandler::init() {
-		glfwSetInputMode(UnnamedEngine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		glfwSetInputMode(Engine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-		glfwSetKeyCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::keyCallback);
-		glfwSetMouseButtonCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseBtnInput);
-		glfwSetCursorPosCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::mouseCallback);
-		glfwSetScrollCallback(UnnamedEngine::instance()->getMainWindow(), &InputHandler::scrollCallback);
+		glfwSetKeyCallback(Engine::instance()->getMainWindow(), &InputHandler::keyCallback);
+		glfwSetMouseButtonCallback(Engine::instance()->getMainWindow(), &InputHandler::mouseBtnInput);
+		glfwSetCursorPosCallback(Engine::instance()->getMainWindow(), &InputHandler::mouseCallback);
+		glfwSetScrollCallback(Engine::instance()->getMainWindow(), &InputHandler::scrollCallback);
 	}
 }

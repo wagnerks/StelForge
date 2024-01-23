@@ -8,7 +8,7 @@
 
 class Batcher;
 
-namespace Engine::RenderModule::RenderPasses {
+namespace SFE::RenderModule::RenderPasses {
 	class GeometryPass : public RenderPassWithData {
 	public:
 		void prepare() override;

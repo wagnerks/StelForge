@@ -7,7 +7,7 @@
 #include "ecss/EntityHandle.h"
 #include "mathModule/Forward.h"
 
-namespace Engine::PropertiesModule {
+namespace SFE::PropertiesModule {
 	class PropertiesSystem {
 	public:
 		static ecss::EntityHandle loadScene(std::string_view path);

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Engine::Math {
+namespace SFE::Math {
 	template <typename T, size_t Rows, size_t Columns>
 	struct Matrix;
 

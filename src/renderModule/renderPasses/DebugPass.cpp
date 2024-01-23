@@ -15,7 +15,7 @@
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
-namespace Engine::RenderModule::RenderPasses {
+namespace SFE::RenderModule::RenderPasses {
 	DebugPass::DebugPass() {
 
 		glGenVertexArrays(1, &linesVAO);
@@ -56,10 +56,10 @@ namespace Engine::RenderModule::RenderPasses {
 		static SceneGridFloor grid;
 		grid.draw();
 
-		auto& renderData = ECSHandler::getSystem<Engine::SystemsModule::RenderSystem>()->getRenderData();
+		auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
 		CascadeShadowComponent::debugDraw(ECSHandler::registry().getComponent<CascadeShadowComponent>(renderData.mCascadedShadowsPassData.shadows)->getCacheLightSpaceMatrices(), renderData.next.projection, renderData.next.view);
 
-		if (!renderData.mCascadedShadowsPassData.shadowCascadeLevels.empty() && ECSHandler::getSystem<Engine::SystemsModule::RenderSystem>()->isShadowsDebugData()) {
+		if (!renderData.mCascadedShadowsPassData.shadowCascadeLevels.empty() && ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->isShadowsDebugData()) {
 			auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
 			sh->use();
 			sh->setInt("depthMap", 31);

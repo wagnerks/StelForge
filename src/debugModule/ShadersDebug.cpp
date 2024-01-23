@@ -10,7 +10,7 @@
 #include "core/FileSystem.h"
 #include "misc/cpp/imgui_stdlib.h"
 
-using namespace Engine::Debug;
+using namespace SFE::Debug;
 
 void ShadersDebug::shadersDebugDraw(bool& opened) {
 	if (opened) {

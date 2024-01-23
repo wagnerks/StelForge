@@ -6,7 +6,7 @@
 #include "assetsModule/modelModule/Model.h"
 
 
-using namespace Engine::ComponentsModule;
+using namespace SFE::ComponentsModule;
 
 void LODData::setLodLevel(size_t lodLevel) {
 	mLodLevel = lodLevel;

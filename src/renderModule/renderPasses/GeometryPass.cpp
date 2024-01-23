@@ -23,13 +23,13 @@
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
-using namespace Engine::RenderModule::RenderPasses;
+using namespace SFE::RenderModule::RenderPasses;
 
 void GeometryPass::prepare() {
 	auto curPassData = getCurrentPassData();
 	mStatus = RenderPreparingStatus::PREPARING;
 
-	auto& renderData = ECSHandler::getSystem<Engine::SystemsModule::RenderSystem>()->getRenderData();
+	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
 	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, entities = std::vector<unsigned>()]() mutable {
 		FUNCTION_BENCHMARK
 		curPassData->getBatcher().drawList.clear();
@@ -242,7 +242,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 			}
 			i++;
 		}
-		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
+		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
 	}*/
 
 	if (!batcher.drawList.empty()) {
@@ -283,7 +283,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 				i++;
 			}
 		}
-		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
+		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
 
 		batcher.flushAll(true);
 

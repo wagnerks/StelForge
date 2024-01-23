@@ -13,8 +13,8 @@
 #include "mathModule/Forward.h"
 
 
-using namespace Engine;
-using namespace Engine::CoreModule;
+using namespace SFE;
+using namespace SFE::CoreModule;
 
 void Core::update(float dt) {
 	FUNCTION_BENCHMARK;
@@ -59,7 +59,7 @@ void Core::init() {
 }
 
 Core::~Core() {
-	Engine::ShaderModule::ShaderController::terminate();
+	SFE::ShaderModule::ShaderController::terminate();
 	AssetsModule::TextureHandler::terminate();
 	AssetsModule::ModelLoader::terminate();
 	RenderModule::Renderer::terminate();

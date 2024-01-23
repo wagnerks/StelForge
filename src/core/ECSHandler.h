@@ -4,7 +4,7 @@
 #include "systemsModule/SystemManager.h"
 
 
-class ECSHandler final : public Engine::Singleton<ECSHandler> {
+class ECSHandler final : public SFE::Singleton<ECSHandler> {
 public:
 	template<class SystemType>
 	inline static SystemType* getSystem() {

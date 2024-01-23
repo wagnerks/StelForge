@@ -5,7 +5,7 @@
 #include "Mesh.h"
 #include "Model.h"
 
-using namespace Engine::ModelModule;
+using namespace SFE::ModelModule;
 
 AssetsModule::Mesh* MeshFactory::createPrimitiveMesh(eDrawObjectType type) {
 	AssetsModule::Mesh* res = nullptr;

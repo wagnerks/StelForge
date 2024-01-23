@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <stddef.h>
 
-namespace Engine::MemoryModule {
+namespace SFE::MemoryModule {
 
 	class Allocator {
 	public:

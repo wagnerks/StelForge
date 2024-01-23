@@ -6,7 +6,7 @@
 #include "ecss/Types.h"
 #include "renderModule/RenderPass.h"
 
-namespace Engine::RenderModule::RenderPasses {
+namespace SFE::RenderModule::RenderPasses {
 	class PointLightPass : public RenderPass {
 	public:
 		struct Data {
@@ -23,7 +23,7 @@ namespace Engine::RenderModule::RenderPasses {
 		unsigned mMatricesUBO = 0;
 
 		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
-		Engine::ProjectionModule::PerspectiveProjection lightProjection;
+		SFE::ProjectionModule::PerspectiveProjection lightProjection;
 		std::vector<Math::Mat4> lightMatrices;
 		std::vector<FrustumModule::Frustum> frustums;
 		std::vector<std::pair<ecss::SectorId, int>> offsets;

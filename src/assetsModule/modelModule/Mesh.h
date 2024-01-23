@@ -10,11 +10,11 @@
 
 namespace AssetsModule {
 	struct Vertex {
-		Engine::Math::Vec3 mPosition;
-		Engine::Math::Vec3 mNormal;
-		Engine::Math::Vec2 mTexCoords;
-		Engine::Math::Vec3 mTangent;
-		Engine::Math::Vec3 mBiTangent;
+		SFE::Math::Vec3 mPosition;
+		SFE::Math::Vec3 mNormal;
+		SFE::Math::Vec2 mTexCoords;
+		SFE::Math::Vec3 mTangent;
+		SFE::Math::Vec3 mBiTangent;
 	};
 
 	struct MaterialTexture {
@@ -54,7 +54,7 @@ namespace AssetsModule {
 
 		unsigned int getVAO() const { return mData.mVao; }
 
-		Engine::FrustumModule::AABB mBounds;
+		SFE::FrustumModule::AABB mBounds;
 		Material mMaterial;
 		MeshData mData;
 	private:
@@ -69,7 +69,7 @@ namespace AssetsModule {
 
 		const Material* mMaterial = nullptr;
 		const MeshData* mData = nullptr;
-		const Engine::FrustumModule::AABB* mBounds = nullptr;
+		const SFE::FrustumModule::AABB* mBounds = nullptr;
 
 	};
 }

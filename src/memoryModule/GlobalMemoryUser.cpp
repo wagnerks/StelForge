@@ -1,6 +1,6 @@
 ﻿#include "GlobalMemoryUser.h"
 
-namespace Engine::MemoryModule {
+namespace SFE::MemoryModule {
 	GlobalMemoryUser::GlobalMemoryUser(MemoryManager* memoryManager) : mGlobalMemoryManager(memoryManager) {}
 
 	const void* GlobalMemoryUser::allocate(size_t memSize, size_t user) const {

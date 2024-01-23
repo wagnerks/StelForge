@@ -14,7 +14,7 @@
 #include "renderModule/SceneGridFloor.h"
 #include "systemsModule/SystemsPriority.h"
 
-using namespace Engine::RenderModule::RenderPasses;
+using namespace SFE::RenderModule::RenderPasses;
 
 
 LightingPass::LightingPass() {

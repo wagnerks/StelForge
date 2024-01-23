@@ -5,7 +5,7 @@
 #include "assetsModule/modelModule/Model.h"
 #include "ecss/Types.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class MaterialComponent : public ecss::ComponentInterface {
 	public:
 		MaterialComponent(ecss::SectorId id) : ComponentInterface(id) {};
@@ -16,4 +16,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::MaterialComponent;
+using SFE::ComponentsModule::MaterialComponent;

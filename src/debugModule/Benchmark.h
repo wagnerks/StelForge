@@ -15,12 +15,12 @@
 #define FUNCTION_BENCHMARK 
 #define FUNCTION_BENCHMARK_NAMED(name) 
 #else
-#define FUNCTION_BENCHMARK Engine::Debug::BenchmarkFunc scopeObj##__LINE__ = Engine::Debug::BenchmarkFunc(std::string(__FUNCTION__) + std::to_string(__LINE__));
-#define FUNCTION_BENCHMARK_NAMED(name) Engine::Debug::BenchmarkFunc scopeObj##__LINE__ = Engine::Debug::BenchmarkFunc(std::string(__FUNCTION__) + std::to_string(__LINE__) + #name);
+#define FUNCTION_BENCHMARK SFE::Debug::BenchmarkFunc scopeObj##__LINE__ = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__) + std::to_string(__LINE__));
+#define FUNCTION_BENCHMARK_NAMED(name) SFE::Debug::BenchmarkFunc scopeObj##__LINE__ = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__) + std::to_string(__LINE__) + #name);
 #endif
 
 
-namespace Engine::Debug {
+namespace SFE::Debug {
 	
 
 	class Benchmark {

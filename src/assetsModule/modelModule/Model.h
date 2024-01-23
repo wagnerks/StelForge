@@ -12,7 +12,7 @@ namespace AssetsModule {
 		std::vector<MeshHandle> mMeshHandles;
 	};
 
-	struct MeshNode : Engine::NodeModule::TreeNode<MeshNode> {
+	struct MeshNode : SFE::NodeModule::TreeNode<MeshNode> {
 		MeshNode() = default;
 
 		MeshNode(MeshNode&& other) noexcept

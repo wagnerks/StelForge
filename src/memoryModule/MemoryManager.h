@@ -6,7 +6,7 @@
 #include "Allocators.h"
 #include "logsModule/logger.h"
 
-namespace Engine::MemoryModule {
+namespace SFE::MemoryModule {
 
 	class StackAllocator;
 

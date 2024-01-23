@@ -3,7 +3,7 @@
 
 #include "renderModule/Renderer.h"
 
-namespace Engine::CoreModule {
+namespace SFE::CoreModule {
 
 	enum class InputEventType : uint8_t {
 		RELEASE = 0,

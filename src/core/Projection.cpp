@@ -2,7 +2,7 @@
 
 #include "mathModule/Utils.h"
 
-using namespace Engine::ProjectionModule;
+using namespace SFE::ProjectionModule;
 
 OrthoProjection::OrthoProjection(Math::Vec2 leftBtm, Math::Vec2 rightTop, float zNear, float zFar) : Projection(zNear, zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
 	OrthoProjection::initProjection();
@@ -12,7 +12,7 @@ PerspectiveProjection::PerspectiveProjection(float FOV, float aspect, float zNea
 	PerspectiveProjection::initProjection();
 }
 
-const Engine::Math::Mat4& Projection::getProjectionsMatrix() const {
+const SFE::Math::Mat4& Projection::getProjectionsMatrix() const {
 	return mProjectionMatrix;
 }
 

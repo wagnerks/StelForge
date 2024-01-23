@@ -27,7 +27,7 @@
 
 #include "componentsModule/TransformComponent.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 
 	template <typename PassType>
 	void RenderSystem::addRenderPass() {
@@ -80,7 +80,7 @@ namespace Engine::SystemsModule {
 
 		auto& compManager = ECSHandler::registry();
 
-		auto& playerCamera = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+		auto& playerCamera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 
 		mRenderData.current = mRenderData.next;
 		mRenderData.cameraProjection = mRenderData.nextCameraProjection;
@@ -106,7 +106,7 @@ namespace Engine::SystemsModule {
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
-		auto& renderData = ECSHandler::getSystem<Engine::SystemsModule::RenderSystem>()->getRenderData();
+		auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
 
 		{
 			if (ImGui::BeginMainMenuBar()) {
