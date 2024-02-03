@@ -6,7 +6,7 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 
-namespace Engine::PropertiesModule {
+namespace SFE::PropertiesModule {
 	// TypeTraits to associate a type with its name
 	template <typename T>
 	struct TypeName {

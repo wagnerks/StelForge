@@ -11,7 +11,7 @@
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemManager.h"
 
-using namespace Engine::RenderModule;
+using namespace SFE::RenderModule;
 
 SceneGridFloor::SceneGridFloor() {
 	init();
@@ -67,8 +67,8 @@ void SceneGridFloor::draw() {
 		return;
 	}
 	floorShader->use();
-	auto& renderData = ECSHandler::getSystem<Engine::SystemsModule::RenderSystem>()->getRenderData();
-	auto camera = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
+	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
 	//cameraTransform->reloadTransform();
 	

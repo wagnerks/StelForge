@@ -3,7 +3,7 @@
 
 #include "componentsModule/ComponentBase.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 
 	class DebugDataComponent {
 	public:
@@ -12,4 +12,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::DebugDataComponent;
+using SFE::ComponentsModule::DebugDataComponent;

@@ -3,7 +3,7 @@
 #include "mathModule/Forward.h"
 #include "OcTreeSystem.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	class ChunksSystem : public ecss::System {
 	public:
 		using Chunk = Math::Vec3;

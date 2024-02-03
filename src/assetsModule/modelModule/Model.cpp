@@ -58,7 +58,7 @@ namespace AssetsModule {
 			const auto AC = C - A;
 
 			//Normal of ABC triangle
-			const auto Normal = Engine::Math::normalize(Engine::Math::cross(AB, AC));
+			const auto Normal = SFE::Math::normalize(SFE::Math::cross(AB, AC));
 			mesh.mData.mVertices[a].mNormal = Normal;
 			mesh.mData.mVertices[b].mNormal = Normal;
 			mesh.mData.mVertices[c].mNormal = Normal;
@@ -74,13 +74,13 @@ namespace AssetsModule {
 
 			const float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
 
-			Engine::Math::Vec3 T = Engine::Math::normalize((AB * deltaUV2.y - AC * deltaUV1.y) * r); //tangent
+			SFE::Math::Vec3 T = SFE::Math::normalize((AB * deltaUV2.y - AC * deltaUV1.y) * r); //tangent
 
 			// re-orthogonalize T with respect to N
-			T = Engine::Math::normalize(T - Normal * Engine::Math::dot(T, Normal));
+			T = SFE::Math::normalize(T - Normal * SFE::Math::dot(T, Normal));
 
 			// then retrieve perpendicular vector biTangent with the cross product of T and N
-			auto biTangent = Engine::Math::normalize(Engine::Math::cross(Normal, T));
+			auto biTangent = SFE::Math::normalize(SFE::Math::cross(Normal, T));
 
 			mesh.mData.mVertices[a].mTangent = T;
 			mesh.mData.mVertices[b].mTangent = T;

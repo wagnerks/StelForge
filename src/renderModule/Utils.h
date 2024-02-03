@@ -6,7 +6,7 @@
 #include "mathModule/Forward.h"
 
 
-namespace Engine::RenderModule {
+namespace SFE::RenderModule {
 	class Utils {
 	public:
 		inline static std::vector<std::pair<Math::Vec4, std::vector<Math::Vec3>>> renderVertices;

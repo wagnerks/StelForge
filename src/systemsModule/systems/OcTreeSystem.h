@@ -3,14 +3,14 @@
 #include "core/OcTree.h"
 #include "ecss/EntityHandle.h"
 
-namespace Engine {
+namespace SFE {
 	namespace FrustumModule {
 		struct Frustum;
 		struct Plane;
 	}
 }
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	class OcTreeSystem : public ecss::System, public ThreadSynchronizer {
 	public:
 		inline static constexpr size_t OCTREE_SIZE = 4096;

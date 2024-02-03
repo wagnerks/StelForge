@@ -11,7 +11,7 @@
 #include "propertiesModule/Serializable.h"
 
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	struct LODData {
 		size_t mLodLevel = 0;
 		float mCurrentLodValue = 0.f;
@@ -79,4 +79,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::ModelComponent;
+using SFE::ComponentsModule::ModelComponent;

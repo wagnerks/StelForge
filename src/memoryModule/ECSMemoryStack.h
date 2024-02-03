@@ -3,7 +3,7 @@
 
 #include "Allocators.h"
 
-namespace Engine::MemoryModule {
+namespace SFE::MemoryModule {
 	class ECSMemoryStack final {
 		ECSMemoryStack(const ECSMemoryStack&) = delete;
 		ECSMemoryStack& operator=(ECSMemoryStack&) = delete;

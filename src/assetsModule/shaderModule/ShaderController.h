@@ -3,9 +3,9 @@
 #include "Shader.h"
 #include "core/Singleton.h"
 
-#define SHADER_CONTROLLER ::Engine::ShaderModule::ShaderController::instance()
+#define SHADER_CONTROLLER ::SFE::ShaderModule::ShaderController::instance()
 
-namespace Engine::ShaderModule {
+namespace SFE::ShaderModule {
 	class ShaderController : public Singleton<ShaderController> {
 		friend Singleton;
 	public:

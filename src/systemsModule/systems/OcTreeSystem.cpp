@@ -13,7 +13,7 @@
 #include "core/ThreadPool.h"
 #include "ecss/Registry.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	OcTreeSystem::OcTreeSystem() {}
 
 	void OcTreeSystem::update(const std::vector<ecss::SectorId>& entitiesToProcess) {
@@ -70,7 +70,7 @@ namespace Engine::SystemsModule {
 			ImGui::End();
 
 			if (drawOctrees) {
-				auto& renderData = ECSHandler::getSystem<Engine::SystemsModule::RenderSystem>()->getRenderData();
+				auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
 				forEachOctreePosInAABB(renderData.mNextCamFrustum.generateAABB(), [this](const Math::Vec3& pos) {
 					if (auto tree = getOctree(pos)) {
 						tree->drawOctree(drawObjAABB);

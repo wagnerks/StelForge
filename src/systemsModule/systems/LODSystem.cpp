@@ -13,10 +13,10 @@
 #include "componentsModule/IsDrawableComponent.h"
 #include "logsModule/logger.h"
 
-using namespace Engine::SystemsModule;
+using namespace SFE::SystemsModule;
 
 void LODSystem::update(float_t dt) {
-	const auto playerCamera = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+	const auto playerCamera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	if (!playerCamera) {
 		return;
 	}

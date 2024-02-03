@@ -5,7 +5,7 @@
 #include "ShaderBase.h"
 
 
-namespace Engine::ShaderModule {
+namespace SFE::ShaderModule {
 	
 
 	class Shader : public ShaderBase {

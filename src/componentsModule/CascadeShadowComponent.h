@@ -9,10 +9,10 @@
 #include "propertiesModule/Serializable.h"
 
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	struct ShadowCascade {
-		Engine::FrustumModule::Frustum frustum = {};
-		Engine::ProjectionModule::PerspectiveProjection viewProjection {};
+		SFE::FrustumModule::Frustum frustum = {};
+		SFE::ProjectionModule::PerspectiveProjection viewProjection {};
 		float bias = 0.f;
 		int samples = 64;
 
@@ -27,7 +27,7 @@ namespace Engine::ComponentsModule {
 		void updateCascades(const ProjectionModule::PerspectiveProjection& cameraProjection);
 		void updateLightSpaceMatrices(const Math::Mat4& cameraView);
 
-		static Engine::Math::Mat4 getLightSpaceMatrix(const std::vector<Engine::Math::Vec4>& corners, const Engine::Math::Mat4& lightView, float nearMultiplier = 1.f, float farMultiplier = 1.f);
+		static SFE::Math::Mat4 getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier = 1.f, float farMultiplier = 1.f);
 		static std::vector<Math::Vec4> getFrustumCornersWorldSpace(const Math::Mat4& proj, const Math::Mat4& view);
 		static std::vector<Math::Vec4> getFrustumCornersWorldSpace(const Math::Mat4& projView);
 
@@ -49,10 +49,10 @@ namespace Engine::ComponentsModule {
 		void cacheMatrices();
 
 		static const std::vector<Math::Mat4>& getCacheLightSpaceMatrices();
-		static void debugDraw(const std::vector<Engine::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView);
+		static void debugDraw(const std::vector<SFE::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView);
 		static void clearCacheMatrices();
 	private:
-		static void drawCascadeVolumeVisualizers(const std::vector<Engine::Math::Mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader);
+		static void drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices, SFE::ShaderModule::ShaderBase* shader);
 		static inline std::vector<Math::Mat4> mLightMatricesCache;
 
 
@@ -61,4 +61,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::CascadeShadowComponent;
+using SFE::ComponentsModule::CascadeShadowComponent;

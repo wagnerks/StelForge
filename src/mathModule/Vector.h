@@ -12,7 +12,7 @@
 
 #define GLMVEC 0
 
-namespace Engine::Math {
+namespace SFE::Math {
 #if GLMVEC
 	template<class T, size_t Size>
 	struct Vector : public glm::vec<Size, T>{};

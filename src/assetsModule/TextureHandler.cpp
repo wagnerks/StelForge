@@ -35,7 +35,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
 	int texWidth, texHeight, nrChannels;
 	auto data = stbi_load(path.data(), &texWidth, &texHeight, &nrChannels, 4);
 	if (!data) {
-		Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
+		SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
 		stbi_image_free(data);
 		return &mDefaultTex;
 	}
@@ -44,7 +44,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
 
 	texture = AssetsManager::instance()->createAsset<Texture>(path);
 
-	if (Engine::UnnamedEngine::isMainThread()) {
+	if (SFE::Engine::isMainThread()) {
 		glGenTextures(1, &texID);
 
 		TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texID);
@@ -59,7 +59,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
 		stbi_image_free(data);
 	}
 	else {
-		Engine::ThreadPool::instance()->addTask<Engine::WorkerType::SYNC>([id = texture->assetId, data, texWidth, texHeight]()mutable {
+		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([id = texture->assetId, data, texWidth, texHeight]()mutable {
 			unsigned texID;
 
 			glGenTextures(1, &texID);
@@ -116,7 +116,7 @@ Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) 
 	for (unsigned int i = 0; i < faces.size(); i++) {
 		auto data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
 		if (!data) {
-			Engine::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
+			SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
 			stbi_image_free(data);
 			glDeleteTextures(1, &textureID);
 			return {};

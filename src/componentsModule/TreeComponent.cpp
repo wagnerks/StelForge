@@ -2,7 +2,7 @@
 
 #include "core/ECSHandler.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	void TreeComponent::setParent(ecss::SectorId id) {
 		if (mParentEntity == id) {
 			return;

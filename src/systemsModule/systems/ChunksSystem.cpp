@@ -14,7 +14,7 @@
 #include "core/ECSHandler.h"
 #include "debugModule/Benchmark.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	ChunksSystem::ChunksSystem() {
 		//ChunksSystem::update({ ECSHandler::getSystem<CameraSystem>()->getCurrentCamera() });
 	}
@@ -190,7 +190,7 @@ namespace Engine::SystemsModule {
 			std::uniform_real_distribution<float> distribution1(1.f, 3.0f);
 			std::uniform_int_distribution<int> distribution2(0, 1);
 
-			//ECSHandler::registry().reserve<Engine::ComponentsModule::AABBComponent, OcTreeComponent, ModelComponent, TransformComponent>(24*24*24);
+			//ECSHandler::registry().reserve<SFE::ComponentsModule::AABBComponent, OcTreeComponent, ModelComponent, TransformComponent>(24*24*24);
 
 			for (auto i = 1; i < 33; i+=1) {
 				for (auto y = 1; y < 33; y+=1) {
@@ -203,7 +203,7 @@ namespace Engine::SystemsModule {
 
 						float randomValue = distribution(generator);
 						float randomValue2 = distribution1(generator);
-						ECSHandler::registry().addComponent<Engine::ComponentsModule::AABBComponent>(cube);
+						ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(cube);
 						ECSHandler::registry().addComponent<OcTreeComponent>(cube);
 						ECSHandler::registry().addComponentWithInit<ModelComponent>(cube, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, cube.getID());
 						ECSHandler::registry().addComponentWithInit<TransformComponent>(cube, [chunk, i ,step,y,z, randomValue, randomValue2](TransformComponent* comp) {

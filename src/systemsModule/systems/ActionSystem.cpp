@@ -4,7 +4,9 @@
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
 
-void Engine::SystemsModule::ActionSystem::update(float dt) {
+void SFE::SystemsModule::ActionSystem::update(float dt) {
+	static std::map<unsigned, int> step;
+	
 	for (auto [entity, action, transform] : ECSHandler::registry().getComponentsArray<ComponentsModule::ActionComponent, TransformComponent>()) {
 		if (action.progress == 0.f) {
 			action.initialPos = transform.getPos();
@@ -14,18 +16,51 @@ void Engine::SystemsModule::ActionSystem::update(float dt) {
 		action.loop = true;
 
 		if (action.progress >= 1.f) {
+			step[entity]++;
+			if (step[entity] == 4) {
+				step[entity] = 0;
+			}
 			if (action.loop) {
 				action.progress = 0.f;
 			}
 			else {
 				action.progress = 1.f;
 			}
+			continue;
 		}
 
-		auto pos = action.initialPos;
-		pos.y += std::sin(action.progress * Math::pi<float>() * 120.f) * 2.f;
-		pos.x += std::sin(action.progress * Math::pi<float>()) * 200.f;
-		transform.setPos(pos);
+		switch(step[entity]) {
+		case 0: {
+			auto pos = action.initialPos;
+			pos.y += std::sin(action.progress * Math::pi<float>() * 60.f) * 0.5f;
+			pos.x += action.progress * 190.f;
+			transform.setPos(pos);
+			break;
+		}
+		case 1: {
+			auto pos = action.initialPos;
+			pos.y += std::sin(action.progress * Math::pi<float>() * 60.f) * 0.5f;
+			pos.z += action.progress * 70.f;
+			transform.setPos(pos);
+			break;
+		}
+		case 2: {
+			auto pos = action.initialPos;
+			pos.y += std::sin(action.progress * Math::pi<float>() * 60.f) * 0.5f;
+			pos.x -= action.progress * 190.f;
+			transform.setPos(pos);
+			break;
+		}
+		case 3: {
+			auto pos = action.initialPos;
+			pos.y += std::sin(action.progress * Math::pi<float>() * 60.f) * 0.5f;
+			pos.z -= action.progress * 70.f;
+			transform.setPos(pos);
+			break;
+		}
+		default:;
+		}
+		
 		
 	}
 }

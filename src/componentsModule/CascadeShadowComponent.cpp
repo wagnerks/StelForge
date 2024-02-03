@@ -7,7 +7,7 @@
 #include "systemsModule/systems/CameraSystem.h"
 
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	std::vector<Math::Vec4> CascadeShadowComponent::getFrustumCornersWorldSpace(const Math::Mat4& proj, const Math::Mat4& view) {
 		return getFrustumCornersWorldSpace(proj * view);
 	}
@@ -91,7 +91,7 @@ namespace Engine::ComponentsModule {
 
 		resolution = { data["resolution"][0].asFloat(), data["resolution"][1].asFloat() };
 
-		auto cam = ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera();
+		auto cam = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 		auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(cam)->getProjection();
 
 		updateCascades(cameraProjection);
@@ -173,11 +173,11 @@ namespace Engine::ComponentsModule {
 
 			mLightSpaceMatrices.push_back(projViewMatrix);
 
-			shadowCascade.frustum = Engine::FrustumModule::createFrustum(projViewMatrix);
+			shadowCascade.frustum = SFE::FrustumModule::createFrustum(projViewMatrix);
 		}
 	}
 
-	Engine::Math::Mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<Engine::Math::Vec4>& corners, const Engine::Math::Mat4& lightView, float nearMultiplier, float farMultiplier) {
+	SFE::Math::Mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier, float farMultiplier) {
 		Math::Vec4 transform = lightView * corners[0];
 		auto minX = transform.x;
 		auto maxX = transform.x;
@@ -201,7 +201,7 @@ namespace Engine::ComponentsModule {
 			maxZ = std::max(maxZ, transform.z);
 		}
 
-		auto ortho = Engine::ProjectionModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ * nearMultiplier, maxZ * farMultiplier);
+		auto ortho = SFE::ProjectionModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ * nearMultiplier, maxZ * farMultiplier);
 
 		return ortho.getProjectionsMatrix() * lightView;
 	}
@@ -219,7 +219,7 @@ namespace Engine::ComponentsModule {
 		mLightMatricesCache.clear();
 	}
 
-	void CascadeShadowComponent::debugDraw(const std::vector<Engine::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView) {
+	void CascadeShadowComponent::debugDraw(const std::vector<SFE::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView) {
 		if (lightSpaceMatrices.empty()) {
 			return;
 		}
@@ -236,7 +236,7 @@ namespace Engine::ComponentsModule {
 		glDisable(GL_BLEND);
 	}
 
-	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<Engine::Math::Mat4>& lightMatrices, Engine::ShaderModule::ShaderBase* shader) {
+	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices, SFE::ShaderModule::ShaderBase* shader) {
 		static std::vector<unsigned> visualizerVAOs;
 		static std::vector<unsigned> visualizerVBOs;
 		static std::vector<unsigned> visualizerEBOs;

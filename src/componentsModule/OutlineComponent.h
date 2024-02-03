@@ -1,7 +1,7 @@
 ﻿#pragma once
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class OutlineComponent {};
 }
 
-using Engine::ComponentsModule::OutlineComponent;
+using SFE::ComponentsModule::OutlineComponent;

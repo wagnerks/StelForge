@@ -9,7 +9,7 @@
 
 #include "logsModule/logger.h"
 
-namespace Engine {
+namespace SFE {
 	bool FileSystem::isFileExists(std::string_view path) {
 		return std::filesystem::exists(path);
 	}

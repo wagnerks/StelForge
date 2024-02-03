@@ -2,7 +2,7 @@
 
 #include <json/value.h>
 
-namespace Engine {
+namespace SFE {
 	class FileSystem {
 	public:
 		static bool isFileExists(std::string_view path);

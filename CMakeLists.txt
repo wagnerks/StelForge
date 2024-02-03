@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.8)
 
-project ("MyGameEngine")
+project ("StelForgeEngine")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR})
@@ -28,6 +28,6 @@ endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set_target_properties(glad imgui Jolt PROPERTIES FOLDER Dependencies)
-set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES FOLDER AppTools)
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES FOLDER Engine)
 
-#set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "HelloWorld")
+#set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT ${CMAKE_PROJECT_NAME})

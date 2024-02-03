@@ -2,7 +2,7 @@
 #include <cassert>
 #include <stdlib.h>
 
-namespace Engine::MemoryModule {
+namespace SFE::MemoryModule {
 	ECSMemoryStack::ECSMemoryStack(size_t memoryCapacity) : mMemoryCapacity(memoryCapacity), mGlobalAddress(malloc(mMemoryCapacity)) {
 		assert(mGlobalAddress);
 		if (!mGlobalAddress) {

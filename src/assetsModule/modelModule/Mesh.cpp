@@ -41,7 +41,7 @@ Mesh::~Mesh() {
 }
 
 void Mesh::bindMesh() {
-	if (Engine::UnnamedEngine::isMainThread()) {
+	if (SFE::Engine::isMainThread()) {
 		unbindMesh();
 		mBinded = true;
 
@@ -77,8 +77,8 @@ void Mesh::bindMesh() {
 
 		glBindVertexArray(0);
 
-		auto minAABB = Engine::Math::Vec3(std::numeric_limits<float>::max());
-		auto maxAABB = Engine::Math::Vec3(std::numeric_limits<float>::min());
+		auto minAABB = SFE::Math::Vec3(std::numeric_limits<float>::max());
+		auto maxAABB = SFE::Math::Vec3(std::numeric_limits<float>::min());
 
 		for (auto& vertex : mData.mVertices) {
 			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
@@ -90,10 +90,10 @@ void Mesh::bindMesh() {
 			maxAABB.z = std::max(maxAABB.z, vertex.mPosition.z);
 		}
 
-		mBounds = Engine::FrustumModule::AABB(minAABB, maxAABB);
+		mBounds = SFE::FrustumModule::AABB(minAABB, maxAABB);
 	}
 	else {
-		Engine::ThreadPool::instance()->addTask<Engine::WorkerType::SYNC>([this]()mutable { //easy crash 
+		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([this]()mutable { //easy crash 
 			bindMesh();
 		});
 	}
@@ -105,13 +105,13 @@ void Mesh::unbindMesh() {
 	}
 	mBinded = false;
 
-	if (Engine::UnnamedEngine::isMainThread()) {
+	if (SFE::Engine::isMainThread()) {
 		glDeleteVertexArrays(1, &mData.mVao);
 		glDeleteBuffers(1, &mData.mVbo);
 		glDeleteBuffers(1, &mData.mEbo);
 	}
 	else {
-		Engine::ThreadPool::instance()->addTask<Engine::WorkerType::SYNC>([vao = mData.mVao, vbo = mData.mVbo, ebo = mData.mEbo]()mutable {
+		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([vao = mData.mVao, vbo = mData.mVbo, ebo = mData.mEbo]()mutable {
 			glDeleteVertexArrays(1, &vao);
 			glDeleteBuffers(1, &vbo);
 			glDeleteBuffers(1, &ebo);

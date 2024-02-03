@@ -2,7 +2,7 @@
 
 #include <json/value.h>
 
-namespace Engine::PropertiesModule {
+namespace SFE::PropertiesModule {
 	class Serializable {
 	public:
 		virtual ~Serializable() = default;

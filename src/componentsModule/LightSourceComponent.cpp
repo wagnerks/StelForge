@@ -25,7 +25,7 @@ int LightSourceComponent::getTypeOffset(eLightType type) {
 	return -1;
 }
 
-Engine::ComponentsModule::eLightType LightSourceComponent::getType() const {
+SFE::ComponentsModule::eLightType LightSourceComponent::getType() const {
 	return mType;
 }
 
@@ -43,11 +43,11 @@ float LightSourceComponent::getIntensity() const {
 }
 
 
-void LightSourceComponent::setLightColor(const Engine::Math::Vec3& lightColor) {
+void LightSourceComponent::setLightColor(const SFE::Math::Vec3& lightColor) {
 	mLightColor = lightColor;
 }
 
-const Engine::Math::Vec3& LightSourceComponent::getLightColor() const {
+const SFE::Math::Vec3& LightSourceComponent::getLightColor() const {
 	return mLightColor;
 }
 
@@ -59,11 +59,11 @@ float LightSourceComponent::getBias() const {
 	return mBias;
 }
 
-void LightSourceComponent::setTexelSize(const Engine::Math::Vec2& texelSize) {
+void LightSourceComponent::setTexelSize(const SFE::Math::Vec2& texelSize) {
 	mTexelSize = texelSize;
 }
 
-const Engine::Math::Vec2& LightSourceComponent::getTexelSize() const {
+const SFE::Math::Vec2& LightSourceComponent::getTexelSize() const {
 	return mTexelSize;
 }
 

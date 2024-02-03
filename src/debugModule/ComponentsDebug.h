@@ -7,7 +7,7 @@ namespace ecss {
 	class EntityHandle;
 }
 
-namespace Engine {
+namespace SFE {
 	namespace ComponentsModule {
 		class LightSourceComponent;
 		class ModelComponent;
@@ -20,7 +20,7 @@ namespace Engine {
 }
 
 
-namespace Engine::Debug {
+namespace SFE::Debug {
 	class ComponentsDebug : public Singleton<ComponentsDebug>, public CoreModule::InputObserver {
 	public:
 		void init() override;

@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace Engine::Debug {
+namespace SFE::Debug {
 
 	enum class DebugInfoType {
 		Small,

@@ -15,11 +15,11 @@
 #include "systemsModule/SystemsPriority.h"
 
 
-Engine::RenderModule::RenderPasses::ShadersPass::ShadersPass() {
+SFE::RenderModule::RenderPasses::ShadersPass::ShadersPass() {
 
 }
 
-void Engine::RenderModule::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
+void SFE::RenderModule::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
 	FUNCTION_BENCHMARK
 	const auto& drawableEntities = ECSHandler::getSystem<SystemsModule::ShaderSystem>()->drawableEntities;
 	if (drawableEntities.empty()) {
@@ -28,7 +28,7 @@ void Engine::RenderModule::RenderPasses::ShadersPass::render(Renderer* renderer,
 	
 	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
 	glBindFramebuffer(GL_FRAMEBUFFER, renderDataHandle.mGeometryPassData.mGBuffer);
-	auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
+	auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
 
 	auto flush = [this, &renderDataHandle, &batcher, &cameraPos](size_t shaderId) {
 		const auto shader = SHADER_CONTROLLER->getShader(shaderId);

@@ -1,7 +1,7 @@
 ﻿#include "ThreadPool.h"
 
 
-namespace Engine {
+namespace SFE {
 	ThreadPool::ThreadPool() {}
 
 	void ThreadPool::syncUpdate() {

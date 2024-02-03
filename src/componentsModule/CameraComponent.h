@@ -3,7 +3,7 @@
 #include "componentsModule/ComponentBase.h"
 #include "core/BoundingVolume.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class CameraComponent : public ecss::ComponentInterface {
 	public:
 		CameraComponent(ecss::SectorId id);
@@ -21,4 +21,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::CameraComponent;
+using SFE::ComponentsModule::CameraComponent;

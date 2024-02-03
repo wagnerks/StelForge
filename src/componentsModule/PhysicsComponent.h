@@ -7,13 +7,13 @@
 #include "mathModule/Forward.h"
 
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class PhysicsComponent {
 	public:
 		JPH::BodyID mBodyID;
 
-		Engine::Math::Vec3 lastPos = {};
-		Engine::Math::Vec3 lastRotate = {};
+		SFE::Math::Vec3 lastPos = {};
+		SFE::Math::Vec3 lastRotate = {};
 		bool isSleeping = false;
 
 		PhysicsComponent(const JPH::BodyID& id) : mBodyID(std::move(id)) {}
@@ -24,4 +24,4 @@ namespace Engine::ComponentsModule {
 	};
 }
 
-using Engine::ComponentsModule::PhysicsComponent;
+using SFE::ComponentsModule::PhysicsComponent;

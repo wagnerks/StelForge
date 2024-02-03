@@ -2,7 +2,7 @@
 
 #include <complex>
 
-namespace Engine::Math {
+namespace SFE::Math {
 	template<class T, size_t Size>
 	struct Vector;
 

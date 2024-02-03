@@ -12,7 +12,7 @@
 struct aiMaterial;
 struct aiMesh;
 
-namespace Engine {
+namespace SFE {
 	namespace RenderModule {
 		class TextureLoader;
 	}
@@ -25,7 +25,7 @@ namespace AssetsModule {
 
 
 
-	class ModelLoader : public Engine::Singleton<ModelLoader> {
+	class ModelLoader : public SFE::Singleton<ModelLoader> {
 		friend Singleton;
 	public:
 		AssetsModule::Model* load(const std::string& path);

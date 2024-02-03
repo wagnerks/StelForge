@@ -6,14 +6,14 @@
 #endif
 
 int main() {
-	const auto engine = Engine::UnnamedEngine::instance();
+	const auto engine = SFE::Engine::instance();
 
 	while (engine->isAlive()) {
 		engine->update();
 	}
 
-	Engine::Debug::ImGuiDecorator::terminate();
-	Engine::UnnamedEngine::terminate();
+	SFE::Debug::ImGuiDecorator::terminate();
+	SFE::Engine::terminate();
 
 	return 0;
 }

@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "debugModule/DebugMenu.h"
 
-namespace Engine::CoreModule {
+namespace SFE::CoreModule {
 	class Core {
 	public:
 		Core();

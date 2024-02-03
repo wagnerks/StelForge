@@ -10,7 +10,7 @@
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/SystemManager.h"
 
-using namespace Engine::Debug;
+using namespace SFE::Debug;
 
 DebugMenu::~DebugMenu() {
 	ShadersDebug::terminate();
@@ -21,7 +21,7 @@ void DebugMenu::draw() {
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("Debug")) {
 			ImGui::Separator();
-			ImGui::DragFloat("camera speed", &ECSHandler::getSystem<Engine::SystemsModule::CameraSystem>()->movementSpeed, 5.f);
+			ImGui::DragFloat("camera speed", &ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->movementSpeed, 5.f);
 			if (ImGui::DragFloat("drawDistance", &RenderModule::Renderer::drawDistance, 100.f)) {
 				glClearDepth(RenderModule::Renderer::drawDistance);
 				auto camComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID());
@@ -45,7 +45,7 @@ void DebugMenu::draw() {
 			ImGui::Separator();
 			ImGui::Checkbox("shaders debug", &shadersDebugOpened);
 			ImGui::Checkbox("imgui demo", &imguiDemo);
-			ImGui::DragInt("max fps", &Engine::UnnamedEngine::instance()->maxFPS);
+			ImGui::DragInt("max fps", &SFE::Engine::instance()->maxFPS);
 			ImGui::EndMenu();
 		}
 		ImGui::EndMainMenuBar();

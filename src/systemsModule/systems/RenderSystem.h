@@ -10,13 +10,13 @@
 #include "renderModule/renderPasses/PointLightPass.h"
 #include "renderModule/renderPasses/SSAOPass.h"
 
-namespace Engine {
+namespace SFE {
 	namespace RenderModule {
 		class Renderer;
 	}
 }
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 
 	enum class RenderMode {
 		DEFAULT,

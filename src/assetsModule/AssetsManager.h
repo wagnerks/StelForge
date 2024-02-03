@@ -12,7 +12,7 @@ namespace AssetsModule {
 
 	inline static constexpr size_t ASSETS_MEMORY_BUFFER_SIZE = 256ll * 1024u * 1024u;//256MB
 
-	class AssetsManager : public Engine::Singleton<AssetsManager>, Engine::MemoryModule::GlobalMemoryUser {
+	class AssetsManager : public SFE::Singleton<AssetsManager>, SFE::MemoryModule::GlobalMemoryUser {
 	public:
 		AssetsManager();
 		~AssetsManager() override;
@@ -54,7 +54,7 @@ namespace AssetsModule {
 		}
 
 	private:
-		Engine::MemoryModule::Allocator* mAssetsAllocator;
+		SFE::MemoryModule::Allocator* mAssetsAllocator;
 		std::unordered_map<size_t, Asset*> mAssetsMap;
 		std::hash<std::string> mHasher;
 

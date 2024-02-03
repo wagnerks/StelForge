@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "renderModule/RenderPass.h"
 
-namespace Engine::RenderModule::RenderPasses {
+namespace SFE::RenderModule::RenderPasses {
 	class LightingPass : public RenderPass {
 	public:
 		LightingPass();

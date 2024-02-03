@@ -3,7 +3,7 @@
 #include "Matrix.h"
 #include "Vector.h"
 
-namespace Engine::Math {
+namespace SFE::Math {
 	using Mat3 = Matrix<float, 3, 3>;
 	using Mat4 = Matrix<float, 4, 4>;
 

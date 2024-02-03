@@ -243,8 +243,8 @@ void main() {
 
     lighting *= (1.0 - (shadowIntensity * shadow * 1.9));
     //lighting *= AmbientOcclusion;
-    float gamma = 1.0;
-    float exposure = 1.2;
+    float gamma = 1.2;
+    float exposure = 0.8;
     
     float outlines = texture(gOutlines, TexCoords).b;
 

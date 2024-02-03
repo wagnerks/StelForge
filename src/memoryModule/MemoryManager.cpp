@@ -3,7 +3,7 @@
 #include <cassert>
 #include <stdlib.h>
 
-using namespace Engine::MemoryModule;
+using namespace SFE::MemoryModule;
 
 size_t MemoryManager::getMemoryCapacity() const {
 	return mMemoryCapacity;

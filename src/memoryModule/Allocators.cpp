@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-namespace Engine::MemoryModule {
+namespace SFE::MemoryModule {
 
 	void Allocator::init(size_t memSize, const void* mem) {
 		mAllocationSize = memSize;

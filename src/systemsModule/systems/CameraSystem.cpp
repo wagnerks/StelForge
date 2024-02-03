@@ -9,7 +9,7 @@
 #include "core/Engine.h"
 #include "ecss/Registry.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	CameraSystem::CameraSystem() {
 		auto aspect = static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT);
 		mDefaultCamera = ECSHandler::registry().takeEntity();
@@ -58,10 +58,10 @@ namespace Engine::SystemsModule {
 
 	void CameraSystem::initKeyEvents() {
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
-			if (type == Engine::CoreModule::InputEventType::PRESS) {
+			if (type == SFE::CoreModule::InputEventType::PRESS) {
 				isPressed[key] = true;
 			}
-			else if (type == Engine::CoreModule::InputEventType::RELEASE) {
+			else if (type == SFE::CoreModule::InputEventType::RELEASE) {
 				isPressed[key] = false;
 			}
 		};
@@ -69,11 +69,11 @@ namespace Engine::SystemsModule {
 		onMouseBtnEvent = [this](Math::DVec2 mPos, CoreModule::MouseButton btn, CoreModule::InputEventType action) {
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::PRESS) {
 				processMouse = true;
-				glfwSetInputMode(UnnamedEngine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+				glfwSetInputMode(Engine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 			}
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::RELEASE) {
 				processMouse = false;
-				glfwSetInputMode(UnnamedEngine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				glfwSetInputMode(Engine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			}
 		};
 

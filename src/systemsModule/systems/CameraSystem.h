@@ -4,7 +4,7 @@
 #include "ecss/EntityHandle.h"
 #include "systemsModule/SystemBase.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	enum CameraMovement {
 		FORWARD,
 		BACKWARD,

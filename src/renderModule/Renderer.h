@@ -5,7 +5,7 @@
 
 #include "Batcher.h"
 
-namespace Engine::RenderModule {
+namespace SFE::RenderModule {
 	class Renderer : public Singleton<Renderer> {
 		friend Renderer;
 	public:

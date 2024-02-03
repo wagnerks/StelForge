@@ -1,6 +1,6 @@
 ﻿#include "RenderPass.h"
 
-using namespace Engine::RenderModule;
+using namespace SFE::RenderModule;
 
 void RenderPass::setPriority(size_t priority) {
 	mPriority = priority;

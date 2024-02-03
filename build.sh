@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cmake . -B ./build
+cmake . -B ./build/win

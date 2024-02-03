@@ -11,20 +11,20 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "systemsModule/systems/CameraSystem.h"
 
-void DrawObject::sortTransformAccordingToView(const Engine::Math::Vec3& viewPos) {
+void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
 	if (sortedPos == viewPos) {
 		return;
 	}
 	sortedPos = viewPos;
-	std::ranges::sort(transforms, [&viewPos](const Engine::Math::Mat4& a, const Engine::Math::Mat4& b) {
-		return Engine::Math::distanceSqr(viewPos, Engine::Math::Vec3(a[3])) < Engine::Math::distanceSqr(viewPos, Engine::Math::Vec3(b[3]));
+	std::ranges::sort(transforms, [&viewPos](const SFE::Math::Mat4& a, const SFE::Math::Mat4& b) {
+		return SFE::Math::distanceSqr(viewPos, SFE::Math::Vec3(a[3])) < SFE::Math::distanceSqr(viewPos, SFE::Math::Vec3(b[3]));
 	});
 }
 
 Batcher::Batcher() {
 }
 
-void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& textures, const Engine::Math::Mat4& transform, bool transparentForShadow) {
+void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& textures, const SFE::Math::Mat4& transform, bool transparentForShadow) {
 	auto it = std::find_if(drawList.rbegin(), drawList.rend(), [transparentForShadow, VAO, maxDrawSize = maxDrawSize](const DrawObject& obj) {
 		return obj == VAO && obj.transforms.size() < maxDrawSize && obj.transparentForShadow == transparentForShadow;
 	});
@@ -43,16 +43,16 @@ void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const
 	}
 }
 
-void Batcher::sort(const Engine::Math::Vec3& viewPos) {
+void Batcher::sort(const SFE::Math::Vec3& viewPos) {
 	for (auto& drawObjects : drawList) {
 		drawObjects.sortTransformAccordingToView(viewPos);
 	}
 
 	std::ranges::sort(drawList, [&viewPos](const DrawObject& a, const DrawObject& b) {
-		auto apos = Engine::Math::Vec3(a.transforms.front()[3]);
-		auto bpos = Engine::Math::Vec3(b.transforms.front()[3]);
+		auto apos = SFE::Math::Vec3(a.transforms.front()[3]);
+		auto bpos = SFE::Math::Vec3(b.transforms.front()[3]);
 
-		return Engine::Math::distanceSqr(viewPos, apos) > Engine::Math::distanceSqr(viewPos, bpos);
+		return SFE::Math::distanceSqr(viewPos, apos) > SFE::Math::distanceSqr(viewPos, bpos);
 	});
 }
 
@@ -65,11 +65,11 @@ void Batcher::flushAll(bool clear) {
         
         glGenBuffers(1, &drawObjects.transformsBuffer);
         glBindBuffer(GL_UNIFORM_BUFFER, drawObjects.transformsBuffer);
-        glBufferData(GL_UNIFORM_BUFFER,  sizeof(Engine::Math::Mat4) * drawObjects.transforms.size(), drawObjects.transforms.data(), GL_DYNAMIC_DRAW);
+        glBufferData(GL_UNIFORM_BUFFER,  sizeof(SFE::Math::Mat4) * drawObjects.transforms.size(), drawObjects.transforms.data(), GL_DYNAMIC_DRAW);
         glBindBufferBase(GL_UNIFORM_BUFFER, 0, drawObjects.transformsBuffer);
 
-
-
+ 
+        
 		if (drawObjects.material.mDiffuse.mTexture->isValid()) {
 			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture->mId);
 		}
@@ -85,10 +85,10 @@ void Batcher::flushAll(bool clear) {
 		}
 
 		if (drawObjects.indicesCount) {
-			Engine::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
+			SFE::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
 		}
 		else {
-			Engine::RenderModule::Renderer::drawArraysInstancing(GL_TRIANGLES, static_cast<int>(drawObjects.verticesCount), static_cast<int>(drawObjects.transforms.size()));
+			SFE::RenderModule::Renderer::drawArraysInstancing(GL_TRIANGLES, static_cast<int>(drawObjects.verticesCount), static_cast<int>(drawObjects.transforms.size()));
 		}
 
 		glDeleteBuffers(1, &drawObjects.transformsBuffer);

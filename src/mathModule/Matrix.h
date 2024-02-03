@@ -12,7 +12,7 @@
 
 #define GLMVEC 0
 
-namespace Engine::Math {
+namespace SFE::Math {
 #if GLMVEC
 	template <typename T, size_t Rows, size_t Columns>
 	struct Matrix : public glm::mat<Columns, Rows,T>{};

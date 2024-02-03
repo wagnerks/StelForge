@@ -8,7 +8,7 @@
 #include "componentsModule/ComponentBase.h"
 #include "propertiesModule/Serializable.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class TransformComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
 		TransformComponent(TransformComponent&& other) noexcept
@@ -95,5 +95,5 @@ namespace Engine::ComponentsModule {
 
 }
 
-using Engine::ComponentsModule::TransformComponent;
-//using Engine::ComponentsModule::DirtyTransform;
+using SFE::ComponentsModule::TransformComponent;
+//using SFE::ComponentsModule::DirtyTransform;

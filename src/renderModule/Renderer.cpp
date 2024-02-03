@@ -28,9 +28,9 @@ constexpr int GLFW_CONTEXT_VER_MIN = 6;
 #endif
 
 
-using namespace Engine;
-using namespace ::Engine::RenderModule;
-using namespace ::Engine::CoreModule;
+using namespace SFE;
+using namespace ::SFE::RenderModule;
+using namespace ::SFE::CoreModule;
 
 
 Renderer::~Renderer() {
@@ -45,7 +45,7 @@ void Renderer::draw() {
 
 void Renderer::postDraw() {
 	FUNCTION_BENCHMARK;
-	glfwSwapBuffers(UnnamedEngine::instance()->getMainWindow());
+	glfwSwapBuffers(Engine::instance()->getMainWindow());
 	glfwPollEvents();
 }
 

@@ -9,5 +9,5 @@ class OcTreeComponent {
 public:
 
 	bool inOctree = false;
-	std::vector<Engine::Math::Vec3> mParentOcTrees; //vector because it is possible that object is VERY big, or on the border
+	std::vector<SFE::Math::Vec3> mParentOcTrees; //vector because it is possible that object is VERY big, or on the border
 };

@@ -3,7 +3,7 @@
 #include "mathModule/Forward.h"
 #include "systemsModule/SystemBase.h"
 
-namespace Engine::SystemsModule {
+namespace SFE::SystemsModule {
 	class LODSystem : public ecss::System {
 	public:
 		void update(float_t dt) override;

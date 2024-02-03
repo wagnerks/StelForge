@@ -8,7 +8,7 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "componentsModule/ComponentBase.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 
 	template<typename T>
 	struct ShaderUniformVariable {
@@ -194,4 +194,4 @@ namespace Engine::ComponentsModule {
 
 }
 
-using Engine::ComponentsModule::ShaderComponent;
+using SFE::ComponentsModule::ShaderComponent;

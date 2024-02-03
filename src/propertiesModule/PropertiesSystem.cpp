@@ -12,7 +12,7 @@
 #include "core/ECSHandler.h"
 #include "core/ThreadPool.h"
 
-namespace Engine::PropertiesModule {
+namespace SFE::PropertiesModule {
 	ecss::EntityHandle PropertiesSystem::loadScene(std::string_view path) {
 		if (!FileSystem::isFileExists(path)) {
 			return {};

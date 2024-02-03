@@ -8,8 +8,8 @@
 
 class Camera;
 
-namespace Engine {
-	class UnnamedEngine : public Singleton<UnnamedEngine>, public CoreModule::InputObserver {
+namespace SFE {
+	class Engine : public Singleton<Engine>, public CoreModule::InputObserver {
 		friend Singleton;
 	public:
 		void init() override;
@@ -26,8 +26,8 @@ namespace Engine {
 
 		int maxFPS = 60;
 	private:
-		UnnamedEngine() = default;
-		~UnnamedEngine() override;
+		Engine() = default;
+		~Engine() override;
 		void updateDelta();
 		void checkNeedClose();
 

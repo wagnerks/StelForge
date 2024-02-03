@@ -4,7 +4,7 @@ namespace AssetsModule {
 	class Mesh;
 }
 
-namespace Engine::ModelModule {
+namespace SFE::ModelModule {
 	enum class eDrawObjectType {
 		CUBE = 0,
 		TRIANGLE,

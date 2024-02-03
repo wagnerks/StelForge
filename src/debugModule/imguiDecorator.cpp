@@ -9,8 +9,8 @@
 
 #define IMGUI_ENABLED 1
 
-using namespace Engine;
-using namespace Engine::Debug;
+using namespace SFE;
+using namespace SFE::Debug;
 
 void ImGuiDecorator::init(GLFWwindow* window) {
 #if not IMGUI_ENABLED

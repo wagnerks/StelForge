@@ -6,8 +6,8 @@
 #include "Shader.h"
 #include "glad/glad.h"
 
-using namespace Engine;
-using namespace Engine::ShaderModule;
+using namespace SFE;
+using namespace SFE::ShaderModule;
 
 ShaderController::ShaderController() = default;
 

@@ -4,7 +4,7 @@
 
 #include "core/Singleton.h"
 
-namespace Engine::Debug {
+namespace SFE::Debug {
 	class ShadersDebug : public Singleton<ShadersDebug> {
 		friend Singleton;
 	public:

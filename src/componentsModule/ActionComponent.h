@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "mathModule/Forward.h"
 
-namespace Engine::ComponentsModule {
+namespace SFE::ComponentsModule {
 	class ActionComponent {
 	public:
 		float progress = 0.f;
