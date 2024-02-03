@@ -11,7 +11,7 @@ namespace SFE::Math {
 	struct Vector;
 
 	template <typename T, typename OtherT, size_t Rows, size_t Columns>
-	inline Matrix<T, Rows, Columns> multiply(Matrix<T, Rows, Columns> a, OtherT b) {
+	constexpr inline Matrix<T, Rows, Columns> multiply(Matrix<T, Rows, Columns> a, OtherT b) {
 		for (size_t i = 0; i < Columns; i++) {
 			a[i] *= b;
 		}
@@ -19,7 +19,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T, typename OtherT, size_t Rows, size_t Columns>
-	inline Matrix<T, Rows, Columns> divide(Matrix<T, Rows, Columns> a, OtherT b) {
+	constexpr inline Matrix<T, Rows, Columns> divide(Matrix<T, Rows, Columns> a, OtherT b) {
 		for (size_t i = 0; i < Columns; i++) {
 			a[i] /= b;
 		}
@@ -27,7 +27,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T, typename OtherT, size_t Rows, size_t Columns>
-	inline Matrix<T, Rows, Columns> subtract(Matrix<T, Rows, Columns> a, OtherT b) {
+	constexpr inline Matrix<T, Rows, Columns> subtract(Matrix<T, Rows, Columns> a, OtherT b) {
 		for (size_t i = 0; i < Columns; i++) {
 			a[i] -= b;
 		}
@@ -35,7 +35,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T, typename OtherT, size_t Rows, size_t Columns>
-	inline Matrix<T, Rows, Columns> add(Matrix<T, Rows, Columns> a, OtherT b) {
+	constexpr inline Matrix<T, Rows, Columns> add(Matrix<T, Rows, Columns> a, OtherT b) {
 		for (size_t i = 0; i < Columns; i++) {
 			a[i] += b;
 		}
@@ -45,7 +45,7 @@ namespace SFE::Math {
 	// /////
 
 	template <typename T, size_t Rows, size_t Columns>
-	inline Matrix<T, Rows, Columns> negate(Matrix<T, Rows, Columns> a) {
+	constexpr inline Matrix<T, Rows, Columns> negate(Matrix<T, Rows, Columns> a) {
 		for (size_t i = 0; i < Columns; ++i) {
 			a[i] = -a[i];
 		}
@@ -53,7 +53,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T, size_t Rows, size_t Columns>
-	inline Matrix<T, Rows, Columns> transpose(const Matrix<T, Rows, Columns>& matrix) {
+	constexpr inline Matrix<T, Rows, Columns> transpose(const Matrix<T, Rows, Columns>& matrix) {
 		Matrix<T, Rows, Columns> result {};
 		for (size_t i = 0; i < Columns; ++i) {
 			for (size_t j = 0; j < Rows; ++j) {
@@ -65,7 +65,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T>
-	Matrix<T, 3, 3> inverse(Matrix<T, 3, 3> m) {
+	constexpr Matrix<T, 3, 3> inverse(Matrix<T, 3, 3> m) {
 		T determinant = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
 			m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
 			m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
@@ -95,7 +95,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T>
-	Matrix<T, 4, 4> inverse(Matrix<T, 4, 4> m) {
+	constexpr Matrix<T, 4, 4> inverse(Matrix<T, 4, 4> m) {
 		T coef00 = m[2][2] * m[3][3] - m[3][2] * m[2][3];
 		T coef02 = m[1][2] * m[3][3] - m[3][2] * m[1][3];
 		T coef03 = m[1][2] * m[2][3] - m[2][2] * m[1][3];

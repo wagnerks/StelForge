@@ -12,11 +12,12 @@ namespace SFE::ComponentsModule {
 
 		void initProjection(float FOV, float aspect, float zNear, float zFar);
 		void initProjection(const ProjectionModule::PerspectiveProjection& projection);
-		void updateFrustum(const Math::Mat4& view);
+		void updateFrustum(const Math::Mat4& view) const;
 		const FrustumModule::Frustum& getFrustum() const;
 	private:
 		ProjectionModule::PerspectiveProjection mProjection;
-		FrustumModule::Frustum mFrustum;
+		mutable Math::Mat4 mViewCash;
+		mutable FrustumModule::Frustum mFrustum;
 		Math::Vec3 extents{};
 	};
 }

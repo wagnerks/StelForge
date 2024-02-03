@@ -41,7 +41,7 @@ namespace SFE::FrustumModule {
 
 		Math::Vec3 minPoint;
 		Math::Vec3 maxPoint;
-		AABB generateAABB();
+		AABB generateAABB() const;
 	};
 	//todo add frustum bounding volume
 	struct BoundingVolume {

@@ -1,6 +1,7 @@
 ﻿#include "DebugPass.h"
 
 #include "imgui.h"
+#include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
 #include "core/ECSHandler.h"
@@ -34,8 +35,8 @@ namespace SFE::RenderModule::RenderPasses {
 		coloredLines->use();
 		coloredLines->setMat4("PVM", renderDataHandle.current.PV);
 
-		for (auto& [color, vertices] : Utils::renderVertices) {
-			coloredLines->setVec4("color", color);
+		for (auto& [data, vertices] : Utils::renderVertices) {
+			coloredLines->setVec4("color", data.color);
 
 
 			glBindVertexArray(linesVAO);
@@ -45,13 +46,52 @@ namespace SFE::RenderModule::RenderPasses {
 			glEnableVertexAttribArray(0);
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
 
-			RenderModule::Renderer::drawArrays(GL_LINES, vertices.size());
+			glLineWidth(data.thickness);
+
+			auto prevBlendState = glIsEnabled(GL_BLEND);
+			glDisable(GL_DEPTH_TEST);
+			glEnable(GL_BLEND);
+			RenderModule::Renderer::drawArrays(data.renderType, vertices.size());
+			if (!prevBlendState) {
+				glDisable(GL_BLEND);
+			}
+			glEnable(GL_DEPTH_TEST);
+			glLineWidth(1.f);
 
 			glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_STATIC_DRAW);
 			glBindVertexArray(0);
 		}
 		
 		Utils::renderVertices.clear();
+
+		for (auto& [data, triangles] : Utils::renderTriangles) {
+			coloredLines->setVec4("color", data.color);
+
+
+			glBindVertexArray(linesVAO);
+			glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(triangles.front()) * triangles.size(), triangles.data(), GL_STATIC_DRAW);
+
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+			
+			auto prevBlendState = glIsEnabled(GL_BLEND);
+			glDisable(GL_DEPTH_TEST);
+			glEnable(GL_BLEND);
+			glDisable(GL_CULL_FACE);
+			RenderModule::Renderer::drawArrays(GL_TRIANGLES, triangles.size() * 3);
+			if (!prevBlendState) {
+				glDisable(GL_BLEND);
+			}
+			glEnable(GL_CULL_FACE);
+			glEnable(GL_DEPTH_TEST);
+			glLineWidth(1.f);
+
+			glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_STATIC_DRAW);
+			glBindVertexArray(0);
+		}
+
+		Utils::renderTriangles.clear();
 
 		static SceneGridFloor grid;
 		grid.draw();

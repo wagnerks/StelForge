@@ -42,7 +42,7 @@ void CascadedShadowPass::prepare() {
 	auto curPassData = getCurrentPassData();
 	mStatus = RenderPreparingStatus::PREPARING;
 	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
-	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, entities = std::vector<unsigned>(), camProj = renderData.cameraProjection, view = renderData.current.view, renderData]() mutable {
+	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, entities = std::vector<unsigned>(), camProj = renderData.nextCameraProjection, view = renderData.next.view, nextFrust = renderData.mNextCamFrustum]() mutable {
 		FUNCTION_BENCHMARK
 		curPassData->getBatcher().drawList.clear();
 		auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
@@ -59,7 +59,8 @@ void CascadedShadowPass::prepare() {
 			std::mutex addMtx;
 
 			const auto& cascades = shadowsComp->cascades;
-			auto aabbOctrees = octreeSys->getAABBOctrees(renderData.mNextCamFrustum.generateAABB());
+			auto aabbOctrees = octreeSys->getAABBOctrees(nextFrust.generateAABB());
+			int d = 0;
 			ThreadPool::instance()->addBatchTasks(aabbOctrees.size(), 5, [aabbOctrees,octreeSys, &addMtx, &cascades, &entities](size_t it) {
 				if (auto treeIt = octreeSys->getOctree(aabbOctrees[it])) {
 					auto lock = treeIt->readLock();
@@ -67,7 +68,7 @@ void CascadedShadowPass::prepare() {
 						if (std::find_if(cascades.crbegin(), cascades.crend(), [&obj](const ComponentsModule::ShadowCascade& shadow) {
 							return FrustumModule::AABB::isOnFrustum(shadow.frustum, obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size);
 						}) != cascades.crend()) {
-							std::unique_lock lock(addMtx);
+							std::unique_lock lock(addMtx); 
 							entities.emplace_back(obj.data.getID());
 						}
 					}, [&cascades](const SFE::Math::Vec3& pos, float size, auto&) {
@@ -210,13 +211,7 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderData& r
 
 	FUNCTION_BENCHMARK;
 
-	if (mUpdateTimer <= mUpdateDelta) {
-		mUpdateTimer += Engine::instance()->getDeltaTime();
-		updateRenderData(renderDataHandle);
-		return;
-	}
-	mUpdateTimer = 0.f;
-
+	updateRenderData(renderDataHandle);
 	if (currentLock.valid()) {
 		FUNCTION_BENCHMARK_NAMED(_wait_lock);
 		currentLock.wait();
@@ -272,7 +267,6 @@ void CascadedShadowPass::debug(SystemsModule::RenderData& renderDataHandle) {
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("Debug")) {
 			if (ImGui::BeginMenu("Shadows debug")) {
-				ImGui::DragFloat("shadows update delta", &mUpdateDelta, 0.1f);
 
 				if (mShadowSource) {
 					if (ImGui::Button("cache")) {

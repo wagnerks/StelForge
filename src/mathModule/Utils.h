@@ -24,6 +24,15 @@ namespace SFE::Math {
 		return radians * static_cast<T>(57.295779513082320876798154814105);//180/pi
 	}
 
+	template<typename T>
+	inline Math::Vector<T, 3> radians(const Math::Vector<T, 3>& degrees) {
+		return degrees * static_cast<T>(0.01745329251994329576923690768489);//pi/180
+	}
+	template<typename T>
+	inline Math::Vector<T,3> degrees(const Math::Vector<T, 3>& radians) {
+		return radians * static_cast<T>(57.295779513082320876798154814105);//180/pi
+	}
+
 	// -------------------------
 
 	template<typename T, typename T1>
@@ -32,7 +41,7 @@ namespace SFE::Math {
 	}
 
 	template<typename T, typename T1>
-	inline Matrix<T, 4, 4> scale(Matrix<T, 4, 4> m, Vector<T1, 3> const& v) {
+	constexpr inline Matrix<T, 4, 4> scale(Matrix<T, 4, 4> m, Vector<T1, 3> const& v) {
 		return m[0] *= v[0], m[1] *= v[1], m[2] *= v[2], m;
 	}
 
@@ -96,5 +105,9 @@ namespace SFE::Math {
 		result[3][2] = -(zFar + zNear) / (zFar - zNear);
 		return result;
 	}
+
+	// ------------------------
+
+	void globalToScreenCoords();
 	
 }

@@ -57,17 +57,17 @@ namespace SFE::Math {
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator-=(Vector<T, Rows>& a, Other b) {
+	constexpr inline Vector<T, Rows> operator-=(Vector<T, Rows>& a, Other b) {
 		return a = subtract(a, b), a;
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator*=(Vector<T, Rows>& a, Other b) {
+	constexpr inline Vector<T, Rows> operator*=(Vector<T, Rows>& a, Other b) {
 		return a = multiply(a, b), a;
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator/=(Vector<T, Rows>& a, Other b) {
+	constexpr inline Vector<T, Rows> operator/=(Vector<T, Rows>& a, Other b) {
 		return a = divide(a, b), a;
 	}
 

@@ -22,26 +22,43 @@ namespace SFE::SystemsModule {
 				return;
 			}
 
-			for (const auto& parentOctree : component->mParentOcTrees) {
-				mOctrees[parentOctree].erase(entity);//todo think about not erasing if entity is in octree
-			}
+			//for (const auto& [parentOctree, subtrees] : component->mParentSubOcTrees) {//todo if object erased but didn't add to octree yet, it will not be rendered..., i need to add obj to octree first, than erase, but how?
+			//	auto lock = mOctrees[parentOctree].writeLock();
+			//	mOctrees[parentOctree].erase(entity);//todo think about not erasing if entity is in octree
+			//}
+			//component->mParentSubOcTrees.clear();
+			auto prev = component->mParentOcTrees;
 			component->mParentOcTrees.clear();
 
 			aabbcomp->mtx.lock_shared();
 			for (auto aabb : aabbcomp->aabbs) {
-				forEachOctreePosInAABB(aabb, [&component, &aabb, entity, this](const Math::Vec3& octree)mutable {
+				forEachOctreePosInAABB(aabb, [&component, &aabb, entity, this, &prev](const Math::Vec3& octree)mutable {
 					auto tree = getOctree(octree);
 					if (!tree) {
 						const auto it = mOctrees.insert({ octree, {octree} });
 						tree = &it.first->second;
 					}
 					auto lock = tree->writeLock();
+
+					
+					if (auto it = std::find(prev.begin(), prev.end(), tree->mPos); it != prev.end()) {
+						mOctrees[tree->mPos].erase(entity);
+						prev.erase(it);//todo bug if entity have many aabbs it can multiple times be deleted
+					}
+					std::vector<Math::Vec3> subOctrees;
 					if (tree->insert(aabb.center, aabb.extents, entity)) {
-						component->mParentOcTrees.push_back(tree->mPos);
+						if (std::find(component->mParentOcTrees.begin(), component->mParentOcTrees.end(), tree->mPos) == component->mParentOcTrees.end()) {
+							component->mParentOcTrees.push_back(tree->mPos);
+						}
 					}
 				});
 			}
 			aabbcomp->mtx.unlock_shared();
+
+			for (const auto& parentOctree : prev) {
+				auto lock = mOctrees[parentOctree].writeLock();
+				mOctrees[parentOctree].erase(entity);
+			}
 		});
 	}
 

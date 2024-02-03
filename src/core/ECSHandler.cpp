@@ -40,12 +40,14 @@ void ECSHandler::initSystems() {
 	mSystemManager.createSystem<SFE::SystemsModule::ShaderSystem>();
 	mSystemManager.setUpdateInterval<SFE::SystemsModule::ShaderSystem>(1 / 60.f);
 
-
-	mSystemManager.addRootSystems<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::RenderSystem, SFE::SystemsModule::ShaderSystem, SFE::SystemsModule::Physics, SFE::SystemsModule::WorldTimeSystem, SFE::SystemsModule::ActionSystem>();
+	mSystemManager.addTickSystems<SFE::SystemsModule::Physics, SFE::SystemsModule::ActionSystem, SFE::SystemsModule::WorldTimeSystem>();
+	mSystemManager.addRootSystems<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::RenderSystem, SFE::SystemsModule::ShaderSystem>();
 
 	mSystemManager.setSystemDependencies<SFE::SystemsModule::TransformSystem, SFE::SystemsModule::AABBSystem>();
 	mSystemManager.setSystemDependencies<SFE::SystemsModule::AABBSystem, SFE::SystemsModule::OcTreeSystem>();
 	mSystemManager.setSystemDependencies<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::ChunksSystem>();
+
+	mSystemManager.startTickSystems();
 
 	SFE::ThreadPool::instance()->addTask([]() {
 		SFE::PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");

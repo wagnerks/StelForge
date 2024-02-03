@@ -78,10 +78,6 @@ namespace SFE::SystemsModule {
 		}
 		FUNCTION_BENCHMARK;
 
-		auto& compManager = ECSHandler::registry();
-
-		auto& playerCamera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
-
 		mRenderData.current = mRenderData.next;
 		mRenderData.cameraProjection = mRenderData.nextCameraProjection;
 
@@ -92,13 +88,17 @@ namespace SFE::SystemsModule {
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(RenderMatrices), &mRenderData.current);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		mRenderData.nextCameraProjection = compManager.getComponent<CameraComponent>(playerCamera)->getProjection();
+		auto& playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
+		const auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(playerCamera);
+		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(playerCamera);
+
+		mRenderData.nextCameraProjection = cameraComp->getProjection();
 		mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
-		mRenderData.next.view = compManager.getComponent<TransformComponent>(playerCamera)->getViewMatrix();
+		mRenderData.next.view = transformComp->getViewMatrix();
 		mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
 
-		mRenderData.mNextCameraPos = compManager.getComponent<TransformComponent>(playerCamera)->getPos(true);
-		mRenderData.mNextCamFrustum = ECSHandler::registry().getComponent<CameraComponent>(playerCamera)->getFrustum();
+		mRenderData.mNextCameraPos = transformComp->getPos(true);
+		mRenderData.mNextCamFrustum = cameraComp->getFrustum();
 
 		for (const auto renderPass : mRenderPasses) {
 			renderPass->render(mRenderer, mRenderData, *mRenderer->getBatcher());

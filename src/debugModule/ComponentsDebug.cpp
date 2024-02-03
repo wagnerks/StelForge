@@ -37,6 +37,7 @@
 #include "componentsModule/ShaderComponent.h"
 #include "core/OcTree.h"
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
+#include "mathModule/CameraUtils.h"
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/PhysicsSystem.h"
 
@@ -44,47 +45,40 @@ using namespace SFE::Debug;
 
 void ComponentsDebug::init() {
 	static bool leftM = false;
+	static bool rightM = false;
+	onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType event) {
+		if (event == CoreModule::InputEventType::PRESS) {
+			pressedKeys[key] = true;
+		}
+		else if (event == CoreModule::InputEventType::RELEASE) {
+			pressedKeys[key] = false;
+		}
+	};
 	onMouseBtnEvent = [this](Math::DVec2 mPos, CoreModule::MouseButton btn, CoreModule::InputEventType action) {
 		if (btn == CoreModule::MouseButton::MOUSE_BUTTON_LEFT && action == CoreModule::InputEventType::PRESS) {
 			leftM = true;
 
 			auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+			auto camRay = Math::calcCameraRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
 
 			auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
 			auto pos = cameraTransform->getPos(true);
-			auto mProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID())->getProjection().getProjectionsMatrix();
-			auto mView = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID())->getViewMatrix();
-
-
-			float normalizedX = (2.0f * static_cast<float>(mPos.x)) / RenderModule::Renderer::SCR_WIDTH - 1.0f;
-			float normalizedY = 1.0f - (2.0f * static_cast<float>(mPos.y)) / RenderModule::Renderer::SCR_HEIGHT;
-			auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
-			auto ndc = Math::inverse(mProjection) * clipCoords;
-			ndc /= ndc.w;
-			auto viewCoords = Math::Vec3(Math::inverse(mView) * Math::Vec4(ndc.x, ndc.y, ndc.z, 1.0));
-			auto rayDirection = Math::normalize(viewCoords - pos);
-
-			auto octrSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			auto mCamFrustum = FrustumModule::createFrustum(mProjection * mView);
-			auto aabbOctrees = octrSys->getAABBOctrees(mCamFrustum.generateAABB());
 
 			float minDistance = std::numeric_limits<float>::max();
 
-			for (auto& tree : aabbOctrees) {
-				if (auto treeIt = octrSys->getOctree(tree)) {
-					auto res = treeIt->findCollisions(viewCoords, rayDirection, [](const auto& data) {
-						return data.data != ecss::INVALID_ID;
-					});
+			ECSHandler::getSystem<SystemsModule::OcTreeSystem>()->forEachOctreeInAABB(Math::createFrustum(camera).generateAABB(), [&](SystemsModule::OcTreeSystem::SysOcTree& tree) {
+				auto res = tree.findCollisions(camRay.a, camRay.direction, [](const auto& data) {
+					return data.data != ecss::INVALID_ID;
+				});
 
-					for (auto& [collisionPos, object] : res) {
-						auto dist = Math::lengthSquared(collisionPos - pos);
-						if (dist < minDistance) {
-							minDistance = dist;
-							mSelectedId = object.data.getID();
-						}
+				for (auto& [collisionPos, object] : res) {
+					auto dist = Math::lengthSquared(collisionPos - pos);
+					if (dist < minDistance) {
+						minDistance = dist;
+						setSelectedId(object.data.getID());
 					}
 				}
-			}
+			});
 
 			if (minDistance < std::numeric_limits<float>::max()) {
 				if (ECSHandler::registry().getComponent<OutlineComponent>(mSelectedId)) {
@@ -96,12 +90,107 @@ void ComponentsDebug::init() {
 			}
 		}
 
+		if (btn == CoreModule::MouseButton::MOUSE_BUTTON_RIGHT && (action == CoreModule::InputEventType::PRESS || action == CoreModule::InputEventType::REPEAT)) {
+			rightM = true;
+			if (pressedKeys[CoreModule::InputKey::KEY_LEFT_ALT]) {
+				auto bullet = ECSHandler::registry().takeEntity();
+				auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+
+				auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+				auto pos = cameraTransform->getPos(true);
+				auto camRay = Math::calcCameraRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
+
+				auto transform = ECSHandler::registry().addComponent<TransformComponent>(bullet, bullet);
+				transform->setPos(camRay.a + camRay.direction * 100.f);
+				transform->setScale({ 0.1f, 0.1f, 0.1f });
+				auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
+				ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(bullet);
+				ECSHandler::registry().addComponent<OcTreeComponent>(bullet);
+				ECSHandler::registry().addComponentWithInit<ModelComponent>(bullet, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, bullet.getID());
+
+
+				JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+				auto tr = ECSHandler::registry().getComponent<TransformComponent>(bullet);
+				auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(bullet);
+
+
+				JPH::BoxShapeSettings cube_shape(JPH::Vec3(10.f, 10.f, 10.f));
+				JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(tr->getQuaternion()), JPH::EMotionType::Dynamic, Layers::MOVING);
+
+				auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
+				body_interface.SetRestitution(mBodyID, 0.5f);
+				ECSHandler::registry().addComponent<PhysicsComponent>(bullet, mBodyID);
+				camRay.direction *= 1000000.f;
+				body_interface.SetLinearVelocity(mBodyID, { camRay.direction.x, camRay.direction.y, camRay.direction.z });
+			}
+		}
+
+		if (btn == CoreModule::MouseButton::MOUSE_BUTTON_RIGHT && (action == CoreModule::InputEventType::PRESS || action == CoreModule::InputEventType::REPEAT)) {
+			rightM = true;
+
+			if (pressedKeys[CoreModule::InputKey::KEY_LEFT_CONTROL]) {
+				auto bullet = ECSHandler::registry().takeEntity();
+				auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+
+				auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+				auto pos = cameraTransform->getPos(true);
+
+				auto camRay = Math::calcCameraRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
+
+				float minDistance = std::numeric_limits<float>::max();
+				Math::Vec3 curColision = {};
+
+				ECSHandler::getSystem<SystemsModule::OcTreeSystem>()->forEachOctreeInAABB(Math::createFrustum(camera).generateAABB(), [&](SystemsModule::OcTreeSystem::SysOcTree& tree) {
+					auto res = tree.findCollisions(camRay.a, camRay.direction, [](const auto& data) {
+						return data.data != ecss::INVALID_ID;
+					});
+
+					for (auto& [collisionPos, object] : res) {
+						auto dist = Math::lengthSquared(collisionPos - pos);
+						if (dist < minDistance) {
+							minDistance = dist;
+							curColision = collisionPos;
+							setSelectedId(object.data.getID());
+						}
+					}
+				});
+
+				auto transform = ECSHandler::registry().addComponent<TransformComponent>(bullet, bullet);
+				transform->setPos(curColision + Math::Vec3(0.f, 10.f, 0.f));
+				transform->setScale({ 0.1f, 0.1f, 0.1f });
+				auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
+				ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(bullet);
+				ECSHandler::registry().addComponent<OcTreeComponent>(bullet);
+				ECSHandler::registry().addComponentWithInit<ModelComponent>(bullet, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, bullet.getID());
+
+
+				
+				auto tr = ECSHandler::registry().getComponent<TransformComponent>(bullet);
+				auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(bullet);
+
+
+				JPH::BoxShapeSettings cube_shape(JPH::Vec3(10.f, 10.f, 10.f));
+				JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(tr->getQuaternion()), JPH::EMotionType::Dynamic, Layers::MOVING);
+
+				JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+				auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
+				body_interface.SetRestitution(mBodyID, 0.5f);
+				ECSHandler::registry().addComponent<PhysicsComponent>(bullet, mBodyID);
+			}
+		}
+
+		if (btn == CoreModule::MouseButton::MOUSE_BUTTON_RIGHT && action == CoreModule::InputEventType::RELEASE) {
+			rightM = false;
+		}
 		if (btn == CoreModule::MouseButton::MOUSE_BUTTON_LEFT && action == CoreModule::InputEventType::RELEASE) {
 			leftM = false;
 		}
 	};
 
 	onMouseEvent = [](Math::DVec2 mPos, Math::DVec2 mouseOffset) {
+		if (rightM) {
+			
+		}
 		return;
 		if (leftM) {
 			auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
@@ -141,10 +230,10 @@ void ComponentsDebug::init() {
 								auto pos = tr->getPos(true);
 								auto quat = tr->getQuaternion();
 								quat.w = 1.f;
-								BoxShapeSettings cube_shape(Vec3(aabb->aabbs.front().extents.x, aabb->aabbs.front().extents.y, aabb->aabbs.front().extents.z));
-								BodyCreationSettings cube_settings(cube_shape.Create().Get(), RVec3(pos.x, pos.y, pos.z), Quat(quat.x, quat.y, quat.z, quat.w), EMotionType::Dynamic, Layers::MOVING);
+								JPH::BoxShapeSettings cube_shape(JPH::toVec3(aabb->aabbs.front().extents));
+								JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
 
-								auto mBodyID = body_interface.CreateAndAddBody(cube_settings, EActivation::Activate);
+								auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
 								body_interface.SetRestitution(mBodyID, 0.5f);
 								ECSHandler::registry().addComponent<PhysicsComponent>(obj.second.data.getID(), mBodyID);
 							}
@@ -176,6 +265,7 @@ void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId&
 		if (ImGui::TreeNodeEx((std::string(strid) + ":" + std::to_string(id)).c_str(), flag)) {
 			if (ImGui::IsItemClicked()) {
 				selectedID = id;
+				setSelectedId(id);
 			}
 
 			for (auto child : children) {
@@ -187,12 +277,14 @@ void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId&
 		else {
 			if (ImGui::IsItemClicked()) {
 				selectedID = id;
+				setSelectedId(id);
 			}
 		}
 	}
 	else {
 		if (ImGui::Selectable((std::string(strid) + ":" + std::to_string(id)).c_str(), selectedID == id)) {
 			selectedID = id;
+			setSelectedId(id);
 		}
 	}
 }
@@ -211,6 +303,44 @@ void ComponentsDebug::entitiesDebug() {
 	}
 	if (!editorOpened) {
 		return;
+	}
+
+	gizmo.update();
+
+	if (mSelectedId != ecss::INVALID_ID) {
+		auto phisComp = ECSHandler::registry().getComponent<PhysicsComponent>(mSelectedId);
+		if (phisComp) {
+			auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+			Math::Vec3 velocity = {};
+			auto curCamera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+			auto transform = ECSHandler::registry().getComponent<TransformComponent>(curCamera);
+			
+			if (pressedKeys[CoreModule::InputKey::KEY_UP]) {
+				velocity += Math::Vec3{10.f, 0.f, 10.f} * transform->getForward() / transform->getGlobalScale();
+			}
+			if (pressedKeys[CoreModule::InputKey::KEY_LEFT]) {
+				velocity += Math::Vec3{10.f, 0.f, 10.f} * (-transform->getRight()) / transform->getGlobalScale();
+			}
+			if (pressedKeys[CoreModule::InputKey::KEY_RIGHT]) {
+				velocity += Math::Vec3{10.f, 0.f, 10.f} * transform->getRight() / transform->getGlobalScale();
+			}
+			if (pressedKeys[CoreModule::InputKey::KEY_DOWN]) {
+				velocity += Math::Vec3{10.f, 0.f, 10.f} * transform->getBackward() / transform->getGlobalScale();
+			}
+			if (pressedKeys[CoreModule::InputKey::KEY_LEFT_CONTROL]) {
+				velocity += Math::Vec3{0.f, 150.f, 0.f};
+			}
+			
+			body_interface.SetLinearVelocity(phisComp->mBodyID, JPH::toVec3(velocity));
+		}
+	}
+
+	ImGui::Text("system tick dt: %f", ECSHandler::systemManager().getTickDt());
+	if (ImGui::Button("set current camera")) {
+		if (mSelectedId != ecss::INVALID_ID) {
+			ECSHandler::registry().addComponent<CameraComponent>(mSelectedId, mSelectedId, 45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), RenderModule::Renderer::nearDistance, RenderModule::Renderer::drawDistance);
+			ECSHandler::getSystem<SystemsModule::CameraSystem>()->setCurrentCamera(mSelectedId);
+		}
 	}
 
 	if (ImGui::Begin("Entities Editor", &editorOpened)) {
@@ -287,13 +417,13 @@ void ComponentsDebug::entitiesDebug() {
 					else if (current_item == "ph_capsule") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
 
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+							auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
 							auto pos = tr->getPos(true);
 							auto quat = tr->getQuaternion();
 
-							BodyCreationSettings sphere_settings(new CapsuleShape(100.f, 100.f), RVec3(pos.x, pos.y, pos.z), Quat(quat.x, quat.y, quat.z, quat.w), EMotionType::Dynamic, Layers::MOVING);
-							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, EActivation::Activate);
+							JPH::BodyCreationSettings sphere_settings(new JPH::CapsuleShape(100.f, 100.f), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
+							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
 							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
@@ -301,29 +431,29 @@ void ComponentsDebug::entitiesDebug() {
 					else if (current_item == "ph_sphere") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
 
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+							auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
 							auto pos = tr->getPos(true);
 							auto quat = tr->getQuaternion();
 							
-							BodyCreationSettings sphere_settings(new SphereShape(100.f), RVec3(pos.x, pos.y, pos.z), Quat(quat.x, quat.y, quat.z, quat.w), EMotionType::Dynamic, Layers::MOVING);
-							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, EActivation::Activate);
+							JPH::BodyCreationSettings sphere_settings(new JPH::SphereShape(100.f), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
+							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
 							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
 					}
 					else if (current_item == "ph_box") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+							auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
 							auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(entity);
 
 							auto pos = tr->getPos(true);
 							auto quat = tr->getQuaternion();
-							BoxShapeSettings cube_shape(Vec3(aabb->aabbs.front().extents.x, aabb->aabbs.front().extents.y, aabb->aabbs.front().extents.z));
-							BodyCreationSettings cube_settings(cube_shape.Create().Get(), RVec3(pos.x, pos.y, pos.z), Quat(quat.x, quat.y, quat.z, quat.w), EMotionType::Dynamic, Layers::MOVING);
+							JPH::BoxShapeSettings cube_shape(JPH::toVec3(aabb->aabbs.front().extents));
+							JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
 
-							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, EActivation::Activate);
+							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
 							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
@@ -336,10 +466,10 @@ void ComponentsDebug::entitiesDebug() {
 							auto pos = tr->getPos(true);
 							auto quat = tr->getQuaternion();
 							quat.w = 1.f;
-							BoxShapeSettings cube_shape(Vec3(10000.0f, 5.0f, 10000.0f));
-							BodyCreationSettings cube_settings(cube_shape.Create().Get(), RVec3(pos.x, pos.y, pos.z), Quat(quat.x, quat.y, quat.z, quat.w), EMotionType::Static, Layers::NON_MOVING);
+							JPH::BoxShapeSettings cube_shape(JPH::Vec3(10000.0f, 5.0f, 10000.0f));
+							JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Static, Layers::NON_MOVING);
 
-							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, EActivation::Activate);
+							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
 							body_interface.SetRestitution(mBodyID, 0.5f);
 							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
 						}
@@ -472,25 +602,6 @@ void ComponentsDebug::entitiesDebug() {
 
 			if (auto comp = compManager.getComponent<TransformComponent>(currentEntity); comp && ImGui::TreeNode("Transform Component")) {
 				componentEditorInternal(comp);
-
-				auto pos = Math::Vec3{ 0.f,0.f,0.f };
-
-				auto rotQuat = Math::Quaternion<float>({ 1.f, 0.f, 0.f,0.f });
-
-				auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
-				xyzLines->use();
-
-				auto model = compManager.getComponent<TransformComponent>(currentEntity)->getTransform();
-
-
-				model *= Math::translate(Math::Mat4(1.0f), pos) * Math::Mat4(rotQuat.toRotateMatrix3()) * S;
-				xyzLines->setMat4("PVM", PV * Math::Mat4{ model });
-				Math::Vec3 start = {};
-				Math::Vec3 end = { 0.f,0.f, -150.f };
-
-				RenderModule::Utils::renderLine(start, end, Math::Vec4(1.f, 0.f, 0.f, 1.f));
-
-
 				ImGui::TreePop();
 			}
 
@@ -629,11 +740,11 @@ void ComponentsDebug::entitiesDebug() {
 			}
 
 
-			auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
+			/*auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
 			xyzLines->use();
 
 			xyzLines->setMat4("PVM", PV* Math::Mat4{model});
-			RenderModule::Utils::renderXYZ(50.f);
+			RenderModule::Utils::renderXYZ(50.f);*/
 
 
 		}
@@ -1203,4 +1314,9 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ShaderComponent*
 
 void ComponentsDebug::componentEditorInternal(ComponentsModule::PhysicsComponent* component) {
 	
+}
+
+void ComponentsDebug::setSelectedId(ecss::EntityId id) {
+	mSelectedId = id;
+	gizmo.setEntity(mSelectedId);
 }

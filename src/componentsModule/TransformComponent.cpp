@@ -8,10 +8,10 @@
 #include "systemsModule/systems/TransformSystem.h"
 
 namespace SFE::ComponentsModule {
-	const Math::Vec3 TransformComponent::getPos(bool global) const {
+	const Math::Vec3& TransformComponent::getPos(bool global) const {
 		std::shared_lock lock(mtx);
 		if (global) {
-			return Math::Vec3(mTransform[3]);
+			return mTransform[3].xyz;
 		}
 		return mPos;
 	}
@@ -101,21 +101,28 @@ namespace SFE::ComponentsModule {
 
 	void TransformComponent::reloadTransform() {
 		{
-			std::unique_lock lock(mtx);
+			auto lock = std::unique_lock(mtx);
 			if (!mDirty) {
 				return;
 			}
 			mDirty = false;
+		}
 
+		{
+			auto lock = std::unique_lock(mtx);
 			mRotateQuaternion.eulerToQuaternion(mRotate);
-			mTransform = getLocalTransform();
 		}
 		
+		auto newTransform = calculateLocalTransform();
 
 		if (const auto tree = ECSHandler::registry().getComponent<TreeComponent>(getEntityId())) {
 			if (const auto parentTransform = ECSHandler::registry().getComponentForce<TransformComponent>(tree->getParent())) {
-				std::unique_lock lock(mtx);
-				mTransform = parentTransform->getTransform() * mTransform;
+				newTransform = parentTransform->getTransform() * newTransform;
+			}
+
+			{
+				auto lock = std::unique_lock(mtx);
+				mTransform = std::move(newTransform);
 			}
 
 			for (const auto childTransform : tree->getChildren()) {
@@ -125,9 +132,13 @@ namespace SFE::ComponentsModule {
 				}
 			}
 		}
+		else {
+			auto lock = std::unique_lock(mtx);
+			mTransform = std::move(newTransform);
+		}
 	}
 
-	SFE::Math::Mat4 TransformComponent::getLocalTransform() const {
+	SFE::Math::Mat4 TransformComponent::calculateLocalTransform() const {
 		return Math::translate(Math::Mat4{1.f}, mPos) * mRotateQuaternion.toMat4() * Math::scale(Math::Mat4{ 1.f }, mScale);
 	}
 

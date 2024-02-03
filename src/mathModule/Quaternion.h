@@ -91,14 +91,14 @@ namespace SFE::Math {
 			Vector<T, 3> euler;
 
 			// Roll (x-axis rotation)
-			euler.x = std::atan2(2 * (x * y + w * z), 1 - 2 * (y * y + z * z));
+			euler.x = std::atan2(2 * (w*x + y*z), w*w - x*x - y*y + z*z);
 
 			// Pitch (y-axis rotation)
 			euler.y = std::asin(2 * (w * y - z * x));
 
 			// Yaw (z-axis rotation)
 			euler.z = std::atan2(2 * (x * z + w * y), 1 - 2 * (y * y + x * x));
-
+			euler.z = std::atan2(2 * (w * z + x * y), w * w + x * x - y * y - z * z);
 			return euler;
 		}
 
@@ -120,7 +120,7 @@ namespace SFE::Math {
 			matrixToQuaternionImpl(matrix);
 		}
 		
-		inline Vector<T, 3> rotateVector(const Vector<T, 3>& v) {
+		inline Vector<T, 3> rotateVector(const Vector<T, 3>& v) const {
 			// Extract the vector part of the quaternion
 			Vector<T, 3> u = { x, y, z };
 
@@ -154,13 +154,13 @@ namespace SFE::Math {
 			return *this;
 		}
 
-		Quaternion(){}
+		constexpr Quaternion(){}
 
-		Quaternion(T x, T y, T z) {
+		constexpr Quaternion(T x, T y, T z) {
 			eulerToQuaternion(x, y, z);
 		}
 
-		Quaternion(T w, T x, T y, T z) : w{ w }, x{ x }, y{ y }, z{ z } {}
+		constexpr Quaternion(T w, T x, T y, T z) : w{ w }, x{ x }, y{ y }, z{ z } {}
 
 	private:
 		void matrixToQuaternionImpl(const Matrix<T,3,3>& matrix) {

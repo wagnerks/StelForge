@@ -151,6 +151,6 @@ namespace SFE::Math {
 
 	template<typename T>
 	inline T distance(const Vector<T, 3>& p1, const Vector<T, 3>& p2) {
-		return fastSqrt(distanceSqr(p1, p2));
+		return sqrt(distanceSqr(p1, p2));
 	}
 }
