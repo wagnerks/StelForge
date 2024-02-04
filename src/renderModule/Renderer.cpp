@@ -111,11 +111,27 @@ GLFWwindow* Renderer::initGLFW() {
 		return nullptr;
 	}
 
+	glfwGetWindowContentScale(window, &Renderer::SCR_RENDER_SCALE_W, &Renderer::SCR_RENDER_SCALE_H);
+	glfwGetFramebufferSize(window, &Renderer::SCR_RENDER_W, &Renderer::SCR_RENDER_H);
+#ifdef __APPLE__
+	Renderer::SCR_WIDTH = Renderer::SCR_RENDER_W / Renderer::SCR_RENDER_SCALE_W;
+	Renderer::SCR_HEIGHT = Renderer::SCR_RENDER_H / Renderer::SCR_RENDER_SCALE_H;
+#endif
+
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
 		glViewport(0, 0, width, height);
-		Renderer::SCR_WIDTH = width;
-		Renderer::SCR_HEIGHT = height;
+		Renderer::SCR_RENDER_W = width;
+		Renderer::SCR_RENDER_H = height;
+#ifdef __APPLE__
+		Renderer::SCR_WIDTH = Renderer::SCR_RENDER_W / Renderer::SCR_RENDER_SCALE_W;
+		Renderer::SCR_HEIGHT = Renderer::SCR_RENDER_H / Renderer::SCR_RENDER_SCALE_H;
+#else
+		Renderer::SCR_WIDTH = Renderer::SCR_RENDER_W;
+		Renderer::SCR_HEIGHT = Renderer::SCR_RENDER_H;
+#endif
+
+
 	});
 
 	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {

@@ -27,7 +27,7 @@ void SSAOPass::init() {
 	// SSAO color buffer
 	glGenTextures(1, &mData.mSsaoColorBuffer);
 	glBindTexture(GL_TEXTURE_2D, mData.mSsaoColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RED, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.mSsaoColorBuffer, 0);
@@ -38,7 +38,7 @@ void SSAOPass::init() {
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
 	glGenTextures(1, &mData.mSsaoColorBufferBlur);
 	glBindTexture(GL_TEXTURE_2D, mData.mSsaoColorBufferBlur);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RED, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.mSsaoColorBufferBlur, 0);
@@ -96,7 +96,7 @@ void SSAOPass::init() {
 	shaderSSAO->setInt("kernelSize", mData.mKernelSize);
 	shaderSSAO->setFloat("radius", mData.mRadius);
 	shaderSSAO->setFloat("bias", mData.mBias);
-	shaderSSAO->setVec2("noiseScale", Math::Vec2{static_cast<float>(Renderer::SCR_WIDTH) / 4.f, static_cast<float>(Renderer::SCR_WIDTH) / 4.f});
+	shaderSSAO->setVec2("noiseScale", Math::Vec2{static_cast<float>(Renderer::SCR_RENDER_W) / 4.f, static_cast<float>(Renderer::SCR_RENDER_W) / 4.f});
 	for (unsigned int i = 0; i < 64; ++i) {
 		shaderSSAO->setVec3(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
 	}

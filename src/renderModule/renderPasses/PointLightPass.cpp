@@ -193,7 +193,7 @@ namespace SFE::RenderModule::RenderPasses {
 		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, SFE::RenderModule::Renderer::SCR_WIDTH, SFE::RenderModule::Renderer::SCR_HEIGHT);
+		glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
 	}
 
 	void PointLightPass::fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius) {

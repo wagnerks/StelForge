@@ -26,7 +26,7 @@ void SFE::RenderModule::RenderPasses::ShadersPass::render(Renderer* renderer, Sy
 		return;
 	}
 	
-	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
+	glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
 	glBindFramebuffer(GL_FRAMEBUFFER, renderDataHandle.mGeometryPassData.mGBuffer);
 	auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
 

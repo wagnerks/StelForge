@@ -111,7 +111,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	// ----------------------------------------------------------------------------------
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, renderDataHandle.mGeometryPassData.mGBuffer);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
-	glBlitFramebuffer(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+	glBlitFramebuffer(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
