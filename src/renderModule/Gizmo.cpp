@@ -3,8 +3,8 @@
 #include "imgui.h"
 #include "Utils.h"
 #include "assetsModule/modelModule/ModelLoader.h"
-#include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
+#include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "mathModule/CameraUtils.h"
@@ -13,21 +13,6 @@
 
 namespace SFE::RenderModule {
 	Gizmo::Gizmo() {
-		auto cone = AssetsModule::ModelLoader::instance()->load("models/cone.fbx");
-		if (!cone->lods.empty()) {
-			if (!cone->lods[0].mMeshHandles.empty()) {
-				for (auto i = 0; i < cone->lods[0].mMeshHandles.front().mData->mIndices.size(); i += 3) {
-					Utils::Triangle tr;
-					tr.A = cone->lods[0].mMeshHandles.front().mData->mVertices[cone->lods[0].mMeshHandles.front().mData->mIndices[i]].mPosition;
-					tr.B = cone->lods[0].mMeshHandles.front().mData->mVertices[cone->lods[0].mMeshHandles.front().mData->mIndices[i + 1]].mPosition;
-					tr.C = cone->lods[0].mMeshHandles.front().mData->mVertices[cone->lods[0].mMeshHandles.front().mData->mIndices[i + 2]].mPosition;
-
-					mCone.push_back(tr);
-				}
-			}
-		}
-
-		static Math::Vec3 offset;
 		onMouseBtnEvent = [this](Math::DVec2 mousePos, CoreModule::MouseButton btn, CoreModule::InputEventType eventType) {
 			if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity) || mHoveredAxis == NONE) {
 				return;
@@ -38,25 +23,15 @@ namespace SFE::RenderModule {
 
 				mActiveAxis = mHoveredAxis;
 
-				const auto hovered = getHoveredGizmo(mCurrentMode);
-				if (mCurrentMode == GizmoMode::ROTATE) {
-					mPrevPos = hovered.second;
-					mAnglePos = mPrevPos;
-				}
-				else {
-					const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+				mIntersectionStartPos = findHoveredGizmo(mCurrentMode).second;
+				mIntersectionCurrentPos = mIntersectionStartPos;
 
-					const auto entityPos = transformComp->getPos(true);
-					offset = hovered.second - entityPos;
-					mPrevPosPos = hovered.second;
-					if (mActiveAxis) {
-						mPrevPos = entityPos;
-						mPrevScale = transformComp->getScale();
-					}
-				}
+				const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+
+				mStartPos = transformComp->getPos(true);
+				mStartScale = transformComp->getScale();
 			}
 			else {
-				mMousePos = {};
 				mActiveAxis = Axis::NONE;
 			}
 		};
@@ -68,53 +43,16 @@ namespace SFE::RenderModule {
 
 			mMousePos = { mousePos };
 			if (mActiveAxis == Axis::NONE) {
-				mHoveredAxis = getHoveredGizmo(mCurrentMode).first;
-				return;
+				mHoveredAxis = findHoveredGizmo(mCurrentMode).first;
 			}
-
-			const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-			auto camRay = Math::calcCameraRay(camera, mMousePos);
-
-			auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-			auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
-			auto entityPos = transformComp->getPos(true);
-
-			if (mCurrentMode == GizmoMode::MOVE) {
-				Math::Vec3 intersection = findIntersecRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getCamPlane(camRay, mAxisPlane[mActiveAxis], cameraTransform));
-				
-				transformComp->setPos(entityPos + (intersection - mPrevPosPos));
-				mPrevPosPos = intersection;
-			}
-			else if (mCurrentMode == GizmoMode::SCALE) {
-				Math::Vec3 intersection = findIntersecRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getCamPlane(camRay, mAxisPlane[mActiveAxis], cameraTransform));
-		
-				auto scaleDir = transformComp->getQuaternion().rotateVector(mAxisDirection[mActiveAxis]);
-				scaleDir = { std::fabs(scaleDir.x), std::fabs(scaleDir.y), std::fabs(scaleDir.z) };
-				const auto distance = intersection - mPrevPos;
-				const auto koef = mPrevScale / offset[mActiveAxis - 1];
-
-				transformComp->setScale(mPrevScale + scaleDir * (distance[mActiveAxis - 1] - offset[mActiveAxis - 1]) * koef);
-			}
-			else if (mCurrentMode == GizmoMode::ROTATE) {
-				if (mActiveAxis == X || mActiveAxis == Y || mActiveAxis == Z) {
-					const auto oldPos = entityPos + Math::normalize(mAnglePos - entityPos) * 150.f;
-					mAnglePos = findIntersecRayWithPlane(camRay, mPlanes[mActiveAxis] + entityPos);
-					const auto newPos = entityPos + Math::normalize(mAnglePos - entityPos) * 150.f;
-
-					auto angleDif = Math::calcAngleOnCircle(Math::distance(oldPos, newPos), 150.f);
-					if (Math::cross(oldPos - entityPos, newPos - entityPos) < Math::Vec3(0.f)) {
-						angleDif = 2.0f * Math::pi<float>() - angleDif;
-					}
-					angleDif = Math::degrees(angleDif);
-
-					Math::Quaternion<float> q;
-					q.eulerToQuaternion(mAxisDirection[mActiveAxis] * angleDif);
-					q = q * transformComp->getQuaternion();
-					transformComp->setRotate(Math::degrees(q.toEuler()));
+			else {
+				switch (mCurrentMode) {
+				case GizmoMode::MOVE: processMove(); break;
+				case GizmoMode::ROTATE: processRotate(); break;
+				case GizmoMode::SCALE: processScale(); break;
+				default:;
 				}
 			}
-			
-			
 		};
 	}
 
@@ -139,334 +77,564 @@ namespace SFE::RenderModule {
 			}
 			ImGui::EndMainMenuBar();
 		}
-		if (!ECSHandler::registry().isEntity(mEntity)) {
+
+		if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity)) {
 			return;
 		}
 
-		if (mCurrentMode == GizmoMode::NONE) {
+		const auto transform = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		if (!transform) {
 			return;
 		}
 
-		auto transform = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
-		auto& pos = transform->getPos(true);
-		auto& scale = transform->getScale();
-		Math::Quaternion<float> quat;
+		const auto& entityPos = transform->getPos(true);
+		const auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera())->getPos(true);
+		//to save perspective in case of plane moves if there is active axis - use start pos
+		mScaleCoef = Math::distance(cameraPos, mActiveAxis ? mStartPos : entityPos) * mScaleFactor;
 
 		if (mActiveAxis == Axis::NONE) {
-			mAlpha.x = mHoveredAxis == Axis::X ? 0.8f : 0.6f;
-			mAlpha.y = mHoveredAxis == Axis::Y ? 0.8f : 0.6f;
-			mAlpha.z = mHoveredAxis == Axis::Z ? 0.8f : 0.6f;
+			updateGizmosAlpha(cameraPos, entityPos);
+		}
 
-			if (mCurrentMode == GizmoMode::MOVE || mCurrentMode == GizmoMode::SCALE) {
-				Utils::renderLine(pos + Math::Vec3(20.f, 0.f, 0.f), pos + Math::Vec3(200.f, 0.f, 0.f), { 1.f,0.f,0.f,mAlpha.x }, 5.f);
-				Utils::renderLine(pos + Math::Vec3(0.f, 20.f, 0.f), pos + Math::Vec3(0.f, 200.f, 0.f), { 0.f,1.f,0.f,mAlpha.y }, 5.f);
-				Utils::renderLine(pos + Math::Vec3(0.f, 0.f, 20.f), pos + Math::Vec3(0.f, 0.f, 200.f), { 0.f,0.f,1.f,mAlpha.z }, 5.f);
+		switch (mCurrentMode) {
+		case GizmoMode::MOVE: drawMoveGizmo(entityPos); break;
+		case GizmoMode::ROTATE: drawRotateGizmo(entityPos); break;
+		case GizmoMode::SCALE: drawScaleGizmo(entityPos, transform->getScale()); break;
+		default:;
+		}
+	}
 
-				Utils::renderQuad(Math::Vec3{15.f, 15.f, 0.f}, Math::Vec3{30.f, 30.f, 0.f}, quat.toMat4(), pos, { 0.f,0.f,1.f,mAlpha.z });
-				Utils::renderQuad(Math::Vec3{15.f, 0.f, 15.f}, Math::Vec3{30.f, 0.f, 30.f}, quat.toMat4(), pos, { 0.f,1.f,0.f,mAlpha.y });
-				Utils::renderQuad(Math::Vec3{0.f, 15.f, 15.f}, Math::Vec3{0.f, 30.f, 30.f}, quat.toMat4(), pos, { 1.f,0.f,0.f,mAlpha.x });
+	//process logic
+	std::pair<Axis, Math::Vec3> Gizmo::findHoveredGizmo(GizmoMode mode) const {
+		if (mode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity)) {
+			return {};
+		}
+
+		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
+
+		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		if (!transformComp) {
+			return {};
+		}
+
+		const auto entityPos = transformComp->getPos(true);
+
+		if (PhysicsEngine::Physics::distancePointToLine(entityPos, mouseRay.a, mouseRay.direction) > (mGizmoRadius + mCommonGizmoOffset + mTipRadius) * mScaleCoef) {
+			return {};
+		}
+
+		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+
+		if (mode == GizmoMode::ROTATE) {
+			const auto innerCollideRadius = (mGizmoRadius - mTipRadius) * mScaleCoef;
+			const auto outerCollideRadius = (mGizmoRadius + mTipRadius) * mScaleCoef;
+
+			auto intersectionPos = findIntersectionRayWithPlane(mouseRay, mPlanes[Z] + entityPos);
+			auto distance = Math::distance(entityPos, intersectionPos);
+			if (distance < outerCollideRadius && distance > innerCollideRadius) {
+				return { Axis::Z , intersectionPos };
 			}
 
-			Utils::renderLine(pos - Math::Vec3(10.f, 0.f, 0.f), pos + Math::Vec3(10.f, 0.f, 0.f), { 0.f,0.f,0.f,0.6f }, 2.f);
-			Utils::renderLine(pos - Math::Vec3(0.f, 10.f, 0.f), pos + Math::Vec3(0.f, 10.f, 0.f), { 0.f,0.f,0.f,0.6f }, 2.f);
-			Utils::renderLine(pos - Math::Vec3(0.f, 0.f, 10.f), pos + Math::Vec3(0.f, 0.f, 10.f), { 0.f,0.f,0.f,0.6f }, 2.f);
-			if (mCurrentMode == GizmoMode::MOVE) {
-				auto scaleMat = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{0.08f, 0.15f, 0.08f, });
-				auto matrix0 = Math::translate(Math::Mat4{1.f}, pos + Math::Vec3{0.f, 200.f, 0.f}) * quat.toMat4() * scaleMat;
-				quat = { 0.707f, 0.f,0.f,-0.707f };
-				auto matrix1 = Math::translate(Math::Mat4{1.f}, pos + Math::Vec3{200.f, 0.f, 0.f}) * quat.toMat4() * scaleMat;
-				quat = { 0.707f, 0.707f,0.f,0.f };
-				auto matrix2 = Math::translate(Math::Mat4{1.f}, pos + Math::Vec3{0.f, 0.f, 200.f}) * quat.toMat4() * scaleMat;
-
-				for (auto triangle : mCone) {
-					Utils::Triangle triangleY {
-					matrix0 * Math::Vec4(triangle.A, 1.f),
-					matrix0 * Math::Vec4(triangle.B, 1.f),
-					matrix0 * Math::Vec4(triangle.C, 1.f)
-					};
-
-					Utils::renderTriangle(triangleY, { 0.f,1.f,0.f,mAlpha.y });
-
-					Utils::Triangle triangleX {
-					matrix1 * Math::Vec4(triangle.A, 1.f),
-					matrix1 * Math::Vec4(triangle.B, 1.f),
-					matrix1 * Math::Vec4(triangle.C, 1.f)
-					};
-
-					Utils::renderTriangle(triangleX, { 1.f,0.f,0.f,mAlpha.x });
-
-					Utils::Triangle triangleZ  {
-						matrix2 * Math::Vec4(triangle.A, 1.f),
-						matrix2 * Math::Vec4(triangle.B, 1.f),
-						matrix2 * Math::Vec4(triangle.C, 1.f)
-					};
-
-					Utils::renderTriangle(triangleZ, { 0.f,0.f,1.f,mAlpha.z });
-				}
+			intersectionPos = findIntersectionRayWithPlane(mouseRay, mPlanes[Y] + entityPos);
+			distance = Math::distance(entityPos, intersectionPos);
+			if (distance < outerCollideRadius && distance > innerCollideRadius) {
+				return { Axis::Y , intersectionPos };
 			}
-			else if (mCurrentMode == GizmoMode::SCALE) {
-				drawScaleGizmo(pos);
-				Utils::renderCubeMesh(Math::Vec3(195.f, -3.f, -3.f), Math::Vec3(205.f, 3.f, 3.f), quat.toMat4(), pos, { 1.f,0.f,0.f,mAlpha.x });
-				Utils::renderCubeMesh(Math::Vec3(-3.f, 195.f, -3.f), Math::Vec3(3.f, 205.f, 3.f), quat.toMat4(), pos, { 0.f,1.f,0.f,mAlpha.y });
-				Utils::renderCubeMesh(Math::Vec3(-3.f, -3.f, 195.f), Math::Vec3(3.f, 3.f, 205.f), quat.toMat4(), pos, { 0.f,0.f,1.f,mAlpha.z });
-			}
-			else if (mCurrentMode == GizmoMode::ROTATE) {
-				drawRotateGizmo(pos);
+
+			intersectionPos = findIntersectionRayWithPlane(mouseRay, mPlanes[X] + entityPos);
+			distance = Math::distance(entityPos, intersectionPos);
+			if (distance < outerCollideRadius && distance > innerCollideRadius) {
+				return { Axis::X , intersectionPos };
 			}
 		}
 		else {
-			if (mCurrentMode == GizmoMode::ROTATE) {
-				drawRotateGizmo(pos);
+			auto resX = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[X] }, getMouseRayPlane(mouseRay, X, cameraTransform, mouseRay.a));
+			auto resY = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[Y] }, getMouseRayPlane(mouseRay, Y, cameraTransform, mouseRay.a));
+			auto resZ = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[Z] }, getMouseRayPlane(mouseRay, Z, cameraTransform, mouseRay.a));
+
+			{
+				const auto XD = PhysicsEngine::Physics::distancePointToLine(resX, mouseRay.a, mouseRay.direction);
+				const auto YD = PhysicsEngine::Physics::distancePointToLine(resY, mouseRay.a, mouseRay.direction);
+				const auto ZD = PhysicsEngine::Physics::distancePointToLine(resZ, mouseRay.a, mouseRay.direction);
+
+				const float dif = mTipRadius * mScaleCoef;
+				const float gizmoStart = mGizmoStartRadius * mScaleCoef;
+				const float gizmoEnd = (mGizmoRadius + mTipHeight) * mScaleCoef;
+
+				if (resX.x - entityPos.x > gizmoStart && resX.x - entityPos.x < gizmoEnd && XD < YD && XD < ZD && XD < dif) {
+					return { Axis::X, resX };
+				}
+
+				if (resY.y - entityPos.y > gizmoStart && resY.y - entityPos.y < gizmoEnd && YD < XD && YD < ZD && YD < dif) {
+					return { Axis::Y, resY };
+				}
+
+				if (resZ.z - entityPos.z > gizmoStart && resZ.z - entityPos.z < gizmoEnd && ZD < YD && ZD < XD && ZD < dif) {
+					return { Axis::Z, resZ };
+				}
 			}
-			else {
-				//show prev pos
-				Utils::renderLine(mPrevPos - Math::Vec3(10.f, 0.f, 0.f), mPrevPos + Math::Vec3(10.f, 0.f, 0.f), { 0.f,0.f,0.f,0.6f }, 2.f);
-				Utils::renderLine(mPrevPos - Math::Vec3(0.f, 10.f, 0.f), mPrevPos + Math::Vec3(0.f, 10.f, 0.f), { 0.f,0.f,0.f,0.6f }, 2.f);
-				Utils::renderLine(mPrevPos - Math::Vec3(0.f, 0.f, 10.f), mPrevPos + Math::Vec3(0.f, 0.f, 10.f), { 0.f,0.f,0.f,0.6f }, 2.f);
+
+			const auto quadStart = mPlaneQaudOffset * mScaleCoef;
+			const auto quadEnd = (mPlaneQaudOffset + mPlaneQaudSize) * mScaleCoef;
+
+			resX = findIntersectionRayWithPlane(mouseRay, mPlanes[X] + entityPos);
+			if (resX.y > entityPos.y + quadStart && resX.y < entityPos.y + quadEnd && resX.z > entityPos.z + quadStart && resX.z < entityPos.z + quadEnd) {
+				return { Axis::YZ, resX };
+			}
+
+			resY = findIntersectionRayWithPlane(mouseRay, mPlanes[Y] + entityPos);
+			if (resY.x > entityPos.x + quadStart && resY.x < entityPos.x + quadEnd && resY.z > entityPos.z + quadStart && resY.z < entityPos.z + quadEnd) {
+				return { Axis::XZ, resY };
+			}
+
+			resZ = findIntersectionRayWithPlane(mouseRay, mPlanes[Z] + entityPos);
+			if (resZ.y > entityPos.y + quadStart && resZ.y < entityPos.y + quadEnd && resZ.x > entityPos.x + quadStart && resZ.x < entityPos.x + quadEnd) {
+				return { Axis::XY, resZ };
 			}
 		}
 
-		if (mCurrentMode == GizmoMode::ROTATE) {
+		if (mode == GizmoMode::SCALE || mode == GizmoMode::ROTATE) {
+			const auto intersectionPos = findIntersectionRayWithPlane(mouseRay, getCamPlane(XYZ, cameraTransform, entityPos));
+			const auto distance = Math::distance(entityPos, intersectionPos);
+			if (distance < (mGizmoRadius + mCommonGizmoOffset + mTipRadius) * mScaleCoef && distance > (mGizmoRadius + mCommonGizmoOffset - mTipRadius) * mScaleCoef) {
+				return { Axis::XYZ , intersectionPos };
+			}
+		}
 
+		return{};
+	}
+
+	void Gizmo::processMove() {
+		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
+
+		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		const auto& entityPos = transformComp->getPos(true);
+
+		if (isLineAxis(mActiveAxis)) {
+			mIntersectionCurrentPos = findIntersectionRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getMouseRayPlane(mouseRay, mActiveAxis, cameraTransform, mouseRay.a));
 		}
 		else {
-			switch (mActiveAxis) {
-			case Axis::Y: {
-				auto scaleKoef = 1.f + (scale.y - mPrevScale.y) / mPrevScale.y;
-				Utils::renderLine(pos + Math::Vec3(0.f, -Renderer::drawDistance, 0.f), pos + Math::Vec3(0.f, Renderer::drawDistance, 0.f), { 0.f,1.f,0.f,0.5f }, 2.5f);
-				Utils::renderLine(mPrevPos + Math::Vec3(0.f, 20.f, 0.f), mPrevPos + Math::Vec3(0.f, 200.f, 0.f), { 1.f,1.f,1.f,0.6f }, 5.f);
-				Utils::renderLine(pos + Math::Vec3(0.f, 20.f, 0.f), pos + Math::Vec3(0.f, 200.f * scaleKoef, 0.f), { 0.f,1.f,0.f,1.f }, 5.f);
-				if (mCurrentMode == GizmoMode::MOVE) {
-					auto scaleMat = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{0.08f, 0.15f, 0.08f, });
-					auto matrix2 = Math::translate(Math::Mat4{1.f}, pos + Math::Vec3{0.f, 200.f, 0.f})* quat.toMat4()* scaleMat;
-					auto matrixOld = Math::translate(Math::Mat4{1.f}, mPrevPos + Math::Vec3{0.f, 200.f, 0.f})* quat.toMat4()* scaleMat;
+			mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, mPlanes[mActiveAxis] + entityPos);
+		}
 
-					for (auto triangle : mCone) {
+		auto curPos = mIntersectionCurrentPos;
+		auto startPos = mIntersectionStartPos;
 
-						Utils::renderTriangle({
-							matrixOld * Math::Vec4(triangle.A, 1.f),
-							matrixOld * Math::Vec4(triangle.B, 1.f),
-							matrixOld * Math::Vec4(triangle.C, 1.f)
-							}, { 1.f,1.f,1.f,1.0f });
+		mIntersectionStartPos = mIntersectionCurrentPos;
 
-						Utils::renderTriangle({
-							matrix2 * Math::Vec4(triangle.A, 1.f),
-							matrix2 * Math::Vec4(triangle.B, 1.f),
-							matrix2 * Math::Vec4(triangle.C, 1.f)
-							}, { 0.f,1.f,0.f,1.0f });
-					}
-				}
-				else if (mCurrentMode == GizmoMode::SCALE) {
-					Utils::renderCubeMesh(Math::Vec3(-3.f, 195.f, -3.f), Math::Vec3(3.f, 205.f, 3.f), quat.toMat4(), mPrevPos, { 1.f,1.f,1.f,0.6f });
-					Utils::renderCubeMesh(Math::Vec3(-3.f, 195.f * scaleKoef, -3.f), Math::Vec3(3.f, 195.f * scaleKoef + 10.f, 3.f), quat.toMat4(), pos, { 0.f,1.f,0.f,1.f });
-				}
-				break;
+		if (const auto treeComp = ECSHandler::registry().getComponent<TreeComponent>(mEntity)) {
+			if (const auto parentTransform = ECSHandler::registry().getComponent<TransformComponent>(treeComp->getParent())) {
+				const auto transform = inverse(parentTransform->getTransform());
+
+				curPos = transform * Math::Vec4(curPos, 1.f);
+				startPos = transform * Math::Vec4(startPos, 1.f);
 			}
-			case Axis::X: {
-				auto scaleKoef = 1.f + (scale.x - mPrevScale.x) / mPrevScale.x;
-				Utils::renderLine(pos + Math::Vec3(-Renderer::drawDistance, 0.f, 0.f), pos + Math::Vec3(Renderer::drawDistance, 0.f, 0.f), { 1.f,0.f,0.f,0.5f }, 2.5f);
-				Utils::renderLine(mPrevPos + Math::Vec3(20.f, 0.f, 0.f), mPrevPos + Math::Vec3(200.f, 0.f, 0.f), { 1.f,1.f,1.f,0.6f }, 5.f);
-				Utils::renderLine(pos + Math::Vec3(20.f, 0.f, 0.f), pos + Math::Vec3(200.f * scaleKoef, 0.f, 0.f), { 1.f,0.f,0.f,1.f }, 5.f);
-				if (mCurrentMode == GizmoMode::MOVE) {
-					auto scaleMat = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{0.08f, 0.15f, 0.08f, });
-					quat = { 0.707f, 0.f,0.f,-0.707f };
-					auto matrix2 = Math::translate(Math::Mat4{1.f}, pos + Math::Vec3{200.f, 0.f, 0.f})* quat.toMat4()* scaleMat;
-					auto matrixOld = Math::translate(Math::Mat4{1.f}, mPrevPos + Math::Vec3{200.f, 0.f, 0.f})* quat.toMat4()* scaleMat;
+		}
 
-					for (auto triangle : mCone) {
+		transformComp->setPos(transformComp->getPos() + curPos - startPos);
+	}
 
-						Utils::renderTriangle({
-							matrixOld * Math::Vec4(triangle.A, 1.f),
-							matrixOld * Math::Vec4(triangle.B, 1.f),
-							matrixOld * Math::Vec4(triangle.C, 1.f)
-							}, { 1.f,1.f,1.f,1.0f });
+	void Gizmo::processScale() {
+		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
 
-						Utils::renderTriangle({
-							matrix2 * Math::Vec4(triangle.A, 1.f),
-							matrix2 * Math::Vec4(triangle.B, 1.f),
-							matrix2 * Math::Vec4(triangle.C, 1.f)
-							}, { 1.f,0.f,0.f,1.0f });
-					}
-				}
-				else if (mCurrentMode == GizmoMode::SCALE) {
+		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		const auto& entityPos = transformComp->getPos(true);
 
-					Utils::renderCubeMesh(Math::Vec3(195.f * scaleKoef, -3.f, -3.f), Math::Vec3(195.f * scaleKoef + 10.f, 3.f, 3.f), quat.toMat4(), pos, { 1.f,0.f,0.f,1.0f });
-					Utils::renderCubeMesh(Math::Vec3(195.f, -3.f, -3.f), Math::Vec3(205.f, 3.f, 3.f), quat.toMat4(), mPrevPos, { 1.f,1.f,1.f,0.6f });
-				}
-				break;
+		if (isLineAxis(mActiveAxis)) {
+			mIntersectionCurrentPos = findIntersectionRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getMouseRayPlane(mouseRay, mActiveAxis, cameraTransform, mouseRay.a));
+		}
+		else if (mActiveAxis != XYZ) {
+			mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, mPlanes[mActiveAxis] + entityPos);
+		}
+		else {
+			mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, getCamPlane(XYZ, cameraTransform, entityPos));
+		}
+
+		auto scaleDir = transformComp->getQuaternion().globalToLocal(mAxisDirection[mActiveAxis]);
+		scaleDir = { std::fabs(scaleDir.x), std::fabs(scaleDir.y), std::fabs(scaleDir.z) };
+
+		const auto initialValue = Math::distance(mIntersectionStartPos, mStartPos);
+		const auto currentValue = Math::distance(mIntersectionCurrentPos, mStartPos);
+
+		const auto delta = currentValue / initialValue - 1.f;
+
+		transformComp->setScale(mStartScale + mStartScale * scaleDir * delta);
+	}
+
+	void Gizmo::processRotate() {
+		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
+
+		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		auto entityPos = transformComp->getPos(true);
+
+		auto oldPos = entityPos + Math::normalize(mIntersectionCurrentPos - entityPos) * mGizmoRadius;
+		mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, isLineAxis(mActiveAxis) ? mPlanes[mActiveAxis] + entityPos : getCamPlane(XYZ, cameraTransform, entityPos));
+		auto newPos = entityPos + Math::normalize(mIntersectionCurrentPos - entityPos) * mGizmoRadius;
+
+		auto difAngle = Math::calcAngleOnCircle(Math::distance(oldPos, newPos), mGizmoRadius);
+
+		if (isLineAxis(mActiveAxis)) {
+			if (Math::cross(oldPos - entityPos, newPos - entityPos)[mActiveAxis - 1] <= 0.f) {
+				difAngle = -difAngle;
 			}
-			case Axis::Z: {
-				auto scaleKoef = 1.f + (scale.z - mPrevScale.z) / mPrevScale.z;
-				Utils::renderLine(pos + Math::Vec3(0.f, 0.f, -Renderer::drawDistance), pos + Math::Vec3(0.f, 0.f, Renderer::drawDistance), { 0.f,0.f,1.f,0.5f }, 2.5f);
-				Utils::renderLine(mPrevPos + Math::Vec3(0.f, 0.f, 20.f), mPrevPos + Math::Vec3(0.f, 0.f, 200.f), { 1.f,1.f,1.f,0.6f }, 5.f);
-				Utils::renderLine(pos + Math::Vec3(0.f, 0.f, 20.f), pos + Math::Vec3(0.f, 0.f, 200.f * scaleKoef), { 0.f,0.f,1.f,1.f }, 5.f);
+		}
+		else {
+			const auto camTrans = inverse(cameraTransform->getTransform());
+			oldPos = camTrans * Math::Vec4(oldPos, 1.f);
+			newPos = camTrans * Math::Vec4(newPos, 1.f);
+			entityPos = camTrans * Math::Vec4(entityPos, 1.f);
 
-				if (mCurrentMode == GizmoMode::MOVE) {
-					auto scaleMat = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{0.08f, 0.15f, 0.08f, });
-					quat = { 0.707f, 0.707f,0.f,0.f };
-					auto matrix2 = Math::translate(Math::Mat4{1.f}, pos + Math::Vec3{0.f, 0.f, 200.f})* quat.toMat4()* scaleMat;
-					auto matrixOld = Math::translate(Math::Mat4{1.f}, mPrevPos + Math::Vec3{0.f, 0.f, 200.f})* quat.toMat4()* scaleMat;
-
-					for (auto triangle : mCone) {
-
-						Utils::renderTriangle({
-							matrixOld * Math::Vec4(triangle.A, 1.f),
-							matrixOld * Math::Vec4(triangle.B, 1.f),
-							matrixOld * Math::Vec4(triangle.C, 1.f)
-							}, { 1.f,1.f,1.f,1.0f });
-
-						Utils::renderTriangle({
-							matrix2 * Math::Vec4(triangle.A, 1.f),
-							matrix2 * Math::Vec4(triangle.B, 1.f),
-							matrix2 * Math::Vec4(triangle.C, 1.f)
-							}, { 0.f,0.f,1.f,1.0f });
-					}
-				}
-				else if (mCurrentMode == GizmoMode::SCALE) {
-					Utils::renderCubeMesh(Math::Vec3(-3.f, -3.f, 195.f * scaleKoef), Math::Vec3(3.f, 3.f, 195.f * scaleKoef + 10.f), quat.toMat4(), pos, { 0.f,0.f,1.f,1.0f });
-					Utils::renderCubeMesh(Math::Vec3(-3.f, -3.f, 195.f), Math::Vec3(3.f, 3.f, 205.f), quat.toMat4(), mPrevPos, { 1.f,1.f,1.f,0.6f });
-				}
-
-				break;
+			if (Math::cross(oldPos - entityPos, newPos - entityPos).z > 0.f) {
+				difAngle = -difAngle;
 			}
-			default:;
+		}
+
+		Math::Quaternion<float> q;
+		q.eulerToQuaternion((isLineAxis(mActiveAxis) ? mAxisDirection[mActiveAxis] : cameraTransform->getForward()) * Math::degrees(difAngle));
+		q = q * transformComp->getQuaternion();
+		transformComp->setRotate(Math::degrees(q.toEuler()));
+	}
+
+	//draw functions
+	void Gizmo::drawRotateGizmo(const Math::Vec3& pos) {
+		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+		const Math::Mat4 scale = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{mScaleCoef});
+		static const std::array ROTATE_ROTATIONS {
+			Math::Quaternion{1.f,0.f,0.f,0.f},
+			Math::Quaternion{ 0.707f, 0.f, -0.707f, 0.f },
+			Math::Quaternion{ 0.707f, 0.707f, 0.f, 0.f },
+			Math::Quaternion{ 0.f, 1.f, 0.f, 0.f }
+		};
+
+		if (mActiveAxis == NONE) {
+			Utils::renderCircle(pos, ROTATE_ROTATIONS[X], scale, mGizmoRadius, { mColors[Axis::X], mAlpha.x }, 64);
+			Utils::renderCircle(pos, ROTATE_ROTATIONS[Y], scale, mGizmoRadius, { mColors[Axis::Y], mAlpha.y }, 64);
+			Utils::renderCircle(pos, ROTATE_ROTATIONS[Z], scale, mGizmoRadius, { mColors[Axis::Z], mAlpha.z }, 64);
+
+			Utils::renderCircle(pos, ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion(), scale, mGizmoRadius + mCommonGizmoOffset, {1.f, 1.f, 1.f, mAlphaCommonGizmo }, 64);
+		}
+		else {
+			const Math::Quaternion<float>* rotation = nullptr;
+			Math::Vec3 color {1.f};
+
+			const float radius = isLineAxis(mActiveAxis) ? mGizmoRadius : mGizmoRadius + mCommonGizmoOffset;
+
+			const auto oldPos = pos + Math::normalize(mIntersectionStartPos - pos) * radius * mScaleCoef;
+			const auto newPos = pos + Math::normalize(mIntersectionCurrentPos - pos) * radius * mScaleCoef;
+
+			float difAngle = Math::calcAngleOnCircle(Math::distance(oldPos, newPos), radius * mScaleCoef);
+			float prevAngle = 0.f;
+
+			if (isLineAxis(mActiveAxis)) {
+				drawAxis(pos, mActiveAxis);
+				rotation = &ROTATE_ROTATIONS[mActiveAxis];
+				color = mColors[mActiveAxis];
+
+				if (Math::cross(oldPos - pos, newPos - pos)[mActiveAxis - 1] <= 0.f) {
+					difAngle = 2.0f * Math::pi<float>() - difAngle;
+				}
+
+				const Axis axis = mActiveAxis == X ? Z : mActiveAxis == Y ? X : mActiveAxis == Z ? X : NONE;
+				prevAngle = Math::degrees(Math::calcAngleBetweenVectors(mIntersectionStartPos - pos, mAxisDirection[axis]));
+			}
+			else if (mActiveAxis == XYZ) {
+				const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+				rotation = &ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion();
+
+				const auto camTrans = inverse(cameraTransform->getTransform());
+				const Math::Vec3 localOldPos = camTrans * Math::Vec4(oldPos, 1.f);
+				const Math::Vec3 localNewPos = camTrans * Math::Vec4(newPos, 1.f);
+				const Math::Vec3 localEntityPos = camTrans * Math::Vec4(pos, 1.f);
+
+				if (Math::cross(localOldPos - localEntityPos, localNewPos - localEntityPos).z > 0.f) {
+					difAngle = 2.0f * Math::pi<float>() - difAngle;
+				}
+
+				prevAngle = -Math::degrees(Math::calcAngleBetweenVectors(localOldPos - localEntityPos, { 0.f,1.f,0.f })) + 90.f;
+			}
+
+			if (rotation) {
+				Utils::renderCircle(pos, *rotation, scale, radius, { color, 1.f }, 64);
+
+				Utils::renderCircleFilled(pos, *rotation, scale, radius, { color, 0.1f }, 32, prevAngle, -Math::degrees(difAngle));
+
+				//segment lines
+				Utils::renderLine(pos, oldPos, { color, mHintAlpha }, 1);
+				Utils::renderLine(pos, newPos, { color, mHintAlpha }, 3);
+
+				drawFloatText(Math::degrees(difAngle));
 			}
 		}
 	}
 
-	Math::Vec3 Gizmo::findIntersecRayWithPlane(const Math::Ray& ray, const PhysicsEngine::Triangle& plane) {
+	void Gizmo::drawScaleGizmo(const Math::Vec3& pos, const Math::Vec3& scale) {
+		if (mActiveAxis == NONE) {
+			drawPos(pos, { 0.f,0.f,0.f, mHintAlpha });
+			drawPlaneQuads(pos);
+
+			drawGizmoLine(X, pos, { mColors[X], mAlpha.x }, mGizmoRadius, GizmoMode::SCALE);
+			drawGizmoLine(Y, pos, { mColors[Y], mAlpha.y }, mGizmoRadius, GizmoMode::SCALE);
+			drawGizmoLine(Z, pos, { mColors[Z], mAlpha.z }, mGizmoRadius, GizmoMode::SCALE);
+
+			const Math::Mat4 scaleMat = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{mScaleCoef});
+			const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+			Utils::renderCircle(pos, ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion(), scaleMat, mGizmoRadius + mCommonGizmoOffset, {1.f, 1.f, 1.f, mAlphaCommonGizmo }, 64);
+		}
+		else {
+			Utils::renderLine(mStartPos, mIntersectionCurrentPos, { 0.f,0.f,0.f,mHintAlpha }, 1.f);
+
+			drawVec3Text(scale);
+
+			drawAxis(mStartPos, mActiveAxis);
+			if (isLineAxis(mActiveAxis)) {
+				drawGizmoLine(mActiveAxis, mStartPos, mInactiveColor, mGizmoRadius, GizmoMode::SCALE);
+	
+				const auto delta = Math::distance(mIntersectionCurrentPos, mStartPos) / Math::distance(mIntersectionStartPos, mStartPos);
+				drawGizmoLine(mActiveAxis, pos, { mColors[mActiveAxis],1.f }, mGizmoRadius * delta, GizmoMode::SCALE);
+			}
+		}
+	}
+
+	void Gizmo::drawMoveGizmo(const Math::Vec3& pos) {
+		drawPos(pos, { 0.f,0.f,0.f, mHintAlpha });
+
+		drawPlaneQuads(pos);
+
+		if (mActiveAxis == Axis::NONE) {
+			drawGizmoLine(X, pos, { mColors[X], mAlpha.x }, mGizmoRadius, GizmoMode::MOVE);
+			drawGizmoLine(Y, pos, { mColors[Y], mAlpha.y }, mGizmoRadius, GizmoMode::MOVE);
+			drawGizmoLine(Z, pos, { mColors[Z], mAlpha.z }, mGizmoRadius, GizmoMode::MOVE);
+		}
+		else {
+			Utils::renderLine(mStartPos, pos, { 0.f,0.f,0.f,mHintAlpha }, 1.f);
+
+			drawVec3Text(pos - mStartPos);
+
+			drawPos(mStartPos, mInactiveColor);
+
+			drawAxis(mStartPos, mActiveAxis);
+			if (isLineAxis(mActiveAxis)) {
+				drawGizmoLine(mActiveAxis, mStartPos, mInactiveColor, mGizmoRadius, GizmoMode::MOVE);
+				drawGizmoLine(mActiveAxis, pos, { mColors[mActiveAxis], mAlpha[mActiveAxis - 1]}, mGizmoRadius, GizmoMode::MOVE);
+			}
+		}
+	}
+
+	void Gizmo::updateGizmosAlpha(const Math::Vec3& cameraPos, const Math::Vec3& entityPos) {
+		Math::Vec3 dot;
+
+		auto cameraToEntityDir = normalize(entityPos - cameraPos);
+
+		dot.x = 1.f - std::fabs(Math::dot(cameraToEntityDir, mAxisDirection[X]));
+		dot.x = dot.x > mAxisVisibilityKoef ? 1.f : dot.x / mAxisVisibilityKoef;
+
+		dot.y = 1.f - std::fabs(Math::dot(cameraToEntityDir, mAxisDirection[Y]));
+		dot.y = dot.y > mAxisVisibilityKoef ? 1.f : dot.y / mAxisVisibilityKoef;
+
+		dot.z = 1.f - std::fabs(Math::dot(cameraToEntityDir, mAxisDirection[Z]));
+		dot.z = dot.z > mAxisVisibilityKoef ? 1.f : dot.z / mAxisVisibilityKoef;
+
+		Math::Vec3 planesDot;
+		auto entityToCameraPlaneDir = cameraPos;
+		entityToCameraPlaneDir.x = entityPos.x;
+		planesDot.x = 1.f - std::fabs(Math::dot(cameraToEntityDir, normalize(entityToCameraPlaneDir - entityPos)));
+		planesDot.x = planesDot.x > mPlaneVisibilityKoef ? 1.f : planesDot.x / mPlaneVisibilityKoef;
+
+		entityToCameraPlaneDir = cameraPos;
+		entityToCameraPlaneDir.y = entityPos.y;
+		planesDot.y = 1.f - std::fabs(Math::dot(cameraToEntityDir, normalize(entityToCameraPlaneDir - entityPos)));
+		planesDot.y = planesDot.y > mPlaneVisibilityKoef ? 1.f : planesDot.y / mPlaneVisibilityKoef;
+
+		entityToCameraPlaneDir = cameraPos;
+		entityToCameraPlaneDir.z = entityPos.z;
+		planesDot.z = 1.f - std::fabs(Math::dot(cameraToEntityDir, normalize(entityToCameraPlaneDir - entityPos)));
+		planesDot.z = planesDot.z > mPlaneVisibilityKoef ? 1.f : planesDot.z / mPlaneVisibilityKoef;
+
+
+		mAlpha.x = mHoveredAxis == Axis::X ? mHoveredAlpha : mNotHoveredAlpha;
+		mAlpha.y = mHoveredAxis == Axis::Y ? mHoveredAlpha : mNotHoveredAlpha;
+		mAlpha.z = mHoveredAxis == Axis::Z ? mHoveredAlpha : mNotHoveredAlpha;
+
+		mAlphaPlanes.x = mHoveredAxis == Axis::YZ ? mHoveredAlpha : mNotHoveredAlpha;
+		mAlphaPlanes.y = mHoveredAxis == Axis::XZ ? mHoveredAlpha : mNotHoveredAlpha;
+		mAlphaPlanes.z = mHoveredAxis == Axis::XY ? mHoveredAlpha : mNotHoveredAlpha;
+
+		mAlphaPlanes *= planesDot;
+
+		if (mCurrentMode == GizmoMode::ROTATE) {
+			mAlpha *= planesDot;
+		}
+		else {
+			mAlpha *= dot;
+		}
+
+		mAlphaCommonGizmo = mHoveredAxis == Axis::XYZ ? mHoveredAlpha : mNotHoveredAlpha;
+	}
+
+	//utils
+	Math::Vec3 Gizmo::findIntersectionRayWithPlane(const Math::Ray& ray, const PhysicsEngine::Triangle& plane) {
 		bool parallel = false;
-		auto res = PhysicsEngine::Physics::findIntersectionLinePlane(ray.a, ray.a + ray.direction, plane, parallel);
+		const auto res = PhysicsEngine::Physics::findIntersectionLinePlane(ray.a, ray.a + ray.direction, plane, parallel);
 		if (parallel) {
 			return {};
 		}
 		return res;
 	}
 
-	PhysicsEngine::Triangle Gizmo::getCamPlane(const Math::Ray& ray, Axis plane, TransformComponent* cameraTransform) {
+	PhysicsEngine::Triangle Gizmo::getMouseRayPlane(const Math::Ray& ray, Axis plane, TransformComponent* cameraTransform, const Math::Vec3& initialPos) {
 		switch (plane) {
-		case XY: return { ray.a, ray.a + ray.direction, ray.a + cameraTransform->getUp() };
-		case XZ: return { ray.a, ray.a + ray.direction, ray.a + cameraTransform->getRight() };
-		case YZ: return { ray.a, ray.a + ray.direction, ray.a + cameraTransform->getUp() };
+		case X: return getMouseRayPlane(ray, YZ, cameraTransform, initialPos);
+		case Y: return getMouseRayPlane(ray, XZ, cameraTransform, initialPos);
+		case Z: return getMouseRayPlane(ray, XY, cameraTransform, initialPos);
+		case XY: return { initialPos, initialPos + ray.direction, initialPos + cameraTransform->getUp() };
+		case XZ: return { initialPos, initialPos + ray.direction, initialPos + cameraTransform->getRight() };
+		case YZ: return { initialPos, initialPos + ray.direction, initialPos + cameraTransform->getUp() };
 		default: return {};
 		}
 	}
 
-	std::pair<Axis, Math::Vec3> Gizmo::getHoveredGizmo(GizmoMode mode) {
-		if (mode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity)) {
-			return {};
+	PhysicsEngine::Triangle Gizmo::getCamPlane(Axis plane, TransformComponent* cameraTransform, const Math::Vec3& initialPos) {
+		switch (plane) {
+		case X: return getCamPlane(YZ, cameraTransform, initialPos);
+		case Y: return getCamPlane(XZ, cameraTransform, initialPos);
+		case Z: return getCamPlane(XY, cameraTransform, initialPos);
+		case XY: return { initialPos, initialPos + cameraTransform->getRight(), initialPos + cameraTransform->getUp() };
+		case XZ: return { initialPos, initialPos + cameraTransform->getForward(), initialPos + cameraTransform->getRight() };
+		case YZ: return { initialPos, initialPos + cameraTransform->getForward(), initialPos + cameraTransform->getUp() };
+		case XYZ: return getCamPlane(XY, cameraTransform, initialPos);
+		default: return {};
+		}
+	}
+
+	//draw utils
+	void Gizmo::drawPlaneQuads(const Math::Vec3& pos) {
+		static const std::array PLANE_ROTATIONS {
+			Math::Quaternion{ 1.f, 0.f, 0.f, 0.f},
+			Math::Quaternion{ 0.707f, 0.f, -0.707f, 0.f, },
+			Math::Quaternion{ 0.707f, 0.707f, 0.f, 0.f },
+			Math::Quaternion{ 1.f, 0.f, 0.f, 0.f },
+		};
+
+		auto drawQuad = [this](const Math::Vec3& pos, Axis axis, float start, float end, const Math::Vec4& color) {
+			Utils::renderQuad(Math::Vec3{start, start, 0.f}, Math::Vec3{end, end, 0.f}, PLANE_ROTATIONS[axis].toMat4(), pos, color);
+		};
+
+		const float start = mPlaneQaudOffset * mScaleCoef;
+		const float end = (mPlaneQaudOffset + mPlaneQaudSize) * mScaleCoef;
+
+		if (mActiveAxis == Axis::NONE) {
+			drawQuad(pos, X, start, end, { mColors[X], mAlphaPlanes[X - 1] });
+			drawQuad(pos, Y, start, end, { mColors[Y], mAlphaPlanes[Y - 1] });
+			drawQuad(pos, Z, start, end, { mColors[Z], mAlphaPlanes[Z - 1] });
+		}
+		else {
+			if (mActiveAxis == XY) {
+				drawQuad(mStartPos, Z, start, end, mInactiveColor);
+				drawQuad(pos, Z, start, end, { mColors[Z], mAlphaPlanes[X - 1] });
+			}
+			else if (mActiveAxis == YZ) {
+				drawQuad(mStartPos, X, start, end, mInactiveColor);
+				drawQuad(pos, X, start, end, { mColors[X], mAlphaPlanes[X - 1] });
+			}
+			else if (mActiveAxis == XZ) {
+				drawQuad(mStartPos, Y, start, end, mInactiveColor);
+				drawQuad(pos, Y, start, end, { mColors[Y], mAlphaPlanes[X - 1] });
+			}
+		}
+	}
+
+	void Gizmo::drawGizmoLine(Axis axis, const Math::Vec3& pos, const Math::Vec4& color, float end, GizmoMode type) const {
+		if (!isLineAxis(axis)) {
+			return;
 		}
 
-		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-		const auto camRay = Math::calcCameraRay(camera, mMousePos);
+		Utils::renderLine(pos + mAxisDirection[axis] * mGizmoStartRadius * mScaleCoef, pos + mAxisDirection[axis] * end * mScaleCoef, color, 3.f);
+		if (type == GizmoMode::SCALE) {
+			drawScaleCube(axis, pos, color, end);
+		}
+		else if (type == GizmoMode::MOVE) {
+			static const std::array MOVE_ROTATIONS {
+				Math::Quaternion{1.f, 0.f, 0.f, 0.f},
+				Math::Quaternion{ 0.707f, 0.f, 0.f, -0.707f },
+				Math::Quaternion{ 1.f, 0.f, 0.f, 0.f },
+				Math::Quaternion{  0.707f, 0.707f, 0.f, 0.f  },
+			};
 
-		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
-		const auto entityPos = transformComp->getPos(true);
+			const auto scaleMat = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{mScaleCoef});
 
-		if (mode == GizmoMode::ROTATE) {
-			auto posZ = findIntersecRayWithPlane(camRay, mPlanes[Z] + entityPos);
-			auto distZ = Math::distance(entityPos, posZ);
-			if (distZ < 160.f && distZ > 140.f) {
-				return { Axis::Z , posZ };
+			Utils::renderCone(pos + mAxisDirection[axis] * end * mScaleCoef, MOVE_ROTATIONS[axis], scaleMat, mTipRadius, mTipHeight, color, 32);
+		}
+	}
+
+	void Gizmo::drawScaleCube(Axis axis, const Math::Vec3& pos, const Math::Vec4& color, float start) const {
+		constexpr  Math::Quaternion<float> quat;
+		
+		auto cubeStart = mAxisDirection[axis] * start;
+		cubeStart[axis - 1] += mTipRadius;
+		cubeStart -= mTipRadius;
+
+		auto cubeEnd = mAxisDirection[axis] * start;
+		cubeEnd[axis - 1] += mTipHeight - mTipRadius;
+		cubeEnd += mTipRadius;
+
+		Utils::renderCubeMesh(cubeStart * mScaleCoef, cubeEnd * mScaleCoef, quat.toMat4(), pos, color);
+	}
+
+	void Gizmo::drawAxis(const Math::Vec3& pos, Axis axis) const {
+		if (axis > Axis::Z) {
+			if (axis == XY) {
+				drawAxis(pos, X);
+				drawAxis(pos, Y);
 			}
-
-			auto posY = findIntersecRayWithPlane(camRay, mPlanes[Y] + entityPos);
-			auto distY = Math::distance(entityPos, posY);
-			if (distY < 160.f && distY > 140.f) {
-				return { Axis::Y , posY };
+			else if (axis == XZ) {
+				drawAxis(pos, X);
+				drawAxis(pos, Z);
 			}
-
-			auto posX = findIntersecRayWithPlane(camRay, mPlanes[X] + entityPos);
-			auto distX = Math::distance(entityPos, posX);
-			if (distX < 160.f && distX > 140.f) {
-				return { Axis::X , posX };
+			else if (axis == YZ) {
+				drawAxis(pos, Y);
+				drawAxis(pos, Z);
 			}
 		}
 		else {
-			auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-
-			auto resX = findIntersecRayWithPlane({ entityPos ,mAxisDirection[X] }, getCamPlane(camRay, mAxisPlane[X], cameraTransform));
-			auto resY = findIntersecRayWithPlane({ entityPos ,mAxisDirection[Y] }, getCamPlane(camRay, mAxisPlane[Y], cameraTransform));
-			auto resZ = findIntersecRayWithPlane({ entityPos ,mAxisDirection[Z] }, getCamPlane(camRay, mAxisPlane[Z], cameraTransform));
-
-			auto YD = PhysicsEngine::Physics::distancePointToLine(resY, camRay.a, camRay.direction);
-			auto XD = PhysicsEngine::Physics::distancePointToLine(resX, camRay.a, camRay.direction);
-			auto ZD = PhysicsEngine::Physics::distancePointToLine(resZ, camRay.a, camRay.direction);
-
-			if (XD < YD && XD < ZD && XD < 20.f && resX.x - entityPos.x > 20.f && resX.x - entityPos.x < 200.f) {
-				return { Axis::X, resX };
-			}
-
-			if (YD < XD && YD < ZD && YD < 20.f && resY.y - entityPos.y > 20.f && resY.y - entityPos.y < 200.f) {
-				return { Axis::Y, resY };
-			}
-			
-			if (ZD < YD && ZD < XD && ZD < 20.f && resZ.z - entityPos.z > 20.f && resZ.z - entityPos.z < 200.f) {
-				return { Axis::Z, resZ };
-			}
-		}
-		return{};
-	}
-
-	void Gizmo::drawRotateGizmo(const Math::Vec3& pos) {
-		const Math::Mat4 scale = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{1.f});
-		constexpr std::array rotations {
-			Math::Quaternion{1.f,0.f,0.f,0.f},
-			Math::Quaternion{ 0.707f, 0.f, -0.707f, 0.f },
-			Math::Quaternion{ 0.707f, 0.707f, 0.f, 0.f },
-			Math::Quaternion{ 0.f, 1.f, 0.f, 0.f },
-		};
-
-		if (mActiveAxis == NONE) {
-			Utils::renderCircle(pos, rotations[X], scale, 150.f, { mColors[Axis::X], mAlpha.x }, 64);
-			Utils::renderCircle(pos, rotations[Y], scale, 150.f, { mColors[Axis::Y], mAlpha.y }, 64);
-			Utils::renderCircle(pos, rotations[Z], scale, 150.f, { mColors[Axis::Z], mAlpha.z }, 64);
-		}
-		else if (mActiveAxis == X || mActiveAxis == Y || mActiveAxis == Z) {
-			const auto dd = mAxisDirection[mActiveAxis] * Renderer::drawDistance;
-			//axis line
-			Utils::renderLine(pos - dd, pos + dd, { mColors[mActiveAxis],0.3f }, 1.5f);
-
-			Utils::renderCircle(pos, rotations[mActiveAxis], scale, 150.f, {mColors[mActiveAxis],1.f}, 64);
-
-			Axis axis = mActiveAxis == X ? Z : mActiveAxis == Y ? X : mActiveAxis == Z ? X : NONE;
-
-			auto prevAngle = Math::degrees(Math::calcAngleBetweenVectors(mPrevPos - pos, mAxisDirection[axis]));
-
-			auto oldPos = pos + Math::normalize(mPrevPos - pos) * 150.f;
-			auto newPos = pos + Math::normalize(mAnglePos - pos) * 150.f;
-
-			auto difAngle = Math::calcAngleOnCircle(Math::distance(oldPos, newPos), 150.f);
-			ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
-			auto posW = ImGui::GetMainViewport()->Pos;
-
-			
-			if (Math::cross(oldPos - pos, newPos - pos) < Math::Vec3(0.f)) {
-				difAngle = 2.0f * Math::pi<float>() - difAngle;
-			}
-
-			difAngle = Math::degrees(difAngle);
-			auto size = ImGui::CalcTextSize(std::string(std::to_string(difAngle) + "  deg").c_str());
-			auto mPos = ImVec2(mMousePos.x + posW.x, mMousePos.y + posW.y - size.y * 2.f);
-			ImGui::SetNextWindowPos(mPos);
-			ImGui::SetNextWindowSize(size);
-			ImGui::Begin("angle", nullptr, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav);
-			ImGui::Text("%f deg", difAngle);
-			ImGui::End();
-
-			Utils::renderCircleFilled(pos, rotations[mActiveAxis], scale, 150.f, { mColors[mActiveAxis], 0.1f }, 32, prevAngle, /*mAngleGrow ? 360.f - difAngle :*/ -difAngle);
-			Utils::renderCubeMesh(Math::Vec3(-3.f, -3.f, -3.f), Math::Vec3(3.f, 3.f, 3.f), rotations[0].toMat4(), newPos, { mColors[mActiveAxis], 0.3f});
-			//segment lines
-			Utils::renderLine(pos, oldPos, { mColors[mActiveAxis],0.6f }, 1);
-			Utils::renderLine(pos, newPos, { mColors[mActiveAxis],1.0f }, 3);
+			Utils::renderLine(pos - mAxisDirection[axis] * Renderer::drawDistance, pos + mAxisDirection[axis] * Renderer::drawDistance, { mColors[axis], mHintAlpha }, 2.5f);
 		}
 	}
 
-	void Gizmo::drawScaleGizmo(const Math::Vec3& pos) {
-		
+	void Gizmo::drawPos(const Math::Vec3& pos, const Math::Vec4& color, float size) const {
+		size *= mScaleCoef;
+		Utils::renderLine(pos - mAxisDirection[X] * size, pos + mAxisDirection[X] * size, color, 1.f);
+		Utils::renderLine(pos - mAxisDirection[Y] * size, pos + mAxisDirection[Y] * size, color, 1.f);
+		Utils::renderLine(pos - mAxisDirection[Z] * size, pos + mAxisDirection[Z] * size, color, 1.f);
 	}
 
-	void Gizmo::drawPosGizmo(const Math::Vec3& pos) {
-		
+	void Gizmo::drawVec3Text(const Math::Vec3& value) const {
+		ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
+
+		const auto size = ImGui::CalcTextSize(std::string(std::to_string(value.x) + std::to_string(value.y) + std::to_string(value.z) + "___").c_str());
+
+		ImGui::SetNextWindowPos(ImVec2(mMousePos.x + ImGui::GetMainViewport()->Pos.x, mMousePos.y + ImGui::GetMainViewport()->Pos.y - size.y * 2.f));
+		ImGui::SetNextWindowSize(size);
+		ImGui::Begin("angle", nullptr, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav);
+		ImGui::Text("%f:%f:%f", value.x, value.y, value.z);
+		ImGui::End();
+	}
+
+	void Gizmo::drawFloatText(float value) const {
+		ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
+
+		const auto size = ImGui::CalcTextSize(std::string(std::to_string(value) + "  deg").c_str());
+
+		ImGui::SetNextWindowPos(ImVec2(mMousePos.x + ImGui::GetMainViewport()->Pos.x, mMousePos.y + ImGui::GetMainViewport()->Pos.y - size.y * 2.f));
+		ImGui::SetNextWindowSize(size);
+		ImGui::Begin("angle", nullptr, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav);
+		ImGui::Text("%f deg", value);
+		ImGui::End();
 	}
 }
