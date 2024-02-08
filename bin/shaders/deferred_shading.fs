@@ -247,7 +247,7 @@ void main() {
     const float exposure = 0.8;
     
     const float outlines = texture(gOutlines, TexCoords).b;
-
+    vec4 outlineColor = vec4(0.0, 0.78, 0.86, 0.8) * outlines;
     // exposure tone mapping
     vec3 mapped = vec3(1.0) - exp(-lighting * exposure);
     
@@ -257,11 +257,11 @@ void main() {
     
     // gamma correction 
     mapped = pow(mapped, vec3(1.0 / gamma));
-    mapped.g += outlines;
 
     //FragColor = vec4(mapped, 1.0);
 
     float fogFactor = smoothstep(fogStart, drawDistance, Depth);
     vec3 fogColor = vec3(0.0,0.0,0.0);
     FragColor = mix(vec4(mapped, 1.0), vec4(fogColor, 1.0), fogFactor);
+    FragColor += outlineColor;
 }
