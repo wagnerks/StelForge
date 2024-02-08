@@ -56,36 +56,38 @@ void ComponentsDebug::init() {
 	};
 	onMouseBtnEvent = [this](Math::DVec2 mPos, CoreModule::MouseButton btn, CoreModule::InputEventType action) {
 		if (btn == CoreModule::MouseButton::MOUSE_BUTTON_LEFT && action == CoreModule::InputEventType::PRESS) {
-			leftM = true;
+			if (pressedKeys[CoreModule::InputKey::KEY_TAB]) {
+				leftM = true;
 
-			auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-			auto camRay = Math::calcCameraRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
+				auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+				auto camRay = Math::calcMouseRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
 
-			auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-			auto pos = cameraTransform->getPos(true);
+				auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+				auto pos = cameraTransform->getPos(true);
 
-			float minDistance = std::numeric_limits<float>::max();
+				float minDistance = std::numeric_limits<float>::max();
 
-			ECSHandler::getSystem<SystemsModule::OcTreeSystem>()->forEachOctreeInAABB(Math::createFrustum(camera).generateAABB(), [&](SystemsModule::OcTreeSystem::SysOcTree& tree) {
-				auto res = tree.findCollisions(camRay.a, camRay.direction, [](const auto& data) {
-					return data.data != ecss::INVALID_ID;
+				ECSHandler::getSystem<SystemsModule::OcTreeSystem>()->forEachOctreeInAABB(Math::createFrustum(camera).generateAABB(), [&](SystemsModule::OcTreeSystem::SysOcTree& tree) {
+					auto res = tree.findCollisions(camRay.a, camRay.direction, [](const auto& data) {
+						return data.data != ecss::INVALID_ID;
+					});
+
+					for (auto& [collisionPos, object] : res) {
+						auto dist = Math::lengthSquared(collisionPos - pos);
+						if (dist < minDistance) {
+							minDistance = dist;
+							setSelectedId(object.data.getID());
+						}
+					}
 				});
 
-				for (auto& [collisionPos, object] : res) {
-					auto dist = Math::lengthSquared(collisionPos - pos);
-					if (dist < minDistance) {
-						minDistance = dist;
-						setSelectedId(object.data.getID());
+				if (minDistance < std::numeric_limits<float>::max()) {
+					if (ECSHandler::registry().getComponent<OutlineComponent>(mSelectedId)) {
+						ECSHandler::registry().removeComponent<OutlineComponent>(mSelectedId);
 					}
-				}
-			});
-
-			if (minDistance < std::numeric_limits<float>::max()) {
-				if (ECSHandler::registry().getComponent<OutlineComponent>(mSelectedId)) {
-					ECSHandler::registry().removeComponent<OutlineComponent>(mSelectedId);
-				}
-				else {
-					ECSHandler::registry().addComponent<OutlineComponent>(mSelectedId);
+					else {
+						ECSHandler::registry().addComponent<OutlineComponent>(mSelectedId);
+					}
 				}
 			}
 		}
@@ -98,7 +100,7 @@ void ComponentsDebug::init() {
 
 				auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
 				auto pos = cameraTransform->getPos(true);
-				auto camRay = Math::calcCameraRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
+				auto camRay = Math::calcMouseRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
 
 				auto transform = ECSHandler::registry().addComponent<TransformComponent>(bullet, bullet);
 				transform->setPos(camRay.a + camRay.direction * 100.f);
@@ -135,7 +137,7 @@ void ComponentsDebug::init() {
 				auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
 				auto pos = cameraTransform->getPos(true);
 
-				auto camRay = Math::calcCameraRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
+				auto camRay = Math::calcMouseRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
 
 				float minDistance = std::numeric_limits<float>::max();
 				Math::Vec3 curColision = {};
