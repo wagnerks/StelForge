@@ -122,8 +122,8 @@ namespace SFE::SystemsModule {
 
 		if (dif != Math::Vec3{}) {
 			tc->setPos(tc->getPos() + dif);
-			//tc->reloadTransform();
-			//ECSHandler::registry().getComponent<CameraComponent>(camera)->updateFrustum(tc->getViewMatrix());
+			tc->reloadTransform();
+			ECSHandler::registry().getComponent<CameraComponent>(camera)->updateFrustum(tc->getViewMatrix());
 
 			updateDependents(camera);
 		}
@@ -151,8 +151,8 @@ namespace SFE::SystemsModule {
 		}
 
 		tc->setRotate({ Pitch, Yaw, 0.f });
-		//tc->reloadTransform();
-		//ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(tc->getViewMatrix());
+		tc->reloadTransform();
+		ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(tc->getViewMatrix());
 	}
 
 	void CameraSystem::processMouseScroll(float yoffset) {
