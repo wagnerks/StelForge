@@ -47,6 +47,7 @@ namespace SFE::RenderModule {
 
 		
 		static void renderTriangle(const Triangle& triangle, const Math::Vec4& color);
+		static void renderTriangle(const Triangle& triangle, const Math::Mat4& transform, const Math::Vec4& color);
 
 		static void renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
 		static void renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
@@ -54,6 +55,9 @@ namespace SFE::RenderModule {
 		static void renderSphere(const Math::Vec3& center, float radius);
 		static void renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments = 16, uint32_t renderType = GL_LINE_LOOP);
 		static void renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float startAngle = 0.f, float endAngle = 360.f);
+
+		static void renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, float height, const Math::Vec4& color, int numSegments = 64);
+
 		static void renderCapsule(const Math::Vec3& start, const Math::Vec3& end, float radius);
 		static void renderCamera();
 		static void renderPointLight(float near, float far, const Math::Vec3& pos);

@@ -229,6 +229,14 @@ void Utils::renderTriangle(const Triangle& triangle, const Math::Vec4& color) {
 	getTrianglesArray({ color }).emplace_back(triangle);
 }
 
+void Utils::renderTriangle(const Triangle& triangle, const Math::Mat4& transform, const Math::Vec4& color) {
+	renderTriangle({
+		transform * Math::Vec4(triangle.A, 1.f),
+		transform * Math::Vec4(triangle.B, 1.f),
+		transform * Math::Vec4(triangle.C, 1.f)
+		}, color);
+}
+
 void Utils::renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color) {
 	//		LTF*------------*RTF
 	//		 / |           /|
@@ -511,6 +519,40 @@ void Utils::renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<flo
 		tr.C = pos;
 
 		vertArray.push_back(tr);
+	}
+}
+
+void Utils::renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale,	float radius, float height, const Math::Vec4& color, int numSegments) {
+	auto& vertArray = getTrianglesArray({ color });
+
+	auto transform = Math::translate(Math::Mat4{1.f}, pos) * quat.toMat4() * scale;
+
+	for (int i = 0; i < numSegments; i++) {
+		Triangle tr;
+
+		float theta = Math::radians(360.f * static_cast<float>(i) / static_cast<float>(numSegments));
+		tr.A.x = radius * std::cos(theta);
+		tr.A.z = radius * std::sin(theta);
+		tr.A = transform * Math::Vec4{ tr.A, 1.f};
+
+		theta = Math::radians(360.f * static_cast<float>(i + 1) / static_cast<float>(numSegments));
+		tr.B.x = radius * std::cos(theta);
+		tr.B.z = radius * std::sin(theta);
+		tr.B = transform * Math::Vec4{ tr.B, 1.f};
+
+		tr.C = Math::Vec3{0.f};
+		tr.C = transform * Math::Vec4{ tr.C, 1.f};
+
+		vertArray.push_back(tr);
+
+		Triangle tr2;
+		tr2.A = tr.A;
+		tr2.B = tr.B;
+		tr2.C = Math::Vec3{ 0.f };
+		tr2.C.y += height;
+		tr2.C = transform * Math::Vec4{ tr2.C, 1.f};
+
+		vertArray.push_back(tr2);
 	}
 }
 
