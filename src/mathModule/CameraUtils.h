@@ -19,7 +19,7 @@ namespace SFE::Math {
 	};
 
 	// screenCoords - is the point on "camera lense" from which ray casted
-	inline Ray calcCameraRay(ecss::EntityId cameraId, const Vec2& screenCoords = { RenderModule::Renderer::SCR_WIDTH * 0.5f, RenderModule::Renderer::SCR_HEIGHT * 0.5f}) {
+	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords = { RenderModule::Renderer::SCR_WIDTH * 0.5f, RenderModule::Renderer::SCR_HEIGHT * 0.5f}) {
 		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(cameraId);
 		if (!cameraComp) {
 			return {};
@@ -73,7 +73,9 @@ namespace SFE::Math {
 		return 2.f * std::asin(hordeLen / (2.f * radius));
 	}
 
-	inline float calcAngleBetweenVectors(const Vec3& a, const Vec3& b) {
+	inline float calcAngleBetweenVectors(Vec3 a, Vec3 b) {
+		projectVectorsToCommonPlane(a, b);
+
 		const auto dot = Math::dot(a, b);
 		const auto magA = length(a);
 		const auto magB = length(b);
@@ -86,7 +88,7 @@ namespace SFE::Math {
 			cosTheta = std::max(-1.0f, std::min(1.0f, cosTheta));
 
 			auto angle = std::acos(cosTheta);
-			if (cross(a, b) < Vec3(0.0f)) {
+			if (cross(a, b).z < 0.0f) {
 				// Adjust the angle for the 180 to 360 degree range
 				angle = 2.0f * Math::pi<float>() - angle;
 			}
