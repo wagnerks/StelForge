@@ -8,5 +8,4 @@ void main()
 {
     texPos = aPos;
     gl_Position = PVM * vec4(aPos, 1.0); 
-    gl_PointSize = 50.0;
 }  
