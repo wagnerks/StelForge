@@ -295,10 +295,7 @@ namespace SFE {
 		inline void erase(const DataType& data) {
 			std::unique_lock lock(mtx);
 			if (!this->data.empty()) {
-				auto it = std::find(this->data.cbegin(), this->data.cend(), data);
-				if (it != this->data.cend()) {
-					this->data.erase(it);
-				}
+				this->data.erase(std::remove_if(this->data.begin(), this->data.end(), [&data](ObjectType& _data) { return data == _data.data; }), this->data.end());
 			}
 			
 
@@ -710,15 +707,16 @@ namespace SFE {
 			};
 
 
-			if (node.getData().size()) {
-				constexpr static auto notEmptyColor = Math::Vec4(0.f, 1.f, 0.f, 1.f);
+			
+				constexpr static auto notEmptyColor = Math::Vec4(0.f, 0.5f, 0.f, 0.02f);
 
-				RenderModule::Utils::renderCube(
+				RenderModule::Utils::renderCubeMesh(
 					Math::Vec3(0.f, 0.f, nodeSize),
 					Math::Vec3(nodeSize, -nodeSize, 0.f),
 					rotate, Math::Vec3(nodePos), notEmptyColor
 				);
 
+			if (node.getData().size()) {
 				if (drawObjAABB) {
 					for (auto& data : node.getData()) {
 						constexpr static auto AABBColor = Math::Vec4(0.f, 1.f, 1.f, 1.f);
@@ -730,9 +728,7 @@ namespace SFE {
 						);
 					}
 				}
-			}
-			else {
-				constexpr static auto emptyColor = Math::Vec4(0.f, 0.f, 1.f, 1.f);
+				constexpr static auto emptyColor = Math::Vec4(1.f, 0.f, 1.f, 1.f);
 
 				RenderModule::Utils::renderCube(
 					Math::Vec3(0.f, 0.f, nodeSize),

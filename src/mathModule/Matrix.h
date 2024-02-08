@@ -5,10 +5,10 @@
 #include "MatrixOperators.h"
 
 #define MATRIX_DEFAULT_METHODS() \
-	inline auto& operator[](size_t column) {	return m[column];}\
-	inline const auto& operator[](size_t column) const { return m[column]; }\
-	inline const Matrix& transpose() { return *this = Math::transpose(*this), *this; }\
-	inline const T* data() const { return m[0].data(); }
+	constexpr inline auto& operator[](size_t column) {	return m[column];}\
+	constexpr inline const auto& operator[](size_t column) const { return m[column]; }\
+	constexpr inline const Matrix& transpose() { return *this = Math::transpose(*this), *this; }\
+	constexpr inline const T* data() const { return m[0].data(); }
 
 #define GLMVEC 0
 

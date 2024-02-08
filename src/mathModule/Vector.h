@@ -3,12 +3,12 @@
 #include "VectorOperators.h"
 
 #define VECTOR_DEFAULT_METHODS()														\
-	inline const auto& operator[](size_t index) const {	return m[index]; }				\
-	inline auto& operator[](size_t index) {	return m[index]; }							\
-	inline T length() const {	return Math::length(*this);	}							\
-	inline T lengthSquared() const { return Math::lengthSquared(*this);	}				\
-	inline const Vector& normalize() { return *this = Math::normalize(*this), *this; }	\
-	inline const T* data() const { return &m[0];}
+	constexpr inline const auto& operator[](size_t index) const {	return m[index]; }				\
+	constexpr inline auto& operator[](size_t index) {	return m[index]; }							\
+	constexpr inline T length() const {	return Math::length(*this);	}							\
+	constexpr inline T lengthSquared() const { return Math::lengthSquared(*this);	}				\
+	constexpr inline const Vector& normalize() { return *this = Math::normalize(*this), *this; }	\
+	constexpr inline const T* data() const { return &m[0];}
 
 #define GLMVEC 0
 
@@ -70,6 +70,19 @@ namespace SFE::Math {
 			};
 			T m[2];
 		};
+
+		constexpr Vector(T x, T y) : x(x), y(y){}
+		constexpr Vector(T x) : x(x), y(x){}
+		constexpr Vector() : x{}, y{} {}
+
+		template<typename OtherT>
+		constexpr Vector(const Vector<OtherT, 4>& vec) : x(vec.x), y(vec.y) {}
+
+		template<typename OtherT>
+		constexpr Vector(const Vector<OtherT, 3>& vec) : x(vec.x), y(vec.y) {}
+
+		template<typename OtherT>
+		constexpr Vector(const Vector<OtherT, 2>& vec) : x(vec.x), y(vec.y) {}
 
 		VECTOR_DEFAULT_METHODS();
 	};

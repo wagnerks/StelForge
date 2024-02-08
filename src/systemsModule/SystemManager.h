@@ -17,9 +17,9 @@ namespace ecss {
 		SystemManager(const SystemManager&) = delete;
 		SystemManager& operator=(SystemManager&) = delete;
 	public:
-		SystemManager() = default;
+		SystemManager();
 		~SystemManager();
-
+		void startTickSystems();
 		void update(float_t dt);
 		
 		template <class T>
@@ -57,6 +57,11 @@ namespace ecss {
 			(mRenderRoot.children.push_back(getSystem<ARGS>()), ...);
 		}
 
+		template <class... ARGS>
+		void addTickSystems() {
+			(mTickSystems.push_back(getSystem<ARGS>()), ...);
+		}
+
 		template <class T>
 		void setSystemEnabled(bool enabled) {
 			if (auto system = getSystem<T>()) {
@@ -74,10 +79,13 @@ namespace ecss {
 				system->mUpdateInterval = updateInterval;
 			}
 		}
-		
+
+		float getTickDt() const { return mTickDt; }
 	private:
 		SystemsGraph mRenderRoot;
-
+		size_t mTickRate = 64;
+		float mTickDt = 0.f;
 		std::vector<System*> mSystemsMap;
+		std::vector<System*> mTickSystems;
 	};
 }

@@ -1,22 +1,38 @@
 ﻿#include "Utils.h"
 #include "mathModule/Utils.h"
 
+#include <iostream>
+
 #include "Renderer.h"
+#include "mathModule/Quaternion.h"
 #include "systemsModule/SystemManager.h"
 
 using namespace SFE::RenderModule;
 
-std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color) {
-	auto it = std::find_if(renderVertices.begin(), renderVertices.end(), [color](std::pair<Math::Vec4, std::vector<Math::Vec3>>& a) {
-		return a.first == color;
+std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color, float thickness, uint32_t renderType) {
+	auto it = std::find_if(renderVertices.begin(), renderVertices.end(), [color, thickness, renderType](std::pair<LineData, std::vector<Math::Vec3>>& a) {
+		return a.first.color == color && std::fabs(a.first.thickness - thickness) <= std::numeric_limits<float>::epsilon() && a.first.renderType == renderType;
 	});
 
 	if (it != renderVertices.end()) {
 		return it->second;
 	}
 
-	renderVertices.push_back(std::make_pair(color, std::vector<Math::Vec3>()));
+	renderVertices.push_back(std::make_pair(LineData{ color, thickness, renderType }, std::vector<Math::Vec3>()));
 	return renderVertices.back().second;
+}
+
+std::vector<Utils::Triangle>& Utils::getTrianglesArray(const TriangleData& data) {
+	auto it = std::find_if(renderTriangles.begin(), renderTriangles.end(), [&data](std::pair<TriangleData, std::vector<Triangle>>& a) {
+		return a.first.color == data.color;
+	});
+
+	if (it != renderTriangles.end()) {
+		return it->second;
+	}
+
+	renderTriangles.push_back(std::make_pair(data, std::vector<Triangle>()));
+	return renderTriangles.back().second;
 }
 
 void Utils::CalculateEulerAnglesFromView(const Math::Mat4& view, float& yaw, float& pitch, float& roll) {
@@ -193,9 +209,32 @@ void Utils::initCubeVAO() {
 	}
 }
 
-void Utils::renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color) {
-	getVerticesArray(color).emplace_back(begin);
-	getVerticesArray(color).emplace_back(end);
+void Utils::renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, float thickness) {
+	getVerticesArray(color, thickness, GL_LINES).emplace_back(begin);
+	getVerticesArray(color, thickness, GL_LINES).emplace_back(end);
+}
+
+void Utils::renderPolygon() {
+	auto ar = getVerticesArray({ 1.f,1.f,0.f,0.5f }, 2.f, GL_POLYGON);
+
+	ar.push_back({ 0.f,0.f,0.f });
+	ar.push_back({ 100.f,0.f,0.f });
+	ar.push_back({ 100.f,100.f,0.f });
+	ar.push_back({ 150.f,150.f,0.f });
+	ar.push_back({ 150.f,70.f,0.f });
+	ar.push_back({ 700.f,0.f,0.f });
+}
+
+void Utils::renderTriangle(const Triangle& triangle, const Math::Vec4& color) {
+	getTrianglesArray({ color }).emplace_back(triangle);
+}
+
+void Utils::renderTriangle(const Triangle& triangle, const Math::Mat4& transform, const Math::Vec4& color) {
+	renderTriangle({
+		transform * Math::Vec4(triangle.A, 1.f),
+		transform * Math::Vec4(triangle.B, 1.f),
+		transform * Math::Vec4(triangle.C, 1.f)
+		}, color);
 }
 
 void Utils::renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color) {
@@ -266,7 +305,7 @@ void Utils::renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math:
 
 	// Create a rotation matrix (e.g., rotate 45 degrees around the Y-axis)
 	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos)) * Math::Mat4(rotate);
-	auto& vertArray = getVerticesArray(color);
+	auto& vertArray = getVerticesArray(color, 1.f, GL_LINES);
 
 	// Apply the rotation to the cube vertices
 	for (int i = 0; i < sizeof(vertices) / sizeof(float); i += 3) {
@@ -275,6 +314,95 @@ void Utils::renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math:
 		// Apply the model and rotation transformations
 		vertex = transform * vertex;
 		vertArray.emplace_back(vertex);
+	}
+}
+
+void Utils::renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color) {
+	//   A         max
+	//    *---------*
+	//    |         |
+	//    |         |
+	//    |         |
+	//min *---------* B
+
+	const Math::Vec3 A = { min.x, max.y, min.z };
+	const Math::Vec3 B = { max.x, min.y, max.z };
+
+	Triangle vertices[] = {
+		{min, A, max},
+		{min, max, B}
+	};
+
+	// Create a rotation matrix (e.g., rotate 45 degrees around the Y-axis)
+	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos)) * Math::Mat4(rotate);
+	auto& vertArray = getTrianglesArray({ color });
+
+	// Apply the rotation to the cube vertices
+	for (int i = 0; i < sizeof(vertices) / sizeof(Triangle); i++) {
+		auto& tr = vertices[i];
+		// Apply the model and rotation transformations
+		tr.A = transform * Math::Vec4(tr.A, 1.f);
+		tr.B = transform * Math::Vec4(tr.B, 1.f);
+		tr.C = transform * Math::Vec4(tr.C, 1.f);
+		vertArray.emplace_back(tr);
+	}
+}
+
+void Utils::renderCubeMesh(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color) {
+	//		LTF*------------*RTF
+	//		 / |           /|
+	//      /  |          / |
+	//     /   |         /  |
+	// LTN*-----------*RTN  |
+	//    |    |        |   |
+	//    |    |        |   |
+	//    |    *LBF-----|---*RBF
+	//    |   /         |  /
+	//    |  /          | /
+	//    | /           |/
+	// LBN*-------------*RBN   
+
+
+	//Math::Vec3 LTN = { -far,  far, far };
+	Math::Vec3 RTN = { RBF.x, LTN.y, LTN.z };
+	Math::Vec3 LBN = { LTN.x, RBF.y, LTN.z };
+	Math::Vec3 RBN = { RBF.x, RBF.y, LTN.z };
+
+	Math::Vec3 LTF = { LTN.x, LTN.y, RBF.z };
+	Math::Vec3 RTF = { RBF.x, LTN.y, RBF.z };
+	Math::Vec3 LBF = { LTN.x, RBF.y, RBF.z };
+	//Math::Vec3 RBF = { far, -far, -far };
+
+
+	Triangle vertices[] = {
+		{LTN, RTN, LBN},
+		{RTN, RBN, LBN},
+
+		{LTN, LBN, LBF},
+		{LTN, LBF, LTF},
+
+		{LTN, LTF, RTN},
+		{LTF, RTF, RTN},
+
+		{RTF, RBF, RBN},
+		{RTF, RBN, RTN},
+
+		{RTF, LTF, LBF},
+		{RTF, LBF, RBF},
+	};
+
+	// Create a rotation matrix (e.g., rotate 45 degrees around the Y-axis)
+	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos)) * Math::Mat4(rotate);
+	auto& vertArray = getTrianglesArray({color});
+
+	// Apply the rotation to the cube vertices
+	for (int i = 0; i < sizeof(vertices) / sizeof(Triangle); i++) {
+		auto& tr = vertices[i];
+		// Apply the model and rotation transformations
+		tr.A = transform * Math::Vec4(tr.A, 1.f);
+		tr.B = transform * Math::Vec4(tr.B, 1.f);
+		tr.C = transform * Math::Vec4(tr.C, 1.f);
+		vertArray.emplace_back(tr);
 	}
 }
 
@@ -337,7 +465,7 @@ void Utils::renderCapsule(const Math::Vec3& start, const Math::Vec3& end, float 
 void Utils::renderSphere(const Math::Vec3& center, float radius) {
 	int segments = 10; // Adjust the number of segments as needed.
 
-	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f));
+	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f), 1.f, GL_LINE_LOOP);
 
 	// Initialize the vertices array for the sphere.
 	for (int i = 0; i <= segments; ++i) {
@@ -352,6 +480,79 @@ void Utils::renderSphere(const Math::Vec3& center, float radius) {
 
 			vertArray.emplace_back(vertex);
 		}
+	}
+}
+
+void Utils::renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, uint32_t renderType) {
+	auto& vertArray = getVerticesArray(color, 3.f, renderType);
+
+	auto transform = Math::translate(Math::Mat4{1.f}, pos)* quat.toMat4() * scale;
+
+	for (int i = 0; i < numSegments; ++i) {
+		float theta = 2.0f * Math::pi<float>() * static_cast<float>(i) / static_cast<float>(numSegments);
+
+		float x = radius * std::cos(theta);
+		float y = radius * std::sin(theta);
+		
+		vertArray.push_back(transform * Math::Vec4{ x, y, 0.f, 1.f});
+	}
+
+	//add GL_LINE_LOOP
+}
+
+void Utils::renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float startAngle, float delta) {
+	auto& vertArray = getTrianglesArray({ color });
+
+	auto transform = Math::translate(Math::Mat4{1.f}, pos) * quat.toMat4() * scale;
+	for (int i = 0; i < numSegments; i++) {
+		Triangle tr;
+		float theta = Math::radians(startAngle + delta * static_cast<float>(i) / static_cast<float>(numSegments));
+		tr.A.x = radius * std::cos(theta);
+		tr.A.y = radius * std::sin(theta);
+		tr.A = transform * Math::Vec4{ tr.A, 1.f};
+
+		theta = Math::radians(startAngle + delta * static_cast<float>(i + 1) / static_cast<float>(numSegments));
+		tr.B.x = radius * std::cos(theta);
+		tr.B.y = radius * std::sin(theta);
+		tr.B = transform * Math::Vec4{ tr.B, 1.f};
+
+		tr.C = pos;
+
+		vertArray.push_back(tr);
+	}
+}
+
+void Utils::renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale,	float radius, float height, const Math::Vec4& color, int numSegments) {
+	auto& vertArray = getTrianglesArray({ color });
+
+	auto transform = Math::translate(Math::Mat4{1.f}, pos) * quat.toMat4() * scale;
+
+	for (int i = 0; i < numSegments; i++) {
+		Triangle tr;
+
+		float theta = Math::radians(360.f * static_cast<float>(i) / static_cast<float>(numSegments));
+		tr.A.x = radius * std::cos(theta);
+		tr.A.z = radius * std::sin(theta);
+		tr.A = transform * Math::Vec4{ tr.A, 1.f};
+
+		theta = Math::radians(360.f * static_cast<float>(i + 1) / static_cast<float>(numSegments));
+		tr.B.x = radius * std::cos(theta);
+		tr.B.z = radius * std::sin(theta);
+		tr.B = transform * Math::Vec4{ tr.B, 1.f};
+
+		tr.C = Math::Vec3{0.f};
+		tr.C = transform * Math::Vec4{ tr.C, 1.f};
+
+		vertArray.push_back(tr);
+
+		Triangle tr2;
+		tr2.A = tr.A;
+		tr2.B = tr.B;
+		tr2.C = Math::Vec3{ 0.f };
+		tr2.C.y += height;
+		tr2.C = transform * Math::Vec4{ tr2.C, 1.f};
+
+		vertArray.push_back(tr2);
 	}
 }
 
@@ -572,7 +773,7 @@ void Utils::renderPointLight(float near, float far, const Math::Vec3& pos) {
 	};
 
 	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos));
-	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f));
+	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f), 1.f, GL_LINES);
 	for (int i = 0; i < sizeof(vertices) / sizeof(float); i += 3) {
 		Math::Vec3 vertex(vertices[i], vertices[i + 1], vertices[i + 2]);
 		

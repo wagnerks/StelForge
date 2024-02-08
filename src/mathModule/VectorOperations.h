@@ -116,6 +116,45 @@ namespace SFE::Math {
 		return C;
 	}
 
+	template<typename T>
+	Vector<T, 3> rotate(const Vector<T, 3>& v, float angle, const Vector<T, 3>& axis) {
+		float cos_angle = std::cos(angle);
+		float sin_angle = std::sin(angle);
+		Vector<T, 3> cross_term = cross(axis, v);
+		return {
+			v.x * cos_angle + cross_term.x * sin_angle + axis.x * dot(axis, v) * (1 - cos_angle),
+			v.y * cos_angle + cross_term.y * sin_angle + axis.y * dot(axis, v) * (1 - cos_angle),
+			v.z * cos_angle + cross_term.z * sin_angle + axis.z * dot(axis, v) * (1 - cos_angle)
+		};
+	}
+
+	template<typename T>
+	inline void projectVectorsToCommonPlane(Vector<T, 3>& A, Vector<T, 3>& B) {
+		/*auto A_normalized = normalize(A);
+		auto B_normalized = normalize(B);
+		
+		auto axis = cross(A_normalized, B_normalized);
+		float angle = std::acos(dot(A_normalized, B_normalized));
+		
+		A = rotate(A, angle, axis);
+		B = rotate(B, angle, axis);*/
+
+
+		// Normalize vectors A and B
+		auto A_normalized = normalize(A);
+		auto B_normalized = normalize(B);
+
+		// Calculate the rotation axis (perpendicular to A and B)
+		auto axis = cross(A_normalized, B_normalized);
+
+		// Calculate the angle between vectors A and B using the arc tangent function
+		float angle = std::atan2(length(cross(A_normalized, B_normalized)), dot(A_normalized, B_normalized));
+
+		// Rotate vectors A and B to project them onto the common plane
+		A = rotate(A, angle, axis);
+		B = rotate(B, angle, axis);
+	}
+
 	template <typename T, size_t Rows>
 	inline Vector<T, Rows> normalize(const Vector<T, Rows>& a) {
 		auto l = length(a);
@@ -151,6 +190,6 @@ namespace SFE::Math {
 
 	template<typename T>
 	inline T distance(const Vector<T, 3>& p1, const Vector<T, 3>& p2) {
-		return fastSqrt(distanceSqr(p1, p2));
+		return sqrt(distanceSqr(p1, p2));
 	}
 }

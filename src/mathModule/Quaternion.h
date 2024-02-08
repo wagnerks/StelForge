@@ -91,14 +91,13 @@ namespace SFE::Math {
 			Vector<T, 3> euler;
 
 			// Roll (x-axis rotation)
-			euler.x = std::atan2(2 * (x * y + w * z), 1 - 2 * (y * y + z * z));
+			euler.x = std::atan2(2 * (w*x + y*z), w*w - x*x - y*y + z*z);
 
 			// Pitch (y-axis rotation)
 			euler.y = std::asin(2 * (w * y - z * x));
 
 			// Yaw (z-axis rotation)
-			euler.z = std::atan2(2 * (x * z + w * y), 1 - 2 * (y * y + x * x));
-
+			euler.z = std::atan2(2 * (w * z + x * y), w * w + x * x - y * y - z * z);
 			return euler;
 		}
 
@@ -119,20 +118,24 @@ namespace SFE::Math {
 		void matrixToQuaternion(const Matrix<T, 3, 3>& matrix) {
 			matrixToQuaternionImpl(matrix);
 		}
-		
-		inline Vector<T, 3> rotateVector(const Vector<T, 3>& v) {
-			// Extract the vector part of the quaternion
-			Vector<T, 3> u = { x, y, z };
 
-			// w is the scalar part of the quaternion
-			return v + ((Math::cross(u, v) * w) + Math::cross(u, Math::cross(u, v)) * T{2});
+		inline Vector<T, 3> globalToLocal(const Vector<T, 3>& v) const {
+			Math::Quaternion vectorQuaternion(0.f, v);
+			auto rotatedVector = inverseQuaternion() * vectorQuaternion * *this;
+			return { rotatedVector.x, rotatedVector.y, rotatedVector.z };
 		}
 
-		inline Quaternion inverseQuaternion() {
+		inline Vector<T, 3> rotateVector(const Vector<T, 3>& v) const {
+			Math::Quaternion vectorQuaternion(0.f, v);
+			auto rotatedVector = *this * vectorQuaternion * inverseQuaternion();
+			return { rotatedVector.x, rotatedVector.y, rotatedVector.z };
+		}
+
+		inline Quaternion inverseQuaternion() const {
 			return { w, -x, -y, -z };
 		}
 
-		inline Quaternion operator*(const Quaternion& q2) {
+		inline Quaternion operator*(const Quaternion& q2) const{
 			return {
 				w * q2.w - x * q2.x - y * q2.y - z * q2.z, //w
 				w * q2.x + x * q2.w + y * q2.z - z * q2.y, //x
@@ -154,13 +157,15 @@ namespace SFE::Math {
 			return *this;
 		}
 
-		Quaternion(){}
+		constexpr Quaternion(){}
 
-		Quaternion(T x, T y, T z) {
+		constexpr Quaternion(T x, T y, T z) {
 			eulerToQuaternion(x, y, z);
 		}
 
-		Quaternion(T w, T x, T y, T z) : w{ w }, x{ x }, y{ y }, z{ z } {}
+		constexpr Quaternion(T w, T x, T y, T z) : w{ w }, x{ x }, y{ y }, z{ z } {}
+
+		constexpr Quaternion(T w, const Vector<T,3>& vec ) : w{ w }, x{ vec.x }, y{ vec.y }, z{ vec.z } {}
 
 	private:
 		void matrixToQuaternionImpl(const Matrix<T,3,3>& matrix) {

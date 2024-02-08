@@ -24,8 +24,14 @@ namespace SFE::RenderModule {
 
 		inline static int SCR_WIDTH = 1920;
 		inline static int SCR_HEIGHT = 1080;
+		inline static int SCR_RENDER_W = SCR_WIDTH;
+		inline static int SCR_RENDER_H = SCR_HEIGHT;
+
+		inline static float SCR_RENDER_SCALE_W = 1.f;
+		inline static float SCR_RENDER_SCALE_H = 1.f;
+
 		inline static float drawDistance = 5000.f;
-		inline static float nearDistance = 0.1f;
+		inline static float nearDistance = 1.f;
 		inline static size_t mDrawCallsCount = 0;
 		inline static size_t mDrawVerticesCount = 0;
 	private:

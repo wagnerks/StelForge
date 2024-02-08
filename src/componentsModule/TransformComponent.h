@@ -14,7 +14,7 @@ namespace SFE::ComponentsModule {
 		TransformComponent(TransformComponent&& other) noexcept
 			: ecss::ComponentInterface(std::move(other)),
 			  PropertiesModule::Serializable(std::move(other)),
-			  mDirty(true),
+			  mDirty(other.mDirty),
 			  mRotateQuaternion(std::move(other.mRotateQuaternion)),
 		      mTransform(std::move(other.mTransform)),
 			  mPos(std::move(other.mPos)),
@@ -26,7 +26,7 @@ namespace SFE::ComponentsModule {
 				return *this;
 			ecss::ComponentInterface::operator =(std::move(other));
 			PropertiesModule::Serializable::operator =(std::move(other));
-			mDirty = true;
+			mDirty = other.mDirty;
 			mTransform = std::move(other.mTransform);
 			mRotateQuaternion = std::move(other.mRotateQuaternion);
 			mPos = std::move(other.mPos);
@@ -38,7 +38,7 @@ namespace SFE::ComponentsModule {
 		TransformComponent(ecss::SectorId id) : ComponentInterface(id) { markDirty(); };
 		~TransformComponent() override;
 
-		const Math::Vec3 getPos(bool global = false) const;
+		const Math::Vec3& getPos(bool global = false) const;
 		void setX(float x);
 		void setY(float y);
 		void setZ(float z);
@@ -64,7 +64,7 @@ namespace SFE::ComponentsModule {
 
 		Math::Mat4 getRotationMatrix() const;
 		const Math::Quaternion<float>& getQuaternion() const;
-		Math::Mat4 getLocalTransform() const;
+		Math::Mat4 calculateLocalTransform() const;
 		Math::Mat4 getViewMatrix() const;
 
 		Math::Vec3 getRight();

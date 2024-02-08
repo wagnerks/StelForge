@@ -2,7 +2,7 @@
 #include <assetsModule/modelModule/Mesh.h>
 
 namespace SFE::FrustumModule  {
-	AABB Frustum::generateAABB() {
+	AABB Frustum::generateAABB() const {
 		return AABB(minPoint, maxPoint);
 	}
 

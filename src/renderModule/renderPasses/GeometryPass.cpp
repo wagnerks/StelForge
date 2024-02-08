@@ -26,11 +26,12 @@
 using namespace SFE::RenderModule::RenderPasses;
 
 void GeometryPass::prepare() {
-	auto curPassData = getCurrentPassData();
-	mStatus = RenderPreparingStatus::PREPARING;
+	auto curPassData = getContainer().getCurrentPassData();
+	auto outlineData = mOutlineData.getCurrentPassData();
+	//mStatus = RenderPreparingStatus::PREPARING;
 
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, entities = std::vector<unsigned>()]() mutable {
+	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, entities = std::vector<unsigned>(), outlineData]() mutable {
 		FUNCTION_BENCHMARK
 		curPassData->getBatcher().drawList.clear();
 
@@ -73,7 +74,25 @@ void GeometryPass::prepare() {
 			batcher.sort(camPos);
 		}
 
-		mStatus = RenderPreparingStatus::READY;
+		{
+			auto& outlineBatcher = outlineData->getBatcher();
+			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
+			for (const auto& [entity, outline, transform, modelComp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent>()) {
+				if (!&modelComp || !&transform) {
+					continue;
+				}
+
+				if (std::find(entities.begin(), entities.end(), entity) == entities.end()) {
+					continue;
+				}
+				
+				for (auto& mesh : modelComp.getModel().mMeshHandles) {
+					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
+				}
+			}
+
+			outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
+		}
 	});
 }
 
@@ -83,9 +102,8 @@ void GeometryPass::init() {
 	}
 	mInited = true;
 
-
-	passData.push_back(new RenderPassData());
-	passData.push_back(new RenderPassData());
+	mOutlineData.init(2);
+	getContainer().init(2);
 
 	// configure g-buffer framebuffer
 	// ------------------------------
@@ -96,7 +114,7 @@ void GeometryPass::init() {
 	// position color buffer
 	glGenTextures(1, &mData.gPosition);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gPosition);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_FLOAT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.gPosition, 0);
@@ -104,7 +122,7 @@ void GeometryPass::init() {
 	// normal color buffer
 	glGenTextures(1, &mData.gNormal);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gNormal);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_FLOAT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, mData.gNormal, 0);
@@ -112,7 +130,7 @@ void GeometryPass::init() {
 	// color + specular color buffer
 	glGenTextures(1, &mData.gAlbedoSpec);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gAlbedoSpec);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, mData.gAlbedoSpec, 0);
@@ -120,21 +138,21 @@ void GeometryPass::init() {
 	// viewPos buffer
 	glGenTextures(1, &mData.gViewPosition);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gViewPosition);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, mData.gViewPosition, 0);
 
 	glGenTextures(1, &mData.gOutlines);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gOutlines);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, mData.gOutlines, 0);
 
 	glGenTextures(1, &mData.gLights);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gLights);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT5, GL_TEXTURE_2D, mData.gLights, 0);
@@ -144,7 +162,7 @@ void GeometryPass::init() {
 
 	glGenTextures(1, &mData.gDepthTexture);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gDepthTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, mData.gDepthTexture, 0);
@@ -158,7 +176,7 @@ void GeometryPass::init() {
 	glGenRenderbuffers(1, &mData.rboDepth);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.rboDepth);
 	glBindRenderbuffer(GL_RENDERBUFFER, mData.rboDepth);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, mData.rboDepth);
 
 	// finally check if framebuffer is complete
@@ -176,13 +194,13 @@ void GeometryPass::init() {
 	// outlines buffer
 	//glGenTextures(1, &mData.gOutlines);
 	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gOutlines);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.gOutlines, 0);
 
 	/*AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gLights);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, mData.gLights, 0);*/
@@ -214,47 +232,34 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 		currentLock.wait();
 	}
 
-	const auto curPassData = getCurrentPassData();
-	rotate();
+	const auto curPassData = getContainer().getCurrentPassData();
+	const auto outlineData = mOutlineData.getCurrentPassData();
+	getContainer().rotate();
+	mOutlineData.rotate();
 	prepare();
 
-	glViewport(0, 0, Renderer::SCR_WIDTH, Renderer::SCR_HEIGHT);
+	glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mGBuffer);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	
-	auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
-	shaderGeometryPass->use();
-	shaderGeometryPass->setInt("texture_diffuse1", 0);
-	shaderGeometryPass->setInt("normalMap", 1);
-	shaderGeometryPass->setBool("outline", false);
 
-	curPassData->getBatcher().flushAll(true);
+	if (!curPassData->getBatcher().drawList.empty()) {
+		auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
+		shaderGeometryPass->use();
+		shaderGeometryPass->setInt("texture_diffuse1", 0);
+		shaderGeometryPass->setInt("normalMap", 1);
+		shaderGeometryPass->setBool("outline", false);
 
-	/*for (const auto& [entt, lightSource, transform, modelComp, aabb] : ECSHandler::registry().getComponentsArray<LightSourceComponent, TransformComponent, ModelComponent, ComponentsModule::AABBComponent>()) {
-		if (!&modelComp) {
-			continue;
-		}
-		int i = 0;
-		for (auto& mesh : modelComp.getModel().mMeshHandles) {
-			if (aabb.aabbs[i].isOnFrustum(renderDataHandle.mCamFrustum)) {
-				batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
-			}
-			i++;
-		}
-		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
-	}*/
+		curPassData->getBatcher().flushAll(true);
+	}
 
 	if (!batcher.drawList.empty()) {
 		auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
 		lightObjectsPass->use();
 		batcher.flushAll(true);
 	}
-	
 
-	
-	auto outlineNodes = ECSHandler::registry().getComponentsArray<OutlineComponent>();
-	if (!outlineNodes.empty()) {
+	if (!outlineData->getBatcher().drawList.empty()) {
 		needClearOutlines = true;
 
 		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
@@ -264,28 +269,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 		g_buffer_outlines->use();
 		g_buffer_outlines->setMat4("PV", renderDataHandle.current.PV);
 
-		for (const auto& [entity, outline, transform, modelComp, aabbcomp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent, ComponentsModule::AABBComponent>()) {
-			if (!&modelComp || !&transform || !&aabbcomp) {
-				continue;
-			}
-			if (aabbcomp.aabbs.empty()) {
-				continue;
-			}
-
-			auto& model = modelComp.getModel();
-			int i = 0;
-			for (auto& mesh : model.mMeshHandles) {
-				aabbcomp.mtx.lock_shared();
-				if (aabbcomp.aabbs[i].isOnFrustum(renderDataHandle.mCamFrustum)) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
-				}
-				aabbcomp.mtx.unlock_shared();
-				i++;
-			}
-		}
-		batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
-
-		batcher.flushAll(true);
+		outlineData->getBatcher().flushAll(true);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);

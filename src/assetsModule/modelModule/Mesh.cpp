@@ -1,9 +1,11 @@
 ﻿#include "Mesh.h"
 
 #include "core/BoundingVolume.h"
+#include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "core/ThreadPool.h"
 #include "renderModule/Renderer.h"
+#include "systemsModule/systems/AABBSystem.h"
 
 using namespace AssetsModule;
 
@@ -38,6 +40,11 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept {
 
 Mesh::~Mesh() {
 	unbindMesh();
+
+	for (auto handle : handles) {
+		handle->parentMesh = nullptr;
+	}
+	handles.clear();
 }
 
 void Mesh::bindMesh() {
@@ -91,6 +98,12 @@ void Mesh::bindMesh() {
 		}
 
 		mBounds = SFE::FrustumModule::AABB(minAABB, maxAABB);
+
+		if (!loadingEntities.empty()) {
+			ECSHandler::getSystem<SFE::SystemsModule::AABBSystem>()->update(loadingEntities);
+			loadingEntities.clear();
+		}
+		
 	}
 	else {
 		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([this]()mutable { //easy crash 

@@ -119,6 +119,7 @@ namespace ecss {
 		}
 
 		virtual void onDependentUpdate() {
+			std::shared_lock lock(mMutex);
 			if (mIsWorking) {
 				return;
 			}
@@ -133,10 +134,14 @@ namespace ecss {
 			SFE::ThreadPool::instance()->addTask([this] {
 				while (!mEntitiesToProcess.empty()) {
 					update(mEntitiesToProcess);
-
-					sync();
+					std::unique_lock lock(mMutex);
+					sync();//synced
+					//separate thread added something which can be synced
+					//mEntitiesToProcess empty but here is entities to be synced
 				}
-
+				//it go here to set isWorking false
+				//at this time onDependentUpdate called and mIsWorking was true
+				//it was returned, no sync was called, isworking set false, but 
 				mIsWorking = false;
 			});
 		}
@@ -173,7 +178,7 @@ namespace ecss {
 			}
 		}
 
-	private:
+	protected:
 		struct EntitiesContainer {
 			EntitiesContainer() = default;
 			EntitiesContainer(const EntitiesContainer& other) {}
@@ -194,9 +199,12 @@ namespace ecss {
 			std::shared_mutex mutex;
 			std::vector<SectorId> entities;
 		};
-		
+
 		SparseSet<EntitiesContainer, SystemType> mUpdatedEntities;
 
+		std::vector<SectorId> mEntitiesToProcess;
+
+	private:
 		template<typename SystemT>
 		void addDependency(System* system) {
 			mDependentSystems.emplace_back(system);
@@ -206,10 +214,8 @@ namespace ecss {
 		std::vector<System*> mDependentSystems;
 
 	private:
-		std::vector<SectorId> mEntitiesToProcess;
-
 		std::atomic_bool mIsWorking = false;
-
+		std::shared_mutex mMutex;
 		//variables should be set through systemManager
 		float mTimeFromLastUpdate = 0.f;
 		float mUpdateInterval = 0.f;

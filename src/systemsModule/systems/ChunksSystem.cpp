@@ -87,8 +87,10 @@ namespace SFE::SystemsModule {
 							octree.forEach([octree, &entitiesToDelete](auto& obj) mutable {
 								auto octreeComp = ECSHandler::registry().getComponent<OcTreeComponent>(obj.data.getID());
 								assert(octreeComp);
-								octreeComp->mParentOcTrees.erase(std::find(octreeComp->mParentOcTrees.begin(), octreeComp->mParentOcTrees.end(), octree.mPos));
-
+								if (!octreeComp->mParentOcTrees.empty()) {
+									octreeComp->mParentOcTrees.erase(std::find(octreeComp->mParentOcTrees.begin(), octreeComp->mParentOcTrees.end(), octree.mPos));
+								}
+								
 								if (octreeComp->mParentOcTrees.empty()) {
 									entitiesToDelete.push_back(obj.data.getID());
 								}
@@ -152,9 +154,9 @@ namespace SFE::SystemsModule {
 
 					for (auto& chunkPos : mChunks) {
 
-						constexpr static auto notEmptyColor = Math::Vec4(1.f, 0.f, 0.f, 1.f);
+						constexpr static auto notEmptyColor = Math::Vec4(0.5f, 0.5f, 0.5f, 0.08f);
 
-						RenderModule::Utils::renderCube(
+						RenderModule::Utils::renderCubeMesh(
 							Math::Vec3(0.f, 0.f, 0.f),
 							Math::Vec3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE),
 							rotate, Math::Vec3(chunkPos), notEmptyColor

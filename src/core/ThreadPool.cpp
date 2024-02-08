@@ -8,8 +8,9 @@ namespace SFE {
 		while (!mSyncTasks.empty()) { //mainThreadTasksQueue can be popped only in main thread, and update calling only in main thread, so it safe to check empty without lock
 			auto task = std::move(mSyncTasks.front());
 			mSyncTasks.pop();
-
-			task();
+			if (task.valid()) {
+				task();
+			}
 		}
 	}
 

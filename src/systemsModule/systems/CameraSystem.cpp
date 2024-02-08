@@ -15,10 +15,10 @@ namespace SFE::SystemsModule {
 		mDefaultCamera = ECSHandler::registry().takeEntity();
 
 		auto transform = ECSHandler::registry().addComponent<TransformComponent>(mDefaultCamera, mDefaultCamera.getID());
-		transform->setPos({ -1996.f, 2850.f, -1000.f });
-		transform->setRotate({ -30.f, -126.f, 0.0f });
+		transform->setPos({ -837.f, 472.f, -40.f });
+		transform->setRotate({ -20.5f, -94.f, 0.0f });
 		ECSHandler::registry().addComponent<CameraComponent>(mDefaultCamera, mDefaultCamera.getID(), 45.f, aspect, RenderModule::Renderer::nearDistance, RenderModule::Renderer::drawDistance);
-		ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(transform->getViewMatrix());
+		//ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(transform->getViewMatrix());
 		initKeyEvents();
 	}
 
@@ -55,7 +55,7 @@ namespace SFE::SystemsModule {
 
 		return mDefaultCamera;
 	}
-
+	
 	void CameraSystem::initKeyEvents() {
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
 			if (type == SFE::CoreModule::InputEventType::PRESS) {

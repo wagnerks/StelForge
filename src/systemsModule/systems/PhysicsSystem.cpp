@@ -1,37 +1,93 @@
 ﻿#include "PhysicsSystem.h"
 
 #include "componentsModule/TransformComponent.h"
+#include "Jolt/Renderer/DebugRenderer.h"
+#include "renderModule/Utils.h"
 
-void SFE::SystemsModule::Physics::update(float dt) {
-	auto& bodyInterface = physics_system->GetBodyInterface();
-	for (const auto& [entity, physicsComp, transform] : ECSHandler::registry().getComponentsArray<PhysicsComponent, TransformComponent>()) {
-		if (!&transform) {
-			continue;
-		}
-		if (transform.getPos() != physicsComp.lastPos || transform.getRotate() != physicsComp.lastRotate) {
+namespace SFE::SystemsModule {
+
+	using namespace JPH;
+
+	void Physics::update(float dt) {
+		auto& bodyInterface = physics_system->GetBodyInterface();
+		for (const auto& [entity, physicsComp, transform] : ECSHandler::registry().getComponentsArray<PhysicsComponent, TransformComponent>()) {
+			if (!&transform) {
+				continue;
+			}
 			const auto& pos = transform.getPos(true);
-			auto quat = transform.getQuaternion();
-			bodyInterface.SetPositionAndRotation(physicsComp.mBodyID, RVec3Arg{ (float)pos.x, (float)pos.y, (float)pos.z }, Quat(quat.x, quat.y, quat.z, quat.w), EActivation::Activate);
+			if (pos != physicsComp.lastPos || transform.getRotate() != physicsComp.lastRotate) {
+				bodyInterface.SetPositionAndRotationWhenChanged(physicsComp.mBodyID, toVec3(pos), toQuat(transform.getQuaternion()), EActivation::Activate);
+
+				physicsComp.lastPos = pos;
+			}
+
+			if (bodyInterface.IsActive(physicsComp.mBodyID) == physicsComp.isSleeping) {
+				continue;
+			}
+
+			physicsComp.lastPos = toVec3(bodyInterface.GetCenterOfMassPosition(physicsComp.mBodyID));
+			transform.setPos(physicsComp.lastPos);
+
+			physicsComp.lastRotate = Math::degrees(toVec3(bodyInterface.GetRotation(physicsComp.mBodyID).GetEulerAngles()));
+			transform.setRotate(physicsComp.lastRotate);
 		}
 
-		auto isActive = bodyInterface.IsActive(physicsComp.mBodyID);
-		if (isActive == physicsComp.isSleeping) {
-			continue;
-		}
-				
-		RVec3 position = bodyInterface.GetCenterOfMassPosition(physicsComp.mBodyID);
-				
-		physicsComp.lastPos = { position.GetX(), position.GetY(), position.GetZ() };
-		transform.setPos({ position.GetX(), position.GetY(), position.GetZ() });
-				
-		auto rotation = bodyInterface.GetRotation(physicsComp.mBodyID).GetEulerAngles();
-		physicsComp.lastRotate = { rotation.GetX(), rotation.GetY(), rotation.GetZ() };
-		transform.setRotate({ RadiansToDegrees(rotation.GetX()), RadiansToDegrees(rotation.GetY()), RadiansToDegrees(rotation.GetZ()) });
+		// If you take larger steps than 1 / 60th of a second you need to do multiple collision steps in order to keep the simulation stable. Do 1 collision step per 1 / 60th of a second (round up).
+		dt *= 0.5f;
+		const int cCollisionSteps = 2 * std::ceil(dt * 60.f);
+
+		// Step the world
+		physics_system->Update(dt, cCollisionSteps, temp_allocator, job_system);
 	}
 
-	// If you take larger steps than 1 / 60th of a second you need to do multiple collision steps in order to keep the simulation stable. Do 1 collision step per 1 / 60th of a second (round up).
-	const int cCollisionSteps = 1;//std::ceil(dt * 60.f);
+	void Physics::debugUpdate(float dt) {
+		class renderer : public DebugRenderer {
+		public:
+			renderer() {
+				Initialize();
+			}
+			void DrawLine(RVec3Arg inFrom, RVec3Arg inTo, ColorArg inColor) override {
+				RenderModule::Utils::renderLine(toVec3(inFrom), toVec3(inTo), Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
+			};
 
-	// Step the world
-	physics_system->Update(dt*2.f, cCollisionSteps, temp_allocator, job_system);
+			void DrawTriangle(RVec3Arg inV1, RVec3Arg inV2, RVec3Arg inV3, ColorArg inColor, ECastShadow inCastShadow) override {
+				RenderModule::Utils::Triangle triangle;
+				triangle.A = toVec3(inV1);
+				triangle.B = toVec3(inV2);
+				triangle.C = toVec3(inV3);
+				RenderModule::Utils::renderTriangle(triangle, Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
+			};
+
+			Batch CreateTriangleBatch(const Triangle* inTriangles, int inTriangleCount) override {
+				return{};
+			};
+
+			Batch CreateTriangleBatch(const Vertex* inVertices, int inVertexCount, const uint32* inIndices,
+				int inIndexCount) override {
+				return{};
+			};
+
+			void DrawGeometry(RMat44Arg inModelMatrix, const AABox& inWorldSpaceBounds, float inLODScaleSq,
+				ColorArg inModelColor, const GeometryRef& inGeometry, ECullMode inCullMode, ECastShadow inCastShadow,
+				EDrawMode inDrawMode) override {
+				
+			};
+
+			void DrawText3D(RVec3Arg inPosition, const string_view& inString, ColorArg inColor,
+				float inHeight) override {
+				
+			};
+		};
+
+		static renderer lel;
+		BodyManager::DrawSettings settings;
+		settings.mDrawShapeWireframe = false;
+		settings.mDrawShape = true;
+		settings.mDrawBoundingBox = true;
+		settings.mDrawCenterOfMassTransform = true;
+		settings.mDrawMassAndInertia = true;
+		settings.mDrawSleepStats = true;
+		settings.mDrawSupportDirection = true;
+		physics_system->DrawBodies(settings, &lel, nullptr );
+	}
 }
