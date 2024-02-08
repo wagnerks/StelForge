@@ -4,6 +4,8 @@
 
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/modelModule/Model.h"
+#include "core/ECSHandler.h"
+#include "systemsModule/systems/AABBSystem.h"
 
 
 using namespace SFE::ComponentsModule;
@@ -35,6 +37,15 @@ void LODData::setCurrentLodValue(float currentLodValue) {
 
 void ModelComponent::addMeshData(std::vector<AssetsModule::ModelObj>* meshData) {
 	mModel = meshData;
+	for (auto& modelObj : *mModel) {
+		for (auto& meshHandle : modelObj.mMeshHandles) {
+			if (!meshHandle.parentMesh->isBinded()) {
+				if (std::find(meshHandle.parentMesh->loadingEntities.begin(), meshHandle.parentMesh->loadingEntities.end(), getEntityId()) == meshHandle.parentMesh->loadingEntities.end()) {
+					meshHandle.parentMesh->loadingEntities.push_back(getEntityId());
+				}
+			}
+		}
+	}
 }
 
 const AssetsModule::ModelObj& ModelComponent::getModel() {

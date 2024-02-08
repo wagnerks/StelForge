@@ -1,11 +1,12 @@
 ﻿#pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "assetsModule/TextureHandler.h"
 #include "core/BoundingVolume.h"
-
+#include "ecss/Types.h"
 
 
 namespace AssetsModule {
@@ -37,6 +38,8 @@ namespace AssetsModule {
 		unsigned int mEbo = std::numeric_limits<unsigned>::max();
 	};
 
+	class MeshHandle;
+
 	class Mesh {
 	public:
 		Mesh(const Mesh& other) = delete;
@@ -51,25 +54,89 @@ namespace AssetsModule {
 
 		void bindMesh();
 		void unbindMesh();
-
+		bool isBinded() { return mBinded; }
 		unsigned int getVAO() const { return mData.mVao; }
 
 		SFE::FrustumModule::AABB mBounds;
 		Material mMaterial;
 		MeshData mData;
+
+		std::vector<MeshHandle*> handles;
+
+		std::vector<ecss::EntityId> loadingEntities;
 	private:
 		bool mBinded = false;
 	};
 
 	class MeshHandle {
 	public:
-		MeshHandle() = default;
+		MeshHandle(const MeshHandle& other)
+			: mMaterial(other.mMaterial),
+			  mData(other.mData),
+			  mBounds(other.mBounds),
+			  parentMesh(other.parentMesh),
+			  onBind(other.onBind) {
+			if (parentMesh) {
+				parentMesh->handles.push_back(this);
+			}
+		}
 
-		MeshHandle(const Mesh& mesh) : mMaterial(&mesh.mMaterial), mData(&mesh.mData), mBounds(&mesh.mBounds) {}
+		MeshHandle& operator=(const MeshHandle& other) {
+			if (this == &other)
+				return *this;
+			mMaterial = other.mMaterial;
+			mData = other.mData;
+			mBounds = other.mBounds;
+			parentMesh = other.parentMesh;
+			onBind = other.onBind;
+			if (parentMesh) {
+				parentMesh->handles.push_back(this);
+			}
+			return *this;
+		}
+
+		MeshHandle(MeshHandle&& other) noexcept
+			: mMaterial(other.mMaterial),
+			  mData(other.mData),
+			  mBounds(other.mBounds),
+			  parentMesh(other.parentMesh),
+			  onBind(std::move(other.onBind)) {
+			if (parentMesh) {
+				parentMesh->handles.push_back(this);
+			}
+		}
+
+
+		MeshHandle& operator=(MeshHandle&& other) noexcept {
+			if (this == &other)
+				return *this;
+			mMaterial = other.mMaterial;
+			mData = other.mData;
+			mBounds = other.mBounds;
+			parentMesh = other.parentMesh;
+			onBind = std::move(other.onBind);
+			if (parentMesh) {
+				parentMesh->handles.push_back(this);
+			}
+			return *this;
+		}
+
+		MeshHandle() = default;
+		~MeshHandle() {
+			if (parentMesh) {
+				parentMesh->handles.erase(std::find(parentMesh->handles.begin(), parentMesh->handles.end(), this));
+			}
+		}
+
+		MeshHandle(Mesh& mesh) : mMaterial(&mesh.mMaterial), mData(&mesh.mData), mBounds(&mesh.mBounds), parentMesh(&mesh) {
+			mesh.handles.push_back(this);
+		}
 
 		const Material* mMaterial = nullptr;
 		const MeshData* mData = nullptr;
 		const SFE::FrustumModule::AABB* mBounds = nullptr;
+		Mesh* parentMesh;
 
+		std::function<void()> onBind = nullptr;
 	};
 }
