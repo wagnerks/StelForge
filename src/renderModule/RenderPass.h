@@ -40,19 +40,27 @@ namespace SFE::RenderModule {
 		size_t mPriority = 0;
 	};
 
-	class RenderPassWithData : public RenderPass {
+	class RenderPassDataContainer {
 	public:
-		std::shared_future<void> currentLock;
+		~RenderPassDataContainer() {
+			clear();
+		}
 
-		~RenderPassWithData() override {
+		void init(size_t size) {
+			for (auto i = 0u; i < size; i++) {
+				passData.push_back(new RenderPassData());
+			}
+		}
+
+		void clear() {
 			for (auto& data : passData) {
 				delete data;
 			}
 			passData.clear();
 		}
 
-		virtual void prepare() {}
 		RenderPreparingStatus getStatus() { return mStatus; }
+
 		void rotate() {
 			if (cur == passData.size() - 1) {
 				cur = 0;
@@ -66,10 +74,22 @@ namespace SFE::RenderModule {
 			return passData[cur];
 		}
 
-	protected:
+	private:
 		RenderPreparingStatus mStatus = RenderPreparingStatus::READY; //default status is ready for passes without render data
 		std::vector<RenderPassData*> passData;
 		int cur = 0;
+	};
+
+	class RenderPassWithData : public RenderPass {
+	public:
+		std::shared_future<void> currentLock;
+		
+		virtual void prepare() {}
+
+		RenderPassDataContainer& getContainer() { return mData; }
+
+	protected:
+		RenderPassDataContainer mData;
 	};
 
 }

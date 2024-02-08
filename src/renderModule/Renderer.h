@@ -31,7 +31,7 @@ namespace SFE::RenderModule {
 		inline static float SCR_RENDER_SCALE_H = 1.f;
 
 		inline static float drawDistance = 5000.f;
-		inline static float nearDistance = 0.1f;
+		inline static float nearDistance = 1.f;
 		inline static size_t mDrawCallsCount = 0;
 		inline static size_t mDrawVerticesCount = 0;
 	private:

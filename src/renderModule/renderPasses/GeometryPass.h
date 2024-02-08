@@ -37,7 +37,6 @@ namespace SFE::RenderModule::RenderPasses {
 		OutlinesData mOData;
 		bool needClearOutlines = false;
 
-
-
+		RenderPassDataContainer mOutlineData;
 	};
 }

@@ -39,15 +39,15 @@ void CascadedShadowPass::prepare() {
 		return;
 	}
 
-	auto curPassData = getCurrentPassData();
-	mStatus = RenderPreparingStatus::PREPARING;
+	auto curPassData = getContainer().getCurrentPassData();
+	//mStatus = RenderPreparingStatus::PREPARING;
 	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
 	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, entities = std::vector<unsigned>(), camProj = renderData.nextCameraProjection, view = renderData.next.view, nextFrust = renderData.mNextCamFrustum]() mutable {
 		FUNCTION_BENCHMARK
 		curPassData->getBatcher().drawList.clear();
 		auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
 		if (!shadowsComp) {
-			mStatus = RenderPreparingStatus::READY;
+			//mStatus = RenderPreparingStatus::READY;
 			return;
 		}
 
@@ -102,13 +102,12 @@ void CascadedShadowPass::prepare() {
 			//batcher.sort({100.f,1300.f, 600.f});
 		}
 
-		mStatus = RenderPreparingStatus::READY;
+		//mStatus = RenderPreparingStatus::READY;
 	});
 }
 
 CascadedShadowPass::CascadedShadowPass() {
-	passData.push_back(new RenderPassData());
-	passData.push_back(new RenderPassData());
+	getContainer().init(2);
 }
 
 CascadedShadowPass::~CascadedShadowPass() {
@@ -223,8 +222,8 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderData& r
 	}
 	const auto lightMatrices = shadowsComp->getLightSpaceMatrices();//todo copy, because of crash below
 
-	const auto curPassData = getCurrentPassData();
-	rotate();
+	const auto curPassData = getContainer().getCurrentPassData();
+	getContainer().rotate();
 	prepare();
 
 	if (!lightMatrices.empty()) {
