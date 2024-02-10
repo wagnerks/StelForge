@@ -13,6 +13,10 @@ namespace SFE::Math {
 	using Vec3 = Vector<float, 3>;
 	using Vec4 = Vector<float, 4>;
 
+	using IVec2 = Vector<int, 2>;
+	using IVec3 = Vector<int, 3>;
+	using IVec4 = Vector<int, 4>;
+
 	using DVec2 = Vector<double, 2>;
 	using DVec3 = Vector<double, 3>;
 	using DVec4 = Vector<double, 4>;

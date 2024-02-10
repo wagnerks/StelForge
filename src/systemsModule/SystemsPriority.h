@@ -3,6 +3,7 @@
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/DebugPass.h"
 #include "renderModule/renderPasses/GeometryPass.h"
+#include "renderModule/renderPasses/GUIPass.h"
 #include "renderModule/renderPasses/LightingPass.h"
 #include "renderModule/renderPasses/PointLightPass.h"
 #include "renderModule/renderPasses/ShadersPass.h"
@@ -17,4 +18,5 @@ const static inline std::array RENDER_PASSES_PRIORITY {
 	typeid(SFE::RenderModule::RenderPasses::SSAOPass).hash_code(),
 	typeid(SFE::RenderModule::RenderPasses::LightingPass).hash_code(),
 	typeid(SFE::RenderModule::RenderPasses::DebugPass).hash_code(),
+	typeid(SFE::RenderModule::RenderPasses::GUIPass).hash_code(),
 };

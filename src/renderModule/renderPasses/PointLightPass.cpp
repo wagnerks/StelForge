@@ -91,12 +91,12 @@ namespace SFE::RenderModule::RenderPasses {
 		
 		for (const auto& [entity,lightSource, transform] : ECSHandler::registry().getComponentsArray<LightSourceComponent, TransformComponent>()) {
 			//todo check is light side frustum in camera frustum, and filter it to ignore light sources which is not on your screen
-			if (!FrustumModule::SquareAABB::isOnFrustum(renderDataHandle.mCamFrustum, transform.getPos(true), lightSource.mRadius)) {
+			if (!FrustumModule::SquareAABB::isOnFrustum(renderDataHandle.mCamFrustum, transform->getPos(true), lightSource->mRadius)) {
 				continue;
 			}
 
 			//todo some dirty logic
-			switch (lightSource.getType()) {
+			switch (lightSource->getType()) {
 			case ComponentsModule::eLightType::DIRECTIONAL: {
 				/*float shadowHeight = 100.f;
 				float shadowWidth = 100.f;
@@ -108,9 +108,9 @@ namespace SFE::RenderModule::RenderPasses {
 			}
 			case ComponentsModule::eLightType::POINT: {
 				renderDataHandle.mPointPassData.shadowEntities.push_back(entity);
-				offsets.emplace_back(entity, lightSource.getTypeOffset(lightSource.getType()));
+				offsets.emplace_back(entity, lightSource->getTypeOffset(lightSource->getType()));
 				
-				fillMatrix(transform.getPos(true), lightSource.mNear, lightSource.mRadius);
+				fillMatrix(transform->getPos(true), lightSource->mNear, lightSource->mRadius);
 				break;
 			}
 			case ComponentsModule::eLightType::PERSPECTIVE: {
@@ -176,12 +176,12 @@ namespace SFE::RenderModule::RenderPasses {
 
 			std::sort(entities.begin(), entities.end());
 			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().getComponentsArray<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
-				if (!&trans || !&mod || !&draw) {
+				if (!trans || !mod || !draw) {
 					continue;
 				}
 
-				const auto& transformMatrix = trans.getTransform();
-				for (auto& mesh : mod.getModelLowestDetails().mMeshHandles) {
+				const auto& transformMatrix = trans->getTransform();
+				for (auto& mesh : mod->getModelLowestDetails().mMeshHandles) {
 					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, false);
 				}
 			}

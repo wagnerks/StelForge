@@ -63,12 +63,12 @@ void GeometryPass::prepare() {
 			auto& batcher = curPassData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
 			for (auto [ent, transform, modelComp] : ECSHandler::registry().getComponentsArray<TransformComponent, ModelComponent>(entities)) {
-				if (!&modelComp) {
+				if (!modelComp) {
 					continue;
 				}
 
-				for (auto& mesh : modelComp.getModel().mMeshHandles) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
+				for (auto& mesh : modelComp->getModel().mMeshHandles) {
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), false);
 				}
 			}
 			batcher.sort(camPos);
@@ -78,7 +78,7 @@ void GeometryPass::prepare() {
 			auto& outlineBatcher = outlineData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
 			for (const auto& [entity, outline, transform, modelComp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent>()) {
-				if (!&modelComp || !&transform) {
+				if (!modelComp || !transform) {
 					continue;
 				}
 
@@ -86,8 +86,8 @@ void GeometryPass::prepare() {
 					continue;
 				}
 				
-				for (auto& mesh : modelComp.getModel().mMeshHandles) {
-					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform.getTransform(), false);
+				for (auto& mesh : modelComp->getModel().mMeshHandles) {
+					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), false);
 				}
 			}
 

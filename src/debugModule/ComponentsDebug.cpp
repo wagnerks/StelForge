@@ -52,6 +52,18 @@ void ComponentsDebug::init() {
 		}
 		else if (event == CoreModule::InputEventType::RELEASE) {
 			pressedKeys[key] = false;
+			if (key == CoreModule::InputKey::KEY_0) {
+				gizmo.setMode(RenderModule::GizmoMode::NONE);
+			}
+			else if (key == CoreModule::InputKey::KEY_1) {
+				gizmo.setMode(RenderModule::GizmoMode::MOVE);
+			}
+			else if (key == CoreModule::InputKey::KEY_2) {
+				gizmo.setMode(RenderModule::GizmoMode::ROTATE);
+			}
+			else if (key == CoreModule::InputKey::KEY_3) {
+				gizmo.setMode(RenderModule::GizmoMode::SCALE);
+			}
 		}
 	};
 	onMouseBtnEvent = [this](Math::DVec2 mPos, CoreModule::MouseButton btn, CoreModule::InputEventType action) {

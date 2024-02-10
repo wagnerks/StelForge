@@ -15,20 +15,20 @@ namespace SFE::SystemsModule {
 			drawableEntities.clear();
 
 			for (auto [entity, shaderComponent] : ECSHandler::registry().getComponentsArray<ComponentsModule::ShaderComponent>()) {
-				auto shader = shaderController->getShader(shaderComponent.shaderId);
+				auto shader = shaderController->getShader(shaderComponent->shaderId);
 				if (!shader) {
 					continue;
 				}
 
-				if (shaderComponent.updateFunction) {
-					shaderComponent.updateFunction(&shaderComponent);
+				if (shaderComponent->updateFunction) {
+					shaderComponent->updateFunction(shaderComponent);
 				}
 
-				for (const auto typedUniforms : shaderComponent.uniforms) {
+				for (const auto typedUniforms : shaderComponent->uniforms) {
 					typedUniforms->apply(shader);
 				}
 
-				drawableEntities.emplace_back(shaderComponent.shaderId, entity);
+				drawableEntities.emplace_back(shaderComponent->shaderId, entity);
 			}
 
 			std::stable_sort(drawableEntities.begin(), drawableEntities.end(), [](const auto& a, const auto& b) {

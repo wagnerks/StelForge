@@ -36,6 +36,7 @@ find_package(OpenGL REQUIRED)
 
 include_directories("${CMAKE_SOURCE_DIR}/lib/glfw/include")
 include_directories("${CMAKE_SOURCE_DIR}/lib/assimp/include")
+include_directories("${CMAKE_SOURCE_DIR}/lib/freetype/include")
 
 if(MSVC)
 	target_link_libraries(${CMAKE_PROJECT_NAME}
@@ -44,6 +45,10 @@ if(MSVC)
 		imgui
 		"${CMAKE_SOURCE_DIR}/lib/glfw/glfw3.lib"
 		OpenGL::GL
+	debug
+		"${CMAKE_SOURCE_DIR}/lib/freetype/lib/win/debug/freetyped.lib"
+	optimized
+		"${CMAKE_SOURCE_DIR}/lib/freetype/lib/win/release/freetype.lib"
 	debug
 		"${CMAKE_SOURCE_DIR}/lib/jsoncpp/lib/debug/jsoncpp.lib"
 	optimized

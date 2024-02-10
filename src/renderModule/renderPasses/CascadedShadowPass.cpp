@@ -89,12 +89,12 @@ void CascadedShadowPass::prepare() {
 		{
 			auto& batcher = curPassData->getBatcher();
 			for (auto [ent, transform, modelComp] : ECSHandler::registry().getComponentsArray<ComponentsModule::TransformComponent, ModelComponent>(entities)) {
-				if (!&modelComp) {
+				if (!modelComp) {
 					continue;
 				}
 
-				const auto& transformMatrix = transform.getTransform();
-				for (const auto& mesh : modelComp.getModelLowestDetails().mMeshHandles) {
+				const auto& transformMatrix = transform->getTransform();
+				for (const auto& mesh : modelComp->getModelLowestDetails().mMeshHandles) {
 					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, false);
 				}
 			}

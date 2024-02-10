@@ -23,10 +23,10 @@ void LODSystem::update(float_t dt) {
 
 	auto playerPos = ECSHandler::registry().getComponent<TransformComponent>(playerCamera)->getPos(true);
 	for (const auto& [entity, isDraw, transform, lodObject] : ECSHandler::registry().getComponentsArray<const IsDrawableComponent, const TransformComponent, ModelComponent>()) {
-		if (!&isDraw) {
+		if (!isDraw) {
 			continue;
 		}
-		if (!&lodObject) {
+		if (!lodObject) {
 			continue;
 		}
 		float value = 0.f;
@@ -40,19 +40,19 @@ void LODSystem::update(float_t dt) {
 		//	//}
 		//}
 		//else if (lodObject.getLodType() == ComponentsModule::eLodType::DISTANCE) {
-		value = Math::distanceSqr(playerPos, transform.getPos(true));
+		value = Math::distanceSqr(playerPos, transform->getPos(true));
 		//}
 
 		int lodLevel = 0;
-		for (auto level : lodObject.mLOD.getLodLevelValues()) {
+		for (auto level : lodObject->mLOD.getLodLevelValues()) {
 			if (level < value) {
 				break;
 			}
 			lodLevel++;
 		}
 
-		lodObject.mLOD.setLodLevel(lodLevel);
-		lodObject.mLOD.setCurrentLodValue(value);
+		lodObject->mLOD.setLodLevel(lodLevel);
+		lodObject->mLOD.setCurrentLodValue(value);
 	}
 }
 

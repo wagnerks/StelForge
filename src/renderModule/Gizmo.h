@@ -5,6 +5,7 @@
 #include "ecss/Types.h"
 #include "mathModule/CameraUtils.h"
 #include "myPhysicsEngine/Physics.h"
+#include "renderPasses/GUIPass.h"
 
 namespace SFE::RenderModule {
 
@@ -61,6 +62,9 @@ namespace SFE::RenderModule {
 		void processRotate();
 
 		//draw
+		mutable ecss::EntityId mQuad = ecss::INVALID_ID;
+		mutable ecss::EntityId mText = ecss::INVALID_ID;
+
 		void drawRotateGizmo(const Math::Vec3& pos);
 		void drawScaleGizmo(const Math::Vec3& pos, const Math::Vec3& scale);
 		void drawMoveGizmo(const Math::Vec3& pos);
@@ -86,8 +90,8 @@ namespace SFE::RenderModule {
 		};
 
 		float mGizmoRadius = 180.f;
-		float mCommonGizmoOffset = 40.f;
-		float mGizmoStartRadius = 40.f;
+		float mCommonGizmoOffset = 20.f;
+		float mGizmoStartRadius = 10.f;
 
 		const float mTipRadius = 20.f;
 		const float mTipHeight = 30.f;

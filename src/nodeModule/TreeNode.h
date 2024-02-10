@@ -62,6 +62,12 @@ namespace SFE::NodeModule {
 		const std::vector<T*>& getElements();
 		T* getElement(std::string_view elementId);
 
+		bool empty() {
+			return mElements.empty();
+		}
+		size_t size() {
+			return mElements.size();
+		}
 		std::string_view getNodeId();
 		void setNodeId(std::string_view id);
 

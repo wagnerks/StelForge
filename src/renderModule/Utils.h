@@ -51,9 +51,12 @@ namespace SFE::RenderModule {
 
 		static void renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
 		static void renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
+
+		static void renderQuad2D(const Math::Vec2& min, const Math::Vec2& max, const Math::Vec2& pos, const Math::Vec4& color);
+
 		static void renderCubeMesh(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
 		static void renderSphere(const Math::Vec3& center, float radius);
-		static void renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments = 16, uint32_t renderType = GL_LINE_LOOP);
+		static void renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments = 16, float lineThicness = 3.f, uint32_t renderType = GL_LINE_LOOP);
 		static void renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float startAngle = 0.f, float endAngle = 360.f);
 
 		static void renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, float height, const Math::Vec4& color, int numSegments = 64);

@@ -11,25 +11,25 @@ namespace SFE::SystemsModule {
 	void Physics::update(float dt) {
 		auto& bodyInterface = physics_system->GetBodyInterface();
 		for (const auto& [entity, physicsComp, transform] : ECSHandler::registry().getComponentsArray<PhysicsComponent, TransformComponent>()) {
-			if (!&transform) {
+			if (!transform) {
 				continue;
 			}
-			const auto& pos = transform.getPos(true);
-			if (pos != physicsComp.lastPos || transform.getRotate() != physicsComp.lastRotate) {
-				bodyInterface.SetPositionAndRotationWhenChanged(physicsComp.mBodyID, toVec3(pos), toQuat(transform.getQuaternion()), EActivation::Activate);
+			const auto& pos = transform->getPos(true);
+			if (pos != physicsComp->lastPos || transform->getRotate() != physicsComp->lastRotate) {
+				bodyInterface.SetPositionAndRotationWhenChanged(physicsComp->mBodyID, toVec3(pos), toQuat(transform->getQuaternion()), EActivation::Activate);
 
-				physicsComp.lastPos = pos;
+				physicsComp->lastPos = pos;
 			}
 
-			if (bodyInterface.IsActive(physicsComp.mBodyID) == physicsComp.isSleeping) {
+			if (bodyInterface.IsActive(physicsComp->mBodyID) == physicsComp->isSleeping) {
 				continue;
 			}
 
-			physicsComp.lastPos = toVec3(bodyInterface.GetCenterOfMassPosition(physicsComp.mBodyID));
-			transform.setPos(physicsComp.lastPos);
+			physicsComp->lastPos = toVec3(bodyInterface.GetCenterOfMassPosition(physicsComp->mBodyID));
+			transform->setPos(physicsComp->lastPos);
 
-			physicsComp.lastRotate = Math::degrees(toVec3(bodyInterface.GetRotation(physicsComp.mBodyID).GetEulerAngles()));
-			transform.setRotate(physicsComp.lastRotate);
+			physicsComp->lastRotate = Math::degrees(toVec3(bodyInterface.GetRotation(physicsComp->mBodyID).GetEulerAngles()));
+			transform->setRotate(physicsComp->lastRotate);
 		}
 
 		// If you take larger steps than 1 / 60th of a second you need to do multiple collision steps in order to keep the simulation stable. Do 1 collision step per 1 / 60th of a second (round up).
@@ -77,6 +77,8 @@ namespace SFE::SystemsModule {
 				float inHeight) override {
 				
 			};
+
+
 		};
 
 		static renderer lel;

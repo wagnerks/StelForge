@@ -1,6 +1,7 @@
 ﻿#include "Gizmo.h"
 
 #include "imgui.h"
+#include "TextRenderer.h"
 #include "Utils.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/TransformComponent.h"
@@ -9,6 +10,7 @@
 #include "core/Engine.h"
 #include "mathModule/CameraUtils.h"
 #include "myPhysicsEngine/Physics.h"
+#include "renderPasses/GUIPass.h"
 #include "systemsModule/systems/CameraSystem.h"
 
 namespace SFE::RenderModule {
@@ -313,6 +315,8 @@ namespace SFE::RenderModule {
 			Math::Quaternion{ 0.f, 1.f, 0.f, 0.f }
 		};
 
+		float difAngle = 0.f;
+
 		if (mActiveAxis == NONE) {
 			Utils::renderCircle(pos, ROTATE_ROTATIONS[X], scale, mGizmoRadius, { mColors[Axis::X], mAlpha.x }, 64);
 			Utils::renderCircle(pos, ROTATE_ROTATIONS[Y], scale, mGizmoRadius, { mColors[Axis::Y], mAlpha.y }, 64);
@@ -329,7 +333,7 @@ namespace SFE::RenderModule {
 			const auto oldPos = pos + Math::normalize(mIntersectionStartPos - pos) * radius * mScaleCoef;
 			const auto newPos = pos + Math::normalize(mIntersectionCurrentPos - pos) * radius * mScaleCoef;
 
-			float difAngle = Math::calcAngleOnCircle(Math::distance(oldPos, newPos), radius * mScaleCoef);
+			difAngle = Math::calcAngleOnCircle(Math::distance(oldPos, newPos), radius * mScaleCoef);
 			float prevAngle = 0.f;
 
 			if (isLineAxis(mActiveAxis)) {
@@ -368,15 +372,15 @@ namespace SFE::RenderModule {
 				//segment lines
 				Utils::renderLine(pos, oldPos, { color, mHintAlpha }, 1);
 				Utils::renderLine(pos, newPos, { color, mHintAlpha }, 3);
-
-				drawFloatText(Math::degrees(difAngle));
 			}
 		}
+
+		drawFloatText(Math::degrees(difAngle));
 	}
 
 	void Gizmo::drawScaleGizmo(const Math::Vec3& pos, const Math::Vec3& scale) {
 		if (mActiveAxis == NONE) {
-			drawPos(pos, { 0.f,0.f,0.f, mHintAlpha });
+			drawPos(pos, { 1.f,1.f,1.f, mHintAlpha }, mGizmoStartRadius);
 			drawPlaneQuads(pos);
 
 			drawGizmoLine(X, pos, { mColors[X], mAlpha.x }, mGizmoRadius, GizmoMode::SCALE);
@@ -390,8 +394,6 @@ namespace SFE::RenderModule {
 		else {
 			Utils::renderLine(mStartPos, mIntersectionCurrentPos, { 0.f,0.f,0.f,mHintAlpha }, 1.f);
 
-			drawVec3Text(scale);
-
 			drawAxis(mStartPos, mActiveAxis);
 			if (isLineAxis(mActiveAxis)) {
 				drawGizmoLine(mActiveAxis, mStartPos, mInactiveColor, mGizmoRadius, GizmoMode::SCALE);
@@ -400,10 +402,12 @@ namespace SFE::RenderModule {
 				drawGizmoLine(mActiveAxis, pos, { mColors[mActiveAxis],1.f }, mGizmoRadius * delta, GizmoMode::SCALE);
 			}
 		}
+
+		drawVec3Text(scale);
 	}
 
 	void Gizmo::drawMoveGizmo(const Math::Vec3& pos) {
-		drawPos(pos, { 0.f,0.f,0.f, mHintAlpha });
+		drawPos(pos, { 1.f,1.f,1.f, mHintAlpha }, mGizmoStartRadius);
 
 		drawPlaneQuads(pos);
 
@@ -415,9 +419,7 @@ namespace SFE::RenderModule {
 		else {
 			Utils::renderLine(mStartPos, pos, { 0.f,0.f,0.f,mHintAlpha }, 1.f);
 
-			drawVec3Text(pos - mStartPos);
-
-			drawPos(mStartPos, mInactiveColor);
+			drawPos(mStartPos, mInactiveColor, mGizmoStartRadius);
 
 			drawAxis(mStartPos, mActiveAxis);
 			if (isLineAxis(mActiveAxis)) {
@@ -425,6 +427,8 @@ namespace SFE::RenderModule {
 				drawGizmoLine(mActiveAxis, pos, { mColors[mActiveAxis], mAlpha[mActiveAxis - 1]}, mGizmoRadius, GizmoMode::MOVE);
 			}
 		}
+
+		drawVec3Text(pos - mStartPos);
 	}
 
 	void Gizmo::updateGizmosAlpha(const Math::Vec3& cameraPos, const Math::Vec3& entityPos) {
@@ -608,33 +612,96 @@ namespace SFE::RenderModule {
 	}
 
 	void Gizmo::drawPos(const Math::Vec3& pos, const Math::Vec4& color, float size) const {
-		size *= mScaleCoef;
-		Utils::renderLine(pos - mAxisDirection[X] * size, pos + mAxisDirection[X] * size, color, 1.f);
-		Utils::renderLine(pos - mAxisDirection[Y] * size, pos + mAxisDirection[Y] * size, color, 1.f);
-		Utils::renderLine(pos - mAxisDirection[Z] * size, pos + mAxisDirection[Z] * size, color, 1.f);
+		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
+		const Math::Mat4 scale = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{mScaleCoef});
+		const auto& rotation = ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion();
+
+		Utils::renderCircleFilled(pos, rotation, scale, size, color, 32);
+		Utils::renderCircle(pos, rotation, scale, size, { color.xyz, color.a * 1.2f }, 64, 0.5f);
 	}
 
 	void Gizmo::drawVec3Text(const Math::Vec3& value) const {
-		ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
+		if (!mActiveAxis) {
+			if (mQuad != ecss::INVALID_ID) {
+				RenderPasses::GUIPass::registry.destroyEntity(mQuad);
+				RenderPasses::GUIPass::registry.destroyEntity(mText);
+				mQuad = ecss::INVALID_ID;
+				mText = ecss::INVALID_ID;
+			}
+			return;
+		}
 
-		const auto size = ImGui::CalcTextSize(std::string(std::to_string(value.x) + std::to_string(value.y) + std::to_string(value.z) + "___").c_str());
+		const auto font = RenderModule::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 18);
 
-		ImGui::SetNextWindowPos(ImVec2(mMousePos.x + ImGui::GetMainViewport()->Pos.x, mMousePos.y + ImGui::GetMainViewport()->Pos.y - size.y * 2.f));
-		ImGui::SetNextWindowSize(size);
-		ImGui::Begin("angle", nullptr, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav);
-		ImGui::Text("%f:%f:%f", value.x, value.y, value.z);
-		ImGui::End();
+		if (mQuad == ecss::INVALID_ID) {
+			mQuad = RenderPasses::GUIPass::registry.takeEntity();
+			
+			auto color = RenderPasses::GUIPass::registry.addComponent<RenderPasses::ColorComponent>(mQuad);
+			color->color = { 0.3f,0.3f,0.3f,0.95f };
+
+			mText = RenderPasses::GUIPass::registry.takeEntity();
+			color = RenderPasses::GUIPass::registry.addComponent<RenderPasses::ColorComponent>(mText);
+			color->color = Math::Vec4{ 0.85f, 0.85f, 0.85f, 1.f };
+
+			auto fontComponent = RenderPasses::GUIPass::registry.addComponent<RenderPasses::FontComponent>(mText);
+			fontComponent->font = font;
+		}
+
+		auto posComp = RenderPasses::GUIPass::registry.addComponent<RenderPasses::PosComponent>(mQuad);
+		const auto textSize = TextRenderer::instance()->calcTextSize(font, 1.f, "%.2f:%.2f:%.2f", value.x, value.y, value.z);
+
+		posComp->pos = Math::Vec2{ mMousePos.x + 15.f + textSize.x * 0.5f, mMousePos.y - 15.f - textSize.y * 0.5f };
+		posComp->size = textSize + 20.f;
+		posComp->pivot = { 0.5f, 0.5f };
+
+		auto textPosComp = RenderPasses::GUIPass::registry.addComponent<RenderPasses::PosComponent>(mText);
+		textPosComp->pos = { mMousePos.x + 15.f, mMousePos.y - 15.f };
+		textPosComp->size = textSize;
+		textPosComp->pivot = { 0.f, 1.f };
+
+		auto textComp = RenderPasses::GUIPass::registry.addComponent<RenderPasses::TextComponent>(mText);
+		textComp->text = TextRenderer::formatInternal("%.2f:%.2f:%.2f", value.x, value.y, value.z);
 	}
 
 	void Gizmo::drawFloatText(float value) const {
-		ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
+		if (!mActiveAxis) {
+			if (mQuad != ecss::INVALID_ID) {
+				RenderPasses::GUIPass::registry.destroyEntity(mQuad);
+				RenderPasses::GUIPass::registry.destroyEntity(mText);
+				mQuad = ecss::INVALID_ID;
+				mText = ecss::INVALID_ID;
+			}
+			return;
+		}
 
-		const auto size = ImGui::CalcTextSize(std::string(std::to_string(value) + "  deg").c_str());
+		const auto font = RenderModule::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 18);
 
-		ImGui::SetNextWindowPos(ImVec2(mMousePos.x + ImGui::GetMainViewport()->Pos.x, mMousePos.y + ImGui::GetMainViewport()->Pos.y - size.y * 2.f));
-		ImGui::SetNextWindowSize(size);
-		ImGui::Begin("angle", nullptr, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav);
-		ImGui::Text("%f deg", value);
-		ImGui::End();
+		if (mQuad == ecss::INVALID_ID) {
+			mQuad = RenderPasses::GUIPass::registry.takeEntity();
+
+			auto color = RenderPasses::GUIPass::registry.addComponent<RenderPasses::ColorComponent>(mQuad);
+			color->color = { 0.3f,0.3f,0.3f,0.95f };
+
+			mText = RenderPasses::GUIPass::registry.takeEntity();
+			color = RenderPasses::GUIPass::registry.addComponent<RenderPasses::ColorComponent>(mText);
+			color->color = Math::Vec4{ 0.85f, 0.85f, 0.85f, 1.f };
+
+			auto fontComponent = RenderPasses::GUIPass::registry.addComponent<RenderPasses::FontComponent>(mText);
+			fontComponent->font = font;
+		}
+
+		auto posComp = RenderPasses::GUIPass::registry.addComponent<RenderPasses::PosComponent>(mQuad);
+		const auto textSize = TextRenderer::instance()->calcTextSize(font, 1.f, "%.2f deg", value);
+		posComp->pos = Math::Vec2{ mMousePos.x + 15.f + textSize.x * 0.5f, mMousePos.y - 15.f - textSize.y * 0.5f };
+		posComp->size = textSize + 20.f;
+		posComp->pivot = { 0.5f, 0.5f };
+
+		auto textPosComp = RenderPasses::GUIPass::registry.addComponent<RenderPasses::PosComponent>(mText);
+		textPosComp->pos = { mMousePos.x + 15.f, mMousePos.y - 15.f };
+		textPosComp->size = textSize;
+		textPosComp->pivot = { 0.f, 1.f };
+
+		auto textComp = RenderPasses::GUIPass::registry.addComponent<RenderPasses::TextComponent>(mText);
+		textComp->text = TextRenderer::formatInternal("%.2f deg", value);
 	}
 }

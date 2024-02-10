@@ -348,6 +348,10 @@ void Utils::renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math:
 	}
 }
 
+void Utils::renderQuad2D(const Math::Vec2& min, const Math::Vec2& max, const Math::Vec2& pos, const Math::Vec4& color) {
+	
+}
+
 void Utils::renderCubeMesh(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color) {
 	//		LTF*------------*RTF
 	//		 / |           /|
@@ -483,8 +487,8 @@ void Utils::renderSphere(const Math::Vec3& center, float radius) {
 	}
 }
 
-void Utils::renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, uint32_t renderType) {
-	auto& vertArray = getVerticesArray(color, 3.f, renderType);
+void Utils::renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float lineThicness, uint32_t renderType) {
+	auto& vertArray = getVerticesArray(color, lineThicness, renderType);
 
 	auto transform = Math::translate(Math::Mat4{1.f}, pos)* quat.toMat4() * scale;
 

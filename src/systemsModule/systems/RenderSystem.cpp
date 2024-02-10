@@ -26,6 +26,8 @@
 #include "renderModule/renderPasses/ShadersPass.h"
 
 #include "componentsModule/TransformComponent.h"
+#include "renderModule/TextRenderer.h"
+#include "renderModule/renderPasses/GUIPass.h"
 
 namespace SFE::SystemsModule {
 
@@ -64,6 +66,7 @@ namespace SFE::SystemsModule {
 		addRenderPass<RenderModule::RenderPasses::LightingPass>();
 		addRenderPass<RenderModule::RenderPasses::SSAOPass>();
 		addRenderPass<RenderModule::RenderPasses::DebugPass>();
+		addRenderPass<RenderModule::RenderPasses::GUIPass>();
 
 		glGenBuffers(1, &cameraMatricesUBO);
 		glBindBuffer(GL_UNIFORM_BUFFER, cameraMatricesUBO);
@@ -103,6 +106,9 @@ namespace SFE::SystemsModule {
 		for (const auto renderPass : mRenderPasses) {
 			renderPass->render(mRenderer, mRenderData, *mRenderer->getBatcher());
 		}
+
+
+		RenderModule::TextRenderer::instance()->renderText(std::to_string(Engine::instance()->getFPS()), 150.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, RenderModule::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 35));
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
