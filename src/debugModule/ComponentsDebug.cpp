@@ -414,7 +414,7 @@ void ComponentsDebug::entitiesDebug() {
 		}
 
 		ImGui::SameLine();
-		std::vector<std::string> items {"transform", "light", "ph_box", "ph_sphere", "ph_capsule", "ph_floor", "action"};
+		std::vector<std::string> items {"transform", "light", "ph_box", "ph_sphere", "ph_capsule", "ph_floor", "action", "anim"};
 		static std::string current_item = items.front();
 		if (ImGui::BeginCombo("##comps", "component")) {
 			for (int n = 0; n < items.size(); n++)
@@ -491,6 +491,21 @@ void ComponentsDebug::entitiesDebug() {
 					else if (current_item == "action") {
 						if (auto entity = compManager.getEntity(mSelectedId)) {
 							compManager.addComponent<ComponentsModule::ActionComponent>(mSelectedId);
+						}
+					}
+					else if (current_item == "anim") {
+						if (auto entity = compManager.getEntity(mSelectedId)) {
+							auto animComp = compManager.addComponent<ComponentsModule::AnimationComponent>(mSelectedId);
+							animComp->animator.playAnimation(AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>("models/vampire.fbx")->anim);
+							//animComp->animator.updateAnimation(1.2f);
+							//auto ourShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
+
+							//// don't forget to enable shader before setting uniforms
+							//ourShader->use();
+							//auto transforms = animComp->animator.getFinalBoneMatrices();
+							//for (int i = 0; i < transforms.size(); ++i) {
+							//	ourShader->setMat4(("finalBonesMatrices[" + std::to_string(i) + "]").c_str(), transforms[i]);
+							//}
 						}
 					}
 				}
@@ -626,7 +641,7 @@ void ComponentsDebug::entitiesDebug() {
 
 			if (auto comp = compManager.getComponent<ModelComponent>(currentEntity); comp && ImGui::TreeNode("Mesh Component")) {
 				auto& modObj = comp->getModel(0);
-
+				
 				static bool drawNormales = false;
 				static bool drawTangent = false;
 				static bool drawBiTangent = false;
@@ -644,30 +659,37 @@ void ComponentsDebug::entitiesDebug() {
 				}
 
 				if (drawNormales || drawTangent || drawBiTangent) {
-					auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
-					xyzLines->use();
-
-					auto model = compManager.getComponent<TransformComponent>(currentEntity)->getTransform();
-					
-					xyzLines->setMat4("PVM", PV * model);
-
+				
+					auto transform = compManager.getComponent<TransformComponent>(currentEntity)->getTransform();
+					auto viewDir = compManager.getComponent<TransformComponent>(cam)->getForward();
+					auto camPos = compManager.getComponent<TransformComponent>(cam)->getPos(true);
 					//vertex normals
 					if (vertexNormals) {
 						for (auto& mesh : modObj.mMeshHandles) {
 							for (int i = 0; i < mesh.mData->mVertices.size(); i++) {
 								auto pos = mesh.mData->mVertices[i].mPosition;
+								pos = Math::Vec3(transform * Math::Vec4(pos, 1.f));
+								if (distance(camPos, pos) < 25.f) {
+									if (drawNormales) {
+										//if (dot(viewDir, mesh.mData->mVertices[i].mNormal) < 0.f) {
+											auto posEnd = pos + mesh.mData->mVertices[i].mNormal * 1.5f;
+											RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
 
-								if (drawNormales) {
-									auto posEnd = pos + mesh.mData->mVertices[i].mNormal * 5.f;
-									RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
-								}
-								if (drawTangent) {
-									auto posEnd = pos + mesh.mData->mVertices[i].mTangent * 5.f;
-									RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
-								}
-								if (drawBiTangent) {
-									auto posEnd = pos + mesh.mData->mVertices[i].mBiTangent * 5.f;
-									RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
+										//}
+
+									}
+									if (drawTangent) {
+										//if (dot(viewDir, mesh.mData->mVertices[i].mTangent) < 0.f) {
+											auto posEnd = pos + mesh.mData->mVertices[i].mTangent * 1.5f;
+											RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 1.f, 0.f, 1.f));
+										//}
+									}
+									if (drawBiTangent) {
+										//if (dot(viewDir, mesh.mData->mVertices[i].mBiTangent) < 0.f) {
+											auto posEnd = pos + mesh.mData->mVertices[i].mBiTangent * 1.5f;
+											RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 0.f, 1.f, 1.f));
+										//}
+									}
 								}
 
 							}
@@ -753,6 +775,41 @@ void ComponentsDebug::entitiesDebug() {
 				}
 			}
 
+			if (auto comp = compManager.getComponent<ComponentsModule::AnimationComponent>(currentEntity)) {
+				if (ImGui::TreeNode("Animation Component")) {
+					if (ImGui::Button("update from anim")) {
+						auto matrices = comp->animator.getFinalBoneMatrices();
+						for (auto i = 0; i < 5; i++) {
+							comp->transforms[i] = matrices[i];
+						}
+					}
+					auto changeMat4 = [](Math::Mat4& mat, int i ) {
+						auto changeVec4 = [i](Math::Vec4& vec, int j) {
+							float a[] = { vec.x, vec.y, vec.z, vec.w };
+							if (ImGui::DragFloat4(("m[" + std::to_string(j) + "]" + std::to_string(i)).c_str(), a, 0.1f)) {
+								vec.x = a[0];
+								vec.y = a[1];
+								vec.z = a[2];
+								vec.w = a[3];
+							}
+						};
+						changeVec4(mat[0], 0);
+						changeVec4(mat[1], 1);
+						changeVec4(mat[2], 2);
+						changeVec4(mat[3], 3);
+					};
+
+					for (auto i = 0; i < 5; i++) {
+						ImGui::Separator();
+
+						changeMat4(comp->transforms[i], i);
+					}
+
+					
+
+					ImGui::TreePop();
+				}
+			}
 
 			/*auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
 			xyzLines->use();
@@ -917,7 +974,11 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* 
 		model->normalizeModel();
 		component->init(model);
 	}
-
+	if (ImGui::Button("recalculate normals smooth")) {
+		auto model = AssetsModule::ModelLoader::instance()->load(component->mPath);
+		model->normalizeModel(true);
+		component->init(model);
+	}
 	auto& modelobj = component->getModel(0);
 	if (ImGui::Button("update bind")) {
 		if (auto model = AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>(component->mPath)) {
@@ -936,13 +997,19 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* 
 			static std::string diffusePath = "";
 			ImGui::InputText("diffusePath", &diffusePath);
 			if (ImGui::Button("load##diffuse")) {
-				//lod.mMaterial->mDiffuse.mTexture = AssetsModule::TextureHandler::instance()->loadTexture(diffusePath);
+				lod.mMaterial->mDiffuse.mTexture = AssetsModule::TextureHandler::instance()->loadTexture(diffusePath);
 			}
 
 			static std::string normalPath = "";
 			ImGui::InputText("normalPath", &normalPath);
 			if (ImGui::Button("load##normalPath")) {
-				//lod.mMaterial->mNormal.mTexture = AssetsModule::TextureHandler::instance()->loadTexture(normalPath);
+				lod.mMaterial->mNormal.mTexture = AssetsModule::TextureHandler::instance()->loadTexture(normalPath);
+			}
+
+			static std::string specularPath = "";
+			ImGui::InputText("specularPath", &specularPath);
+			if (ImGui::Button("load##specularPath")) {
+				lod.mMaterial->mSpecular.mTexture = AssetsModule::TextureHandler::instance()->loadTexture(specularPath);
 			}
 
 			ImGui::Text("diffuse:");

@@ -83,7 +83,7 @@ namespace ecss {
 		float getTickDt() const { return mTickDt; }
 	private:
 		SystemsGraph mRenderRoot;
-		size_t mTickRate = 64;
+		size_t mTickRate = 32;
 		float mTickDt = 0.f;
 		std::vector<System*> mSystemsMap;
 		std::vector<System*> mTickSystems;

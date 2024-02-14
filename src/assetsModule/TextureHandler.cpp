@@ -24,7 +24,7 @@ void TextureHandler::bindTexture(unsigned slot, unsigned type, unsigned id) {
 	glBindTexture(type, id);
 }
 
-Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
+Texture* TextureHandler::loadTexture(const std::string& path, bool flip, unsigned type, unsigned format) {
 	auto texture = AssetsManager::instance()->getAsset<Texture>(path);
 	if (texture) {
 		return texture;
@@ -54,12 +54,12 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+		glTexImage2D(GL_TEXTURE_2D, 0, type, texWidth, texHeight, 0, format, GL_UNSIGNED_BYTE, data);
 
 		stbi_image_free(data);
 	}
 	else {
-		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([id = texture->assetId, data, texWidth, texHeight]()mutable {
+		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([id = texture->assetId, data, texWidth, texHeight, type, format]()mutable {
 			unsigned texID;
 
 			glGenTextures(1, &texID);
@@ -71,7 +71,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip) {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+			glTexImage2D(GL_TEXTURE_2D, 0, type, texWidth, texHeight, 0, format, GL_UNSIGNED_BYTE, data);
 
 			stbi_image_free(data);
 

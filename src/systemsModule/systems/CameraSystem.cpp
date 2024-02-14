@@ -15,8 +15,8 @@ namespace SFE::SystemsModule {
 		mDefaultCamera = ECSHandler::registry().takeEntity();
 
 		auto transform = ECSHandler::registry().addComponent<TransformComponent>(mDefaultCamera, mDefaultCamera.getID());
-		transform->setPos({ -837.f, 472.f, -40.f });
-		transform->setRotate({ -20.5f, -94.f, 0.0f });
+		transform->setPos({ 0.f, 200.f, 400.f });
+		transform->setRotate({ -20.f, 0.f, 0.0f });
 		ECSHandler::registry().addComponent<CameraComponent>(mDefaultCamera, mDefaultCamera.getID(), 45.f, aspect, RenderModule::Renderer::nearDistance, RenderModule::Renderer::drawDistance);
 		//ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(transform->getViewMatrix());
 		initKeyEvents();

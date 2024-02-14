@@ -201,8 +201,12 @@ void main() {
     vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
     const float Specular = texture(gAlbedoSpec, TexCoords).a;
     const float AmbientOcclusion = texture(ssao, TexCoords).r;
-    
+
     const vec3 viewDir  = normalize(viewPos - FragPos);
+    // vec3 reflectDir = reflect(-cascadedShadow.direction, Normal); 
+    // float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    // vec3 specular = 0.5 * spec * cascadedShadow.color;  
+
     vec3 lighting = vec3(Diffuse * ambientColor);
     lighting += calculateLighting(Normal, cascadedShadow.direction, viewDir, Diffuse, cascadedShadow.color, Specular) * 0.5f; 
     

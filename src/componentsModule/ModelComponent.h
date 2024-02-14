@@ -5,6 +5,7 @@
 #include <json/value.h>
 
 #include "ComponentBase.h"
+#include "assetsModule/modelModule/Animation.h"
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/modelModule/Model.h"
 #include "ecss/Types.h"
@@ -76,6 +77,15 @@ namespace SFE::ComponentsModule {
 		void addMeshData(std::vector<AssetsModule::ModelObj>* meshData);
 
 		std::vector<AssetsModule::ModelObj>* mModel = nullptr;
+	};
+
+	struct AnimationComponent {
+		AnimationComponent() {
+			transforms.resize(10, Math::Mat4{1.f});
+		}
+
+		AssetsModule::Animator animator;
+		std::vector<Math::Mat4> transforms;
 	};
 }
 

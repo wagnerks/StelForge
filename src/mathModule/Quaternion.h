@@ -205,4 +205,44 @@ namespace SFE::Math {
 			normalize();
 		}
 	};
+	template <typename T>
+	inline Quaternion<T> normalize(const Quaternion<T>& quat) {
+		Quaternion<T> res = quat;
+		T mag = res.magnitude();
+		if (mag > 0.0) {
+			res.x /= mag;
+			res.y /= mag;
+			res.z /= mag;
+			res.w /= mag;
+		}
+
+		return res;
+	}
+	template <typename T, typename T1>
+	inline Quaternion<T> slerp(const Quaternion<T>& q0, const Quaternion<T1>& q1, T inFraction) {
+		auto sign_scale1 = 1.0f;
+		auto cos_omega = std::max(-1.0f, std::min(1.0f, q0.w * q1.w + q0.x * q1.x + q0.y * q1.y + q0.z * q1.z));//dot product
+
+		if (cos_omega < 0.0f) {
+			cos_omega = -cos_omega;
+			sign_scale1 = -sign_scale1;
+		}
+
+		float scale0, scale1;
+		if (1.0f - cos_omega > 0.0001f) {
+			float omega = acos(cos_omega);
+			float sin_omega = sin(omega);
+			scale0 = sin((1.0f - inFraction) * omega) / sin_omega;
+			scale1 = sign_scale1 * sin(inFraction * omega) / sin_omega;
+		}
+		else {
+			scale0 = 1.0f - inFraction;
+			scale1 = sign_scale1 * inFraction;
+		}
+
+		auto vec = Vec4(scale0) * Vec4 { q0.x, q0.y, q0.z, q0.w } + Vec4(scale1) * Vec4 { q1.x, q1.y, q1.z, q1.w };
+		auto res = Quaternion<T>(vec.w, vec.x, vec.y, vec.z);
+		res.normalize();
+		return res;
+	}
 }

@@ -6,8 +6,13 @@
 
 #include "Asset.h"
 #include "core/Singleton.h"
+#include "glad/glad.h"
 
 namespace AssetsModule {
+
+	enum class eTextureChannels {
+		
+	};
 
 	enum class eTextureType {
 		DEFAULT,
@@ -39,7 +44,7 @@ namespace AssetsModule {
 		unsigned getCurrentTexture(unsigned slot) { return mBindedTextures[slot]; }
 		Texture mDefaultTex;
 
-		Texture* loadTexture(const std::string& path, bool flip = false);
+		Texture* loadTexture(const std::string& path, bool flip = false, unsigned type = GL_RGBA8, unsigned format = GL_RGBA);
 		Texture* loadCubemapTexture(const std::string& path, bool flip = false);
 	private:
 		std::unordered_map<unsigned, unsigned> mBindedTextures;

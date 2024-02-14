@@ -182,7 +182,7 @@ namespace SFE::RenderModule::RenderPasses {
 
 				const auto& transformMatrix = trans->getTransform();
 				for (auto& mesh : mod->getModelLowestDetails().mMeshHandles) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, false);
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, {}, false);
 				}
 			}
 			batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(offset.first)->getPos(true));

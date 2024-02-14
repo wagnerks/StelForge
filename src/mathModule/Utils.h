@@ -40,6 +40,11 @@ namespace SFE::Math {
 		return m[3] = m[0] * v[0] + m[1] * v[1] + m[2] * v[2] + m[3], m;
 	}
 
+	template<typename T>
+	inline T mix(const T& x, const T& y, double t) {
+		return x * (1 - t) + y * t;
+	}
+
 	template<typename T, typename T1>
 	constexpr inline Matrix<T, 4, 4> scale(Matrix<T, 4, 4> m, Vector<T1, 3> const& v) {
 		return m[0] *= v[0], m[1] *= v[1], m[2] *= v[2], m;

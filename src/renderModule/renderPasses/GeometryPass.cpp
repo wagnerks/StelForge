@@ -60,24 +60,29 @@ void GeometryPass::prepare() {
 		std::ranges::sort(entities);
 
 		{
+			std::vector<Math::Mat4> bones;
 			auto& batcher = curPassData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
-			for (auto [ent, transform, modelComp] : ECSHandler::registry().getComponentsArray<TransformComponent, ModelComponent>(entities)) {
+			for (auto [ent, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>(entities)) {
 				if (!modelComp) {
 					continue;
 				}
-
-				for (auto& mesh : modelComp->getModel().mMeshHandles) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), false);
+				if (animComp) {
+					bones = animComp->animator.getFinalBoneMatrices();
 				}
+				for (auto& mesh : modelComp->getModel().mMeshHandles) {
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), bones, false);
+				}
+				bones.clear();
 			}
 			batcher.sort(camPos);
 		}
 
 		{
+			std::vector<Math::Mat4> bones;
 			auto& outlineBatcher = outlineData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
-			for (const auto& [entity, outline, transform, modelComp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent>()) {
+			for (const auto& [entity, outline, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>()) {
 				if (!modelComp || !transform) {
 					continue;
 				}
@@ -85,10 +90,13 @@ void GeometryPass::prepare() {
 				if (std::find(entities.begin(), entities.end(), entity) == entities.end()) {
 					continue;
 				}
-				
-				for (auto& mesh : modelComp->getModel().mMeshHandles) {
-					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), false);
+				if (animComp) {
+					bones = animComp->animator.getFinalBoneMatrices();
 				}
+				for (auto& mesh : modelComp->getModel().mMeshHandles) {
+					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), bones, false);
+				}
+				bones.clear();
 			}
 
 			outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
@@ -248,8 +256,13 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 		shaderGeometryPass->use();
 		shaderGeometryPass->setInt("texture_diffuse1", 0);
 		shaderGeometryPass->setInt("normalMap", 1);
+		shaderGeometryPass->setInt("texture_specular1", 2);
 		shaderGeometryPass->setBool("outline", false);
-
+	/*	for (auto i = 0; i < 100; i++) {
+			shaderGeometryPass->setMat4(("finalBonesMatrices[" + std::to_string(i) + "]").c_str(), Math::Mat4{1.f});
+		}
+		shaderGeometryPass->setMat4(("finalBonesMatrices[" + std::to_string(0) + "]").c_str(), Math::Mat4{{1.f,0.f,0.f, 0.f}, { 0.f,0.f,1.f, 0.f }, { 0.f,-1.f,0.f, 0.f }, {100.f,100.f,100.f,1.f}});
+		shaderGeometryPass->setMat4(("finalBonesMatrices[" + std::to_string(1) + "]").c_str(), Math::Mat4{0.f});*/
 		curPassData->getBatcher().flushAll(true);
 	}
 

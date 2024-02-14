@@ -24,7 +24,7 @@ void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
 Batcher::Batcher() {
 }
 
-void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& textures, const SFE::Math::Mat4& transform, bool transparentForShadow) {
+void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& textures, const SFE::Math::Mat4& transform, const std::vector<SFE::Math::Mat4>& bonesTransforms, bool transparentForShadow) {
 	auto it = std::find_if(drawList.rbegin(), drawList.rend(), [transparentForShadow, VAO, maxDrawSize = maxDrawSize](const DrawObject& obj) {
 		return obj == VAO && obj.transforms.size() < maxDrawSize && obj.transparentForShadow == transparentForShadow;
 	});
@@ -37,9 +37,11 @@ void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const
 		drawList.back().material = textures;
 		drawList.back().transforms.emplace_back(transform);
 		drawList.back().transparentForShadow = transparentForShadow;
+		drawList.back().bones.emplace_back(bonesTransforms);
 	}
 	else {
 		it->transforms.emplace_back(transform);
+		it->bones.emplace_back(bonesTransforms);
 	}
 }
 
@@ -63,11 +65,14 @@ void Batcher::flushAll(bool clear) {
 	for (auto& drawObjects : drawList) {
 		glBindVertexArray(drawObjects.VAO);
 
-		glGenBuffers(1, &drawObjects.transformsBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawObjects.transformsBuffer);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, drawObjects.transformsBuffer);
+		glGenBuffers(2, drawObjects.batcherBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawObjects.batcherBuffer[0]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, drawObjects.batcherBuffer[0]);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(SFE::Math::Mat4) * drawObjects.transforms.size(), drawObjects.transforms.data(), GL_DYNAMIC_DRAW);
-
+		
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawObjects.batcherBuffer[1]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, drawObjects.batcherBuffer[1]);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(BonesData) * drawObjects.bones.size(), drawObjects.bones.data(), GL_DYNAMIC_DRAW);
 
 		if (drawObjects.material.mDiffuse.mTexture->isValid()) {
 			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture->mId);
@@ -83,6 +88,13 @@ void Batcher::flushAll(bool clear) {
 			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultNormal);
 		}
 
+		if (drawObjects.material.mSpecular.mTexture->isValid()) {
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, drawObjects.material.mSpecular.mTexture->mId);
+		}
+		else {
+			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, defaultTex);
+		}
+
 		if (drawObjects.indicesCount) {
 			SFE::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
 		}
@@ -90,7 +102,7 @@ void Batcher::flushAll(bool clear) {
 			SFE::RenderModule::Renderer::drawArraysInstancing(GL_TRIANGLES, static_cast<int>(drawObjects.verticesCount), static_cast<int>(drawObjects.transforms.size()));
 		}
 
-		glDeleteBuffers(1, &drawObjects.transformsBuffer);
+		glDeleteBuffers(2, drawObjects.batcherBuffer);
 	}
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	glBindVertexArray(0);

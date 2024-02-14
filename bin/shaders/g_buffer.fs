@@ -42,7 +42,8 @@ void main()
     gAlbedoSpec.rgb = texture(texture_diffuse1, TexCoords).rgb;
 
     // store specular intensity in gAlbedoSpec's alpha component
-    gAlbedoSpec.a = texture(texture_specular1, TexCoords).r;
+    vec4 specular = texture(texture_specular1, TexCoords);
+    gAlbedoSpec.a = (specular.r + specular.g + specular.b) / 3.0;
 
     //gl_FragDepth = gl_FragCoord.z / gl_FragCoord.w; 
     FragColor = vec4(1.0);

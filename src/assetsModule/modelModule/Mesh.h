@@ -10,12 +10,19 @@
 
 
 namespace AssetsModule {
+#define MAX_BONE_INFLUENCE 4
+
 	struct Vertex {
 		SFE::Math::Vec3 mPosition;
 		SFE::Math::Vec3 mNormal;
 		SFE::Math::Vec2 mTexCoords;
 		SFE::Math::Vec3 mTangent;
 		SFE::Math::Vec3 mBiTangent;
+
+		//bone indexes which will influence this vertex
+		int mBoneIDs[MAX_BONE_INFLUENCE];
+		//weights from each bone
+		float mWeights[MAX_BONE_INFLUENCE];
 	};
 
 	struct MaterialTexture {
@@ -132,7 +139,7 @@ namespace AssetsModule {
 			mesh.handles.push_back(this);
 		}
 
-		const Material* mMaterial = nullptr;
+		Material* mMaterial = nullptr;
 		const MeshData* mData = nullptr;
 		const SFE::FrustumModule::AABB* mBounds = nullptr;
 		Mesh* parentMesh;

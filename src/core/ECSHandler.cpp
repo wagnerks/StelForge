@@ -15,6 +15,7 @@
 #include "systemsModule/systems/PhysicsSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/systems/ShaderSystem.h"
+#include "systemsModule/systems/SkeletalAnimationSystem.h"
 #include "systemsModule/systems/TransformSystem.h"
 #include "systemsModule/systems/WorldTimeSystem.h"
 
@@ -27,6 +28,7 @@ void ECSHandler::initSystems() {
 	mSystemManager.createSystem<SFE::SystemsModule::AABBSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::ChunksSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::WorldTimeSystem>();
+	mSystemManager.createSystem<SFE::SystemsModule::SkeletalAnimationSystem>();
 
 	mSystemManager.createSystem<SFE::SystemsModule::CameraSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::RenderSystem>(SFE::RenderModule::Renderer::instance());
@@ -41,7 +43,7 @@ void ECSHandler::initSystems() {
 	mSystemManager.setUpdateInterval<SFE::SystemsModule::ShaderSystem>(1 / 60.f);
 
 	mSystemManager.addTickSystems<SFE::SystemsModule::Physics, SFE::SystemsModule::ActionSystem, SFE::SystemsModule::WorldTimeSystem>();
-	mSystemManager.addRootSystems<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::RenderSystem, SFE::SystemsModule::ShaderSystem>();
+	mSystemManager.addRootSystems<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::SkeletalAnimationSystem, SFE::SystemsModule::RenderSystem, SFE::SystemsModule::ShaderSystem>();
 
 	mSystemManager.setSystemDependencies<SFE::SystemsModule::TransformSystem, SFE::SystemsModule::AABBSystem>();
 	mSystemManager.setSystemDependencies<SFE::SystemsModule::AABBSystem, SFE::SystemsModule::OcTreeSystem>();

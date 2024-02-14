@@ -88,7 +88,11 @@ namespace SFE::SystemsModule {
 								auto octreeComp = ECSHandler::registry().getComponent<OcTreeComponent>(obj.data.getID());
 								assert(octreeComp);
 								if (!octreeComp->mParentOcTrees.empty()) {
-									octreeComp->mParentOcTrees.erase(std::find(octreeComp->mParentOcTrees.begin(), octreeComp->mParentOcTrees.end(), octree.mPos));
+									auto it = std::find(octreeComp->mParentOcTrees.begin(), octreeComp->mParentOcTrees.end(), octree.mPos);
+									if (it != octreeComp->mParentOcTrees.end()) {
+										octreeComp->mParentOcTrees.erase(it);
+									}
+									
 								}
 								
 								if (octreeComp->mParentOcTrees.empty()) {
