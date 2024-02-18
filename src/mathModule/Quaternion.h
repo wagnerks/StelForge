@@ -69,6 +69,27 @@ namespace SFE::Math {
 			return result;
 		}
 
+		Vector<T,3> getAxis() const {
+			auto normalized = normalize(*this);
+			Vector<T, 3> axis;
+			//// Compute the angle of rotation
+			//angle = 2 * std::acos(normalized.w);
+
+			float sinAngle = std::sqrt(1 - normalized.w * normalized.w);
+			if (std::fabs(sinAngle) < 0.001) {
+				axis.x = normalized.x;
+				axis.y = normalized.y;
+				axis.z = normalized.z;
+			}
+			else {
+				axis.x = normalized.x / sinAngle;
+				axis.y = normalized.y / sinAngle;
+				axis.z = normalized.z / sinAngle;
+			}
+
+			return axis;
+		}
+
 		void eulerToQuaternion(const Vector<T,3>& eulerDegrees) {
 			eulerToQuaternion(Math::radians(eulerDegrees.x), Math::radians(eulerDegrees.y), Math::radians(eulerDegrees.z));
 		}
@@ -113,6 +134,14 @@ namespace SFE::Math {
 				z /= mag;
 				w /= mag;
 			}
+		}
+
+		void changeAxis(const Math::Vector<T,3>& newAxis) {
+			x = newAxis.x;
+			y = newAxis.y;
+			z = newAxis.z;
+
+			normalize();
 		}
 
 		void matrixToQuaternion(const Matrix<T, 3, 3>& matrix) {
@@ -166,6 +195,19 @@ namespace SFE::Math {
 		constexpr Quaternion(T w, T x, T y, T z) : w{ w }, x{ x }, y{ y }, z{ z } {}
 
 		constexpr Quaternion(T w, const Vector<T,3>& vec ) : w{ w }, x{ vec.x }, y{ vec.y }, z{ vec.z } {}
+
+		constexpr Quaternion(const Vector<T, 3>& direction, const Vector<T, 3>& axis) {
+			auto quaternionAxis = cross(axis, direction);
+			quaternionAxis.normalize();
+
+			auto angle = acos(dot(axis, direction)) * 0.5;
+			auto s = sin(angle);
+
+			w = cos(angle);
+			x = quaternionAxis.x * s;
+			y = quaternionAxis.y * s;
+			z = quaternionAxis.z * s;
+		}
 
 	private:
 		void matrixToQuaternionImpl(const Matrix<T,3,3>& matrix) {

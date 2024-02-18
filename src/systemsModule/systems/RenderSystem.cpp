@@ -85,6 +85,7 @@ namespace SFE::SystemsModule {
 		mRenderData.cameraProjection = mRenderData.nextCameraProjection;
 
 		mRenderData.mCameraPos = mRenderData.mNextCameraPos;
+		mRenderData.mViewDir = mRenderData.mNextViewDir;
 		mRenderData.mCamFrustum = mRenderData.mNextCamFrustum;
 
 		glBindBuffer(GL_UNIFORM_BUFFER, cameraMatricesUBO);
@@ -101,6 +102,7 @@ namespace SFE::SystemsModule {
 		mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
 
 		mRenderData.mNextCameraPos = transformComp->getPos(true);
+		mRenderData.mNextViewDir = normalize(transformComp->getForward());
 		mRenderData.mNextCamFrustum = cameraComp->getFrustum();
 
 		for (const auto renderPass : mRenderPasses) {

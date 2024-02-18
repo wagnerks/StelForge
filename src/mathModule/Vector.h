@@ -72,7 +72,7 @@ namespace SFE::Math {
 		};
 
 		template<typename OtherT>
-		constexpr Vector(OtherT x, OtherT y) : x(x), y(y){}
+		constexpr Vector(OtherT x, OtherT y) : x(x), y(y) {}
 
 		template<typename OtherT>
 		constexpr Vector(OtherT x) : x(x), y(x){}

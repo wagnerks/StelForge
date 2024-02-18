@@ -7,8 +7,7 @@
 #include "core/Singleton.h"
 #include "assetsModule/AssetsManager.h"
 #include "assetsModule/modelModule/Model.h"
-
-
+#include "Animation.h"
 struct aiMaterial;
 struct aiMesh;
 
@@ -28,6 +27,8 @@ namespace AssetsModule {
 	class ModelLoader : public SFE::Singleton<ModelLoader> {
 		friend Singleton;
 	public:
+		static SFE::Math::Mat4 assimpMatToMat4(const aiMatrix4x4& from);
+
 		AssetsModule::Model* load(const std::string& path);
 		void releaseModel(const std::string& path);
 		std::map<std::string, std::condition_variable> loading;
@@ -37,9 +38,10 @@ namespace AssetsModule {
 		~ModelLoader() override;
 		void init() override;
 
-		static AssetsModule::MeshNode loadModel(const std::string& path);
-		static void processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
-		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel);
+		static std::pair<MeshNode, Armature> loadModel(const aiScene* scene, const std::string& path);
+		static void processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel, Armature& armature);
+		static void extractBones(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature);
+		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* meshNode, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel, Armature& armature);
 		static std::vector<AssetsModule::MaterialTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureHandler* loader, const std::string& directory);
 	};
 }

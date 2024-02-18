@@ -1,13 +1,28 @@
 ﻿#include "Model.h"
 
 namespace AssetsModule {
-	Model::Model(MeshNode model, std::string_view modelPath) {
+	Model::Model(MeshNode model, std::string_view modelPath, Armature armature) : arma(std::move(armature)){
 		mMeshTree = std::move(model);
 		mModelPath = modelPath;
 		calculateLODs();
 		getAllLODs();
-	}
 
+		if (!arma.bones.empty()) {
+			defaultBoneMatrices.resize(arma.bones.size(), arma.transform);
+
+			/*std::function<void(Bone*, SFE::Math::Mat4, std::vector<Bone>&)> calculateBoneTransform;
+			calculateBoneTransform = [this, &calculateBoneTransform](Bone* node, SFE::Math::Mat4 parentTransform, std::vector<Bone>& bones) {
+				parentTransform *= node->transform;
+				defaultBoneMatrices[node->id] = parentTransform;
+
+				for (const auto child : node->childrenBones) {
+					calculateBoneTransform(&bones[child], parentTransform, bones);
+				}
+			};
+
+			calculateBoneTransform(&arma.getBones()[0], arma.transform, arma.getBones());*/
+		}
+	}
 	std::vector<ModelObj>* Model::getAllLODs() {
 		if (lods.empty()) {
 			for (auto lod = 0; lod < mLODs; lod++) {
@@ -27,23 +42,14 @@ namespace AssetsModule {
 	}
 
 	void Model::toModelObjHelper(MeshNode* root, int lod, ModelObj& res) {
-		auto curLod = std::min(lod, static_cast<int>(root->mMeshes.size() - 1));
+		auto curLod = std::min(lod, static_cast<int>(root->mLods.size() - 1));
 		if (curLod >= 0) {
-			for (auto& mesh : root->mMeshes[curLod]) {
+			for (auto& mesh : root->mLods[curLod]) {
 				res.mMeshHandles.emplace_back(mesh);
 			}
 		}
 
-		for (auto node : root->getAllNodes()) {
-			if (node->armature.getBones().size() > mBones.size()) {
-				mBones.clear();
-				auto i = 0;
-				for (auto& bone : node->armature.getBones()) {
-					mBones[bone.name] = BoneInfo{i, bone.offset};
-					i++;
-				}
-			}
-		}
+
 
 		for (auto node : root->getElements()) {
 			toModelObjHelper(node, lod, res);
@@ -104,7 +110,7 @@ namespace AssetsModule {
 		};		
 
 		for (auto node : mMeshTree.getAllNodes()) {
-			for (auto& lods : node->mMeshes) {
+			for (auto& lods : node->mLods) {
 				for (auto& mesh : lods) {
 					for (int i = 2; i < mesh.mData.mIndices.size(); i += 3) {
 						normalizeTriangle(mesh, mesh.mData.mIndices[i - 2], mesh.mData.mIndices[i - 1], mesh.mData.mIndices[i]);
@@ -192,7 +198,7 @@ namespace AssetsModule {
 
 	void Model::bindMeshes() {
 		for (auto node : mMeshTree.getAllNodes()) {
-			for (auto& lods : node->mMeshes) {
+			for (auto& lods : node->mLods) {
 				for (auto& mesh : lods) {
 					mesh.unbindMesh();
 					mesh.bindMesh();
@@ -206,7 +212,7 @@ namespace AssetsModule {
 
 	void Model::calculateLODs() {
 		for (auto node : mMeshTree.getAllNodes()) {
-			mLODs = std::max(static_cast<int>(node->mMeshes.size()), mLODs);
+			mLODs = std::max(static_cast<int>(node->mLods.size()), mLODs);
 		}
 	}
 }

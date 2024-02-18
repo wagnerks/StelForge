@@ -91,8 +91,9 @@ void Mesh::bindMesh() {
 
 		auto minAABB = SFE::Math::Vec3(std::numeric_limits<float>::max());
 		auto maxAABB = SFE::Math::Vec3(std::numeric_limits<float>::min());
-
-		for (auto& vertex : mData.mVertices) {
+		
+		for (auto vertex : mData.mVertices) {
+			vertex.mPosition = transform * SFE::Math::Vec4(vertex.mPosition, 1.f);
 			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
 			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
 			minAABB.z = std::min(minAABB.z, vertex.mPosition.z);

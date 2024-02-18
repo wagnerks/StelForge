@@ -98,7 +98,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T, size_t Rows>
-	inline T dot(const Vector<T, Rows>& a, const Vector<T, Rows>& b) {
+	constexpr inline T dot(const Vector<T, Rows>& a, const Vector<T, Rows>& b) {
 		T result = {};
 		for (size_t i = 0; i < Rows; ++i) {
 			result += a[i] * b[i];
@@ -107,7 +107,7 @@ namespace SFE::Math {
 	}
 
 	template<typename T>
-	inline Vector<T, 3> cross(const Vector<T, 3>& A, const Vector<T, 3>& B) {
+	constexpr inline Vector<T, 3> cross(const Vector<T, 3>& A, const Vector<T, 3>& B) {
 		Vector<T, 3> C;
 		C.x = A.y * B.z - A.z * B.y;
 		C.y = A.z * B.x - A.x * B.z;

@@ -73,6 +73,9 @@ namespace SFE::ComponentsModule {
 		void serialize(Json::Value& data) override;
 		void deserialize(const Json::Value& data) override;
 		std::string mPath = "";
+
+		AssetsModule::Armature armature;
+		std::vector<SFE::Math::Mat4> boneMatrices;
 	private:
 		void addMeshData(std::vector<AssetsModule::ModelObj>* meshData);
 
@@ -80,12 +83,17 @@ namespace SFE::ComponentsModule {
 	};
 
 	struct AnimationComponent {
-		AnimationComponent() {
-			transforms.resize(10, Math::Mat4{1.f});
-		}
+		AnimationComponent() = default;
 
-		AssetsModule::Animator animator;
-		std::vector<Math::Mat4> transforms;
+		bool mPlay = true;
+		bool step = false;
+
+		AssetsModule::Animation* mCurrentAnimation = nullptr;
+
+		float mCurrentTime = 0.f;
+
+		bool mLoop = true;
+
 	};
 }
 

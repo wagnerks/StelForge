@@ -19,13 +19,52 @@ namespace SFE::RenderModule {
 		inline static std::vector<std::pair<LineData, std::vector<Math::Vec3>>> renderVertices;
 
 		struct TriangleData {
+			friend bool operator==(const TriangleData& lhs, const TriangleData& rhs) {
+				return lhs.color == rhs.color
+					&& lhs.depthTest == rhs.depthTest
+					&& lhs.blend == rhs.blend
+					&& lhs.cull == rhs.cull;
+			}
+
+			friend bool operator!=(const TriangleData& lhs, const TriangleData& rhs) {
+				return !(lhs == rhs);
+			}
+
 			Math::Vec4 color;
+			bool depthTest = false;
+			bool blend = true;
+			bool cull = false;
+
+		};
+		struct LightVertex {
+			LightVertex() = default;
+			LightVertex(const Math::Vec3& pos) : position(pos) {}
+
+			SFE::Math::Vec3 position;
+			SFE::Math::Vec3 normal;
 		};
 
 		struct Triangle {
-			Math::Vec3 A;
-			Math::Vec3 B;
-			Math::Vec3 C;
+			Triangle() = default;
+			Triangle(const Math::Vec3& a, const Math::Vec3& b, const Math::Vec3& c) : A(a), B(b), C(c) {
+				recalculateNormal();
+			}
+
+			void recalculateNormal() {
+				const auto AB = B.position - A.position;
+				const auto AC = C.position - A.position;
+
+				//Normal of ABC triangle
+				const auto Normal = SFE::Math::normalize(SFE::Math::cross(AB, AC));
+
+				A.normal = Normal;
+				B.normal = Normal;
+				C.normal = Normal;
+			}
+
+			LightVertex A;
+			LightVertex B;
+			LightVertex C;
 		};
 
 		inline static std::vector<std::pair<TriangleData, std::vector<Triangle>>> renderTriangles;
@@ -43,6 +82,8 @@ namespace SFE::RenderModule {
 		static void renderXYZ(float length);
 
 		static void renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, float thickness = 1.f);
+		static void renderBone(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, const Math::Quaternion<float>& cameraRotation, const Math::Quaternion<float>& transform);
+
 		static void renderPolygon();
 
 		

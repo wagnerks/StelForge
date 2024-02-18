@@ -67,7 +67,7 @@ namespace AssetsModule {
 		SFE::FrustumModule::AABB mBounds;
 		Material mMaterial;
 		MeshData mData;
-
+		SFE::Math::Mat4 transform;
 		std::vector<MeshHandle*> handles;
 
 		std::vector<ecss::EntityId> loadingEntities;

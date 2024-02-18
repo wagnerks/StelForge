@@ -4,6 +4,7 @@
 #include "componentsModule/ModelComponent.h"
 #include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
+#include "assetsModule/modelModule/ModelLoader.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
@@ -60,26 +61,21 @@ void GeometryPass::prepare() {
 		std::ranges::sort(entities);
 
 		{
-			std::vector<Math::Mat4> bones;
 			auto& batcher = curPassData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
 			for (auto [ent, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>(entities)) {
 				if (!modelComp) {
 					continue;
 				}
-				if (animComp) {
-					bones = animComp->animator.getFinalBoneMatrices();
-				}
+
 				for (auto& mesh : modelComp->getModel().mMeshHandles) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), bones, false);
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
 				}
-				bones.clear();
 			}
 			batcher.sort(camPos);
 		}
 
 		{
-			std::vector<Math::Mat4> bones;
 			auto& outlineBatcher = outlineData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
 			for (const auto& [entity, outline, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>()) {
@@ -90,13 +86,10 @@ void GeometryPass::prepare() {
 				if (std::find(entities.begin(), entities.end(), entity) == entities.end()) {
 					continue;
 				}
-				if (animComp) {
-					bones = animComp->animator.getFinalBoneMatrices();
-				}
+			
 				for (auto& mesh : modelComp->getModel().mMeshHandles) {
-					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), bones, false);
+					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
 				}
-				bones.clear();
 			}
 
 			outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());

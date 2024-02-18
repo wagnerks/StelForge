@@ -34,7 +34,7 @@ namespace SFE::SystemsModule {
 
 		// If you take larger steps than 1 / 60th of a second you need to do multiple collision steps in order to keep the simulation stable. Do 1 collision step per 1 / 60th of a second (round up).
 		dt *= 0.5f;
-		const int cCollisionSteps = 2 * std::ceil(dt * 60.f);
+		const int cCollisionSteps = 2 * static_cast<int>(std::ceil(dt * 60.f));
 
 		// Step the world
 		physics_system->Update(dt, cCollisionSteps, temp_allocator, job_system);
@@ -52,9 +52,9 @@ namespace SFE::SystemsModule {
 
 			void DrawTriangle(RVec3Arg inV1, RVec3Arg inV2, RVec3Arg inV3, ColorArg inColor, ECastShadow inCastShadow) override {
 				RenderModule::Utils::Triangle triangle;
-				triangle.A = toVec3(inV1);
-				triangle.B = toVec3(inV2);
-				triangle.C = toVec3(inV3);
+				triangle.A.position = toVec3(inV1);
+				triangle.B.position = toVec3(inV2);
+				triangle.C.position = toVec3(inV3);
 				RenderModule::Utils::renderTriangle(triangle, Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
 			};
 

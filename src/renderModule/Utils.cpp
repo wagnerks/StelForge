@@ -11,7 +11,7 @@ using namespace SFE::RenderModule;
 
 std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color, float thickness, uint32_t renderType) {
 	auto it = std::find_if(renderVertices.begin(), renderVertices.end(), [color, thickness, renderType](std::pair<LineData, std::vector<Math::Vec3>>& a) {
-		return a.first.color == color && std::fabs(a.first.thickness - thickness) <= std::numeric_limits<float>::epsilon() && a.first.renderType == renderType;
+		return a.first.color == color && std::fabs(a.first.thickness - thickness) <= std::numeric_limits<float>::epsilon() && a.first.renderType == renderType && renderType != GL_LINE_LOOP;
 	});
 
 	if (it != renderVertices.end()) {
@@ -24,7 +24,7 @@ std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color, f
 
 std::vector<Utils::Triangle>& Utils::getTrianglesArray(const TriangleData& data) {
 	auto it = std::find_if(renderTriangles.begin(), renderTriangles.end(), [&data](std::pair<TriangleData, std::vector<Triangle>>& a) {
-		return a.first.color == data.color;
+		return a.first == data;
 	});
 
 	if (it != renderTriangles.end()) {
@@ -214,6 +214,83 @@ void Utils::renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Mat
 	getVerticesArray(color, thickness, GL_LINES).emplace_back(end);
 }
 
+std::pair<std::vector<Utils::LightVertex>, std::vector<Utils::Triangle>> generateSphere(float radius, int segments) {
+	std::vector<Utils::LightVertex> vertices;
+	std::vector<Utils::Triangle> triangles;
+
+	// Generate vertices
+	for (int i = 0; i <= segments; ++i) {
+		for (int j = 0; j <= segments; ++j) {
+			float theta = static_cast<float>(i) / segments * 2 * SFE::Math::pi<float>(); // Azimuthal angle
+			float phi = static_cast<float>(j) / segments * SFE::Math::pi<float>(); // Polar angle
+
+			float x = radius * std::sin(phi) * std::cos(theta);
+			float y = radius * std::cos(phi);
+			float z = radius * std::sin(phi) * std::sin(theta);
+
+			vertices.emplace_back(SFE::Math::Vec3{ x, y, z });
+		}
+	}
+
+	// Generate triangles
+	for (int i = 0; i < segments; ++i) {
+		for (int j = 0; j < segments; ++j) {
+			int v1 = i * (segments + 1) + j;
+			int v2 = v1 + 1;
+			int v3 = (i + 1) * (segments + 1) + j;
+			int v4 = v3 + 1;
+
+			triangles.push_back({ vertices[v1].position, vertices[v3].position, vertices[v2].position});
+			triangles.push_back({ vertices[v2].position, vertices[v3].position, vertices[v4].position });
+		}
+	}
+
+	return { vertices, triangles };
+}
+
+void Utils::renderBone(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, const Math::Quaternion<float>& cameraRotation, const Math::Quaternion<float>& boneRotation) {
+	static const auto boneScale = scale(Math::Mat4(1.f), Math::Vec3(1.f));
+
+	auto directionVec = end - begin;
+	const auto boneLength = (directionVec).length(); 
+	directionVec = directionVec.normalize();
+	
+	const auto lengthToStart = boneLength / 10.f;
+	const float radius = 0.02f * boneLength;
+	const float boneRad = 0.05f * boneLength;
+
+	auto rotation = boneRotation;
+	rotation.changeAxis({ 0.f,1.f,0.f });
+
+	const auto transform = Math::translate(Math::Mat4(1.f), begin) * Math::Quaternion(directionVec, Math::Vec3(0.f, 1.f, 0.f)).toMat4();
+	const auto rotationMat = rotation.toMat4();
+
+	const auto center = Math::Vec3(0.f, lengthToStart,0.f);
+	auto A = center + Math::Vec3(-boneRad, 0.f, boneRad);
+	auto B = center + Math::Vec3(boneRad, 0.f, boneRad);
+	auto C = center + Math::Vec3(boneRad, 0.f, -boneRad);
+	auto D = center + Math::Vec3(-boneRad, 0.f, -boneRad);
+
+	A = transform * rotationMat * Math::Vec4(A, 1.f);
+	B = transform * rotationMat * Math::Vec4(B, 1.f);
+	C = transform * rotationMat * Math::Vec4(C, 1.f);
+	D = transform * rotationMat * Math::Vec4(D, 1.f);
+	
+	auto& arr = getTrianglesArray({ color, false, false, true });
+	arr.emplace_back( begin, B, A );
+	arr.emplace_back( begin, C, B );
+	arr.emplace_back( begin, D, C );
+	arr.emplace_back( begin, A,D );
+
+	arr.emplace_back( end, A, B );
+	arr.emplace_back( end, D, A );
+	arr.emplace_back( end, C, D );
+	arr.emplace_back( end, B, C);
+
+	renderCircleFilled(begin, cameraRotation, boneScale, radius, color, 32);
+	renderCircleFilled(end, cameraRotation, boneScale, radius, color, 32);
+}
+
 void Utils::renderPolygon() {
 	auto ar = getVerticesArray({ 1.f,1.f,0.f,0.5f }, 2.f, GL_POLYGON);
 
@@ -231,9 +308,9 @@ void Utils::renderTriangle(const Triangle& triangle, const Math::Vec4& color) {
 
 void Utils::renderTriangle(const Triangle& triangle, const Math::Mat4& transform, const Math::Vec4& color) {
 	renderTriangle({
-		transform * Math::Vec4(triangle.A, 1.f),
-		transform * Math::Vec4(triangle.B, 1.f),
-		transform * Math::Vec4(triangle.C, 1.f)
+		transform * Math::Vec4(triangle.A.position, 1.f),
+		transform * Math::Vec4(triangle.B.position, 1.f),
+		transform * Math::Vec4(triangle.C.position, 1.f)
 		}, color);
 }
 
@@ -341,9 +418,9 @@ void Utils::renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math:
 	for (int i = 0; i < sizeof(vertices) / sizeof(Triangle); i++) {
 		auto& tr = vertices[i];
 		// Apply the model and rotation transformations
-		tr.A = transform * Math::Vec4(tr.A, 1.f);
-		tr.B = transform * Math::Vec4(tr.B, 1.f);
-		tr.C = transform * Math::Vec4(tr.C, 1.f);
+		tr.A.position = transform * Math::Vec4(tr.A.position, 1.f);
+		tr.B.position = transform * Math::Vec4(tr.B.position, 1.f);
+		tr.C.position = transform * Math::Vec4(tr.C.position, 1.f);
 		vertArray.emplace_back(tr);
 	}
 }
@@ -403,9 +480,9 @@ void Utils::renderCubeMesh(const Math::Vec3& LTN, const Math::Vec3& RBF, const M
 	for (int i = 0; i < sizeof(vertices) / sizeof(Triangle); i++) {
 		auto& tr = vertices[i];
 		// Apply the model and rotation transformations
-		tr.A = transform * Math::Vec4(tr.A, 1.f);
-		tr.B = transform * Math::Vec4(tr.B, 1.f);
-		tr.C = transform * Math::Vec4(tr.C, 1.f);
+		tr.A.position = transform * Math::Vec4(tr.A.position, 1.f);
+		tr.B.position = transform * Math::Vec4(tr.B.position, 1.f);
+		tr.C.position = transform * Math::Vec4(tr.C.position, 1.f);
 		vertArray.emplace_back(tr);
 	}
 }
@@ -511,14 +588,14 @@ void Utils::renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<flo
 	for (int i = 0; i < numSegments; i++) {
 		Triangle tr;
 		float theta = Math::radians(startAngle + delta * static_cast<float>(i) / static_cast<float>(numSegments));
-		tr.A.x = radius * std::cos(theta);
-		tr.A.y = radius * std::sin(theta);
-		tr.A = transform * Math::Vec4{ tr.A, 1.f};
+		tr.A.position.x = radius * std::cos(theta);
+		tr.A.position.y = radius * std::sin(theta);
+		tr.A.position = transform * Math::Vec4{ tr.A.position, 1.f};
 
 		theta = Math::radians(startAngle + delta * static_cast<float>(i + 1) / static_cast<float>(numSegments));
-		tr.B.x = radius * std::cos(theta);
-		tr.B.y = radius * std::sin(theta);
-		tr.B = transform * Math::Vec4{ tr.B, 1.f};
+		tr.B.position.x = radius * std::cos(theta);
+		tr.B.position.y = radius * std::sin(theta);
+		tr.B.position = transform * Math::Vec4{ tr.B.position, 1.f};
 
 		tr.C = pos;
 
@@ -535,17 +612,17 @@ void Utils::renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& qua
 		Triangle tr;
 
 		float theta = Math::radians(360.f * static_cast<float>(i) / static_cast<float>(numSegments));
-		tr.A.x = radius * std::cos(theta);
-		tr.A.z = radius * std::sin(theta);
-		tr.A = transform * Math::Vec4{ tr.A, 1.f};
+		tr.A.position.x = radius * std::cos(theta);
+		tr.A.position.z = radius * std::sin(theta);
+		tr.A.position = transform * Math::Vec4{ tr.A.position, 1.f};
 
 		theta = Math::radians(360.f * static_cast<float>(i + 1) / static_cast<float>(numSegments));
-		tr.B.x = radius * std::cos(theta);
-		tr.B.z = radius * std::sin(theta);
-		tr.B = transform * Math::Vec4{ tr.B, 1.f};
+		tr.B.position.x = radius * std::cos(theta);
+		tr.B.position.z = radius * std::sin(theta);
+		tr.B.position = transform * Math::Vec4{ tr.B.position, 1.f};
 
-		tr.C = Math::Vec3{0.f};
-		tr.C = transform * Math::Vec4{ tr.C, 1.f};
+		tr.C.position = Math::Vec3{0.f};
+		tr.C.position = transform * Math::Vec4{ tr.C.position, 1.f};
 
 		vertArray.push_back(tr);
 
@@ -553,8 +630,8 @@ void Utils::renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& qua
 		tr2.A = tr.A;
 		tr2.B = tr.B;
 		tr2.C = Math::Vec3{ 0.f };
-		tr2.C.y += height;
-		tr2.C = transform * Math::Vec4{ tr2.C, 1.f};
+		tr2.C.position.y += height;
+		tr2.C.position = transform * Math::Vec4{ tr2.C.position, 1.f};
 
 		vertArray.push_back(tr2);
 	}

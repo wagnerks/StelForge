@@ -29,7 +29,7 @@ void main()
     gPosition.rgb = FragPos;
     gPosition.a = gl_FragCoord.z;
     // also store the per-fragment normals into the gbuffer
-    gNormal.xyz = Normal;
+    //gNormal.xyz = Normal;
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w; //4 byte for depth buffer
     gViewPosition = ViewPos;
 

@@ -12,6 +12,7 @@
 
 #include <thread>
 
+#include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
@@ -87,20 +88,15 @@ void CascadedShadowPass::prepare() {
 		std::ranges::sort(entities);
 
 		{
-			std::vector<Math::Mat4> bones;
 			auto& batcher = curPassData->getBatcher();
 			for (auto [ent, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<ComponentsModule::TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>(entities)) {
 				if (!modelComp) {
 					continue;
 				}
-				if (animComp) {
-					bones = animComp->animator.getFinalBoneMatrices();
-				}
 				const auto& transformMatrix = transform->getTransform();
 				for (const auto& mesh : modelComp->getModelLowestDetails().mMeshHandles) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, bones, false);
+					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, modelComp->boneMatrices, false);
 				}
-				bones.clear();
 			}
 
 			//batcher.sort({100.f,1300.f, 600.f});

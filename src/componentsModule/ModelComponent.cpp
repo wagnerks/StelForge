@@ -90,6 +90,8 @@ void ModelComponent::deserialize(const Json::Value& data) {
 	}
 
 	if (model) {
+		boneMatrices = model->defaultBoneMatrices;
+		armature = model->arma;
 		addMeshData(model->getAllLODs());
 	}
 }

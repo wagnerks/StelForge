@@ -40,7 +40,7 @@ namespace SFE::RenderModule {
         const GlyphInfo& getGlyphData(char c) const {
             if (c >= mGlyphs.size()) {
                 assert(false && "try to draw symbol which is not exists in font");
-                return {};
+                return mGlyphs['?'];
             }
             return mGlyphs[c];
         }
@@ -342,7 +342,7 @@ namespace SFE::RenderModule {
                 curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 
             }
 
-            RenderModule::Renderer::drawArrays(GL_TRIANGLES, (text.size() + 1) * 6);
+            RenderModule::Renderer::drawArrays(GL_TRIANGLES, static_cast<int>(text.size() + 1) * 6);
             glDisable(GL_BLEND);
 
             glBindBuffer(GL_ARRAY_BUFFER, 0);

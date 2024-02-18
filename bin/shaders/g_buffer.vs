@@ -33,33 +33,29 @@ layout(std430, binding = 2) buffer bonesMatrices
 };
 
 void main() {
-    bool noBones = true;
     mat4 BoneTransform = mat4(0.0f);
+    bool withBones = false;
     for(int i = 0 ; i < MAX_BONE_INFLUENCE ; i++) {
         int boneIdx = aBoneIds[i];
         if(boneIdx == -1 || boneIdx >= MAX_BONES){
              continue;
         }
-        noBones = false;
-
+        withBones = true;
         BoneTransform += bones[gl_InstanceID][boneIdx] * aWeights[i];
     }
-
-    mat3 normalMatrix = transpose(inverse(mat3(model[gl_InstanceID])));
-    vec4 worldPos;
-    if (noBones) {
-        worldPos = model[gl_InstanceID] * vec4(aPos.xyz, 1.0);
+    if (!withBones){
+        BoneTransform = mat4(1.f);
     }
-    else {
-        worldPos = model[gl_InstanceID] * BoneTransform * vec4(aPos.xyz, 1.0);
-        normalMatrix *= transpose(inverse(mat3(BoneTransform)));
-    }
+    mat3 normalMatrix = transpose(inverse(mat3(model[gl_InstanceID]))) * transpose(inverse(mat3(BoneTransform)));
+    vec4 newPos = BoneTransform * vec4(aPos.xyz, 1.0);
+    newPos /= newPos.w;
+    vec4 worldPos = model[gl_InstanceID] * vec4(newPos);
 
     ViewPos = vec3(matrices.view * worldPos);
 
     FragPos = worldPos.xyz; 
     TexCoords = aTexCoords;
-
+    
     TBN[0] = normalize(normalMatrix * aTangents);
     TBN[1] = normalize(normalMatrix * aBiTangents);
     TBN[2] = normalize(normalMatrix * aNormal);

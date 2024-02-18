@@ -38,7 +38,9 @@ namespace SFE::SystemsModule {
 		RenderMatrices next;
 
 		Math::Vec3 mCameraPos = {};
+		Math::Vec3 mViewDir = {};
 		Math::Vec3 mNextCameraPos = {};
+		Math::Vec3 mNextViewDir = {};
 
 		ProjectionModule::PerspectiveProjection cameraProjection = {};
 		ProjectionModule::PerspectiveProjection nextCameraProjection =  {};

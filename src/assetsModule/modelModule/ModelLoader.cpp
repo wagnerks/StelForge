@@ -11,6 +11,17 @@
 
 using namespace AssetsModule;
 
+SFE::Math::Mat4 ModelLoader::assimpMatToMat4(const aiMatrix4x4& from) {
+	SFE::Math::Mat4 to;
+
+	to[0][0] = from.a1; to[1][0] = from.a2; to[2][0] = from.a3; to[3][0] = from.a4;
+	to[0][1] = from.b1; to[1][1] = from.b2; to[2][1] = from.b3; to[3][1] = from.b4;
+	to[0][2] = from.c1; to[1][2] = from.c2; to[2][2] = from.c3; to[3][2] = from.c4;
+	to[0][3] = from.d1; to[1][3] = from.d2; to[2][3] = from.d3; to[3][3] = from.d4;
+
+	return to;
+}
+
 AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	auto asset = AssetsManager::instance()->getAsset<Model>(path);
 	if (asset) {
@@ -29,10 +40,26 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	loading[path];
 	mtx.unlock();
 
-	auto model = loadModel(path);
+	Assimp::Importer import;
+	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+		SFE::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
+		return nullptr;
+	}
+	
+	auto model = loadModel(scene, path);
+	auto armature = model.second;
+
+	std::vector<Animation> animations;
+	animations.reserve(scene->mNumAnimations);
+	for (auto i = 0u; i < scene->mNumAnimations; i++) {
+		auto animation = scene->mAnimations[i];
+		animations.emplace_back(animation);
+	}
+
 	mtx.lock();
-	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(model), path);
-	asset->anim = new Animation(path, asset);
+	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(model.first), path, model.second);
+	asset->animations = std::move(animations);
 
 	loading[path].notify_all();
 	loading.erase(path);
@@ -61,77 +88,81 @@ ModelLoader::~ModelLoader() {
 
 void ModelLoader::init() {}
 
-MeshNode ModelLoader::loadModel(const std::string& path) {
-	Assimp::Importer import;
-	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
-
-	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-		SFE::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
-		return {};
-	}
-
+std::pair<MeshNode, Armature> ModelLoader::loadModel(const aiScene* scene, const std::string& path) {
 	auto directory = path.substr(0, path.find_last_of('/'));
 
-	MeshNode rawModel;
-	processNode(scene->mRootNode, scene, TextureHandler::instance(), directory, rawModel);
+	std::pair<MeshNode, Armature> res;
+	//MeshNode rawModel;
+	//Armature modelArmature;
+	processNode(scene->mRootNode, scene, TextureHandler::instance(), directory, res.first, res.second);
 
-	return rawModel;
+	return res;
 }
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureHandler* loader, const std::string& directory, MeshNode& rawModel) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureHandler* loader, const std::string& directory, MeshNode& rawModel, Armature& armature) {
 	auto parent = node->mParent;
-	/*while (parent) {
-		node->mTransformation *= parent->mTransformation;
-		parent = parent->mParent;
-	}*/
-
+	//while (parent) {
+	//	node->mTransformation *= parent->mTransformation;
+	//	parent = parent->mParent;
+	//}
+	
 	for (unsigned int i = 0; i < node->mNumMeshes; i++) {
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		processMesh(mesh, scene, node, loader, directory, rawModel);
+		processMesh(mesh, scene, node, loader, directory, rawModel, armature);
 	}
 
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
-		AssetsModule::MeshNode* child = new AssetsModule::MeshNode();
+		auto child = new AssetsModule::MeshNode();
 		rawModel.addElement(child);
 
-		processNode(node->mChildren[i], scene, loader, directory, *child);
+		processNode(node->mChildren[i], scene, loader, directory, *child, armature);
 	}
 }
 
-void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, AssetsModule::MeshNode& rawModel) {
+void ModelLoader::extractBones(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature) {
+	auto& bones = armature.bones;
+	bones.reserve(mesh->mNumBones);
 
-	for (int boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
-		int boneID = -1;
-		std::string boneName = mesh->mBones[boneIndex]->mName.C_Str();
-		auto& bones = rawModel.armature.getBones();
-		auto it = std::find_if(bones.begin(), bones.end(), [&boneName](const _Bone& bone) {
-			return bone.name == boneName;
-		});
-		if (it == bones.end()) {
-			_Bone bone;
+	std::map<std::string, int> bonesIds;
 
-			auto& from = mesh->mBones[boneIndex]->mOffsetMatrix;
-			auto& to = bone.offset;
-			to[0][0] = from.a1; to[1][0] = from.a2; to[2][0] = from.a3; to[3][0] = from.a4;
-			to[0][1] = from.b1; to[1][1] = from.b2; to[2][1] = from.b3; to[3][1] = from.b4;
-			to[0][2] = from.c1; to[1][2] = from.c2; to[2][2] = from.c3; to[3][2] = from.c4;
-			to[0][3] = from.d1; to[1][3] = from.d2; to[2][3] = from.d3; to[3][3] = from.d4;
-			boneID = bones.size();
+	for (const auto& bone : bones) {
+		bonesIds[bone.name] = bone.id;
+	}
+
+	auto newBonesStart = bones.size();
+
+	for (auto boneIndex = 0u; boneIndex < mesh->mNumBones; ++boneIndex) {
+		uint32_t boneID;
+		const auto meshBone = mesh->mBones[boneIndex];
+		std::string boneName = meshBone->mName.C_Str();
+		auto id = bonesIds.find(boneName);
+		if (id == bonesIds.end()) {
+			boneID = static_cast<uint32_t>(bones.size());
+
+			Bone bone;
+
+			bone.offset = assimpMatToMat4(meshBone->mOffsetMatrix);
 			bone.name = boneName;
+			bone.id = boneID;
 			
 			bones.push_back(bone);
+
+			bonesIds[boneName] = boneID;
 		}
 		else {
-			boneID = std::distance(bones.begin(), it); //rawModel.mBones[boneName].id;
+			boneID = id->second;
 		}
-		assert(boneID != -1);
-		auto weights = mesh->mBones[boneIndex]->mWeights;
-		int numWeights = mesh->mBones[boneIndex]->mNumWeights;
 
-		for (int weightIndex = 0; weightIndex < numWeights; ++weightIndex) {
-			int vertexId = weights[weightIndex].mVertexId;
-			float weight = weights[weightIndex].mWeight;
-			assert(vertexId <= vertices.size());
+		assert(boneID != -1);
+		const auto weights = meshBone->mWeights;
+
+		for (auto weightIndex = 0u; weightIndex < meshBone->mNumWeights; ++weightIndex) {
+			const auto vertexId = weights[weightIndex].mVertexId;
+			const auto weight = weights[weightIndex].mWeight;
+			if (vertexId >= vertices.size()) {
+				assert(vertexId < vertices.size());
+				continue;
+			}
 			
 			for (int i = 0; i < 4; ++i) {
 				if (vertices[vertexId].mBoneIDs[i] < 0) {
@@ -140,39 +171,74 @@ void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, c
 					break;
 				}
 			}
-		
 		}
 	}
+
+	for (auto i = newBonesStart; i < bones.size(); i++){
+		auto& bone = bones[i];
+		if (auto node = scene->mRootNode->FindNode(bone.name.c_str())) {
+			if (node->mParent) {
+				std::string parentName = node->mParent->mName.C_Str();
+				auto id = bonesIds.find(parentName);
+				if(id != bonesIds.end()) {
+					bone.parentBoneIdx = id->second;
+				}
+				else {
+					armature.name = parentName;
+					armature.transform = assimpMatToMat4(node->mParent->mParent->mTransformation * node->mParent->mTransformation);
+				}
+			}
+
+			for (auto i = 0u; i < node->mNumChildren; i++) {
+				if (auto child = node->mChildren[i]) {
+					auto id = bonesIds.find(child->mName.C_Str());
+					if (id != bonesIds.end()) {
+						bone.childrenBones.push_back(id->second);
+					}
+				}
+			}
+		}
+	}
+	
 }
 
-void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel) {
+void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* meshNode, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel, Armature& armature) {
 	auto lodLevel = 0;
-	auto i = parent->mName.length - 4;
-	for (; i > 0; i--) {
-		if (parent->mName.data[i] == '_' && parent->mName.data[i + 1] == 'L' && parent->mName.data[i + 2] == 'O' && parent->mName.data[i + 3] == 'D') {
-			break;
+	{
+		auto i = meshNode->mName.length - 4;
+		for (; i > 0; i--) {
+			if (meshNode->mName.data[i] == '_' && meshNode->mName.data[i + 1] == 'L' && meshNode->mName.data[i + 2] == 'O' && meshNode->mName.data[i + 3] == 'D') {
+				break;
+			}
+		}
+
+		if (i != 0) {
+			auto nameString = std::string(meshNode->mName.C_Str());
+			lodLevel = std::atoi(nameString.substr(i + 4, meshNode->mName.length - i).c_str());
 		}
 	}
 
-	if (i != 0) {
-		auto nameString = std::string(parent->mName.C_Str());
-		lodLevel = std::atoi(nameString.substr(i + 4, parent->mName.length - i).c_str());
+	while (rawModel.mLods.size() <= lodLevel) {
+		rawModel.mLods.emplace_back();
 	}
 
-	while (rawModel.mMeshes.size() <= lodLevel) {
-		rawModel.mMeshes.emplace_back();
-	}
-
-	rawModel.mMeshes[lodLevel].emplace_back();
+	rawModel.mLods[lodLevel].emplace_back();
 	
-	auto& modelMesh = rawModel.mMeshes[lodLevel].back();
-	//modelMesh = AssetsModule::Mesh();
+	auto& modelMesh = rawModel.mLods[lodLevel].back();
 	modelMesh.mData.mVertices.resize(mesh->mNumVertices);
+	{
+		auto parent = meshNode->mParent;
+		modelMesh.transform = assimpMatToMat4(meshNode->mTransformation);
+		while (parent) {
+			modelMesh.transform *= assimpMatToMat4(parent->mTransformation);
+			parent = parent->mParent;
+		}
+	}
 
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
 		auto& vertex = modelMesh.mData.mVertices[i];
 
-		auto newPos = /*parent->mTransformation **/ mesh->mVertices[i];
+		auto newPos =/* meshNode->mTransformation **/ mesh->mVertices[i];
 		// process vertex positions, normals and texture coordinates
 		vertex.mPosition.x = newPos.x;
 		vertex.mPosition.y = newPos.y;
@@ -203,16 +269,14 @@ void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* parent
 
 	// process indices
 	modelMesh.mData.mIndices.reserve(mesh->mNumFaces * 3);
-	for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
-		const aiFace& face = mesh->mFaces[i];
-		for (unsigned int j = 0; j < face.mNumIndices; j++)
+	for (auto i = 0u; i < mesh->mNumFaces; i++) {
+		const auto& face = mesh->mFaces[i];
+		for (auto j = 0u; j < face.mNumIndices; j++) {
 			modelMesh.mData.mIndices.push_back(face.mIndices[j]);
+		}
 	}
-	
-		
-	
 
-	ExtractBoneWeightForVertices(modelMesh.mData.mVertices, mesh, scene, rawModel);
+	extractBones(modelMesh.mData.mVertices, mesh, scene, armature);
 
 	// process material
 	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];

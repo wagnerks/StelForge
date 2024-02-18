@@ -40,8 +40,8 @@ namespace SFE::Math {
 		return m[3] = m[0] * v[0] + m[1] * v[1] + m[2] * v[2] + m[3], m;
 	}
 
-	template<typename T>
-	inline T mix(const T& x, const T& y, double t) {
+	template<typename T, typename FT>
+	inline T mix(const T& x, const T& y, FT t) {
 		return x * (1 - t) + y * t;
 	}
 
