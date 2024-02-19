@@ -62,7 +62,7 @@ namespace SFE::Math {
 		MATRIX_DEFAULT_METHODS();
 
 		constexpr Matrix(){}
-		constexpr Matrix(T s) : m { Vector<T, 4> {s,0,0,0}, Vector<T, 4> {0, s, 0, 0}, Vector<T, 4> {0, 0, s, 0}, Vector<T, 4> {0, 0, 0, 1.f}}{}
+		constexpr Matrix(T s) : m { Vector<T, 4> {s,0,0,0}, Vector<T, 4> {0, s, 0, 0}, Vector<T, 4> {0, 0, s, 0}, Vector<T, 4> {0, 0, 0, s}}{}
 		constexpr Matrix(const Vector<T, 4>& a, const Vector<T, 4>& b, const Vector<T, 4>& c, const Vector<T, 4>& d) : m{ a,b,c,d }{}
 
 		template<typename T1>

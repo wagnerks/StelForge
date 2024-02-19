@@ -41,6 +41,8 @@
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/PhysicsSystem.h"
 
+#include "mathModule/ImGuiHelpers.h"
+
 using namespace SFE::Debug;
 
 void ComponentsDebug::init() {
@@ -74,9 +76,6 @@ void ComponentsDebug::init() {
 				auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 				auto camRay = Math::calcMouseRay(camera, Math::Vec2{static_cast<float>(mPos.x), static_cast<float>(mPos.y)});
 
-				auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-				auto pos = cameraTransform->getPos(true);
-
 				float minDistance = std::numeric_limits<float>::max();
 
 				ECSHandler::getSystem<SystemsModule::OcTreeSystem>()->forEachOctreeInAABB(Math::createFrustum(camera).generateAABB(), [&](SystemsModule::OcTreeSystem::SysOcTree& tree) {
@@ -85,7 +84,7 @@ void ComponentsDebug::init() {
 					});
 
 					for (auto& [collisionPos, object] : res) {
-						auto dist = Math::lengthSquared(collisionPos - pos);
+						auto dist = Math::lengthSquared(collisionPos - camRay.a);
 						if (dist < minDistance) {
 							minDistance = dist;
 							setSelectedId(object.data.getID());
@@ -260,15 +259,16 @@ void ComponentsDebug::init() {
 }
 
 void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID) {
-	auto treeComp = ECSHandler::registry().getComponent<ComponentsModule::TreeComponent>(entity);
-
-	auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
 	std::string strid = "";
 	if (auto debugData = ECSHandler::registry().getComponent<DebugDataComponent>(entity)) {
 		strid = debugData->stringId;
 	}
 
 	auto id = entity.getID();
+	const auto entityString = std::to_string(id) + ": " + std::string(strid);
+
+	auto treeComp = ECSHandler::registry().getComponent<ComponentsModule::TreeComponent>(entity);
+	auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
 	if (!children.empty()) {
 		
 		int flag = ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_OpenOnArrow;
@@ -276,7 +276,7 @@ void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId&
 			flag = flag | ImGuiTreeNodeFlags_Selected;
 		}
 
-		if (ImGui::TreeNodeEx((std::string(strid) + ":" + std::to_string(id)).c_str(), flag)) {
+		if (ImGui::TreeNodeEx(entityString.c_str(), flag)) {
 			if (ImGui::IsItemClicked()) {
 				selectedID = id;
 				setSelectedId(id);
@@ -296,16 +296,80 @@ void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId&
 		}
 	}
 	else {
-		if (ImGui::Selectable((std::string(strid) + ":" + std::to_string(id)).c_str(), selectedID == id)) {
+		if (ImGui::Selectable(entityString.c_str(), selectedID == id)) {
 			selectedID = id;
 			setSelectedId(id);
 		}
 	}
 }
 
+class SeparatedWindow {
+public:
+	static void Begin(const char* name, bool* p_open = NULL, std::function<void()> upContent = nullptr, std::function<void()> midContent = nullptr, std::function<void()> belowContent = nullptr, ImGuiWindowFlags flags = 0) {
+		if (ImGui::Begin(name, p_open, flags)) {
+			if (separatorPos > ImGui::GetWindowHeight() * 0.9f) {
+				separatorPos = ImGui::GetWindowHeight() * 0.9f;
+			}
+			else if (separatorPos < ImGui::GetWindowHeight() * 0.1f) {
+				separatorPos = ImGui::GetWindowHeight() * 0.1f;
+			}
+
+			ImGui::BeginChild((std::string(name) + "##upper").c_str(), {ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, separatorPos});
+			{
+				if (upContent) {
+					upContent();
+				}
+			}
+			ImGui::EndChild();
+
+			if (midContent) {
+				midContent();
+			}
+
+			ImGui::Separator();
+			ImGui::Button("--", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 5.f });
+
+			if (ImGui::IsItemClicked()) {
+				clickedSeparator = true;
+				mousePos = ImGui::GetMousePos();
+			}
+
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+			}
+			ImGui::Separator();
+
+			if (ImGui::GetIO().MouseReleased[0]) {
+				clickedSeparator = false;
+			}
+
+			if (clickedSeparator) {
+				ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+				auto dragDelta = mousePos.y - ImGui::GetMousePos().y;
+				mousePos = ImGui::GetMousePos();
+
+				separatorPos -= dragDelta;
+			}
+
+			ImGui::BeginChild((std::string(name) + "##down").c_str(), {}, false, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse);
+			if (belowContent) {
+				belowContent();
+			}
+			
+			ImGui::EndChild();
+			
+		}
+
+		ImGui::End();
+	}
+private:
+	inline static bool clickedSeparator = false;
+	inline static float separatorPos = 100.f;
+	inline static ImVec2 mousePos = {};
+};
+
 void ComponentsDebug::entitiesDebug() {
 	FUNCTION_BENCHMARK;
-	auto& compManager = ECSHandler::registry();
 	{
 		if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::BeginMenu("Debug")) {
@@ -315,19 +379,22 @@ void ComponentsDebug::entitiesDebug() {
 		}
 		ImGui::EndMainMenuBar();
 	}
+
+	gizmo.update();
+
 	if (!editorOpened) {
 		return;
 	}
 
-	gizmo.update();
+	mCameraId = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 
 	if (mSelectedId != ecss::INVALID_ID) {
 		auto phisComp = ECSHandler::registry().getComponent<PhysicsComponent>(mSelectedId);
 		if (phisComp) {
 			auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 			Math::Vec3 velocity = {};
-			auto curCamera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-			auto transform = ECSHandler::registry().getComponent<TransformComponent>(curCamera);
+
+			auto transform = ECSHandler::registry().getComponent<TransformComponent>(mCameraId);
 			
 			if (pressedKeys[CoreModule::InputKey::KEY_UP]) {
 				velocity += Math::Vec3{10.f, 0.f, 10.f} * transform->getForward() / transform->getGlobalScale();
@@ -349,487 +416,29 @@ void ComponentsDebug::entitiesDebug() {
 		}
 	}
 
-	ImGui::Text("system tick dt: %f", ECSHandler::systemManager().getTickDt());
-	if (ImGui::Button("set current camera")) {
-		if (mSelectedId != ecss::INVALID_ID) {
-			ECSHandler::registry().addComponent<CameraComponent>(mSelectedId, mSelectedId, 45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), RenderModule::Renderer::nearDistance, RenderModule::Renderer::drawDistance);
-			ECSHandler::getSystem<SystemsModule::CameraSystem>()->setCurrentCamera(mSelectedId);
-		}
-	}
-
-	if (ImGui::Begin("Entities Editor", &editorOpened)) {
-
-		static bool clickedSeparator = false;
-		static float separatorPos = 100.f;
-		static ImVec2 mousePos = {};
-
-		static ecss::SectorId prevId = std::numeric_limits<ecss::SectorId>::max();
-		
-
-		if (separatorPos > ImGui::GetWindowHeight() * 0.9f) {
-			separatorPos = ImGui::GetWindowHeight() * 0.9f;
-		}
-		else if (separatorPos < ImGui::GetWindowHeight() * 0.1f) {
-			separatorPos = ImGui::GetWindowHeight() * 0.1f;
-		}
-
-		ImGui::BeginChild("##mEntities", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, separatorPos });
-		{
-			size_t i = 0;
-			auto entities = ECSHandler::registry().getAllEntities();
-			for (auto entityIt : entities) {
-				if (auto treeComp = compManager.getComponent<ComponentsModule::TreeComponent>(entityIt)) {
-					if (treeComp->getParent() != ecss::INVALID_ID) {
-						continue;
-					}
-				}
-
-				drawTree(entityIt, mSelectedId);
-				i++;
-				if (i > 1000) {
-					break;
-				}
-			}
-		}
-		ImGui::EndChild();
-
-		if (prevId != mSelectedId) {
-			if (prevId != std::numeric_limits<ecss::SectorId>::max()) {
-				ECSHandler::registry().removeComponent<OutlineComponent>(prevId);
-			}
-
-			ECSHandler::registry().addComponent<OutlineComponent>(mSelectedId);
-		}
-
-		prevId = mSelectedId;
-
-
-		if (ImGui::Button("add node")) {
-			auto createdEntity = ECSHandler::registry().takeEntity();
-			if (auto entity = compManager.getEntity(mSelectedId)) {
-				compManager.addComponent<ComponentsModule::TreeComponent>(createdEntity.getID(), createdEntity.getID());
-				compManager.addComponent<ComponentsModule::TreeComponent>(mSelectedId, mSelectedId)->addChildEntity(createdEntity.getID());
-			}
-			compManager.addComponent<TransformComponent>(createdEntity, createdEntity.getID());
-		}
-
-		ImGui::SameLine();
-		std::vector<std::string> items {"transform", "light", "ph_box", "ph_sphere", "ph_capsule", "ph_floor", "action", "anim"};
-		static std::string current_item = items.front();
-		if (ImGui::BeginCombo("##comps", "component")) {
-			for (int n = 0; n < items.size(); n++)
-			{
-				bool is_selected = (current_item == items[n]);
-				if (ImGui::Selectable(items[n].c_str(), is_selected)) {
-					current_item = items[n];
-
-					if (current_item == "light") {
-						if (auto entity = compManager.getEntity(mSelectedId)) {
-							compManager.addComponent<LightSourceComponent>(mSelectedId, mSelectedId, ComponentsModule::eLightType::POINT);
-						}
-					}
-					else if (current_item == "ph_capsule") {
-						if (auto entity = compManager.getEntity(mSelectedId)) {
-
-							auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
-							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
-							auto pos = tr->getPos(true);
-							auto quat = tr->getQuaternion();
-
-							JPH::BodyCreationSettings sphere_settings(new JPH::CapsuleShape(100.f, 100.f), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
-							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
-							body_interface.SetRestitution(mBodyID, 0.5f);
-							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
-						}
-					}
-					else if (current_item == "ph_sphere") {
-						if (auto entity = compManager.getEntity(mSelectedId)) {
-
-							auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
-							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
-							auto pos = tr->getPos(true);
-							auto quat = tr->getQuaternion();
-							
-							JPH::BodyCreationSettings sphere_settings(new JPH::SphereShape(100.f), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
-							auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
-							body_interface.SetRestitution(mBodyID, 0.5f);
-							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
-						}
-					}
-					else if (current_item == "ph_box") {
-						if (auto entity = compManager.getEntity(mSelectedId)) {
-							auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
-							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
-							auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(entity);
-
-							auto pos = tr->getPos(true);
-							auto quat = tr->getQuaternion();
-							JPH::BoxShapeSettings cube_shape(JPH::toVec3(aabb->aabbs.front().extents));
-							JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
-
-							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
-							body_interface.SetRestitution(mBodyID, 0.5f);
-							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
-						}
-					}
-					else if (current_item == "ph_floor") {
-						if (auto entity = compManager.getEntity(mSelectedId)) {
-							JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
-							auto tr = ECSHandler::registry().getComponent<TransformComponent>(entity);
-							tr->setScale({ 100.f, 0.05f, 100.f });
-							auto pos = tr->getPos(true);
-							auto quat = tr->getQuaternion();
-							quat.w = 1.f;
-							JPH::BoxShapeSettings cube_shape(JPH::Vec3(10000.0f, 5.0f, 10000.0f));
-							JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Static, Layers::NON_MOVING);
-
-							auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
-							body_interface.SetRestitution(mBodyID, 0.5f);
-							ECSHandler::registry().addComponent<PhysicsComponent>(entity, mBodyID);
-						}
-					}
-					else if (current_item == "action") {
-						if (auto entity = compManager.getEntity(mSelectedId)) {
-							compManager.addComponent<ComponentsModule::ActionComponent>(mSelectedId);
-						}
-					}
-					else if (current_item == "anim") {
-						if (auto entity = compManager.getEntity(mSelectedId)) {
-							auto animComp = compManager.addComponent<ComponentsModule::AnimationComponent>(mSelectedId);
-							animComp->animator.playAnimation(AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>("models/vampire.fbx")->anim);
-							//animComp->animator.updateAnimation(1.2f);
-							//auto ourShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
-
-							//// don't forget to enable shader before setting uniforms
-							//ourShader->use();
-							//auto transforms = animComp->animator.getFinalBoneMatrices();
-							//for (int i = 0; i < transforms.size(); ++i) {
-							//	ourShader->setMat4(("finalBonesMatrices[" + std::to_string(i) + "]").c_str(), transforms[i]);
-							//}
-						}
-					}
-				}
-
-				if (is_selected) {
-					ImGui::SetItemDefaultFocus();
-				}
-			}
-			ImGui::EndCombo();
-		}
-
-		/*if (auto entity = registry->getEntity(mSelectedId)) {
-			entity->addComponent<LightSourceComponent>(ComponentsModule::eLightType::POINT);
-		}*/
-
-
-		if (ImGui::Button("copy")) {
-			auto createdEntity = ECSHandler::registry().takeEntity();
-			ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<OcTreeComponent>(mSelectedId));
-			ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<ModelComponent>(mSelectedId));
-			ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(mSelectedId));
-
-			ECSHandler::registry().addComponent<TransformComponent>(createdEntity.getID(), createdEntity.getID());
-		}
-
-		ImGui::Separator();
-		ImGui::Button("--", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 5.f });
-
-		if (ImGui::IsItemClicked()) {
-			clickedSeparator = true;
-			mousePos = ImGui::GetMousePos();
-		}
-
-		if (ImGui::IsItemHovered()) {
-			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-		}
-		ImGui::Separator();
-
-		if (ImGui::GetIO().MouseReleased[0]) {
-			clickedSeparator = false;
-		}
-
-		if (clickedSeparator) {
-			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-			auto dragDelta = mousePos.y - ImGui::GetMousePos().y;
-			mousePos = ImGui::GetMousePos();
-
-			separatorPos -= dragDelta;
-		}
-
-
-
-		ImGui::BeginChild("comps##comps", {}, false, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse);
-
-		if (auto currentEntity = compManager.getEntity(mSelectedId)) {
-			std::string strid = "";
-			if (auto debugData = ECSHandler::registry().getComponent<DebugDataComponent>(currentEntity)) {
-				strid = debugData->stringId;
-			}
-			ImGui::Text("entity: \"%s\"", strid.data());
-			ImGui::SameLine();
-			ImGui::Text("id: %zu", currentEntity.getID());
-			ImGui::Separator();
-
-
-			{
-				bool isDrawable = compManager.getComponent<IsDrawableComponent>(mSelectedId);
-				if (ImGui::Checkbox("isDrawable", &isDrawable)) {
-					if (isDrawable) {
-						compManager.addComponent<IsDrawableComponent>(mSelectedId);
-
-						auto tree = compManager.getComponent<ComponentsModule::TreeComponent>(mSelectedId);
-						if (tree) {
-							for (auto node : tree->getAllNodes()) {
-								compManager.addComponent<IsDrawableComponent>(node);
-							}
-						}
-
-					}
-					else {
-						compManager.removeComponent<IsDrawableComponent>(mSelectedId);
-						auto tree = compManager.getComponent<ComponentsModule::TreeComponent>(mSelectedId);
-						if (tree) {
-							std::vector<ecss::SectorId> entities;
-
-							for (auto node : tree->getAllNodes()) {
-								if (compManager.getComponent<IsDrawableComponent>(node)) {
-									entities.emplace_back(node);
-								}
-							}
-
-							compManager.removeComponent<IsDrawableComponent>(entities);
-						}
-					}
-				}
-			}
-			
-
-			bool outline = compManager.getComponent<OutlineComponent>(mSelectedId);
-			if (ImGui::Checkbox("outline", &outline)) {
-				if (outline) {
-					compManager.addComponent<OutlineComponent>(mSelectedId);
-				}
-				else {
-					compManager.removeComponent<OutlineComponent>(mSelectedId);
-				}
-			}
-
-			if (ImGui::Button("DELETE")) {
-				compManager.destroyEntity(mSelectedId);
-				ImGui::EndChild();
-				ImGui::End();
-				return;
-			}
-
-			ImGui::Separator();
-			auto cam = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-
-			auto& P = compManager.getComponent<CameraComponent>(cam)->getProjection().getProjectionsMatrix();
-			auto V = compManager.getComponent<TransformComponent>(cam)->getViewMatrix();
-			auto PV = P * V;
-			auto S = Math::scale(Math::Mat4(1.0f), Math::Vec3(1.f, 1.f, 1.f));
-
-			if (auto comp = compManager.getComponent<TransformComponent>(currentEntity); comp && ImGui::TreeNode("Transform Component")) {
-				componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-
-			/*	if (auto comp = currentEntity->getComponent<LodComponent>(); comp && ImGui::TreeNode("LOD Component")) {
-					componentEditorInternal(comp);
-					ImGui::TreePop();
-				}*/
-
-			if (auto comp = compManager.getComponent<ModelComponent>(currentEntity); comp && ImGui::TreeNode("Mesh Component")) {
-				auto& modObj = comp->getModel(0);
-				
-				static bool drawNormales = false;
-				static bool drawTangent = false;
-				static bool drawBiTangent = false;
-				static bool vertexNormals = false;
-
-				ImGui::Checkbox("drawNormals", &drawNormales);
-				ImGui::Checkbox("drawTangent", &drawTangent);
-				ImGui::Checkbox("drawBiTangent", &drawBiTangent);
-
-				if (ImGui::RadioButton("vertex normales", vertexNormals)) {
-					vertexNormals = true;
-				}
-				if (ImGui::RadioButton("face normales", !vertexNormals)) {
-					vertexNormals = false;
-				}
-
-				if (drawNormales || drawTangent || drawBiTangent) {
-				
-					auto transform = compManager.getComponent<TransformComponent>(currentEntity)->getTransform();
-					auto viewDir = compManager.getComponent<TransformComponent>(cam)->getForward();
-					auto camPos = compManager.getComponent<TransformComponent>(cam)->getPos(true);
-					//vertex normals
-					if (vertexNormals) {
-						for (auto& mesh : modObj.mMeshHandles) {
-							for (int i = 0; i < mesh.mData->mVertices.size(); i++) {
-								auto pos = mesh.mData->mVertices[i].mPosition;
-								pos = Math::Vec3(transform * Math::Vec4(pos, 1.f));
-								if (distance(camPos, pos) < 25.f) {
-									if (drawNormales) {
-										//if (dot(viewDir, mesh.mData->mVertices[i].mNormal) < 0.f) {
-											auto posEnd = pos + mesh.mData->mVertices[i].mNormal * 1.5f;
-											RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
-
-										//}
-
-									}
-									if (drawTangent) {
-										//if (dot(viewDir, mesh.mData->mVertices[i].mTangent) < 0.f) {
-											auto posEnd = pos + mesh.mData->mVertices[i].mTangent * 1.5f;
-											RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 1.f, 0.f, 1.f));
-										//}
-									}
-									if (drawBiTangent) {
-										//if (dot(viewDir, mesh.mData->mVertices[i].mBiTangent) < 0.f) {
-											auto posEnd = pos + mesh.mData->mVertices[i].mBiTangent * 1.5f;
-											RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 0.f, 1.f, 1.f));
-										//}
-									}
-								}
-
-							}
-						}
-					}
-					else {
-						//face normals
-						for (auto& mesh : modObj.mMeshHandles) {
-							for (int i = 0; i < mesh.mData->mIndices.size(); i += 3) {
-
-								auto pos = mesh.mData->mVertices[mesh.mData->mIndices[i]].mPosition;
-								pos += mesh.mData->mVertices[mesh.mData->mIndices[i + 1]].mPosition;
-								pos += mesh.mData->mVertices[mesh.mData->mIndices[i + 2]].mPosition;
-								pos /= 3.f;
-
-								if (drawNormales) {
-									auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mNormal * 5.f;
-									RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
-								}
-								if (drawTangent) {
-									auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mTangent * 5.f;
-									RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
-								}
-								if (drawBiTangent) {
-									auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mBiTangent * 5.f;
-									RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
-								}
-
-							}
-						}
-					}
-				}
-
-				componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-
-			auto& model = compManager.getComponent<TransformComponent>(currentEntity)->getTransform();
-
-			if (auto comp = compManager.getComponent<MaterialComponent>(currentEntity); comp && ImGui::TreeNode("Material Component")) {
-				//componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-
-			if (auto comp = compManager.getComponent<LightSourceComponent>(currentEntity); comp && ImGui::TreeNode("Light Component")) {
-				RenderModule::Utils::renderPointLight(comp->mNear, comp->mRadius, compManager.getComponent<TransformComponent>(currentEntity)->getPos(true));
-
-				componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-
-			if (auto comp = compManager.getComponent<CameraComponent>(currentEntity); comp && ImGui::TreeNode("Camera Component")) {
-				auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
-				coloredLines->use();
-
-				coloredLines->setMat4("PVM", PV* Math::Mat4{model});
-
-				RenderModule::Utils::renderCamera();
-
-				//componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-
-			if (auto comp = compManager.getComponent<ComponentsModule::CascadeShadowComponent>(currentEntity); comp && ImGui::TreeNode("CascadeShadowComponent")) {
-				componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-
-
-			if (auto comp = compManager.getComponent<FrustumComponent>(currentEntity); comp && ImGui::TreeNode("Frustum Component")) {
-				//componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-			if (auto comp = compManager.getComponent<ComponentsModule::ShaderComponent>(currentEntity); comp && ImGui::TreeNode("Shader Component")) {
-				componentEditorInternal(comp);
-				ImGui::TreePop();
-			}
-
-			if (auto comp = compManager.getComponent<PhysicsComponent>(currentEntity)) {
-				if (ImGui::TreeNode("Physics Component")) {
-					componentEditorInternal(comp);
-					ImGui::TreePop();
-				}
-			}
-
-			if (auto comp = compManager.getComponent<ComponentsModule::AnimationComponent>(currentEntity)) {
-				if (ImGui::TreeNode("Animation Component")) {
-					if (ImGui::Button("update from anim")) {
-						auto matrices = comp->animator.getFinalBoneMatrices();
-						for (auto i = 0; i < 5; i++) {
-							comp->transforms[i] = matrices[i];
-						}
-					}
-					auto changeMat4 = [](Math::Mat4& mat, int i ) {
-						auto changeVec4 = [i](Math::Vec4& vec, int j) {
-							float a[] = { vec.x, vec.y, vec.z, vec.w };
-							if (ImGui::DragFloat4(("m[" + std::to_string(j) + "]" + std::to_string(i)).c_str(), a, 0.1f)) {
-								vec.x = a[0];
-								vec.y = a[1];
-								vec.z = a[2];
-								vec.w = a[3];
-							}
-						};
-						changeVec4(mat[0], 0);
-						changeVec4(mat[1], 1);
-						changeVec4(mat[2], 2);
-						changeVec4(mat[3], 3);
-					};
-
-					for (auto i = 0; i < 5; i++) {
-						ImGui::Separator();
-
-						changeMat4(comp->transforms[i], i);
-					}
-
-					
-
-					ImGui::TreePop();
-				}
-			}
-
-			/*auto xyzLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/xyzLines.fs");
-			xyzLines->use();
-
-			xyzLines->setMat4("PVM", PV* Math::Mat4{model});
-			RenderModule::Utils::renderXYZ(50.f);*/
-
-
-		}
-		ImGui::EndChild();
-	}
-
-	ImGui::End();
+	SeparatedWindow::Begin("Entities Editor", &editorOpened, std::bind(&ComponentsDebug::entitiesTreeGUI, this), std::bind(&ComponentsDebug::entitiesMenuGUI, this), std::bind(&ComponentsDebug::componentGUI, this));
 }
 
-void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
-	if (!component) {
-		return;
-	}
+void ComponentsDebug::editComponentGui(ComponentsModule::CameraComponent* component) {
+	auto isMain = mCameraId == mSelectedId;
 
+	if (ImGui::Checkbox("main", &isMain)) {
+		if (isMain) {
+			ECSHandler::getSystem<SystemsModule::CameraSystem>()->setCurrentCamera(mSelectedId);
+		}
+		else {
+			ECSHandler::getSystem<SystemsModule::CameraSystem>()->setCurrentCamera(ecss::INVALID_ID);
+		}
+	}
+	/*auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
+	coloredLines->use();
+
+	coloredLines->setMat4("PVM", PV * Math::Mat4{model});
+
+	RenderModule::Utils::renderCamera();*/
+}
+
+void ComponentsDebug::editComponentGui(TransformComponent* component) {
 	auto pos = component->getPos();
 	auto scale = component->getScale();
 
@@ -850,10 +459,8 @@ void ComponentsDebug::componentEditorInternal(TransformComponent* component) {
 	}
 }
 
-void ComponentsDebug::componentEditorInternal(ComponentsModule::LightSourceComponent* component) {
-	if (!component) {
-		return;
-	}
+void ComponentsDebug::editComponentGui(ComponentsModule::LightSourceComponent* component) {
+	RenderModule::Utils::renderPointLight(component->mNear, component->mRadius, ECSHandler::registry().getComponent<TransformComponent>(mSelectedId)->getPos(true));
 
 	std::vector<std::string> items { "NONE", "DIRECTIONAL", "POINT", "PERSPECTIVE", "WORLD"};
 	std::string currentItem = items[static_cast<int>(component->getType())];
@@ -906,7 +513,7 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::LightSourceCompo
 	ImGui::DragFloat("radius", &component->mRadius, 0.1f);
 }
 
-void ComponentsDebug::componentEditorInternal(CascadeShadowComponent* component) {
+void ComponentsDebug::editComponentGui(CascadeShadowComponent* component) {
 	if (!component) {
 		return;
 	}
@@ -964,10 +571,157 @@ void ComponentsDebug::componentEditorInternal(CascadeShadowComponent* component)
 
 }
 
-void ComponentsDebug::componentEditorInternal(ComponentsModule::ModelComponent* component) {
+void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* component) {
 	if (!component) {
 		return;
 	}
+
+	auto& modObj = component->getModel(0);
+
+	static bool drawNormales = false;
+	static bool drawTangent = false;
+	static bool drawBiTangent = false;
+	static bool vertexNormals = false;
+	static bool drawBones = true;
+
+	ImGui::Checkbox("drawNormals", &drawNormales);
+	ImGui::Checkbox("drawTangent", &drawTangent);
+	ImGui::Checkbox("drawBiTangent", &drawBiTangent);
+	ImGui::Checkbox("drawBones", &drawBones);
+
+	if (ImGui::RadioButton("vertex normales", vertexNormals)) {
+		vertexNormals = true;
+	}
+	if (ImGui::RadioButton("face normales", !vertexNormals)) {
+		vertexNormals = false;
+	}
+
+	if (drawNormales || drawTangent || drawBiTangent || drawBones) {
+		auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(mCameraId);
+		auto& cameraRotation = cameraTransform->getQuaternion();
+		auto& camPos = cameraTransform->getPos(true);
+
+		auto transform = ECSHandler::registry().getComponent<TransformComponent>(mSelectedId)->getTransform();
+		
+		//vertex normals
+		if (vertexNormals) {
+			for (auto& mesh : modObj.mMeshHandles) {
+				for (int i = 0; i < mesh.mData->mVertices.size(); i++) {
+					auto pos = mesh.mData->mVertices[i].mPosition;
+					pos = Math::Vec3(transform * Math::Vec4(pos, 1.f));
+					if (distance(camPos, pos) < 25.f) {
+						if (drawNormales) {
+							//if (dot(viewDir, mesh.mData->mVertices[i].mNormal) < 0.f) {
+							auto posEnd = pos + mesh.mData->mVertices[i].mNormal * 1.5f;
+							RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
+
+							//}
+
+						}
+						if (drawTangent) {
+							//if (dot(viewDir, mesh.mData->mVertices[i].mTangent) < 0.f) {
+							auto posEnd = pos + mesh.mData->mVertices[i].mTangent * 1.5f;
+							RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 1.f, 0.f, 1.f));
+							//}
+						}
+						if (drawBiTangent) {
+							//if (dot(viewDir, mesh.mData->mVertices[i].mBiTangent) < 0.f) {
+							auto posEnd = pos + mesh.mData->mVertices[i].mBiTangent * 1.5f;
+							RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 0.f, 1.f, 1.f));
+							//}
+						}
+					}
+
+				}
+			}
+		}
+		else {
+			//face normals
+			for (auto& mesh : modObj.mMeshHandles) {
+				for (int i = 0; i < mesh.mData->mIndices.size(); i += 3) {
+
+					auto pos = mesh.mData->mVertices[mesh.mData->mIndices[i]].mPosition;
+					pos += mesh.mData->mVertices[mesh.mData->mIndices[i + 1]].mPosition;
+					pos += mesh.mData->mVertices[mesh.mData->mIndices[i + 2]].mPosition;
+					pos /= 3.f;
+
+					if (drawNormales) {
+						auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mNormal * 5.f;
+						RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
+					}
+					if (drawTangent) {
+						auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mTangent * 5.f;
+						RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
+					}
+					if (drawBiTangent) {
+						auto posEnd = pos + mesh.mData->mVertices[mesh.mData->mIndices[i]].mBiTangent * 5.f;
+						RenderModule::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
+					}
+
+				}
+			}
+		}
+
+		auto& bones = component->armature.bones;
+		if (drawBones) {
+
+			if (!bones.empty()) {
+
+				std::function<void(AssetsModule::Bone&, Math::Mat4)> drawBonesF;
+				drawBonesF = [&drawBonesF, &bones, &cameraRotation](AssetsModule::Bone& bone, Math::Mat4 globalTransform) {
+					auto globalTransfor = globalTransform * bone.transform;
+					auto offset = bone.transform == Math::Mat4(1.f) ? bone.offset : Math::Mat4(1.f);
+
+					auto pos = Math::Vec3(globalTransfor * offset * Math::Vec4(Math::Vec3(0.f), 1.f));
+					for (auto child : bone.childrenBones) {
+						auto childGlobalTransform = globalTransfor * bones[child].transform;
+						offset = bones[child].transform == Math::Mat4(1.f) ? bones[child].offset : Math::Mat4(1.f);
+
+						auto posEnd = Math::Vec3(childGlobalTransform * offset * Math::Vec4(Math::Vec3(0.f), 1.f));
+						RenderModule::Utils::renderBone(pos, posEnd, Math::Vec4(0.3f, 0.3f, 0.3f, 1.f), cameraRotation, bone.rotation);
+						drawBonesF(bones[child], globalTransfor);
+					}
+				};
+
+				drawBonesF(bones[0], transform * component->armature.transform);
+			}
+		}
+
+		if (!bones.empty()) {
+			std::function<void(AssetsModule::Bone&)> drawBonesTree;
+			drawBonesTree = [&drawBonesTree, &bones](AssetsModule::Bone& bone) {
+
+				if (ImGui::TreeNode(("bone " + bone.name).c_str())) {
+					if (ImGui::DragFloat3("pos " + bone.name, bone.pos, 0.1f)) {
+						bone.transform = Math::translate(Math::Mat4{1.f}, bone.pos)* bone.rotation.toMat4()* Math::scale(Math::Mat4{ 1.f }, bone.scale);
+					}
+					if (ImGui::DragFloat4("quat " + bone.name, bone.rotation, 0.1f)) {
+						bone.transform = Math::translate(Math::Mat4{1.f}, bone.pos)* bone.rotation.toMat4()* Math::scale(Math::Mat4{ 1.f }, bone.scale);
+					}
+					auto rotat = degrees(bone.rotation.toEuler());
+					if (ImGui::DragFloat3("rotat " + bone.name, rotat)) {
+						bone.rotation.eulerToQuaternion(rotat);
+						bone.transform = Math::translate(Math::Mat4{1.f}, bone.pos)* bone.rotation.toMat4()* Math::scale(Math::Mat4{ 1.f }, bone.scale);
+					}
+					if (ImGui::DragFloat3("scale " + bone.name, bone.scale)) {
+						bone.transform = Math::translate(Math::Mat4{1.f}, bone.pos)* bone.rotation.toMat4()* Math::scale(Math::Mat4{ 1.f }, bone.scale);
+					}
+
+					for (auto child : bone.childrenBones) {
+						drawBonesTree(bones[child]);
+					}
+
+					ImGui::TreePop();
+				}
+
+
+			};
+
+			drawBonesTree(bones[0]);
+		}
+
+	}
+
 
 	if (ImGui::Button("recalculate normals")) {
 		auto model = AssetsModule::ModelLoader::instance()->load(component->mPath);
@@ -1095,7 +849,7 @@ struct ShaderStruct {
 	std::vector<ShaderVariable> variables;
 };
 
-void ComponentsDebug::componentEditorInternal(ComponentsModule::ShaderComponent* component) {
+void ComponentsDebug::editComponentGui(ComponentsModule::ShaderComponent* component) {
 	if (!component) {
 		return;
 	}
@@ -1393,8 +1147,293 @@ void ComponentsDebug::componentEditorInternal(ComponentsModule::ShaderComponent*
 	}
 }
 
-void ComponentsDebug::componentEditorInternal(ComponentsModule::PhysicsComponent* component) {
+void ComponentsDebug::editComponentGui(ComponentsModule::PhysicsComponent* component) {
 	
+}
+
+void ComponentsDebug::editComponentGui(ComponentsModule::AnimationComponent* component) {
+	if (!component) {
+		return;
+	}
+
+	if (!ImGui::TreeNode("Animation Component")) {
+		return;
+	}
+
+	
+	auto modelPath = ECSHandler::registry().getComponent<ModelComponent>(mSelectedId)->mPath;
+	if (auto modelOO = AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>(modelPath)) {
+		for (auto& animation : modelOO->animations) {
+			if (ImGui::Button(animation.mName.c_str())) {
+				component->mCurrentAnimation = &animation;
+			}
+		}
+	}
+
+	if (component->mCurrentAnimation) {
+		ImGui::Separator();
+		if (ImGui::Button(("stop##" + component->mCurrentAnimation->mName).c_str())) {
+			component->mPlay = false;
+		}
+		if (ImGui::Button(("continue##" + component->mCurrentAnimation->mName).c_str())) {
+			component->mPlay = true;
+		}
+
+		if (auto anim = component->mCurrentAnimation) {
+			auto time = component->mCurrentTime;
+			if (ImGui::SliderFloat(("time##" + component->mCurrentAnimation->mName).c_str(), &time, 0.f, anim->getDuration())) {
+				component->mCurrentTime = time;
+				component->step = true;
+			}
+		}
+	}
+
+
+	ImGui::TreePop();
+}
+
+void ComponentsDebug::entitiesTreeGUI() {
+	size_t i = 0;
+	auto entities = ECSHandler::registry().getAllEntities();
+	for (auto entityIt : entities) {
+		if (auto treeComp = ECSHandler::registry().getComponent<ComponentsModule::TreeComponent>(entityIt)) {
+			if (treeComp->getParent() != ecss::INVALID_ID) {
+				continue;
+			}
+		}
+
+		drawTree(entityIt, mSelectedId);
+		i++;
+		if (i > 1000) {
+			break;
+		}
+	}
+}
+
+void ComponentsDebug::componentGUI() {
+	auto& ecsRegistry = ECSHandler::registry();
+	if (!ecsRegistry.isEntity(mSelectedId)) {
+		return;
+	}
+
+	if (auto debugData = ECSHandler::registry().getComponent<DebugDataComponent>(mSelectedId)) {
+		ImGui::Text("entity: \"%s\"", debugData->stringId.c_str());
+		ImGui::SameLine();
+	}
+	
+	ImGui::Text("id: %zu", mSelectedId);
+	ImGui::Separator();
+
+
+	{
+		bool isDrawable = ecsRegistry.getComponent<IsDrawableComponent>(mSelectedId);
+		if (ImGui::Checkbox("isDrawable", &isDrawable)) {
+			if (isDrawable) {
+				ecsRegistry.addComponent<IsDrawableComponent>(mSelectedId);
+
+				auto tree = ecsRegistry.getComponent<ComponentsModule::TreeComponent>(mSelectedId);
+				if (tree) {
+					for (auto node : tree->getAllNodes()) {
+						ecsRegistry.addComponent<IsDrawableComponent>(node);
+					}
+				}
+
+			}
+			else {
+				ecsRegistry.removeComponent<IsDrawableComponent>(mSelectedId);
+				auto tree = ecsRegistry.getComponent<ComponentsModule::TreeComponent>(mSelectedId);
+				if (tree) {
+					std::vector<ecss::SectorId> entities;
+
+					for (auto node : tree->getAllNodes()) {
+						if (ecsRegistry.getComponent<IsDrawableComponent>(node)) {
+							entities.emplace_back(node);
+						}
+					}
+
+					ecsRegistry.removeComponent<IsDrawableComponent>(entities);
+				}
+			}
+		}
+	}
+
+
+	bool outline = ecsRegistry.getComponent<OutlineComponent>(mSelectedId);
+	if (ImGui::Checkbox("outline", &outline)) {
+		if (outline) {
+			ecsRegistry.addComponent<OutlineComponent>(mSelectedId);
+		}
+		else {
+			ecsRegistry.removeComponent<OutlineComponent>(mSelectedId);
+		}
+	}
+	ImGui::Separator();
+
+
+	componentEditImpl<TransformComponent>(mSelectedId);
+	componentEditImpl<ModelComponent>(mSelectedId);
+
+	//componentEditImpl<LodComponent>(mSelectedId);
+	//componentEditImpl<MaterialComponent>(mSelectedId);
+	//componentEditImpl<FrustumComponent>(mSelectedId);
+
+	componentEditImpl<CameraComponent>(mSelectedId);
+	componentEditImpl<LightSourceComponent>(mSelectedId);
+	componentEditImpl<CascadeShadowComponent>(mSelectedId);
+
+	componentEditImpl<ShaderComponent>(mSelectedId);
+	componentEditImpl<PhysicsComponent>(mSelectedId);
+	componentEditImpl<ComponentsModule::AnimationComponent>(mSelectedId);
+}
+
+void ComponentsDebug::entitiesMenuGUI() {
+	static ecss::SectorId prevId = std::numeric_limits<ecss::SectorId>::max();
+	if (prevId != mSelectedId) {
+		if (prevId != std::numeric_limits<ecss::SectorId>::max()) {
+			ECSHandler::registry().removeComponent<OutlineComponent>(prevId);
+		}
+
+		ECSHandler::registry().addComponent<OutlineComponent>(mSelectedId);
+	}
+
+	prevId = mSelectedId;
+
+	auto& compManager = ECSHandler::registry();
+	if (ImGui::Button("add node")) {
+		auto createdEntity = ECSHandler::registry().takeEntity();
+		if (compManager.isEntity(mSelectedId)) {
+			compManager.addComponent<TreeComponent>(createdEntity.getID(), createdEntity.getID());
+			compManager.addComponent<TreeComponent>(mSelectedId, mSelectedId)->addChildEntity(createdEntity.getID());
+		}
+		compManager.addComponent<TransformComponent>(createdEntity, createdEntity.getID());
+	}
+
+	ImGui::SameLine();
+	if (ImGui::Button("DELETE")) {
+		compManager.destroyEntity(mSelectedId);
+		ImGui::EndChild();
+		ImGui::End();
+	}
+
+	ImGui::SameLine();
+
+	constexpr std::array<std::string_view, 9> components {
+		PropertiesModule::TypeName<TransformComponent>::name(),
+		PropertiesModule::TypeName<LightSourceComponent>::name(),
+		PropertiesModule::TypeName<ComponentsModule::ActionComponent>::name(),
+		PropertiesModule::TypeName<ComponentsModule::AnimationComponent>::name(),
+		PropertiesModule::TypeName<CameraComponent>::name(),
+		"ph_box",
+		"ph_sphere",
+		"ph_capsule",
+		"ph_floor",
+	};
+	
+	static std::string_view selected = components[0];
+
+	if (ImGui::BeginCombo("##comps", "component")) {
+		for (int n = 0; n < components.size(); n++) {
+			bool isSelected = (selected == components[n]);
+			if (ImGui::Selectable(components[n].data(), isSelected)) {
+				selected = components[n];
+				if (compManager.isEntity(mSelectedId)) {
+					if (selected == "ph_capsule") {
+						auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+						auto tr = ECSHandler::registry().getComponent<TransformComponent>(mSelectedId);
+						auto pos = tr->getPos(true);
+						auto quat = tr->getQuaternion();
+
+						JPH::BodyCreationSettings sphere_settings(new JPH::CapsuleShape(100.f, 100.f), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
+						auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
+						body_interface.SetRestitution(mBodyID, 0.5f);
+						ECSHandler::registry().addComponent<PhysicsComponent>(mSelectedId, mBodyID);
+					}
+					else if (selected == "ph_sphere") {
+						auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+						auto tr = ECSHandler::registry().getComponent<TransformComponent>(mSelectedId);
+						auto pos = tr->getPos(true);
+						auto quat = tr->getQuaternion();
+
+						JPH::BodyCreationSettings sphere_settings(new JPH::SphereShape(100.f), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
+						auto mBodyID = body_interface.CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
+						body_interface.SetRestitution(mBodyID, 0.5f);
+						ECSHandler::registry().addComponent<PhysicsComponent>(mSelectedId, mBodyID);
+					}
+					else if (selected == "ph_box") {
+						auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+						auto tr = ECSHandler::registry().getComponent<TransformComponent>(mSelectedId);
+						auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(mSelectedId);
+
+						auto pos = tr->getPos(true);
+						auto quat = tr->getQuaternion();
+						JPH::BoxShapeSettings cube_shape(JPH::toVec3(aabb->aabbs.front().extents));
+						JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Dynamic, Layers::MOVING);
+
+						auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
+						body_interface.SetRestitution(mBodyID, 0.5f);
+						ECSHandler::registry().addComponent<PhysicsComponent>(mSelectedId, mBodyID);
+					}
+					else if (selected == "ph_floor") {
+						JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
+						auto tr = ECSHandler::registry().getComponent<TransformComponent>(mSelectedId);
+						tr->setScale({ 100.f, 0.05f, 100.f });
+						auto pos = tr->getPos(true);
+						auto quat = tr->getQuaternion();
+						quat.w = 1.f;
+						JPH::BoxShapeSettings cube_shape(JPH::Vec3(10000.0f, 5.0f, 10000.0f));
+						JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Static, Layers::NON_MOVING);
+
+						auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
+						body_interface.SetRestitution(mBodyID, 0.5f);
+						ECSHandler::registry().addComponent<PhysicsComponent>(mSelectedId, mBodyID);
+					}
+					else if (selected == PropertiesModule::TypeName<LightSourceComponent>::name()) {
+						compManager.addComponent<LightSourceComponent>(mSelectedId, mSelectedId, ComponentsModule::eLightType::POINT);
+					}
+					else if (selected == PropertiesModule::TypeName<ComponentsModule::ActionComponent>::name()) {
+						compManager.addComponent<ComponentsModule::ActionComponent>(mSelectedId);
+					}
+					else if (selected == PropertiesModule::TypeName<ComponentsModule::AnimationComponent>::name()) {
+						compManager.addComponent<ComponentsModule::AnimationComponent>(mSelectedId);
+					}
+					else if (selected == PropertiesModule::TypeName<CameraComponent>::name()) {
+						ECSHandler::registry().addComponent<CameraComponent>(mSelectedId, mSelectedId, 45.f, static_cast<float>(RenderModule::Renderer::SCR_WIDTH) / static_cast<float>(RenderModule::Renderer::SCR_HEIGHT), RenderModule::Renderer::nearDistance, RenderModule::Renderer::drawDistance);
+					}
+				}
+			}
+
+			if (isSelected) {
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+
+	if (ImGui::Button("copy")) {
+		auto createdEntity = ECSHandler::registry().takeEntity();
+		ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<OcTreeComponent>(mSelectedId));
+		ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<ModelComponent>(mSelectedId));
+		ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(mSelectedId));
+
+		ECSHandler::registry().addComponent<TransformComponent>(createdEntity.getID(), createdEntity.getID());
+	}
+}
+
+template<typename CompType>
+void ComponentsDebug::componentEditImpl(ecss::EntityId id) {
+	auto component = ECSHandler::registry().getComponent<CompType>(id);
+	if (!component) {
+		return;
+	}
+	
+	if (!ImGui::TreeNode(PropertiesModule::TypeName<CompType>::name().data())) {
+		return;
+	}
+
+	editComponentGui(component);
+
+	ImGui::TreePop();
 }
 
 void ComponentsDebug::setSelectedId(ecss::EntityId id) {

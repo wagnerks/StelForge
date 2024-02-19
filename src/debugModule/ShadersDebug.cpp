@@ -104,15 +104,26 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 		auto* fShader = dynamic_cast<ShaderModule::Shader*>(shader);
 		auto* gShader = dynamic_cast<ShaderModule::GeometryShader*>(shader);
 		auto strId = std::to_string(*it);
-
-		ImGui::Begin(("shader edit " + std::to_string(*it)).c_str(), &editWindowOpened);
+		
+		ImGui::Begin(("shader edit " + std::to_string(*it)).c_str(), &editWindowOpened, ImGuiWindowFlags_MenuBar);
 		if (fShader) {
-			ImGui::BeginChild("##shaders code", { 0.f, ImGui::GetWindowHeight() * 0.75f });
-			ImGui::Text("vertex");
-			ImGui::InputTextMultiline(("##vertex" + strId).c_str(), &fShader->vertexCode, { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() * 0.8f * (1.f - separatorPos) });
 
+			if (separatorPos > ImGui::GetWindowHeight() * 0.9f) {
+				separatorPos = ImGui::GetWindowHeight() * 0.9f;
+			}
+			else if (separatorPos < ImGui::GetWindowHeight() * 0.1f) {
+				separatorPos = ImGui::GetWindowHeight() * 0.1f;
+			}
+
+			ImGui::BeginChild("##upper", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, separatorPos });
+			{
+				ImGui::Text("vertex %s", fShader->getVertexPath().data());
+				ImGui::InputTextMultiline(("##vertex" + strId).c_str(), &fShader->vertexCode, { ImGui::GetWindowContentRegionMax().x - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() - 30.f});
+			}
+			ImGui::EndChild();
+			ImGui::Separator();
 			ImGui::Button("--", { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x, 5.f });
-			
+
 			if (ImGui::IsItemClicked()) {
 				clickedSeparator = true;
 				mousePos = ImGui::GetMousePos();
@@ -121,6 +132,7 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 			if (ImGui::IsItemHovered()) {
 				ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
 			}
+			ImGui::Separator();
 
 			if (ImGui::GetIO().MouseReleased[0]) {
 				clickedSeparator = false;
@@ -131,24 +143,21 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 				auto dragDelta = mousePos.y - ImGui::GetMousePos().y;
 				mousePos = ImGui::GetMousePos();
 
-				separatorPos += dragDelta / ImGui::GetWindowHeight();
-				if (separatorPos < 0.1f) {
-					separatorPos = 0.1f;
-				}
-				else if (separatorPos > 0.9f) {
-					separatorPos = 0.9f;
-				}
+				separatorPos -= dragDelta;
 			}
 
-			ImGui::Text("fragment");
-			ImGui::InputTextMultiline(("##fragment" + strId).c_str(), &fShader->fragmentCode, { ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() * 0.8f * separatorPos });
+			ImGui::BeginChild("##down", {}, false, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse);
+			ImGui::Text("fragment %s", fShader->getFragmentPath().data());
+			ImGui::InputTextMultiline(("##fragment" + strId).c_str(), &fShader->fragmentCode, { ImGui::GetWindowContentRegionMax().x - ImGui::GetStyle().ScrollbarSize, ImGui::GetWindowHeight() - 30.f });
 			ImGui::EndChild();
-
-			if (ImGui::Button("compile")) {
-				FileSystem::writeFile(fShader->getVertexPath(), fShader->vertexCode);
-				FileSystem::writeFile(fShader->getFragmentPath(), fShader->fragmentCode);
-				SHADER_CONTROLLER->recompileShader(shader);
-				*it = shader->getID();
+			if (ImGui::BeginMenuBar()) {
+				if (ImGui::Button("compile")) {
+					FileSystem::writeFile(fShader->getVertexPath(), fShader->vertexCode);
+					FileSystem::writeFile(fShader->getFragmentPath(), fShader->fragmentCode);
+					SHADER_CONTROLLER->recompileShader(shader);
+					*it = shader->getID();
+				}
+				ImGui::EndMenuBar();
 			}
 
 		}

@@ -28,7 +28,7 @@ namespace SFE::PropertiesModule {
 
 	template <class T>
 	void PropertiesSystem::deserializeProperty(const ecss::EntityHandle& entity, const Json::Value& properties) {
-		if (!entity) {
+		if (!ECSHandler::registry().isEntity(entity)) {
 			return;
 		}
 		auto name = TypeName<T>::name().data();

@@ -24,18 +24,25 @@ const int MAX_BONE_INFLUENCE = 4;
 
 void main()
 {
-    vec4 totalPosition = vec4(0.0f);
+    bool noBones = true;
+    mat4 BoneTransform = mat4(0.0f);
     for(int i = 0 ; i < MAX_BONE_INFLUENCE ; i++) {
-        if(aBoneIds[i] == -1) {
+        int boneIdx = aBoneIds[i];
+        if(boneIdx == -1 || boneIdx >= MAX_BONES){
              continue;
         }
-        if(aBoneIds[i] >= MAX_BONES){
-            totalPosition = vec4(aPos,1.0f);
-            break;
-        }
+        noBones = false;
 
-        vec4 localPosition = bones[gl_InstanceID][aBoneIds[i]] * vec4(aPos,1.0f);
-        totalPosition += localPosition * aWeights[i];
+        BoneTransform += bones[gl_InstanceID][boneIdx] * aWeights[i];
+    }
+
+
+    vec4 totalPosition;
+    if (noBones) {
+        totalPosition = vec4(aPos.xyz, 1.0);
+    }
+    else {
+        totalPosition = BoneTransform * vec4(aPos.xyz, 1.0);
     }
 
     texPos = aPos;

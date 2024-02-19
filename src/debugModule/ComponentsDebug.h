@@ -17,6 +17,7 @@ namespace SFE {
 		class CascadeShadowComponent;
 		class PhysicsComponent;
 		class ShaderComponent;
+		struct AnimationComponent;
 	}
 }
 
@@ -27,14 +28,26 @@ namespace SFE::Debug {
 		void init() override;
 		void drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID);
 		void entitiesDebug();
-		void componentEditorInternal(ComponentsModule::TransformComponent* component);
-		void componentEditorInternal(ComponentsModule::LightSourceComponent* component);
-		void componentEditorInternal(ComponentsModule::CascadeShadowComponent* component);
-		void componentEditorInternal(ComponentsModule::ModelComponent* component);
-		void componentEditorInternal(ComponentsModule::ShaderComponent* component);
-		void componentEditorInternal(ComponentsModule::PhysicsComponent* component);
+
+		void editComponentGui(ComponentsModule::CameraComponent* component);
+		void editComponentGui(ComponentsModule::TransformComponent* component);
+		void editComponentGui(ComponentsModule::LightSourceComponent* component);
+		void editComponentGui(ComponentsModule::CascadeShadowComponent* component);
+		void editComponentGui(ComponentsModule::ModelComponent* component);
+		void editComponentGui(ComponentsModule::ShaderComponent* component);
+		void editComponentGui(ComponentsModule::PhysicsComponent* component);
+		void editComponentGui(ComponentsModule::AnimationComponent* component);
+
+
+		void entitiesTreeGUI();
+		void componentGUI();
+		void entitiesMenuGUI();
+
+		template<typename CompType>
+		void componentEditImpl(ecss::EntityId id);
 
 		ecss::EntityId mSelectedId = ecss::INVALID_ID;
+		ecss::EntityId mCameraId = ecss::INVALID_ID;
 
 		bool editorOpened = true;
 
@@ -44,4 +57,5 @@ namespace SFE::Debug {
 		void setSelectedId(ecss::EntityId id);
 	};
 
+	
 }

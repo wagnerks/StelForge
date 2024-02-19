@@ -33,7 +33,7 @@ namespace SFE::PropertiesModule {
 			return;
 		}
 
-		deserializeProperty<ComponentsModule::TransformComponent>(entity, properties["Properties"]);
+		deserializeProperty<TransformComponent>(entity, properties["Properties"]);
 		deserializeProperty<ModelComponent>(entity, properties["Properties"]);
 	}
 

@@ -6,131 +6,7 @@
 			{
 				"ModelComponent" : 
 				{
-					"ModelPath" : "models/cylinder.fbx"
-				},
-				"TransformComponent" : 
-				{
-					"Pos" : 
-					[
-						25.0,
-						0.0,
-						0.0
-					],
-					"Rotate" : 
-					[
-						0.0,
-						-90.0,
-						0.0
-					],
-					"Scale" : 
-					[
-						100.0,
-						100.0,
-						100.0
-					]
-				}
-			},
-			"id" : "cylinder"
-		},
-		{
-			"Properties" : 
-			{
-				"ModelComponent" : 
-				{
-					"ModelPath" : "models/sphere.fbx"
-				},
-				"TransformComponent" : 
-				{
-					"Pos" : 
-					[
-						-50.0,
-						250.0,
-						0.0
-					],
-					"Rotate" : 
-					[
-						0.0,
-						0.0,
-						0.0
-					],
-					"Scale" : 
-					[
-						100.0,
-						100.0,
-						100.0
-					]
-				}
-			},
-			"id" : "sphere"
-		},
-		{
-			"Properties" : 
-			{
-				"ModelComponent" : 
-				{
-					"ModelPath" : "models/cube1m1.fbx"
-				},
-				"TransformComponent" : 
-				{
-					"Pos" : 
-					[
-						-50.0,
-						50.0,
-						0.0
-					],
-					"Rotate" : 
-					[
-						0.0,
-						0.0,
-						0.0
-					],
-					"Scale" : 
-					[
-						1.0,
-						1.0,
-						1.0
-					]
-				}
-			},
-			"id" : "cube1x1"
-		},
-		{
-			"Properties" : 
-			{
-				"ModelComponent" : 
-				{
-					"ModelPath" : "models/sponza/scene.gltf"
-				},
-				"TransformComponent" : 
-				{
-					"Pos" : 
-					[
-						1500.0,
-						3500.0,
-						0.0
-					],
-					"Rotate" : 
-					[
-						0.0,
-						0.0,
-						0.0
-					],
-					"Scale" : 
-					[
-						1.0,
-						1.0,
-						1.0
-					]
-				}
-			},
-			"id" : "sponza"
-		},
-		{
-			"Properties" : 
-			{
-				"ModelComponent" : 
-				{
-					"ModelPath" : "models/peasant_mesh.fbx"
+					"ModelPath" : "models/test_rotation_anim.fbx"
 				},
 				"TransformComponent" : 
 				{
@@ -148,13 +24,13 @@
 					],
 					"Scale" : 
 					[
-						100.0,
-						100.0,
-						100.0
+						1.0,
+						1.0,
+						1.0
 					]
 				}
 			},
-			"id" : "peasant_mesh"
+			"id" : "test_rotation_anim"
 		},
 		{
 			"Properties" : 
@@ -167,25 +43,25 @@
 				{
 					"Pos" : 
 					[
-						300.0,
+						150.0,
 						0.0,
 						0.0
 					],
 					"Rotate" : 
 					[
-						-90.0,
+						0.0,
 						0.0,
 						0.0
 					],
 					"Scale" : 
 					[
-						100.0,
-						100.0,
-						100.0
+						1.0,
+						1.0,
+						1.0
 					]
 				}
 			},
-			"id" : "animatedPeasant2"
+			"id" : "animatedPeasant"
 		},
 		{
 			"Properties" : 
@@ -216,7 +92,7 @@
 					]
 				}
 			},
-			"id" : "animatedPeasant2"
+			"id" : "vampire"
 		}
 	],
 	"Properties" : 
