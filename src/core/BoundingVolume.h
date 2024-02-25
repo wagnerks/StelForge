@@ -5,6 +5,7 @@
 #include "mathModule/Forward.h"
 
 namespace AssetsModule {
+	struct Vertex;
 	class Mesh;
 }
 
@@ -224,7 +225,7 @@ namespace SFE::FrustumModule {
 	};
 
 
-	inline AABB generateAABB(const AssetsModule::Mesh& mesh);
+	inline AABB generateAABB(const std::vector<AssetsModule::Vertex>& mesh);
 
 	inline Sphere generateSphereBV(const AssetsModule::Mesh& mesh);
 	

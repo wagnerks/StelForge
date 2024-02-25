@@ -5,11 +5,13 @@
 
 #include "componentsModule/CascadeShadowComponent.h"
 #include "ecss/EntityHandle.h"
+#include "renderModule/Buffer.h"
+#include "renderModule/Framebuffer.h"
 
 #include "renderModule/RenderPass.h"
 
 
-namespace SFE::RenderModule::RenderPasses {
+namespace SFE::Render::RenderPasses {
 
 	class CascadedShadowPass : public RenderPassWithData {
 	public:
@@ -32,16 +34,16 @@ namespace SFE::RenderModule::RenderPasses {
 		~CascadedShadowPass() override;
 		void init() override;
 		void initRender();
-		void freeBuffers() const;
 
 		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	private:
 		void updateRenderData(SystemsModule::RenderData& renderDataHandle) const;
 		void debug(SystemsModule::RenderData& renderDataHandle);
 
-		unsigned lightFBO;
-		unsigned lightDepthMaps;
-		unsigned matricesUBO;
+		Render::Framebuffer lightFBO;
+		AssetsModule::Texture lightDepthMap{AssetsModule::TEXTURE_2D_ARRAY};
+
+		Buffer matricesUBO{ UNIFORM_BUFFER };
 
 		ecss::EntityHandle mShadowSource;
 		bool mInited = false;

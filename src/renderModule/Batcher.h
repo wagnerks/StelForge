@@ -48,7 +48,6 @@ struct DrawObject {
 	bool transparentForShadow = false;
 	SFE::Math::Vec3 sortedPos = {};
 	unsigned batcherBuffer[2];
-	size_t transformsCount = 0;
 	void sortTransformAccordingToView(const SFE::Math::Vec3& viewPos);
 };
 

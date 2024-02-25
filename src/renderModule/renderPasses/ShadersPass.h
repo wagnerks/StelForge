@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "renderModule/RenderPass.h"
 
-namespace SFE::RenderModule::RenderPasses {
+namespace SFE::Render::RenderPasses {
 	class ShadersPass : public RenderPass {
 	public:
 		ShadersPass();

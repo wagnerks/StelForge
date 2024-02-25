@@ -6,7 +6,9 @@
 
 #include "assetsModule/TextureHandler.h"
 #include "core/BoundingVolume.h"
-#include "ecss/Types.h"
+#include "mathModule/Forward.h"
+#include "renderModule/Buffer.h"
+#include "renderModule/VertexArray.h"
 
 
 namespace AssetsModule {
@@ -19,131 +21,79 @@ namespace AssetsModule {
 		SFE::Math::Vec3 mTangent;
 		SFE::Math::Vec3 mBiTangent;
 
-		//bone indexes which will influence this vertex
-		int mBoneIDs[MAX_BONE_INFLUENCE];
-		//weights from each bone
-		float mWeights[MAX_BONE_INFLUENCE];
+		int mBoneIDs[MAX_BONE_INFLUENCE]{-1,-1,-1,-1};
+		float mWeights[MAX_BONE_INFLUENCE]{0.f,0.f,0.f,0.f};
 	};
 
-	struct MaterialTexture {
-		Texture* mTexture;
-		std::string mType;
+	enum MaterialType : uint8_t {
+		DIFFUSE,
+		NORMALS,
+		SPECULAR
 	};
-
+	
 	struct Material {
-		MaterialTexture mDiffuse;
-		MaterialTexture mNormal;
-		MaterialTexture mSpecular;
+		Texture*& operator[](MaterialType type) { return materialTextures[type]; }
+		Texture* tryGetTexture(MaterialType type) const {
+			const auto it = materialTextures.find(type);
+
+			if (it != materialTextures.cend()) {
+				return it->second;
+			}
+
+			return nullptr;
+		}
+
+	private:
+		std::unordered_map<MaterialType, Texture*> materialTextures;
 	};
 
-	struct MeshData {
-		std::vector<Vertex> mVertices;
-		std::vector<unsigned int> mIndices;
-
-		unsigned int mVao = std::numeric_limits<unsigned>::max();
-		unsigned int mVbo = std::numeric_limits<unsigned>::max();
-		unsigned int mEbo = std::numeric_limits<unsigned>::max();
+	struct MeshVertices {
+		std::vector<Vertex> vertices;
+		std::vector<unsigned int> indices;
 	};
-
-	class MeshHandle;
 
 	class Mesh {
 	public:
 		Mesh(const Mesh& other) = delete;
+		Mesh(Mesh&& other) noexcept = default;
 		Mesh& operator=(const Mesh& other) = delete;
+		Mesh& operator=(Mesh&& other) noexcept = default;
 
-		Mesh(Mesh&& other) noexcept;
-		Mesh& operator=(Mesh&& other) noexcept;
-
-		~Mesh();
+	public:
 		Mesh(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices);
 		Mesh() = default;
+		~Mesh();
 
 		void bindMesh();
 		void unbindMesh();
-		bool isBinded() { return mBinded; }
-		unsigned int getVAO() const { return mData.mVao; }
 
-		SFE::FrustumModule::AABB mBounds;
-		Material mMaterial;
-		MeshData mData;
-		SFE::Math::Mat4 transform;
-		std::vector<MeshHandle*> handles;
+		bool isBinded() const { return glIsVertexArray(getVAO()); }
+		unsigned int getVAO() const { return vao.getID(); }
 
-		std::vector<ecss::EntityId> loadingEntities;
-	private:
-		bool mBinded = false;
-	};
+		const SFE::FrustumModule::AABB& getBounds() const { return mBounds; }
 
-	class MeshHandle {
+		void calculateBounds();
+		void recalculateNormals(bool smooth);
+
 	public:
-		MeshHandle(const MeshHandle& other)
-			: mMaterial(other.mMaterial),
-			  mData(other.mData),
-			  mBounds(other.mBounds),
-			  parentMesh(other.parentMesh),
-			  onBind(other.onBind) {
-			if (parentMesh) {
-				parentMesh->handles.push_back(this);
-			}
-		}
+		Material mMaterial;
+		MeshVertices mData;
 
-		MeshHandle& operator=(const MeshHandle& other) {
-			if (this == &other)
-				return *this;
-			mMaterial = other.mMaterial;
-			mData = other.mData;
-			mBounds = other.mBounds;
-			parentMesh = other.parentMesh;
-			onBind = other.onBind;
-			if (parentMesh) {
-				parentMesh->handles.push_back(this);
-			}
-			return *this;
-		}
+		SFE::Math::Mat4 transform;
+		uint8_t lod = 0;
 
-		MeshHandle(MeshHandle&& other) noexcept
-			: mMaterial(other.mMaterial),
-			  mData(other.mData),
-			  mBounds(other.mBounds),
-			  parentMesh(other.parentMesh),
-			  onBind(std::move(other.onBind)) {
-			if (parentMesh) {
-				parentMesh->handles.push_back(this);
-			}
-		}
+	private:
+		SFE::FrustumModule::AABB mBounds;
 
+		void recalculateFaceNormals();
+		void recalculateVerticesNormals();
 
-		MeshHandle& operator=(MeshHandle&& other) noexcept {
-			if (this == &other)
-				return *this;
-			mMaterial = other.mMaterial;
-			mData = other.mData;
-			mBounds = other.mBounds;
-			parentMesh = other.parentMesh;
-			onBind = std::move(other.onBind);
-			if (parentMesh) {
-				parentMesh->handles.push_back(this);
-			}
-			return *this;
-		}
+		SFE::Render::VertexArray vao;
+		SFE::Render::Buffer vboBuf;
+		SFE::Render::Buffer eboBuf;
 
-		MeshHandle() = default;
-		~MeshHandle() {
-			if (parentMesh) {
-				parentMesh->handles.erase(std::find(parentMesh->handles.begin(), parentMesh->handles.end(), this));
-			}
-		}
-
-		MeshHandle(Mesh& mesh) : mMaterial(&mesh.mMaterial), mData(&mesh.mData), mBounds(&mesh.mBounds), parentMesh(&mesh) {
-			mesh.handles.push_back(this);
-		}
-
-		Material* mMaterial = nullptr;
-		const MeshData* mData = nullptr;
-		const SFE::FrustumModule::AABB* mBounds = nullptr;
-		Mesh* parentMesh;
-
-		std::function<void()> onBind = nullptr;
+	public:
+		static void recalculateFaceNormal(Mesh& mesh, int a, int b, int c);
 	};
+
 }

@@ -24,7 +24,7 @@
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
-using namespace SFE::RenderModule::RenderPasses;
+using namespace SFE::Render::RenderPasses;
 
 void GeometryPass::prepare() {
 	auto curPassData = getContainer().getCurrentPassData();
@@ -68,8 +68,8 @@ void GeometryPass::prepare() {
 					continue;
 				}
 
-				for (auto& mesh : modelComp->getModel().mMeshHandles) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
+				for (auto& mesh : modelComp->getModel().meshes) {
+					batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
 				}
 			}
 			batcher.sort(camPos);
@@ -87,8 +87,8 @@ void GeometryPass::prepare() {
 					continue;
 				}
 			
-				for (auto& mesh : modelComp->getModel().mMeshHandles) {
-					outlineBatcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
+				for (auto& mesh : modelComp->getModel().meshes) {
+					outlineBatcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
 				}
 			}
 
@@ -106,115 +106,85 @@ void GeometryPass::init() {
 	mOutlineData.init(2);
 	getContainer().init(2);
 
-	// configure g-buffer framebuffer
-	// ------------------------------
-
-	glGenFramebuffers(1, &mData.mGBuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, mData.mGBuffer);
 
 	// position color buffer
-	glGenTextures(1, &mData.gPosition);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gPosition);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_FLOAT, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.gPosition, 0);
+	const auto w = Renderer::SCR_RENDER_W;
+	const auto h = Renderer::SCR_RENDER_H;
+
+	mData.positionBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
+	mData.positionBuffer->image2D(w, h, AssetsModule::RGBA32F, AssetsModule::RGBA, AssetsModule::FLOAT);
+
+	mData.positionBuffer->setParameter({ 
+		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
+		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
+	});
 
 	// normal color buffer
-	glGenTextures(1, &mData.gNormal);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gNormal);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_FLOAT, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, mData.gNormal, 0);
+	mData.normalBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
+	mData.normalBuffer->image2D(w, h, AssetsModule::RGBA16F, AssetsModule::RGBA, AssetsModule::FLOAT);
+	mData.normalBuffer->setParameter({
+		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
+		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
+	});
 
 	// color + specular color buffer
-	glGenTextures(1, &mData.gAlbedoSpec);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gAlbedoSpec);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, mData.gAlbedoSpec, 0);
+	mData.albedoBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
+	mData.albedoBuffer->image2D(w, h, AssetsModule::RGBA16F, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
+	mData.albedoBuffer->setParameter({
+		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
+		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
+	});
 
 	// viewPos buffer
-	glGenTextures(1, &mData.gViewPosition);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gViewPosition);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, mData.gViewPosition, 0);
+	mData.viewPositionBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
+	mData.viewPositionBuffer->image2D(w, h, AssetsModule::RGBA32F, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
+	mData.viewPositionBuffer->setParameter({
+		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
+		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
+	});
 
-	glGenTextures(1, &mData.gOutlines);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gOutlines);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, mData.gOutlines, 0);
+	// outline buffer
+	mData.outlinesBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
+	mData.outlinesBuffer->image2D(w, h, AssetsModule::RGBA8, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
+	mData.outlinesBuffer->setParameter({
+		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
+		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
+	});
 
-	glGenTextures(1, &mData.gLights);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gLights);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT5, GL_TEXTURE_2D, mData.gLights, 0);
+	// light buffer
+	mData.lightsBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
+	mData.lightsBuffer->image2D(w, h, AssetsModule::RGBA8, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
+	mData.lightsBuffer->setParameter({
+		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
+		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
+	});
 
+	mData.gFramebuffer = new Render::Framebuffer();
+	mData.gFramebuffer->bind();
 
-	// Attach a depth texture to the framebuffer
-
-	glGenTextures(1, &mData.gDepthTexture);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gDepthTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, mData.gDepthTexture, 0);
-
-
-	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
-	constexpr unsigned int attachments[6] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4, GL_COLOR_ATTACHMENT5 };
-	glDrawBuffers(6, attachments);
+	mData.gFramebuffer->addAttachmentTexture(0, mData.positionBuffer);
+	mData.gFramebuffer->addAttachmentTexture(1, mData.normalBuffer);
+	mData.gFramebuffer->addAttachmentTexture(2, mData.albedoBuffer);
+	mData.gFramebuffer->addAttachmentTexture(3, mData.viewPositionBuffer);
+	mData.gFramebuffer->addAttachmentTexture(4, mData.outlinesBuffer);
+	mData.gFramebuffer->addAttachmentTexture(5, mData.lightsBuffer);
 
 	// create and attach depth buffer (renderbuffer)
 	glGenRenderbuffers(1, &mData.rboDepth);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.rboDepth);
 	glBindRenderbuffer(GL_RENDERBUFFER, mData.rboDepth);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, mData.rboDepth);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, w, h);
 
-	// finally check if framebuffer is complete
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-		LogsModule::Logger::LOG_WARNING("Framebuffer not complete!");
-	}
-	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
+	mData.gFramebuffer->addRenderbuffer(GL_DEPTH_ATTACHMENT, mData.rboDepth);
+	mData.gFramebuffer->finalize();
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	mData.outlineFramebuffer = new Render::Framebuffer();
+	mData.outlineFramebuffer->bind();
 
+	mData.outlineFramebuffer->addAttachmentTexture(0, mData.outlinesBuffer);
 
-	glGenFramebuffers(1, &mOData.mFramebuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
+	mData.outlineFramebuffer->finalize();
 
-	// outlines buffer
-	//glGenTextures(1, &mData.gOutlines);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gOutlines);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.gOutlines, 0);
-
-	/*AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.gLights);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, mData.gLights, 0);*/
-
-
-	constexpr unsigned int Oattachments[1] = { GL_COLOR_ATTACHMENT0 };
-	glDrawBuffers(1, Oattachments);
-
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-		LogsModule::Logger::LOG_WARNING("Framebuffer not complete!");
-	}
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
+	Render::Framebuffer::bindDefaultFramebuffer();
 }
 
 void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
@@ -240,22 +210,17 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	prepare();
 
 	glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, mData.mGBuffer);
+	mData.gFramebuffer->bind();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	if (!curPassData->getBatcher().drawList.empty()) {
 		auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 		shaderGeometryPass->use();
-		shaderGeometryPass->setInt("texture_diffuse1", 0);
-		shaderGeometryPass->setInt("normalMap", 1);
-		shaderGeometryPass->setInt("texture_specular1", 2);
+		shaderGeometryPass->setInt("texture_diffuse1", AssetsModule::DIFFUSE);
+		shaderGeometryPass->setInt("normalMap", AssetsModule::NORMALS);
+		shaderGeometryPass->setInt("texture_specular1", AssetsModule::SPECULAR);
 		shaderGeometryPass->setBool("outline", false);
-	/*	for (auto i = 0; i < 100; i++) {
-			shaderGeometryPass->setMat4(("finalBonesMatrices[" + std::to_string(i) + "]").c_str(), Math::Mat4{1.f});
-		}
-		shaderGeometryPass->setMat4(("finalBonesMatrices[" + std::to_string(0) + "]").c_str(), Math::Mat4{{1.f,0.f,0.f, 0.f}, { 0.f,0.f,1.f, 0.f }, { 0.f,-1.f,0.f, 0.f }, {100.f,100.f,100.f,1.f}});
-		shaderGeometryPass->setMat4(("finalBonesMatrices[" + std::to_string(1) + "]").c_str(), Math::Mat4{0.f});*/
+
 		curPassData->getBatcher().flushAll(true);
 	}
 
@@ -267,8 +232,7 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 
 	if (!outlineData->getBatcher().drawList.empty()) {
 		needClearOutlines = true;
-
-		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
+		mData.outlineFramebuffer->bind();
 		//glClear(GL_COLOR_BUFFER_BIT);
 
 		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
@@ -277,14 +241,13 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 
 		outlineData->getBatcher().flushAll(true);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
+		mData.outlineFramebuffer->bind();
 
 		auto outlineG = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_outline.vs", "shaders/g_outline.fs");
 		outlineG->use();
-		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE26, GL_TEXTURE_2D, mData.gNormal);
-		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE27, GL_TEXTURE_2D, mData.gOutlines);
-		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE25, GL_TEXTURE_2D, mData.gLights);
+		AssetsModule::TextureHandler::instance()->bindTextureToSlot(26, mData.normalBuffer);
+		AssetsModule::TextureHandler::instance()->bindTextureToSlot(27, mData.outlinesBuffer);
+		AssetsModule::TextureHandler::instance()->bindTextureToSlot(25, mData.lightsBuffer);
 		outlineG->setInt("gDepth", 26);
 		outlineG->setInt("gOutlinesP", 27);
 		outlineG->setInt("gLightsP", 25);
@@ -294,13 +257,13 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	else {
 		if (needClearOutlines) {
 			needClearOutlines = false;
-			glBindFramebuffer(GL_FRAMEBUFFER, mOData.mFramebuffer);
+
+			mData.outlineFramebuffer->bind();
 			glClear(GL_COLOR_BUFFER_BIT);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	Render::Framebuffer::bindDefaultFramebuffer();
 
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);

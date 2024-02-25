@@ -282,7 +282,7 @@ namespace SFE::Math {
 			scale1 = sign_scale1 * inFraction;
 		}
 
-		auto vec = Vec4(scale0) * Vec4 { q0.x, q0.y, q0.z, q0.w } + Vec4(scale1) * Vec4 { q1.x, q1.y, q1.z, q1.w };
+		auto vec = Vector<T,4>(scale0) * Vector<T, 4> { q0.x, q0.y, q0.z, q0.w } + Vector<T, 4>(scale1) * Vector<T, 4> { q1.x, q1.y, q1.z, q1.w };
 		auto res = Quaternion<T>(vec.w, vec.x, vec.y, vec.z);
 		res.normalize();
 		return res;

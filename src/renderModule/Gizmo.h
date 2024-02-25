@@ -7,7 +7,7 @@
 #include "myPhysicsEngine/Physics.h"
 #include "renderPasses/GUIPass.h"
 
-namespace SFE::RenderModule {
+namespace SFE::Render {
 
 	enum Axis : uint8_t {
 		NONE,

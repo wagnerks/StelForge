@@ -10,7 +10,7 @@ namespace SFE {
 	}
 }
 
-namespace SFE::RenderModule {
+namespace SFE::Render {
 	class Renderer;
 
 	enum class RenderPreparingStatus {

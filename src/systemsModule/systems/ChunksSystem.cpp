@@ -160,7 +160,7 @@ namespace SFE::SystemsModule {
 
 						constexpr static auto notEmptyColor = Math::Vec4(0.5f, 0.5f, 0.5f, 0.08f);
 
-						RenderModule::Utils::renderCubeMesh(
+						Render::Utils::renderCubeMesh(
 							Math::Vec3(0.f, 0.f, 0.f),
 							Math::Vec3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE),
 							rotate, Math::Vec3(chunkPos), notEmptyColor

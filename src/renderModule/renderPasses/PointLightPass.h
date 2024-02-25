@@ -4,9 +4,11 @@
 #include "core/BoundingVolume.h"
 #include "core/Projection.h"
 #include "ecss/Types.h"
+#include "renderModule/Buffer.h"
+#include "renderModule/Framebuffer.h"
 #include "renderModule/RenderPass.h"
 
-namespace SFE::RenderModule::RenderPasses {
+namespace SFE::Render::RenderPasses {
 	class PointLightPass : public RenderPass {
 	public:
 		struct Data {
@@ -18,9 +20,10 @@ namespace SFE::RenderModule::RenderPasses {
 
 		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
 	private:
-		unsigned mFramebufferID = 0;
-		unsigned mLightDepthMaps = 0;
-		unsigned mMatricesUBO = 0;
+		Framebuffer lightFramebuffer;
+		AssetsModule::Texture mLightDepthMaps{AssetsModule::TEXTURE_2D_ARRAY};
+
+		Buffer mMatricesUBO{ UNIFORM_BUFFER };
 
 		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
 		SFE::ProjectionModule::PerspectiveProjection lightProjection;

@@ -11,7 +11,7 @@
 #include "renderModule/renderPasses/SSAOPass.h"
 
 namespace SFE {
-	namespace RenderModule {
+	namespace Render {
 		class Renderer;
 	}
 }
@@ -45,17 +45,17 @@ namespace SFE::SystemsModule {
 		ProjectionModule::PerspectiveProjection cameraProjection = {};
 		ProjectionModule::PerspectiveProjection nextCameraProjection =  {};
 
-		RenderModule::RenderPasses::CascadedShadowPass::Data mCascadedShadowsPassData;
-		RenderModule::RenderPasses::PointLightPass::Data mPointPassData;
-		RenderModule::RenderPasses::GeometryPass::Data mGeometryPassData;
-		RenderModule::RenderPasses::SSAOPass::Data mSSAOPassData;
+		Render::RenderPasses::CascadedShadowPass::Data mCascadedShadowsPassData;
+		Render::RenderPasses::PointLightPass::Data mPointPassData;
+		Render::RenderPasses::GeometryPass::Data mGeometryPassData;
+		Render::RenderPasses::SSAOPass::Data mSSAOPassData;
 
 		RenderMode mRenderType = RenderMode::DEFAULT;
 	};
 
 	class RenderSystem : public ecss::System {
 	public:
-		RenderSystem(RenderModule::Renderer* renderer);
+		RenderSystem(Render::Renderer* renderer);
 		~RenderSystem() override;
 
 		void update(float_t dt) override;
@@ -74,11 +74,11 @@ namespace SFE::SystemsModule {
 		template<typename PassType>
 		inline void addRenderPass();
 
-		RenderModule::Renderer* mRenderer = nullptr;
+		Render::Renderer* mRenderer = nullptr;
 
 		RenderData mRenderData;
-		std::vector<RenderModule::RenderPass*> mRenderPasses;
+		std::vector<Render::RenderPass*> mRenderPasses;
 
-		unsigned cameraMatricesUBO = {};
+		Render::Buffer cameraMatricesUBO{Render::UNIFORM_BUFFER};
 	};
 }

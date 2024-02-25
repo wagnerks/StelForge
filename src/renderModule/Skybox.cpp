@@ -11,17 +11,11 @@
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/SystemManager.h"
 
-using namespace SFE::RenderModule;
+using namespace SFE::Render;
 
 Skybox::Skybox(std::string_view path) : skyboxPath(path) {}
 
 Skybox::~Skybox() {
-	if (VAO != -1) {
-		glDeleteVertexArrays(1, &VAO);
-	}
-	if (VBO != -1) {
-		glDeleteBuffers(1, &VBO);
-	}
 	if (cubemapTex != -1) {
 		//AssetsModule::TextureHandler::instance()->deleteTexture(); TODO
 		glDeleteTextures(1, &cubemapTex);
@@ -91,19 +85,17 @@ void Skybox::init() {
 		 1.0f, -1.0f,  1.0f
 	};
 
+	VAO.generate();
+	VBO.generate(ARRAY_BUFFER);
+	VAO.bind();
+	VBO.bind();
+	VBO.allocateData(108, STATIC_DRAW, skyboxVertices);
 
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glBindVertexArray(VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
-
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	VAO.addAttribute(0, 3, FLOAT, false, 3 * sizeof(float));
 }
 
 void Skybox::draw() {
-	if (VAO == -1) {
+	if (VAO.getID() == 0) {
 		return;
 	}
 	skyboxShader->use();
@@ -113,10 +105,10 @@ void Skybox::draw() {
 
 	glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
 
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE16, GL_TEXTURE_CUBE_MAP, cubemapTex);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(16, AssetsModule::TEXTURE_CUBE_MAP, cubemapTex);
 
-	glBindVertexArray(VAO);
-	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 36);
+	VAO.bind();
+	Render::Renderer::drawArrays(TRIANGLES, 36);
 
 	glDepthFunc(GL_LESS);
 	glBindVertexArray(0);

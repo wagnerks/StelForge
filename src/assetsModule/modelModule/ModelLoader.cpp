@@ -48,7 +48,6 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	}
 	
 	auto model = loadModel(scene, path);
-	auto armature = model.second;
 
 	std::vector<Animation> animations;
 	animations.reserve(scene->mNumAnimations);
@@ -58,14 +57,14 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	}
 
 	mtx.lock();
-	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(model.first), path, model.second);
-	asset->animations = std::move(animations);
+	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(model.first), std::move(model.second), std::move(animations));
+
 
 	loading[path].notify_all();
 	loading.erase(path);
 
 	mtx.unlock();
-	asset->normalizeModel();
+	asset->recalculateNormals();
 
 	return asset;
 }
@@ -83,43 +82,45 @@ void ModelLoader::releaseModel(const std::string& path) {
 }
 
 
-ModelLoader::~ModelLoader() {
-}
+ModelLoader::~ModelLoader() {}
 
 void ModelLoader::init() {}
 
-std::pair<MeshNode, Armature> ModelLoader::loadModel(const aiScene* scene, const std::string& path) {
+std::pair<SFE::Tree<Mesh>, Armature> ModelLoader::loadModel(const aiScene* scene, const std::string& path) {
 	auto directory = path.substr(0, path.find_last_of('/'));
 
-	std::pair<MeshNode, Armature> res;
-	//MeshNode rawModel;
-	//Armature modelArmature;
+	std::pair<SFE::Tree<Mesh>, Armature> res;
+
 	processNode(scene->mRootNode, scene, TextureHandler::instance(), directory, res.first, res.second);
 
 	return res;
 }
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureHandler* loader, const std::string& directory, MeshNode& rawModel, Armature& armature) {
-	auto parent = node->mParent;
-	//while (parent) {
-	//	node->mTransformation *= parent->mTransformation;
-	//	parent = parent->mParent;
-	//}
-	
+
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureHandler* loader, const std::string& directory, SFE::Tree<Mesh>& rawModel, Armature& armature) {
+	{
+		rawModel.value.transform = assimpMatToMat4(node->mTransformation);
+
+		auto parent = rawModel.parent;
+		while (parent) {
+			rawModel.value.transform *= parent->value.transform;
+			parent = parent->parent;
+		}
+	}
+
 	for (unsigned int i = 0; i < node->mNumMeshes; i++) {
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		processMesh(mesh, scene, node, loader, directory, rawModel, armature);
+		processMesh(mesh, scene, node, loader, directory, rawModel.value, armature);
+		rawModel.value.calculateBounds();
 	}
 
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
-		auto child = new AssetsModule::MeshNode();
-		rawModel.addElement(child);
-
-		processNode(node->mChildren[i], scene, loader, directory, *child, armature);
+		rawModel.addChild({});
+		processNode(node->mChildren[i], scene, loader, directory, rawModel.children.front(), armature);
 	}
 }
 
-void ModelLoader::extractBones(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature) {
+void ModelLoader::readBonesData(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature) {
 	auto& bones = armature.bones;
 	bones.reserve(mesh->mNumBones);
 
@@ -199,142 +200,130 @@ void ModelLoader::extractBones(std::vector<Vertex>& vertices, aiMesh* mesh, cons
 			}
 		}
 	}
-	
 }
 
-void ModelLoader::processMesh(aiMesh* mesh, const aiScene* scene, aiNode* meshNode, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel, Armature& armature) {
-	auto lodLevel = 0;
-	{
-		auto i = meshNode->mName.length - 4;
-		for (; i > 0; i--) {
-			if (meshNode->mName.data[i] == '_' && meshNode->mName.data[i + 1] == 'L' && meshNode->mName.data[i + 2] == 'O' && meshNode->mName.data[i + 3] == 'D') {
-				break;
-			}
-		}
-
-		if (i != 0) {
-			auto nameString = std::string(meshNode->mName.C_Str());
-			lodLevel = std::atoi(nameString.substr(i + 4, meshNode->mName.length - i).c_str());
-		}
+void ModelLoader::readMaterialData(Material& material, aiMaterial* assimpMaterial, AssetsModule::TextureHandler* loader, const std::string& directory) {
+	auto diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE, loader, directory);
+	assert(diffuseMaps.size() < 2);
+	if (!diffuseMaps.empty()) {
+		material[DIFFUSE] = diffuseMaps.front();
 	}
 
-	while (rawModel.mLods.size() <= lodLevel) {
-		rawModel.mLods.emplace_back();
+	auto specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_SPECULAR, loader, directory);
+	if (!specularMaps.empty()) {
+		material[SPECULAR] = specularMaps.front();
 	}
 
-	rawModel.mLods[lodLevel].emplace_back();
-	
-	auto& modelMesh = rawModel.mLods[lodLevel].back();
-	modelMesh.mData.mVertices.resize(mesh->mNumVertices);
-	{
-		auto parent = meshNode->mParent;
-		modelMesh.transform = assimpMatToMat4(meshNode->mTransformation);
-		while (parent) {
-			modelMesh.transform *= assimpMatToMat4(parent->mTransformation);
-			parent = parent->mParent;
+	auto normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMALS, loader, directory);
+	if (!normalMaps.empty()) {
+		material[NORMALS] = normalMaps.front();
+	}
+
+	/*specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_HEIGHT, "texture_specular", loader, directory);
+	if (!specularMaps.empty()) {
+		material.mSpecular = specularMaps.front();
+	}
+
+	specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_EMISSIVE, "texture_specular", loader, directory);
+	if (!specularMaps.empty()) {
+		material.mSpecular = specularMaps.front();
+	}
+
+	specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_AMBIENT, "texture_specular", loader, directory);
+	if (!specularMaps.empty()) {
+		material.mSpecular = specularMaps.front();
+	}
+	for (int i = aiTextureType_SHININESS; i <= aiTextureType_REFLECTION; i++) {
+		specularMaps = loadMaterialTextures(assimpMaterial, (aiTextureType)i, "texture_specular", loader, directory);
+		if (!specularMaps.empty()) {
+			material.mSpecular = specularMaps.front();
+		}
+	}*/
+}
+
+void ModelLoader::readIndicesData(std::vector<unsigned>& indices, unsigned numFaces, aiFace* faces) {
+	indices.reserve(numFaces * 3);
+	for (auto i = 0u; i < numFaces; i++) {
+		const auto& face = faces[i];
+		for (auto j = 0u; j < face.mNumIndices; j++) {
+			indices.push_back(face.mIndices[j]);
 		}
 	}
+}
 
-	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
-		auto& vertex = modelMesh.mData.mVertices[i];
+void ModelLoader::readVerticesData(std::vector<Vertex>& vertices, unsigned numVertices, aiMesh* assimpMesh) {
+	vertices.resize(numVertices);
 
-		auto newPos =/* meshNode->mTransformation **/ mesh->mVertices[i];
+	for (unsigned int i = 0; i < numVertices; i++) {
+		auto& vertex = vertices[i];
+
+		auto newPos =/* meshNode->mTransformation **/ assimpMesh->mVertices[i];
 		// process vertex positions, normals and texture coordinates
 		vertex.mPosition.x = newPos.x;
 		vertex.mPosition.y = newPos.y;
 		vertex.mPosition.z = newPos.z;
 
-		if (mesh->mNormals) {
-			vertex.mNormal.x = mesh->mNormals[i].x;
-			vertex.mNormal.y = mesh->mNormals[i].y;
-			vertex.mNormal.z = mesh->mNormals[i].z;
+		if (assimpMesh->mTextureCoords[0]) {
+			vertex.mTexCoords.x = assimpMesh->mTextureCoords[0][i].x;
+			vertex.mTexCoords.y = assimpMesh->mTextureCoords[0][i].y;
 		}
 
-
-		if (mesh->mTextureCoords[0]) {
-			vertex.mTexCoords.x = mesh->mTextureCoords[0][i].x;
-			vertex.mTexCoords.y = mesh->mTextureCoords[0][i].y;
+		if (assimpMesh->mNormals) {
+			vertex.mNormal.x = assimpMesh->mNormals[i].x;
+			vertex.mNormal.y = assimpMesh->mNormals[i].y;
+			vertex.mNormal.z = assimpMesh->mNormals[i].z;
 		}
 
-		if (mesh->mTangents) {
-			vertex.mTangent.x = mesh->mTangents[i].x;
-			vertex.mTangent.y = mesh->mTangents[i].y;
-			vertex.mTangent.z = mesh->mTangents[i].z;
-		}
-		for (auto b = 0; b < 4; b++) {
-			vertex.mBoneIDs[b] = -1;
-			vertex.mWeights[b] = 0.f;
+		if (assimpMesh->mTangents) {
+			vertex.mTangent.x = assimpMesh->mTangents[i].x;
+			vertex.mTangent.y = assimpMesh->mTangents[i].y;
+			vertex.mTangent.z = assimpMesh->mTangents[i].z;
 		}
 	}
-
-	// process indices
-	modelMesh.mData.mIndices.reserve(mesh->mNumFaces * 3);
-	for (auto i = 0u; i < mesh->mNumFaces; i++) {
-		const auto& face = mesh->mFaces[i];
-		for (auto j = 0u; j < face.mNumIndices; j++) {
-			modelMesh.mData.mIndices.push_back(face.mIndices[j]);
-		}
-	}
-
-	extractBones(modelMesh.mData.mVertices, mesh, scene, armature);
-
-	// process material
-	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-
-	std::vector<AssetsModule::MaterialTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", loader, directory);
-	assert(diffuseMaps.size() < 2);
-	if (!diffuseMaps.empty()) {
-		modelMesh.mMaterial.mDiffuse = diffuseMaps.front();
-	}
-
-	std::vector<AssetsModule::MaterialTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", loader, directory);
-	if (!specularMaps.empty()) {
-		modelMesh.mMaterial.mSpecular = specularMaps.front();
-	}
-
-	std::vector<AssetsModule::MaterialTexture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", loader, directory);
-	if (!normalMaps.empty()) {
-		modelMesh.mMaterial.mNormal = normalMaps.front();
-	}
-
-	specularMaps = loadMaterialTextures(material, aiTextureType_HEIGHT, "texture_specular", loader, directory);
-	if (!specularMaps.empty()) {
-		modelMesh.mMaterial.mSpecular = specularMaps.front();
-	}
-
-	specularMaps = loadMaterialTextures(material, aiTextureType_EMISSIVE, "texture_specular", loader, directory);
-	if (!specularMaps.empty()) {
-		modelMesh.mMaterial.mSpecular = specularMaps.front();
-	}
-
-	specularMaps = loadMaterialTextures(material, aiTextureType_AMBIENT, "texture_specular", loader, directory);
-	if (!specularMaps.empty()) {
-		modelMesh.mMaterial.mSpecular = specularMaps.front();
-	}
-	for (int i = aiTextureType_SHININESS; i <= aiTextureType_REFLECTION; i++) {
-		specularMaps = loadMaterialTextures(material, (aiTextureType)i, "texture_specular", loader, directory);
-		if (!specularMaps.empty()) {
-			modelMesh.mMaterial.mSpecular = specularMaps.front();
-		}
-	}
-	modelMesh.bindMesh();
 }
 
-std::vector<AssetsModule::MaterialTexture> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureHandler* loader, const std::string& directory) {
-	std::vector<AssetsModule::MaterialTexture> textures;
+int ModelLoader::extractLodLevel(const std::string& meshName) {
+	if (meshName.size() <= 4) {
+		return 0;
+	}
+
+	auto i = meshName.size() - 4;
+	for (; i > 0; i--) {
+		if (meshName[i] == '_' && meshName[i + 1] == 'L' && meshName[i + 2] == 'O' && meshName[i + 3] == 'D') {
+			break;
+		}
+	}
+
+	if (i == 0) {
+		return 0;
+	}
+
+	return std::atoi(meshName.substr(i + 4, meshName.size() - i).c_str());
+}
+
+void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, aiNode* meshNode, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::Mesh& mesh, Armature& armature) {
+	mesh.lod = extractLodLevel(meshNode->mName.data);
+
+	readVerticesData(mesh.mData.vertices, assimpMesh->mNumVertices, assimpMesh);
+	readIndicesData(mesh.mData.indices, assimpMesh->mNumFaces, assimpMesh->mFaces);
+	readBonesData(mesh.mData.vertices, assimpMesh, scene, armature);
+	readMaterialData(mesh.mMaterial, scene->mMaterials[assimpMesh->mMaterialIndex], loader, directory);
+
+	mesh.bindMesh();
+}
+
+std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, AssetsModule::TextureHandler* loader, const std::string& directory) {
+	std::vector<Texture*> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
 		//if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
-		AssetsModule::MaterialTexture texture;
+		
 		std::string path = std::string(str.C_Str());
 		path.erase(0, std::string(str.C_Str()).find_last_of("\\") + 1);
 
-		texture.mTexture = loader->loadTexture(directory + "/" + path);
-		texture.mType = typeName;
-
-		textures.push_back(texture);
+		textures.emplace_back(loader->loadTexture(directory + "/" + path));
 		//}
 	}
 	return textures;

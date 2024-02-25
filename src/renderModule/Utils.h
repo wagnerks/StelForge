@@ -3,18 +3,19 @@
 #include <map>
 #include <unordered_map>
 
+#include "Renderer.h"
 #include "glad/glad.h"
 #include "mathModule/Forward.h"
 #include "mathModule/Quaternion.h"
 
 
-namespace SFE::RenderModule {
+namespace SFE::Render {
 	class Utils {
 	public:
 		struct LineData {
 			Math::Vec4 color;
 			float thickness = 1.f;
-			uint32_t renderType = GL_LINES;
+			RenderMode renderType = RenderMode::LINES;
 		};
 		inline static std::vector<std::pair<LineData, std::vector<Math::Vec3>>> renderVertices;
 
@@ -69,7 +70,7 @@ namespace SFE::RenderModule {
 
 		inline static std::vector<std::pair<TriangleData, std::vector<Triangle>>> renderTriangles;
 
-		static std::vector<Math::Vec3>& getVerticesArray(const Math::Vec4& color, float thickness, uint32_t renderType);
+		static std::vector<Math::Vec3>& getVerticesArray(const Math::Vec4& color, float thickness, RenderMode renderType);
 		static std::vector<Triangle>& getTrianglesArray(const TriangleData& data);
 
 		//angles in radians
@@ -93,11 +94,9 @@ namespace SFE::RenderModule {
 		static void renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
 		static void renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
 
-		static void renderQuad2D(const Math::Vec2& min, const Math::Vec2& max, const Math::Vec2& pos, const Math::Vec4& color);
-
 		static void renderCubeMesh(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color);
 		static void renderSphere(const Math::Vec3& center, float radius);
-		static void renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments = 16, float lineThicness = 3.f, uint32_t renderType = GL_LINE_LOOP);
+		static void renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments = 16, float lineThicness = 3.f, RenderMode renderType = LINE_LOOP);
 		static void renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float startAngle = 0.f, float endAngle = 360.f);
 
 		static void renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, float height, const Math::Vec4& color, int numSegments = 64);

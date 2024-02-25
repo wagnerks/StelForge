@@ -3,6 +3,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <assimp/material.h>
+#include <assimp/mesh.h>
 
 #include "core/Singleton.h"
 #include "assetsModule/AssetsManager.h"
@@ -12,7 +13,7 @@ struct aiMaterial;
 struct aiMesh;
 
 namespace SFE {
-	namespace RenderModule {
+	namespace Render {
 		class TextureLoader;
 	}
 }
@@ -38,10 +39,14 @@ namespace AssetsModule {
 		~ModelLoader() override;
 		void init() override;
 
-		static std::pair<MeshNode, Armature> loadModel(const aiScene* scene, const std::string& path);
-		static void processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel, Armature& armature);
-		static void extractBones(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature);
-		static void processMesh(aiMesh* mesh, const aiScene* scene, aiNode* meshNode, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::MeshNode& rawModel, Armature& armature);
-		static std::vector<AssetsModule::MaterialTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, AssetsModule::TextureHandler* loader, const std::string& directory);
+		static std::pair<SFE::Tree<Mesh>, Armature> loadModel(const aiScene* scene, const std::string& path);
+		static void processNode(aiNode* node, const aiScene* scene, AssetsModule::TextureHandler* loader, const std::string& directory, SFE::Tree<Mesh>& rawModel, Armature& armature);
+		static void readBonesData(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature);
+		static void readMaterialData(Material& material, aiMaterial* assimpMaterial, AssetsModule::TextureHandler* loader, const std::string& directory);
+		static void readIndicesData(std::vector<unsigned>& vector, unsigned numFaces, aiFace* faces);
+		static void readVerticesData(std::vector<Vertex>& vector, unsigned numVertices, aiMesh* aiMesh);
+		static int extractLodLevel(const std::string& meshName);
+		static void processMesh(aiMesh* assimpMesh, const aiScene* scene, aiNode* meshNode, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::Mesh& rawModel, Armature& armature);
+		static std::vector<Texture*> loadMaterialTextures(aiMaterial* mat, aiTextureType type, AssetsModule::TextureHandler* loader, const std::string& directory);
 	};
 }

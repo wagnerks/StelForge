@@ -35,4 +35,5 @@ namespace SFE::PropertiesModule {
 	TYPE_NAME(AnimationComponent);
 	TYPE_NAME(ActionComponent);
 	TYPE_NAME(LightSourceComponent);
+	TYPE_NAME(AABBComponent);
 }

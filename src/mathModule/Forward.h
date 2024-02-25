@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Matrix.h"
+#include "Quaternion.h"
 #include "Vector.h"
 
 namespace SFE::Math {
@@ -20,4 +21,6 @@ namespace SFE::Math {
 	using DVec2 = Vector<double, 2>;
 	using DVec3 = Vector<double, 3>;
 	using DVec4 = Vector<double, 4>;
+
+	using Quat = Quaternion<float>;
 }

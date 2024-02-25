@@ -28,7 +28,7 @@ namespace SFE::SystemsModule {
 		return keys.size() - 2;
 	}
 
-	void SkeletalAnimationSystem::updateAnimation(AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices) {
+	void SkeletalAnimationSystem::updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices) {
 		if (!animation) {
 			return;
 		}
@@ -38,7 +38,7 @@ namespace SFE::SystemsModule {
 		}
 	}
 
-	void SkeletalAnimationSystem::calculateBoneTransform(AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, SFE::Math::Mat4 parentTransform,	std::vector<AssetsModule::Bone>& bones, std::vector<SFE::Math::Mat4>& boneMatrices) {
+	void SkeletalAnimationSystem::calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, SFE::Math::Mat4 parentTransform,	std::vector<AssetsModule::Bone>& bones, std::vector<SFE::Math::Mat4>& boneMatrices) {
 		if (const auto animationKeys = animation->getBoneAnimationInfo(bone->name)) {
 			bone->pos = interpolatePosition(currentTime, animationKeys->positions);
 			bone->rotation = interpolateRotation(currentTime, animationKeys->rotations);

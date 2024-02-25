@@ -11,7 +11,7 @@ AssetsModule::Animation::Animation(const aiAnimation* animation) {
 	readKeys(animation, mBoneAnimationInfos);
 }
 
-AssetsModule::BoneAnimationKeys* AssetsModule::Animation::getBoneAnimationInfo(const std::string& boneName) {
+const AssetsModule::BoneAnimationKeys* AssetsModule::Animation::getBoneAnimationInfo(const std::string& boneName) const {
 	const auto it = mBoneAnimationInfos.find(boneName);
 	if (it == mBoneAnimationInfos.end()) {
 		return nullptr;

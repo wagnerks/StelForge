@@ -14,7 +14,7 @@
 #include "renderModule/SceneGridFloor.h"
 #include "systemsModule/SystemsPriority.h"
 
-using namespace SFE::RenderModule::RenderPasses;
+using namespace SFE::Render::RenderPasses;
 
 
 LightingPass::LightingPass() {
@@ -76,7 +76,7 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
 
 		shaderLightingPass->setVec3("ambientColor", renderDataHandle.mCascadedShadowsPassData.lightColor);//todo 0 for night and 1 for day, some time system
-		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE31, GL_TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData.shadowMapTexture);
+		AssetsModule::TextureHandler::instance()->bindTextureToSlot(31, AssetsModule::TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData.shadowMapTexture);
 		shaderLightingPass->setInt("cascadedShadow.shadowMap", 31);
 		shaderLightingPass->setVec3("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData.lightDirection);
 		shaderLightingPass->setVec3("cascadedShadow.color", renderDataHandle.mCascadedShadowsPassData.lightColor);
@@ -98,18 +98,18 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	shaderLightingPass->setVec3("viewPos", renderDataHandle.mCameraPos);
 
 
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gPosition);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gAlbedoSpec);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE3, GL_TEXTURE_2D, renderDataHandle.mSSAOPassData.mSsaoColorBufferBlur);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE5, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gOutlines);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(0, renderDataHandle.mGeometryPassData.positionBuffer);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(1, renderDataHandle.mGeometryPassData.normalBuffer);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(2, renderDataHandle.mGeometryPassData.albedoBuffer);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(3, AssetsModule::TEXTURE_2D, renderDataHandle.mSSAOPassData.mSsaoColorBufferBlur);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(5,  renderDataHandle.mGeometryPassData.outlinesBuffer);
 
 	// finally render quad
 	Utils::renderQuad();
 
 	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
 	// ----------------------------------------------------------------------------------
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, renderDataHandle.mGeometryPassData.mGBuffer);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, renderDataHandle.mGeometryPassData.gFramebuffer->id);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
 	glBlitFramebuffer(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);

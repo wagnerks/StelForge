@@ -35,26 +35,17 @@ void LODData::setCurrentLodValue(float currentLodValue) {
 	mCurrentLodValue = currentLodValue;
 }
 
-void ModelComponent::addMeshData(std::vector<AssetsModule::ModelObj>* meshData) {
+void ModelComponent::addMeshData(std::vector<AssetsModule::Model::LOD>* meshData) {
 	mModel = meshData;
-	for (auto& modelObj : *mModel) {
-		for (auto& meshHandle : modelObj.mMeshHandles) {
-			if (!meshHandle.parentMesh->isBinded()) {
-				if (std::find(meshHandle.parentMesh->loadingEntities.begin(), meshHandle.parentMesh->loadingEntities.end(), getEntityId()) == meshHandle.parentMesh->loadingEntities.end()) {
-					meshHandle.parentMesh->loadingEntities.push_back(getEntityId());
-				}
-			}
-		}
-	}
 }
 
-const AssetsModule::ModelObj& ModelComponent::getModel() {
+const AssetsModule::Model::LOD& ModelComponent::getModel() {
 	return getModel(mLOD.getLodLevel());
 }
 
-AssetsModule::ModelObj& ModelComponent::getModel(size_t LOD) const {
+AssetsModule::Model::LOD& ModelComponent::getModel(size_t LOD) const {
 	if (!mModel || mModel->empty()) {
-		static AssetsModule::ModelObj empty;
+		static AssetsModule::Model::LOD empty;
 		return empty;
 	}
 
@@ -65,16 +56,16 @@ AssetsModule::ModelObj& ModelComponent::getModel(size_t LOD) const {
 	return mModel->at(LOD);
 }
 
-const AssetsModule::ModelObj& ModelComponent::getModelLowestDetails() const {
+const AssetsModule::Model::LOD& ModelComponent::getModelLowestDetails() const {
 	if (!mModel || mModel->empty()) {
-		static AssetsModule::ModelObj empty;
+		static AssetsModule::Model::LOD empty;
 		return empty;
 	}
 
 	return mModel->back();
 }
 
-void ModelComponent::setModel(std::vector<AssetsModule::ModelObj>* data) {
+void ModelComponent::setModel(std::vector<AssetsModule::Model::LOD>* data) {
 	mModel = data;
 }
 
@@ -90,8 +81,8 @@ void ModelComponent::deserialize(const Json::Value& data) {
 	}
 
 	if (model) {
-		boneMatrices = model->defaultBoneMatrices;
-		armature = model->arma;
-		addMeshData(model->getAllLODs());
+		boneMatrices = model->getDefaultBoneMatrices();
+		armature = model->getArmature();
+		addMeshData(model->getLODs());
 	}
 }

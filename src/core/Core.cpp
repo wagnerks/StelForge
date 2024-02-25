@@ -22,20 +22,20 @@ void Core::update(float dt) {
 	Debug::ImGuiDecorator::preDraw();
 	ECSHandler::systemManager().update(dt);
 	mDebugMenu.draw();
-	RenderModule::Renderer::instance()->draw();
+	Render::Renderer::instance()->draw();
 	ThreadPool::instance()->syncUpdate();
 	Debug::ComponentsDebug::instance()->entitiesDebug();
 	Debug::BenchmarkGUI::instance()->onGui();
 
 	Debug::ImGuiDecorator::draw();
-	RenderModule::Renderer::instance()->postDraw();
+	Render::Renderer::instance()->postDraw();
 }
 
 void Core::init() {
 	AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
 	ECSHandler::instance()->initSystems();
 	CoreModule::InputHandler::init();
-	RenderModule::Renderer::instance();
+	Render::Renderer::instance();
 
 	/*{
 		Math::Matrix<float, 2, 2> A {1, 4, 2, 4};
@@ -62,7 +62,7 @@ Core::~Core() {
 	SFE::ShaderModule::ShaderController::terminate();
 	AssetsModule::TextureHandler::terminate();
 	AssetsModule::ModelLoader::terminate();
-	RenderModule::Renderer::terminate();
+	Render::Renderer::terminate();
 	
 	ThreadPool::terminate();
 	ECSHandler::terminate();

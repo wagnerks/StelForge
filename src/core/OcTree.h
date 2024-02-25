@@ -710,7 +710,7 @@ namespace SFE {
 			
 				constexpr static auto notEmptyColor = Math::Vec4(0.f, 0.5f, 0.f, 0.02f);
 
-				RenderModule::Utils::renderCubeMesh(
+				Render::Utils::renderCubeMesh(
 					Math::Vec3(0.f, 0.f, nodeSize),
 					Math::Vec3(nodeSize, -nodeSize, 0.f),
 					rotate, Math::Vec3(nodePos), notEmptyColor
@@ -721,7 +721,7 @@ namespace SFE {
 					for (auto& data : node.getData()) {
 						constexpr static auto AABBColor = Math::Vec4(0.f, 1.f, 1.f, 1.f);
 
-						RenderModule::Utils::renderCube(
+						Render::Utils::renderCube(
 							Math::Vec3(-data.size.x, -data.size.y, data.size.z),
 							Math::Vec3(data.size.x, data.size.y, -data.size.z),
 							rotate, Math::Vec3(data.pos), AABBColor
@@ -730,7 +730,7 @@ namespace SFE {
 				}
 				constexpr static auto emptyColor = Math::Vec4(1.f, 0.f, 1.f, 1.f);
 
-				RenderModule::Utils::renderCube(
+				Render::Utils::renderCube(
 					Math::Vec3(0.f, 0.f, nodeSize),
 					Math::Vec3(nodeSize, -nodeSize, 0.f),
 					rotate, Math::Vec3(nodePos), emptyColor

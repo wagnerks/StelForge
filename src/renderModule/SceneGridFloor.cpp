@@ -1,5 +1,7 @@
 #include "SceneGridFloor.h"
 
+#include "BlendStack.h"
+#include "CapabilitiesStack.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Engine.h"
@@ -11,19 +13,12 @@
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemManager.h"
 
-using namespace SFE::RenderModule;
+using namespace SFE::Render;
 
 SceneGridFloor::SceneGridFloor() {
 	init();
 }
-SceneGridFloor::~SceneGridFloor() {
-	if (VAO != -1) {
-		glDeleteVertexArrays(1, &VAO);
-	}
-	if (VBO != -1) {
-		glDeleteBuffers(1, &VBO);
-	}
-	
+SceneGridFloor::~SceneGridFloor() {	
 	SHADER_CONTROLLER->deleteShader(floorShaderHash);
 }
 
@@ -38,40 +33,38 @@ void SceneGridFloor::init() {
 	floorShader->use();
 	transform = Math::translate(transform, Math::Vec3(0.f));
 
-	float vertices[] = {
-		 1.0, 0.f, -1.0, //far right
-		-1.0, 0.f, -1.0,//far left
-		-1.0, 0.f,  1.0, //near left
+	Math::Vec3 vertices[] = {
+		{ 1.0, 0.f, -1.0}, //far right
+		{-1.0, 0.f, -1.0},//far left
+		{-1.0, 0.f,  1.0}, //near left
 
-		 1.0, 0.f, -1.0, //far right
-		-1.0, 0.f,  1.0,//near left
-		 1.0, 0.f,  1.0, //near right
+		{ 1.0, 0.f, -1.0}, //far right
+		{-1.0, 0.f,  1.0},//near left
+		{ 1.0, 0.f,  1.0}, //near right
 	};
 
+	VAO.generate();
+	VAO.bind();
 
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glBindVertexArray(VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 18, &vertices, GL_STATIC_DRAW);
+	VBO.bind();
+	VBO.allocateData(6, STATIC_DRAW, &vertices);
 
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+	VAO.addAttribute<Math::Vec3>(0, 3, FLOAT, false);
 
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
+	Buffer::bindDefaultBuffer(ARRAY_BUFFER);
+	VertexArray::bindDefault();
 }
 
 void SceneGridFloor::draw() {
-	if (VAO == -1) {
+	if (VAO.getID() == 0) {
 		return;
 	}
+
 	floorShader->use();
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
-	//cameraTransform->reloadTransform();
-	
+
 	floorShader->setMat4("PVM", renderData.current.PV * transform);
     floorShader->setMat4("PV", renderData.current.PV);
 	floorShader->setMat4("model", transform);
@@ -82,14 +75,17 @@ void SceneGridFloor::draw() {
 	floorShader->setFloat("near", cameraComp->getProjection().getNear());
 
 
-	glBindVertexArray(VAO);
-	glDisable(GL_CULL_FACE);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	VAO.bind();
+	
+	CapabilitiesStack::push(CULL_FACE, false);
+	CapabilitiesStack::push(BLEND, true);
+	BlendFuncStack::push({ SRC_ALPHA, ONE_MINUS_SRC_ALPHA });
 
-	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 6);
-	glEnable(GL_CULL_FACE);
-	glDisable(GL_BLEND);
+	Render::Renderer::drawArrays(TRIANGLES, 6);
 
-	glBindVertexArray(0);
+	CapabilitiesStack::pop();
+	CapabilitiesStack::pop();
+	BlendFuncStack::pop();
+
+	VertexArray::bindDefault();
 }

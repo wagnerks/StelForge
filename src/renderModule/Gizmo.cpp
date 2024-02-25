@@ -13,7 +13,7 @@
 #include "renderPasses/GUIPass.h"
 #include "systemsModule/systems/CameraSystem.h"
 
-namespace SFE::RenderModule {
+namespace SFE::Render {
 	Gizmo::Gizmo() {
 		onMouseBtnEvent = [this](Math::DVec2 mousePos, CoreModule::MouseButton btn, CoreModule::InputEventType eventType) {
 			if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity) || mHoveredAxis == NONE) {
@@ -21,7 +21,7 @@ namespace SFE::RenderModule {
 			}
 
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_LEFT && eventType == CoreModule::InputEventType::PRESS) {
-				mMousePos = Math::Vec2(mousePos);
+				mMousePos = static_cast<Math::Vec2>(mousePos);
 
 				mActiveAxis = mHoveredAxis;
 
@@ -631,7 +631,7 @@ namespace SFE::RenderModule {
 			return;
 		}
 
-		const auto font = RenderModule::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 18);
+		const auto font = Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 18);
 
 		if (mQuad == ecss::INVALID_ID) {
 			mQuad = RenderPasses::GUIPass::registry.takeEntity();
@@ -674,7 +674,7 @@ namespace SFE::RenderModule {
 			return;
 		}
 
-		const auto font = RenderModule::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 18);
+		const auto font = Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 18);
 
 		if (mQuad == ecss::INVALID_ID) {
 			mQuad = RenderPasses::GUIPass::registry.takeEntity();

@@ -59,15 +59,15 @@ namespace SFE::ComponentsModule {
 	public:
 		ModelComponent(ecss::SectorId id) : ComponentInterface(id) {};
 		void init(AssetsModule::Model* model) {
-			mPath = model->getModelPath();
-			addMeshData(model->getAllLODs());
+			mPath = model->assetPath;
+			addMeshData(model->getLODs());
 		}
 
-		const AssetsModule::ModelObj& getModel();
-		AssetsModule::ModelObj& getModel(size_t LOD) const;
-		const AssetsModule::ModelObj& getModelLowestDetails() const;
+		const AssetsModule::Model::LOD& getModel();
+		AssetsModule::Model::LOD& getModel(size_t LOD) const;
+		const AssetsModule::Model::LOD& getModelLowestDetails() const;
 
-		void setModel(std::vector<AssetsModule::ModelObj>* data);
+		void setModel(std::vector<AssetsModule::Model::LOD>* data);
 		LODData mLOD;
 
 		void serialize(Json::Value& data) override;
@@ -77,9 +77,9 @@ namespace SFE::ComponentsModule {
 		AssetsModule::Armature armature;
 		std::vector<SFE::Math::Mat4> boneMatrices;
 	private:
-		void addMeshData(std::vector<AssetsModule::ModelObj>* meshData);
+		void addMeshData(std::vector<AssetsModule::Model::LOD>* meshData);
 
-		std::vector<AssetsModule::ModelObj>* mModel = nullptr;
+		std::vector<AssetsModule::Model::LOD>* mModel = nullptr;
 	};
 
 	struct AnimationComponent {
@@ -88,7 +88,7 @@ namespace SFE::ComponentsModule {
 		bool mPlay = true;
 		bool step = false;
 
-		AssetsModule::Animation* mCurrentAnimation = nullptr;
+		const AssetsModule::Animation* mCurrentAnimation = nullptr;
 
 		float mCurrentTime = 0.f;
 

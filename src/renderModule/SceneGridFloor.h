@@ -1,8 +1,10 @@
 ﻿#pragma once
 
+#include "Buffer.h"
+#include "VertexArray.h"
 #include "assetsModule/shaderModule/ShaderBase.h"
 
-namespace SFE::RenderModule {
+namespace SFE::Render {
 	class SceneGridFloor {
 	public:
 		SceneGridFloor();
@@ -13,8 +15,8 @@ namespace SFE::RenderModule {
 		void init();
 		SFE::ShaderModule::ShaderBase* floorShader = nullptr;
 		size_t floorShaderHash;
-		unsigned VAO = 0;
-		unsigned VBO = 0;
+		VertexArray VAO;
+		Buffer VBO{ARRAY_BUFFER};
 		Math::Mat4 transform = Math::Mat4(1.f);
 	};
 }

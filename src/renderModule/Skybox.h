@@ -1,7 +1,9 @@
 ﻿#pragma once
+#include "Buffer.h"
+#include "VertexArray.h"
 #include "assetsModule/shaderModule/Shader.h"
 
-namespace SFE::RenderModule {
+namespace SFE::Render {
 	class Skybox {
 	public:
 		Skybox(std::string_view path);
@@ -10,8 +12,8 @@ namespace SFE::RenderModule {
 		void draw();
 	private:
 		ShaderModule::ShaderBase* skyboxShader = nullptr;
-		unsigned VAO = -1;
-		unsigned VBO = -1;
+		VertexArray VAO;
+		Buffer VBO;
 		unsigned cubemapTex = -1;
 		std::string skyboxPath;
 	};

@@ -7,11 +7,11 @@
 #include "mathModule/Quaternion.h"
 #include "systemsModule/SystemManager.h"
 
-using namespace SFE::RenderModule;
+using namespace SFE::Render;
 
-std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color, float thickness, uint32_t renderType) {
+std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color, float thickness, RenderMode renderType) {
 	auto it = std::find_if(renderVertices.begin(), renderVertices.end(), [color, thickness, renderType](std::pair<LineData, std::vector<Math::Vec3>>& a) {
-		return a.first.color == color && std::fabs(a.first.thickness - thickness) <= std::numeric_limits<float>::epsilon() && a.first.renderType == renderType && renderType != GL_LINE_LOOP;
+		return a.first.color == color && std::fabs(a.first.thickness - thickness) <= std::numeric_limits<float>::epsilon() && a.first.renderType == renderType && renderType != LINE_LOOP;
 	});
 
 	if (it != renderVertices.end()) {
@@ -49,30 +49,34 @@ void Utils::CalculateEulerAnglesFromView(const Math::Mat4& view, float& yaw, flo
 }
 
 void Utils::renderQuad() {
-	static unsigned quadVAO = 0;
-	if (quadVAO == 0) {
-		float quadVertices[] = {
-			// positions        // texture Coords
-			-1.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-			-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-			1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-			1.0f, -1.f, 0.0f, 1.0f, 0.0f,
+	static VertexArray quadVAO;
+	if (quadVAO.getID() == 0) {
+		struct QuadVertex {
+			Math::Vec2 coords;
+			Math::Vec2 texCoords;
 		};
-		// setup plane VAO
-		unsigned quadVBO;
-		glGenVertexArrays(1, &quadVAO);
-		glGenBuffers(1, &quadVBO);
-		glBindVertexArray(quadVAO);
-		glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+
+		std::vector<QuadVertex> quadVertices = {
+			// positions        // texture Coords
+			{{-1.f,  1.f}, {0.f, 1.f}},
+			{{-1.f, -1.f}, {0.f, 0.f}},
+			{{ 1.f,  1.f}, {1.f, 1.f}},
+			{{ 1.f, -1.f}, {1.f, 0.f}},
+		};
+
+		static Buffer quadVBO{ARRAY_BUFFER};
+		quadVAO.generate();
+		quadVAO.bind();
+		quadVBO.bind();
+
+		quadVBO.allocateData(quadVertices, STATIC_DRAW);
+
+		quadVAO.addAttribute(0, 2, FLOAT, false, &QuadVertex::coords);
+		quadVAO.addAttribute(1, 2, FLOAT, false, &QuadVertex::texCoords);
 	}
-	glBindVertexArray(quadVAO);
-	RenderModule::Renderer::drawArrays(GL_TRIANGLE_STRIP, 4);
-	glBindVertexArray(0);
+	quadVAO.bind();
+	Render::Renderer::drawArrays(TRIANGLE_STRIP, 4);
+	quadVAO.bindDefault();
 }
 
 void Utils::renderQuad2() {
@@ -102,7 +106,7 @@ void Utils::renderQuad2() {
 		glBindVertexArray(0);
 	}
 	glBindVertexArray(quadVAO);
-	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 6);
+	Render::Renderer::drawArrays(TRIANGLES, 6);
 	glBindVertexArray(0);
 }
 
@@ -129,7 +133,7 @@ void Utils::renderQuad(float x1, float y1, float x2, float y2) {
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 
 	glBindVertexArray(quadVAO);
-	RenderModule::Renderer::drawArrays(GL_TRIANGLE_STRIP, 4);
+	Render::Renderer::drawArrays(TRIANGLE_STRIP, 4);
 	glBindVertexArray(0);
 
 	glDeleteVertexArrays(1, &quadVAO);
@@ -140,7 +144,7 @@ void Utils::renderCube() {
 	initCubeVAO();
 
 	glBindVertexArray(cubeVAO);
-	RenderModule::Renderer::drawArrays(GL_TRIANGLES, 36);
+	Render::Renderer::drawArrays(TRIANGLES, 36);
 	glBindVertexArray(0);
 }
 
@@ -210,8 +214,8 @@ void Utils::initCubeVAO() {
 }
 
 void Utils::renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, float thickness) {
-	getVerticesArray(color, thickness, GL_LINES).emplace_back(begin);
-	getVerticesArray(color, thickness, GL_LINES).emplace_back(end);
+	getVerticesArray(color, thickness, LINES).emplace_back(begin);
+	getVerticesArray(color, thickness, LINES).emplace_back(end);
 }
 
 std::pair<std::vector<Utils::LightVertex>, std::vector<Utils::Triangle>> generateSphere(float radius, int segments) {
@@ -292,7 +296,7 @@ void Utils::renderBone(const Math::Vec3& begin, const Math::Vec3& end, const Mat
 }
 
 void Utils::renderPolygon() {
-	auto ar = getVerticesArray({ 1.f,1.f,0.f,0.5f }, 2.f, GL_POLYGON);
+	auto ar = getVerticesArray({ 1.f,1.f,0.f,0.5f }, 2.f, POLYGON);
 
 	ar.push_back({ 0.f,0.f,0.f });
 	ar.push_back({ 100.f,0.f,0.f });
@@ -382,7 +386,7 @@ void Utils::renderCube(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math:
 
 	// Create a rotation matrix (e.g., rotate 45 degrees around the Y-axis)
 	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos)) * Math::Mat4(rotate);
-	auto& vertArray = getVerticesArray(color, 1.f, GL_LINES);
+	auto& vertArray = getVerticesArray(color, 1.f, LINES);
 
 	// Apply the rotation to the cube vertices
 	for (int i = 0; i < sizeof(vertices) / sizeof(float); i += 3) {
@@ -423,10 +427,6 @@ void Utils::renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math:
 		tr.C.position = transform * Math::Vec4(tr.C.position, 1.f);
 		vertArray.emplace_back(tr);
 	}
-}
-
-void Utils::renderQuad2D(const Math::Vec2& min, const Math::Vec2& max, const Math::Vec2& pos, const Math::Vec4& color) {
-	
 }
 
 void Utils::renderCubeMesh(const Math::Vec3& LTN, const Math::Vec3& RBF, const Math::Mat4& rotate, const Math::Vec3& pos, const Math::Vec4& color) {
@@ -533,7 +533,7 @@ void Utils::renderCapsule(const Math::Vec3& start, const Math::Vec3& end, float 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
 	// Draw the capsule
-	RenderModule::Renderer::drawArrays(GL_LINES, vertices.size() / 3);
+	Render::Renderer::drawArrays(LINES, vertices.size() / 3);
 
 	// Unbind VAO (optional)
 	glBindVertexArray(0);
@@ -546,7 +546,7 @@ void Utils::renderCapsule(const Math::Vec3& start, const Math::Vec3& end, float 
 void Utils::renderSphere(const Math::Vec3& center, float radius) {
 	int segments = 10; // Adjust the number of segments as needed.
 
-	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f), 1.f, GL_LINE_LOOP);
+	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f), 1.f, LINE_LOOP);
 
 	// Initialize the vertices array for the sphere.
 	for (int i = 0; i <= segments; ++i) {
@@ -564,7 +564,7 @@ void Utils::renderSphere(const Math::Vec3& center, float radius) {
 	}
 }
 
-void Utils::renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float lineThicness, uint32_t renderType) {
+void Utils::renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float lineThicness, RenderMode renderType) {
 	auto& vertArray = getVerticesArray(color, lineThicness, renderType);
 
 	auto transform = Math::translate(Math::Mat4{1.f}, pos)* quat.toMat4() * scale;
@@ -710,7 +710,7 @@ void Utils::renderCamera() {
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
 	glBindVertexArray(linesVAO);
-	RenderModule::Renderer::drawArrays(GL_LINES, 26);
+	Render::Renderer::drawArrays(LINES, 26);
 	glBindVertexArray(0);
 
 	glDeleteVertexArrays(1, &linesVAO);
@@ -854,7 +854,7 @@ void Utils::renderPointLight(float near, float far, const Math::Vec3& pos) {
 	};
 
 	const Math::Mat4 transform = Math::translate(Math::Mat4(1.0f), Math::Vec3(pos));
-	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f), 1.f, GL_LINES);
+	auto& vertArray = getVerticesArray(Math::Vec4(1.f, 1.f, 1.f, 1.f), 1.f, LINES);
 	for (int i = 0; i < sizeof(vertices) / sizeof(float); i += 3) {
 		Math::Vec3 vertex(vertices[i], vertices[i + 1], vertices[i + 2]);
 		
@@ -867,15 +867,15 @@ void Utils::renderXYZ(float length) {
 	static unsigned linesVAO = 0;
 	static float prevLength = 0.f;
 
-	static std::vector<float> vertices = {
-		0.f,0.f,0.f,
-		0.f,0.f,length, //+z
+	static std::vector<Math::Vec3> vertices = {
+		{0.f,0.f,0.f},
+		{0.f,0.f,length}, //+z
 
-		0.f,0.f,0.f,
-		0.f,length,0.f,//+y
+		{0.f,0.f,0.f},
+		{0.f,length,0.f },//+y
 
-		0.f,0.f,0.f,
-		length,0.f,0.f,//+x
+		{0.f,0.f,0.f},
+		{length,0.f,0.f},//+x
 	};
 
 	// setup plane VAO
@@ -888,14 +888,14 @@ void Utils::renderXYZ(float length) {
 		glDeleteBuffers(1, &cubeVBO);
 
 		vertices = {
-			0.f,0.f,0.f,
-			0.f,0.f,length, //+z
+			{0.f,0.f,0.f},
+			{0.f,0.f,length}, //+z
 
-			0.f,0.f,0.f,
-			0.f,length,0.f,//+y
+			{0.f,0.f,0.f},
+			{0.f,length,0.f},//+y
 
-			0.f,0.f,0.f,
-			length,0.f,0.f,//+x
+			{0.f,0.f,0.f },
+			{length,0.f,0.f},//+x
 		};
 
 		glGenVertexArrays(1, &linesVAO);
@@ -906,10 +906,10 @@ void Utils::renderXYZ(float length) {
 		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices.front()) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
 
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,sizeof(Math::Vec3), (void*)0);
 	}
 	
 	glBindVertexArray(linesVAO);
-	RenderModule::Renderer::drawArrays(GL_LINES, 6);
+	Render::Renderer::drawArrays(LINES, 6);
 	glBindVertexArray(0);
 }

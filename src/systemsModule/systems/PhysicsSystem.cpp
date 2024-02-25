@@ -47,15 +47,15 @@ namespace SFE::SystemsModule {
 				Initialize();
 			}
 			void DrawLine(RVec3Arg inFrom, RVec3Arg inTo, ColorArg inColor) override {
-				RenderModule::Utils::renderLine(toVec3(inFrom), toVec3(inTo), Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
+				Render::Utils::renderLine(toVec3(inFrom), toVec3(inTo), Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
 			};
 
 			void DrawTriangle(RVec3Arg inV1, RVec3Arg inV2, RVec3Arg inV3, ColorArg inColor, ECastShadow inCastShadow) override {
-				RenderModule::Utils::Triangle triangle;
+				Render::Utils::Triangle triangle;
 				triangle.A.position = toVec3(inV1);
 				triangle.B.position = toVec3(inV2);
 				triangle.C.position = toVec3(inV3);
-				RenderModule::Utils::renderTriangle(triangle, Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
+				Render::Utils::renderTriangle(triangle, Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
 			};
 
 			Batch CreateTriangleBatch(const Triangle* inTriangles, int inTriangleCount) override {

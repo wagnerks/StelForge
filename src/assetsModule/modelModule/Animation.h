@@ -8,35 +8,12 @@
 struct aiAnimation;
 
 namespace AssetsModule {
-    struct Bone {
-        std::string name;
-        uint32_t id;
-
-        SFE::Math::Mat4 offset;
-
-        SFE::Math::Mat4 transform {1.f};
-
-        SFE::Math::Vec3 pos;
-        SFE::Math::Vec3 scale {1.f};
-        SFE::Math::Quaternion<float> rotation;
-
-        uint32_t parentBoneIdx = std::numeric_limits<uint32_t>::max();
-        std::vector<uint32_t> childrenBones;
-    };
-
-    struct Armature {
-        std::string name;
-        SFE::Math::Mat4 transform;
-
-        std::vector<Bone> bones;
-    };
-
     class Animation {
     public:
         Animation() = default;
 
         Animation(const aiAnimation* animation);
-        AssetsModule::BoneAnimationKeys* getBoneAnimationInfo(const std::string& boneName);
+        const AssetsModule::BoneAnimationKeys* getBoneAnimationInfo(const std::string& boneName) const;
 
         inline float getTicksPerSecond() const { return mTicksPerSecond; }
         inline float getDuration() const { return mDuration; }

@@ -64,7 +64,7 @@ void Batcher::flushAll(bool clear) {
 
 	for (auto& drawObjects : drawList) {
 		glBindVertexArray(drawObjects.VAO);
-
+		
 		glGenBuffers(2, drawObjects.batcherBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawObjects.batcherBuffer[0]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, drawObjects.batcherBuffer[0]);
@@ -74,33 +74,29 @@ void Batcher::flushAll(bool clear) {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, drawObjects.batcherBuffer[1]);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(BonesData) * drawObjects.bones.size(), drawObjects.bones.data(), GL_DYNAMIC_DRAW);
 
-		if (drawObjects.material.mDiffuse.mTexture->isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, drawObjects.material.mDiffuse.mTexture->mId);
+		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::DIFFUSE); texture && texture->isValid()) {
+			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::DIFFUSE, AssetsModule::TEXTURE_2D, texture->mId);
 		}
 		else {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, defaultTex);
+			//AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::DIFFUSE, AssetsModule::TEXTURE_2D, 0);
+			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::DIFFUSE, AssetsModule::TEXTURE_2D, defaultTex);
 		}
 
-		if (drawObjects.material.mNormal.mTexture->isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, drawObjects.material.mNormal.mTexture->mId);
+		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::NORMALS);  texture && texture->isValid()) {
+			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::NORMALS, AssetsModule::TEXTURE_2D, texture->mId);
 		}
 		else {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, defaultNormal);
+			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::NORMALS, AssetsModule::TEXTURE_2D, defaultNormal);
 		}
 
-		if (drawObjects.material.mSpecular.mTexture->isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, drawObjects.material.mSpecular.mTexture->mId);
+		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::SPECULAR);  texture && texture->isValid()) {
+			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::SPECULAR, AssetsModule::TEXTURE_2D, texture->mId);
 		}
 		else {
-			AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, defaultTex);
+			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::SPECULAR, AssetsModule::TEXTURE_2D, defaultTex);
 		}
 
-		if (drawObjects.indicesCount) {
-			SFE::RenderModule::Renderer::drawElementsInstanced(GL_TRIANGLES, static_cast<int>(drawObjects.indicesCount), GL_UNSIGNED_INT, static_cast<int>(drawObjects.transforms.size()));
-		}
-		else {
-			SFE::RenderModule::Renderer::drawArraysInstancing(GL_TRIANGLES, static_cast<int>(drawObjects.verticesCount), static_cast<int>(drawObjects.transforms.size()));
-		}
+		SFE::Render::Renderer::drawVertices(SFE::Render::TRIANGLES, drawObjects.VAO, drawObjects.verticesCount, drawObjects.indicesCount, drawObjects.transforms.size());
 
 		glDeleteBuffers(2, drawObjects.batcherBuffer);
 	}

@@ -36,8 +36,8 @@ void DebugInfo::drawInfo(DebugInfoType type) {
 	}
 
 	if (type == DebugInfoType::Big) {
-		ImGui::Text("drawCalls: %zu", RenderModule::Renderer::mDrawCallsCount);
-		ImGui::Text("verticesDraw: %zu", RenderModule::Renderer::mDrawVerticesCount);
+		ImGui::Text("drawCalls: %zu", Render::Renderer::mDrawCallsCount);
+		ImGui::Text("verticesDraw: %zu", Render::Renderer::mDrawVerticesCount);
 	}
 
 	ImGui::End();

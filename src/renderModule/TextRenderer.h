@@ -13,9 +13,13 @@
 #include "mathModule/Utils.h"
 
 #include <ft2build.h>
+
+#include "BlendStack.h"
+#include "CapabilitiesStack.h"
+
 #include FT_FREETYPE_H
 
-namespace SFE::RenderModule {
+namespace SFE::Render {
     struct GlyphInfo {
         Math::IVec2   size;      // Size of glyph
         Math::IVec2   bearing;   // Offset from baseline to left/top of glyph
@@ -33,7 +37,7 @@ namespace SFE::RenderModule {
 
         void clear() const {
             if (!mFontPath.empty()) {
-                glDeleteTextures(1, &mAtlas);
+                delete mAtlasTex;
             }
     	}
 
@@ -63,7 +67,8 @@ namespace SFE::RenderModule {
             }
 
             if (!mFontPath.empty()) {
-                glDeleteTextures(1, &mAtlas);
+                delete mAtlasTex;
+                mAtlasTex = nullptr;
                 mGlyphs.clear();
             }
 
@@ -72,29 +77,28 @@ namespace SFE::RenderModule {
 
             FT_Set_Pixel_Sizes(face, 0, mFontSize);
             mAtlasHeight = calcAtlasHeight(face);
-
-            glGenTextures(1, &mAtlas);
-            AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mAtlas);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, atlasSize, mAtlasHeight, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
-
+            mAtlasTex = new AssetsModule::Texture{ AssetsModule::TEXTURE_2D };
+            mAtlasTex->image2D(atlasSize, mAtlasHeight, AssetsModule::R8, AssetsModule::RED, AssetsModule::UNSIGNED_BYTE);
+            mAtlasTex->setPixelStorageMode(AssetsModule::UNPACK_ALIGNMENT, AssetsModule::PixelStorageModeValue::BYTE);
+            mAtlasTex->setParameter({
+                {AssetsModule::TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE},
+                {AssetsModule::TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE},
+                {AssetsModule::TEXTURE_MIN_FILTER, GL_LINEAR},
+                {AssetsModule::TEXTURE_MAG_FILTER, GL_LINEAR},
+            });
+            
             loadGlyphsToAtlas(face);
 
             FT_Done_Face(face);
             FT_Done_FreeType(ft);
         }
 
-        unsigned int getAtlas() const { return mAtlas; }
+        unsigned int getAtlas() const { return mAtlasTex ? mAtlasTex->mId : 0; }
 
     private:
         std::string mFontPath;
 
-        unsigned int mAtlas = 0;
+        AssetsModule::Texture* mAtlasTex = nullptr; //todo leak
         uint16_t mFontSize = 0;
 
         unsigned int mAtlasHeight = 0;
@@ -155,13 +159,7 @@ namespace SFE::RenderModule {
                 glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
                 glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
 
-                glTexSubImage2D(GL_TEXTURE_2D, 0,
-                    x, y,
-                    face->glyph->bitmap.width, face->glyph->bitmap.rows,
-                    GL_RED,
-                    GL_UNSIGNED_BYTE,
-                    face->glyph->bitmap.buffer
-                );
+                mAtlasTex->setSubImageData2D(x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, face->glyph->bitmap.buffer, AssetsModule::RED, AssetsModule::UNSIGNED_BYTE);
 
                 if (mGlyphs.size() <= c) {
                     mGlyphs.resize(c + 1);
@@ -290,17 +288,17 @@ namespace SFE::RenderModule {
             shader->setVec3("textColor", color);
             shader->setInt("text", 24);
 
-            AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE24, GL_TEXTURE_2D, font->getAtlas());
+            AssetsModule::TextureHandler::instance()->bindTextureToSlot(24, AssetsModule::TEXTURE_2D, font->getAtlas());
 
-            glBindVertexArray(VAO);
-            glEnable(GL_BLEND);
-            glBindBuffer(GL_ARRAY_BUFFER, VBO);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4 * text.size(), nullptr, GL_DYNAMIC_DRAW);
+         
+            VAO.bind();
+            VBO.bind();
+            VBO.allocateData(sizeof(float) * 6 * 4, text.size(), DYNAMIC_DRAW, nullptr);
 
-            const float semiW = RenderModule::Renderer::SCR_WIDTH * 0.5f;
-            const float semiH = RenderModule::Renderer::SCR_HEIGHT * 0.5f;
+            const float semiW = Render::Renderer::SCR_WIDTH * 0.5f;
+            const float semiH = Render::Renderer::SCR_HEIGHT * 0.5f;
 
-            y = RenderModule::Renderer::SCR_HEIGHT - y;
+            y = Render::Renderer::SCR_HEIGHT - y;
 
             int rowH = 0;
             float curX = x;
@@ -335,18 +333,22 @@ namespace SFE::RenderModule {
                      endX,      endY,       ch.texCoords.second.x, ch.texCoords.first.y,
                      
                 };
-
-                glBufferSubData(GL_ARRAY_BUFFER, sizeof(vertices) * i, sizeof(vertices), vertices);
+                VBO.setData(sizeof(vertices), 1, vertices, i);
 
                 // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
                 curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 
             }
 
-            RenderModule::Renderer::drawArrays(GL_TRIANGLES, static_cast<int>(text.size() + 1) * 6);
-            glDisable(GL_BLEND);
+            CapabilitiesStack::push(BLEND, true);
+            BlendFuncStack::push({ SRC_ALPHA, ONE_MINUS_SRC_ALPHA });
 
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            glBindVertexArray(0);
+            Renderer::drawArrays(TRIANGLES, static_cast<int>(text.size() + 1) * 6);
+
+            CapabilitiesStack::pop();
+            BlendFuncStack::pop();
+
+            VBO.bindDefaultBuffer(VBO.getType());
+            VAO.bindDefault();
         }
 
         void init() override {
@@ -354,16 +356,13 @@ namespace SFE::RenderModule {
             shader->use();
             shader->setMat4("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Renderer::SCR_WIDTH), 0.f, static_cast<float>(Renderer::SCR_HEIGHT), -1.f, 1.f));
 
-            glGenVertexArrays(1, &VAO);
-            glGenBuffers(1, &VBO);
+            VAO.generate();
+            VAO.bind();
+            VBO.bind();
 
-            glBindVertexArray(VAO);
-            glBindBuffer(GL_ARRAY_BUFFER, VBO);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, nullptr, GL_DYNAMIC_DRAW);
-            glEnableVertexAttribArray(0);
-            glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            glBindVertexArray(0);
+            VAO.addAttribute(0, 4, FLOAT, false, 4 * sizeof(float));
+            VBO.bindDefaultBuffer(VBO.getType());
+            VAO.bindDefault();
         }
         inline static char msgBuf[2048];
         template <typename... Args>
@@ -372,15 +371,13 @@ namespace SFE::RenderModule {
             return msgBuf;
         }
 	protected:
-        ~TextRenderer() override {
-            glDeleteBuffers(1, &VBO);
-            glDeleteVertexArrays(1, &VAO);
-        }
+        ~TextRenderer() override {}
 
 	private:
 
         
+        VertexArray VAO;
 
-        unsigned int VAO = 0, VBO = 0;
+        Buffer VBO{ ARRAY_BUFFER };
 	};
 }

@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "assetsModule/modelModule/Animation.h"
+#include "assetsModule/modelModule/Armature.h"
 #include "assetsModule/modelModule/BoneAnimationKeys.h"
 #include "mathModule/Forward.h"
 #include "systemsModule/SystemBase.h"
@@ -9,9 +10,9 @@ namespace SFE::SystemsModule {
 	public:
 		void update(float dt) override;
 	private:
-        void updateAnimation(AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices);
+        void updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices);
 
-        void calculateBoneTransform(AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, Math::Mat4 parentTransform, std::vector<AssetsModule::Bone>& bones, std::vector<Math::Mat4>& boneMatrices);
+        void calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, Math::Mat4 parentTransform, std::vector<AssetsModule::Bone>& bones, std::vector<Math::Mat4>& boneMatrices);
 
 		static float calcScaleFactor(float lastTimeStamp, float nextTimeStamp, float animationTime);
 

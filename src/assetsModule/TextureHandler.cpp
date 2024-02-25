@@ -11,20 +11,112 @@
 
 using namespace AssetsModule;
 
+void Texture::image2D(int width, int height, PixelFormat pixelFormat, TextureFormat format, PixelDataType type,	const void* data) {
+	const auto previousId = TextureHandler::instance()->getCurrentTexture(0);
+	const auto previousType = TextureHandler::instance()->getCurrentTextureType(0);
+	TextureHandler::instance()->bindTextureToSlot(0, this);
+	glTexImage2D(mType, 0, pixelFormat, width, height, 0, format, type, data);
+	TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+}
+
+void Texture::image3D(int width, int height, int depth, PixelFormat pixelFormat, TextureFormat format, PixelDataType type,	const void* data) {
+	const auto previousId = TextureHandler::instance()->getCurrentTexture(0);
+	const auto previousType = TextureHandler::instance()->getCurrentTextureType(0);
+	TextureHandler::instance()->bindTextureToSlot(0, this);
+	glTexImage3D(mType, 0, pixelFormat, width, height, depth, 0, format, type, data);
+	TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+}
+
+void Texture::bind() const {
+	glBindTexture(mType, mId);
+}
+
+void Texture::setSubImageData2D(int xoffset, int yoffset, int w, int h, const void* data, TextureFormat format, PixelDataType type, bool bind) {
+	unsigned previousId = 0;
+	TextureType previousType = TEXTURE_2D;
+	if (bind) {
+		previousId = TextureHandler::instance()->getCurrentTexture(0);
+		previousType = TextureHandler::instance()->getCurrentTextureType(0);
+		TextureHandler::instance()->bindTextureToSlot(0, this);
+	}
+	
+	glTexSubImage2D(mType, 0, xoffset, yoffset, w, h, format, type, data);
+
+	if (bind) {
+		TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+	}
+}
+
+void Texture::setParameter(TextureIParameter param, unsigned value) {
+	const auto previousId = TextureHandler::instance()->getCurrentTexture(0);
+	const auto previousType = TextureHandler::instance()->getCurrentTextureType(0);
+	TextureHandler::instance()->bindTextureToSlot(0, this);
+	glTexParameteri(mType, param, value);
+	TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+}
+
+void Texture::setParameter(std::initializer_list<std::pair<TextureIParameter, unsigned>> parameters) {
+	const auto previousId = TextureHandler::instance()->getCurrentTexture(0);
+	const auto previousType = TextureHandler::instance()->getCurrentTextureType(0);
+	TextureHandler::instance()->bindTextureToSlot(0, this);
+	for (auto& [param, value] : parameters) {
+		glTexParameteri(mType, param, value);
+	}
+	TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+}
+
+void Texture::setParameter(TextureFParameter param, float value) {
+	const auto previousId = TextureHandler::instance()->getCurrentTexture(0);
+	const auto previousType = TextureHandler::instance()->getCurrentTextureType(0);
+	TextureHandler::instance()->bindTextureToSlot(0, this);
+	glTexParameterf(mType, param, value);
+	TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+}
+
+void Texture::setParameter(std::initializer_list<std::pair<TextureFParameter, float>> parameters) {
+	const auto previousId = TextureHandler::instance()->getCurrentTexture(0);
+	const auto previousType = TextureHandler::instance()->getCurrentTextureType(0);
+	TextureHandler::instance()->bindTextureToSlot(0, this);
+	for (auto& [param, value] : parameters) {
+		glTexParameterf(mType, param, value);
+	}
+	TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+}
+
+void Texture::setPixelStorageMode(PixelStorageMode mode, PixelStorageModeValue value) {
+	const auto previousId = TextureHandler::instance()->getCurrentTexture(0);
+	const auto previousType = TextureHandler::instance()->getCurrentTextureType(0);
+	TextureHandler::instance()->bindTextureToSlot(0, this);
+	glPixelStorei(mode, static_cast<int>(value));
+	TextureHandler::instance()->bindTextureToSlot(0, previousType, previousId);
+}
+
 bool Texture::isValid() const {
 	return this != nullptr && mId != std::numeric_limits<uint16_t>::max();
 }
 
-void TextureHandler::bindTexture(unsigned slot, unsigned type, unsigned id) {
-	if (mBindedTextures[slot] == id) {
+void TextureHandler::bindTextureToSlot(unsigned slot, TextureType type, unsigned id) {
+	if (mBindedTextures[slot].first == id) {
 		return;
 	}
-	mBindedTextures[slot] = id;
-	glActiveTexture(slot);
+	mBindedTextures[slot].first = id;
+	setActiveTextureSlot(slot);
 	glBindTexture(type, id);
 }
 
-Texture* TextureHandler::loadTexture(const std::string& path, bool flip, unsigned type, unsigned format) {
+void TextureHandler::bindTextureToSlot(unsigned slot, Texture* texture) {
+	if (!texture) {
+		return;
+	}
+
+	bindTextureToSlot(slot, texture->mType, texture->mId);
+}
+
+void TextureHandler::setActiveTextureSlot(unsigned slot) {
+	glActiveTexture(TextureSlot(slot));
+}
+
+Texture* TextureHandler::loadTexture(const std::string& path, bool flip, PixelFormat pixelFormat, TextureFormat textureFormat, PixelDataType pixelType) {
 	auto texture = AssetsManager::instance()->getAsset<Texture>(path);
 	if (texture) {
 		return texture;
@@ -47,31 +139,31 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, unsigne
 	if (SFE::Engine::isMainThread()) {
 		glGenTextures(1, &texID);
 
-		TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texID);
+		TextureHandler::instance()->bindTextureToSlot(0, TextureType::TEXTURE_2D, texID);
 
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		glTexImage2D(GL_TEXTURE_2D, 0, type, texWidth, texHeight, 0, format, GL_UNSIGNED_BYTE, data);
+		glTexImage2D(TextureType::TEXTURE_2D, 0, pixelFormat, texWidth, texHeight, 0, textureFormat, pixelType, data);
 
 		stbi_image_free(data);
 	}
 	else {
-		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([id = texture->assetId, data, texWidth, texHeight, type, format]()mutable {
+		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([id = texture->assetId, data, texWidth, texHeight, pixelFormat, textureFormat, pixelType]()mutable {
 			unsigned texID;
 
 			glGenTextures(1, &texID);
 
-			TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, texID);
+			TextureHandler::instance()->bindTextureToSlot(0, TextureType::TEXTURE_2D, texID);
 
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(TextureType::TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-			glTexImage2D(GL_TEXTURE_2D, 0, type, texWidth, texHeight, 0, format, GL_UNSIGNED_BYTE, data);
+			glTexImage2D(TextureType::TEXTURE_2D, 0, pixelFormat, texWidth, texHeight, 0, textureFormat, pixelType, data);
 
 			stbi_image_free(data);
 
@@ -80,8 +172,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, unsigne
 	}
 
 	texture->mId = texID;
-	texture->mPath = path;
-	texture->mType = eTextureType::DEFAULT;
+	texture->mType = TextureType::TEXTURE_2D;
 	return texture;
 }
 
@@ -95,7 +186,7 @@ Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) 
 
 	unsigned int textureID;
 	glGenTextures(1, &textureID);
-	TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, textureID);
+	TextureHandler::instance()->bindTextureToSlot(0, TEXTURE_CUBE_MAP, textureID);
 
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -128,8 +219,7 @@ Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) 
 	texture = AssetsManager::instance()->createAsset<Texture>(path);
 
 	texture->mId = textureID;
-	texture->mPath = path;
-	texture->mType = eTextureType::CUBEMAP;
+	texture->mType = TextureType::TEXTURE_CUBE_MAP;
 
 	return texture;
 }

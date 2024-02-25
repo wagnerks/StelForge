@@ -2,13 +2,10 @@
 
 layout (location=0) in vec3 position;
 
-
-uniform mat4 PVM;
 uniform mat4 PV;
 uniform mat4 model;
 uniform vec3 cameraPos;
 uniform float far;
-uniform float near;
 
 out vec4 worldPos;
 

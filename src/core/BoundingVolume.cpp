@@ -6,13 +6,12 @@ namespace SFE::FrustumModule  {
 		return AABB(minPoint, maxPoint);
 	}
 
-	AABB SFE::FrustumModule::generateAABB(const AssetsModule::Mesh& mesh) {
-		Math::Vec3 minAABB = Math::Vec3(std::numeric_limits<float>::max());
-		Math::Vec3 maxAABB = Math::Vec3(std::numeric_limits<float>::min());
+	AABB SFE::FrustumModule::generateAABB(const std::vector<AssetsModule::Vertex>& vertices) {
+		auto minAABB = Math::Vec3(std::numeric_limits<float>::max());
+		auto maxAABB = Math::Vec3(std::numeric_limits<float>::min());
 
 
-		for (auto&& vertex : mesh.mData.mVertices)
-		{
+		for (auto&& vertex : vertices) {
 			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
 			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);
 			minAABB.z = std::min(minAABB.z, vertex.mPosition.z);
@@ -29,7 +28,7 @@ namespace SFE::FrustumModule  {
 		Math::Vec3 minAABB = Math::Vec3(std::numeric_limits<float>::max());
 		Math::Vec3 maxAABB = Math::Vec3(std::numeric_limits<float>::min());
 
-		for (auto& vertex : mesh.mData.mVertices)
+		for (auto& vertex : mesh.mData.vertices)
 		{
 			minAABB.x = std::min(minAABB.x, vertex.mPosition.x);
 			minAABB.y = std::min(minAABB.y, vertex.mPosition.y);

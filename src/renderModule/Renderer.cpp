@@ -3,6 +3,8 @@
 #include <deque>
 #include <random>
 
+#include "BlendStack.h"
+#include "CapabilitiesStack.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/MaterialComponent.h"
@@ -29,7 +31,7 @@ constexpr int GLFW_CONTEXT_VER_MIN = 6;
 
 
 using namespace SFE;
-using namespace ::SFE::RenderModule;
+using namespace ::SFE::Render;
 using namespace ::SFE::CoreModule;
 
 
@@ -39,8 +41,8 @@ Renderer::~Renderer() {
 }
 
 void Renderer::draw() {
-	RenderModule::Renderer::mDrawCallsCount = 0;
-	RenderModule::Renderer::mDrawVerticesCount = 0;
+	Render::Renderer::mDrawCallsCount = 0;
+	Render::Renderer::mDrawVerticesCount = 0;
 }
 
 void Renderer::postDraw() {
@@ -54,25 +56,25 @@ void Renderer::init() {
 }
 
 
-void Renderer::drawArrays(GLenum mode, GLsizei size, GLint first) {
+void Renderer::drawArrays(RenderMode mode, GLsizei size, GLint first) {
 	glDrawArrays(mode, first, size);
 	mDrawCallsCount++;
 	mDrawVerticesCount += size;
 }
 
-void Renderer::drawElements(GLenum mode, GLsizei size, GLenum type, const void* place) {
-	glDrawElements(mode, size, type, place);
+void Renderer::drawElements(RenderMode mode, GLsizei size, RenderDataType type, const void* place) {
+	glDrawElements(mode, size, static_cast<GLenum>(type), place);
 	mDrawCallsCount++;
 	mDrawVerticesCount += size;
 }
 
-void Renderer::drawElementsInstanced(GLenum mode, GLsizei size, GLenum type, GLsizei instancesCount, const void* place) {
-	glDrawElementsInstanced(mode, size, type, place, instancesCount);
+void Renderer::drawElementsInstanced(RenderMode mode, GLsizei size, RenderDataType type, GLsizei instancesCount, const void* place) {
+	glDrawElementsInstanced(mode, size, static_cast<GLenum>(type), place, instancesCount);
 	mDrawCallsCount++;
 	mDrawVerticesCount += size * instancesCount;
 }
 
-void Renderer::drawArraysInstancing(GLenum mode, GLsizei size, GLsizei instancesCount, GLint first) {
+void Renderer::drawArraysInstancing(RenderMode mode, GLsizei size, GLsizei instancesCount, GLint first) {
 	glDrawArraysInstanced(mode, first, size, instancesCount);
 	mDrawCallsCount++;
 	mDrawVerticesCount += size * instancesCount;
@@ -141,24 +143,18 @@ GLFWwindow* Renderer::initGLFW() {
 		return nullptr;
 	}
 
-	glfwSwapInterval(0);
+	glfwSwapInterval(-1);
 
-	/*glEnable(GL_LINE_SMOOTH);
-	glEnable(GL_POLYGON_SMOOTH);*/
-	/*glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
-	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);*/
-
-	glEnable(GL_DEPTH_TEST);
+	CapabilitiesStack::push(CULL_FACE, true);
+	CapabilitiesStack::push(DEPTH_TEST, true);
 	glDepthFunc(GL_LEQUAL);
 	//glDepthFunc(GL_LESS);
-
-	//glEnable(GL_BLEND);
-	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	glEnable(GL_CULL_FACE);
 	glClearDepth(drawDistance);
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
+	//Render::CapabilitiesStack::push(Render::BLEND, true);
+	//BlendFuncStack::push({ SRC_ALPHA, ONE_MINUS_SRC_ALPHA });
+
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 	LogsModule::Logger::LOG_INFO("GLFW initialized");
 	return window;

@@ -33,8 +33,8 @@ namespace SFE::PropertiesModule {
 			return;
 		}
 
-		deserializeProperty<TransformComponent>(entity, properties["Properties"]);
 		deserializeProperty<ModelComponent>(entity, properties["Properties"]);
+		deserializeProperty<TransformComponent>(entity, properties["Properties"]);
 	}
 
 	void PropertiesSystem::fillTree(const ecss::EntityHandle& entity, const Json::Value& properties) {
@@ -49,8 +49,9 @@ namespace SFE::PropertiesModule {
 
 		ECSHandler::registry().addComponent<ComponentsModule::AABBComponent>(entity);
 		ECSHandler::registry().addComponent<OcTreeComponent>(entity);
-		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
 		applyProperties(entity, properties);
+		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
+
 		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity.getID());
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {

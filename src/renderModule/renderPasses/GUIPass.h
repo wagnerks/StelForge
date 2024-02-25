@@ -4,7 +4,7 @@
 #include "renderModule/RenderPass.h"
 #include "renderModule/TextRenderer.h"
 
-namespace SFE::RenderModule::RenderPasses {
+namespace SFE::Render::RenderPasses {
 
 	struct PosComponent {
 		Math::Vec2 pos;
@@ -35,7 +35,8 @@ namespace SFE::RenderModule::RenderPasses {
 
 		static inline ecss::Registry registry;
 
-		unsigned int VAO, VBO;
+		VertexArray VAO;
+		Buffer VBO{ ARRAY_BUFFER };
 	};
 }
 

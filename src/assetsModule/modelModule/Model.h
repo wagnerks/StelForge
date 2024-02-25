@@ -3,66 +3,42 @@
 #include <vector>
 
 #include "Animation.h"
+#include "Armature.h"
 #include "Mesh.h"
 #include "assetsModule/Asset.h"
-#include "mathModule/Quaternion.h"
-#include "nodeModule/TreeNode.h"
+#include "containersModule/Tree.h"
 
 
 namespace AssetsModule {
-	struct ModelObj {
-		std::vector<MeshHandle> mMeshHandles;
-	};
-
-	struct MeshNode : SFE::NodeModule::TreeNode<MeshNode> {
-		MeshNode() = default;
-
-		MeshNode(MeshNode&& other) noexcept
-			: TreeNode<MeshNode>(std::move(other)),
-			mLods(std::move(other.mLods))
-		{}
-
-		MeshNode& operator=(MeshNode&& other) noexcept {
-			TreeNode<MeshNode>::operator =(std::move(other));
-			if (this == &other) {
-				return *this;
-			}
-
-			mLods = std::move(other.mLods);
-			return *this;
-		}
-
-		std::vector<std::vector<Mesh>> mLods;
-	};
-
 	class Model : public Asset {
 	public:
+		Model(const Model& other) = delete;
+		Model(Model&& other) noexcept = delete;
+		Model& operator=(const Model& other) = delete;
+		Model& operator=(Model&& other) noexcept = delete;
 
-		Model(MeshNode model, std::string_view modelPath, Armature armature);
-
-		Armature arma;
-
-		std::vector<ModelObj>* getAllLODs();
-
-		ModelObj toModelObj(int lod);
-
-		std::string_view getModelPath();
-
-		void normalizeModel(bool smooth = true);
+		Model(SFE::Tree<Mesh> model, Armature armature, std::vector<Animation> animations);
 
 		void bindMeshes();
+		void recalculateNormals(bool smooth = true);
 
-		bool normalized = false;
-		int mLODs = 0;
+	public:
+		struct LOD {
+			std::vector<Mesh*> meshes;
+		};
 
-		std::vector<Animation> animations;
+		std::vector<LOD>* getLODs();
+		const std::vector<Animation>& getAnimations() { return mAnimations; }
+		const std::vector<SFE::Math::Mat4>& getDefaultBoneMatrices();
+		const Armature& getArmature() { return mArmature; }
 
-		std::vector<SFE::Math::Mat4> defaultBoneMatrices;
+	private:
+		Armature mArmature;
 
-		void calculateLODs();
-		void toModelObjHelper(MeshNode* root, int lod, ModelObj& res);
-		std::vector<ModelObj> lods;
-		MeshNode mMeshTree;
-		std::string mModelPath = "";
+		std::vector<SFE::Math::Mat4> mDefaultBoneMatrices;
+		std::vector<Animation> mAnimations;
+		std::vector<LOD> mLODs;
+
+		SFE::Tree<Mesh> mMeshTree;
 	};
 }

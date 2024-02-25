@@ -51,28 +51,27 @@ namespace SFE::SystemsModule {
 
 		mRenderPasses.emplace_back(pass);
 
-		std::sort(mRenderPasses.begin(), mRenderPasses.end(), [](RenderModule::RenderPass* a, RenderModule::RenderPass* b) {
+		std::sort(mRenderPasses.begin(), mRenderPasses.end(), [](Render::RenderPass* a, Render::RenderPass* b) {
 			return a->getPriority() < b->getPriority();
 		});
 	}
 
-	RenderSystem::RenderSystem(RenderModule::Renderer* renderer) : mRenderer(renderer) {
+	RenderSystem::RenderSystem(Render::Renderer* renderer) : mRenderer(renderer) {
 		mRenderPasses.reserve(RENDER_PASSES_PRIORITY.size());
 
-		addRenderPass<RenderModule::RenderPasses::CascadedShadowPass>();
-		addRenderPass<RenderModule::RenderPasses::PointLightPass>();
-		addRenderPass<RenderModule::RenderPasses::GeometryPass>();
-		addRenderPass<RenderModule::RenderPasses::ShadersPass>();
-		addRenderPass<RenderModule::RenderPasses::LightingPass>();
-		addRenderPass<RenderModule::RenderPasses::SSAOPass>();
-		addRenderPass<RenderModule::RenderPasses::DebugPass>();
-		addRenderPass<RenderModule::RenderPasses::GUIPass>();
+		addRenderPass<Render::RenderPasses::CascadedShadowPass>();
+		addRenderPass<Render::RenderPasses::PointLightPass>();
+		addRenderPass<Render::RenderPasses::GeometryPass>();
+		addRenderPass<Render::RenderPasses::ShadersPass>();
+		addRenderPass<Render::RenderPasses::LightingPass>();
+		addRenderPass<Render::RenderPasses::SSAOPass>();
+		addRenderPass<Render::RenderPasses::DebugPass>();
+		addRenderPass<Render::RenderPasses::GUIPass>();
 
-		glGenBuffers(1, &cameraMatricesUBO);
-		glBindBuffer(GL_UNIFORM_BUFFER, cameraMatricesUBO);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(RenderMatrices), nullptr, GL_DYNAMIC_DRAW);
-		glBindBufferBase(GL_UNIFORM_BUFFER, 5, cameraMatricesUBO);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	
+		auto guard = cameraMatricesUBO.bindWithGuard();
+		cameraMatricesUBO.allocateData<RenderMatrices>(1, Render::DYNAMIC_DRAW);
+		cameraMatricesUBO.setBufferBinding(5);
 	}
 
 	void RenderSystem::update(float_t dt) {
@@ -88,9 +87,10 @@ namespace SFE::SystemsModule {
 		mRenderData.mViewDir = mRenderData.mNextViewDir;
 		mRenderData.mCamFrustum = mRenderData.mNextCamFrustum;
 
-		glBindBuffer(GL_UNIFORM_BUFFER, cameraMatricesUBO);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(RenderMatrices), &mRenderData.current);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		{
+			auto guard = cameraMatricesUBO.bindWithGuard();
+			cameraMatricesUBO.setData(1, &mRenderData.current);
+		}
 
 		auto& playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
 		const auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(playerCamera);
@@ -110,7 +110,7 @@ namespace SFE::SystemsModule {
 		}
 
 
-		RenderModule::TextRenderer::instance()->renderText(std::to_string(Engine::instance()->getFPS()), 150.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, RenderModule::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 35));
+		Render::TextRenderer::instance()->renderText(std::to_string(Engine::instance()->getFPS()), 150.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 35));
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
@@ -145,25 +145,25 @@ namespace SFE::SystemsModule {
 			if (ImGui::Begin("geometry pass result", &mGeometryPassDataWindow)) {
 				float size = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
 				if (ImGui::TreeNode("gAlbedoSpec")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.gAlbedoSpec)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.albedoBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 
 				if (ImGui::TreeNode("gPosition")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.gPosition)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.positionBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNode("gNormal")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.gNormal)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.normalBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 
 				if (ImGui::TreeNode("gOutlines")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.gOutlines)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.outlinesBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNode("gLights")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.gLights)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.lightsBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNode("ssao")) {

@@ -20,58 +20,35 @@
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
-namespace SFE::RenderModule::RenderPasses {
+namespace SFE::Render::RenderPasses {
 	void PointLightPass::init() {
 		lightProjection = SFE::ProjectionModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
 
-		glGenFramebuffers(1, &mFramebufferID);
+		mLightDepthMaps.image3D(shadowResolution, shadowResolution, maxShadowFaces, AssetsModule::DEPTH_COMPONENT32, AssetsModule::DEPTH_COMPONENT, AssetsModule::FLOAT);
+		mLightDepthMaps.setParameter({
+			{AssetsModule::TEXTURE_MIN_FILTER, GL_LINEAR},
+			{AssetsModule::TEXTURE_MAG_FILTER, GL_LINEAR},
+			{AssetsModule::TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE},
+			{AssetsModule::TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE},
+			{AssetsModule::TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE},
+			{AssetsModule::TEXTURE_COMPARE_FUNC, GL_LESS},
+		});
 
-		glGenTextures(1, &mLightDepthMaps);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, mLightDepthMaps);
-		glTexImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0,
-			GL_DEPTH_COMPONENT32,
-			static_cast<int>(shadowResolution),//x size
-			static_cast<int>(shadowResolution),//y size
-			maxShadowFaces,//all cube faces
-			0,
-			GL_DEPTH_COMPONENT,
-			GL_FLOAT,
-			nullptr);
+		lightFramebuffer.bind();
+		lightFramebuffer.addAttachmentTexture(GL_DEPTH_ATTACHMENT, &mLightDepthMaps);
+		lightFramebuffer.setDrawBuffer(NONE);
+		lightFramebuffer.setReadBuffer(NONE);
+		lightFramebuffer.finalize();
 
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
+		auto guard = mMatricesUBO.bindWithGuard();
+		mMatricesUBO.allocateData<Math::Mat4>(maxShadowFaces, STATIC_DRAW);
+		mMatricesUBO.setBufferBinding(lightMatricesBinding);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, mFramebufferID);
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, mLightDepthMaps, 0);
-		glDrawBuffer(GL_NONE);
-		glReadBuffer(GL_NONE);
-
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-			SFE::LogsModule::Logger::LOG_ERROR("FRAMEBUFFER::CascadeShadow Framebuffer is not complete!");
-		}
-
-		glGenBuffers(1, &mMatricesUBO);
-
-		glBindBuffer(GL_UNIFORM_BUFFER, mMatricesUBO);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(Math::Mat4) * maxShadowFaces, nullptr, GL_STATIC_DRAW);
-		glBindBufferBase(GL_UNIFORM_BUFFER, lightMatricesBinding, mMatricesUBO);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		Framebuffer::bindDefaultFramebuffer();
 	}
 
 	void PointLightPass::freeBuffers() const {
-		glDeleteFramebuffers(1, &mFramebufferID);
-		glDeleteTextures(1, &mLightDepthMaps);
-		glDeleteBuffers(1, &mMatricesUBO);
 	}
 
 	void PointLightPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
@@ -82,8 +59,6 @@ namespace SFE::RenderModule::RenderPasses {
 		FUNCTION_BENCHMARK
 		lightMatrices.clear();
 		frustums.clear();
-		
-	
 
 		renderDataHandle.mPointPassData.shadowEntities.clear();
 
@@ -128,17 +103,14 @@ namespace SFE::RenderModule::RenderPasses {
 		}
 
 		if (!lightMatrices.empty()) {
-			glBindBuffer(GL_UNIFORM_BUFFER, mMatricesUBO);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Math::Mat4) * lightMatrices.size(), &lightMatrices[0]);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			auto guard = mMatricesUBO.bindWithGuard();
+			mMatricesUBO.setData(lightMatrices.size(), lightMatrices.data());
 		}
 
-		AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE30, GL_TEXTURE_2D_ARRAY, mLightDepthMaps);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, mFramebufferID);
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, mLightDepthMaps, 0);
-		glViewport(0, 0, static_cast<int>(shadowResolution), static_cast<int>(shadowResolution));
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		AssetsModule::TextureHandler::instance()->bindTextureToSlot(30, &mLightDepthMaps);
+		lightFramebuffer.bind();
+		glViewport(0, 0, shadowResolution, shadowResolution);
+		glClear(GL_DEPTH_BUFFER_BIT);
 
 
 		int offsetSum = 0;
@@ -181,8 +153,8 @@ namespace SFE::RenderModule::RenderPasses {
 				}
 
 				const auto& transformMatrix = trans->getTransform();
-				for (auto& mesh : mod->getModelLowestDetails().mMeshHandles) {
-					batcher.addToDrawList(mesh.mData->mVao, mesh.mData->mVertices.size(), mesh.mData->mIndices.size(), *mesh.mMaterial, transformMatrix, {}, false);
+				for (auto& mesh : mod->getModelLowestDetails().meshes) {
+					batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transformMatrix, {}, false);
 				}
 			}
 			batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(offset.first)->getPos(true));
@@ -192,7 +164,8 @@ namespace SFE::RenderModule::RenderPasses {
 			batcher.flushAll(true);
 		}
 
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		Framebuffer::bindDefaultFramebuffer();
+
 		glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
 	}
 

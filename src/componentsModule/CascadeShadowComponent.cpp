@@ -4,7 +4,10 @@
 #include "TransformComponent.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "core/ECSHandler.h"
+#include "renderModule/BlendStack.h"
+#include "renderModule/CapabilitiesStack.h"
 #include "systemsModule/systems/CameraSystem.h"
+#include "renderModule/VertexArray.h"
 
 
 namespace SFE::ComponentsModule {
@@ -122,7 +125,7 @@ namespace SFE::ComponentsModule {
 		}
 
 		shadowCascadeLevels.front() = cameraProjection.getNear();
-		shadowCascadeLevels.back() = RenderModule::Renderer::drawDistance;
+		shadowCascadeLevels.back() = Render::Renderer::drawDistance;
 
 		auto fov = cameraProjection.getFOV();
 		auto aspect = cameraProjection.getAspect();
@@ -224,27 +227,22 @@ namespace SFE::ComponentsModule {
 			return;
 		}
 
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDisable(GL_CULL_FACE);
+		Render::CapabilitiesStack::push(Render::CULL_FACE, false);
+		Render::CapabilitiesStack::push(Render::BLEND, true);
+		Render::BlendFuncStack::push({ Render::SRC_ALPHA, Render::ONE_MINUS_SRC_ALPHA });
+		
+
 		auto debugCascadeShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugCascadeShader.vs", "shaders/debugCascadeShader.fs");
 		debugCascadeShader->use();
 		debugCascadeShader->setMat4("projection", cameraProjection);
 		debugCascadeShader->setMat4("view", cameraView);
 		drawCascadeVolumeVisualizers(lightSpaceMatrices, debugCascadeShader);
-		glEnable(GL_CULL_FACE);
-		glDisable(GL_BLEND);
+		Render::CapabilitiesStack::pop();
+		Render::CapabilitiesStack::pop();
+		Render::BlendFuncStack::pop();
 	}
 
 	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices, SFE::ShaderModule::ShaderBase* shader) {
-		static std::vector<unsigned> visualizerVAOs;
-		static std::vector<unsigned> visualizerVBOs;
-		static std::vector<unsigned> visualizerEBOs;
-
-		visualizerVAOs.resize(8);
-		visualizerEBOs.resize(8);
-		visualizerVBOs.resize(8);
-
 		static const GLuint indices[] = {
 			0, 2, 3,
 			0, 3, 1,
@@ -266,37 +264,28 @@ namespace SFE::ComponentsModule {
 			{0.0, 0.0, 1.0, 0.5f},
 		};
 
+		Render::VertexArrays<8> visualizerVAOs;
+		Render::Buffers<8> visualizerVBOs{Render::ARRAY_BUFFER};
+		Render::Buffers<8> visualizerEBOs{Render::ELEMENT_ARRAY_BUFFER};
+
+		visualizerVAOs.generate();
+
 		for (int i = 0; i < lightMatrices.size(); ++i) {
 			const auto corners = CascadeShadowComponent::getFrustumCornersWorldSpace(lightMatrices[i]);
+			visualizerVAOs.bind(i);
+			visualizerVBOs.bind(i);
+			visualizerVBOs.allocateData(corners.size(), Render::STATIC_DRAW, corners.data());
 
-			glGenVertexArrays(1, &visualizerVAOs[i]);
-			glGenBuffers(1, &visualizerVBOs[i]);
-			glGenBuffers(1, &visualizerEBOs[i]);
+			visualizerEBOs.bind(i);
+			visualizerEBOs.allocateData(36, Render::STATIC_DRAW, indices);
+			visualizerVAOs.addAttribute<Math::Vec4>(0, 3, Render::FLOAT, false);
 
-			glBindVertexArray(visualizerVAOs[i]);
-
-			glBindBuffer(GL_ARRAY_BUFFER, visualizerVBOs[i]);
-			glBufferData(GL_ARRAY_BUFFER, corners.size() * sizeof(corners[0]), &corners[0], GL_STATIC_DRAW);
-
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, visualizerEBOs[i]);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, 36 * sizeof(GLuint), &indices[0], GL_STATIC_DRAW);
-
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Math::Vec4), (void*)0);
-
-			glBindVertexArray(visualizerVAOs[i]);
 			shader->setVec4("color", colors[i % 3]);
-			glDrawElements(GL_TRIANGLES, GLsizei(36), GL_UNSIGNED_INT, 0);
-
-			glDeleteBuffers(1, &visualizerVBOs[i]);
-			glDeleteBuffers(1, &visualizerEBOs[i]);
-			glDeleteVertexArrays(1, &visualizerVAOs[i]);
-
-			glBindVertexArray(0);
+			Render::Renderer::drawElements(Render::TRIANGLES, 36, Render::RenderDataType::UNSIGNED_INT);
 		}
 
-		visualizerVAOs.clear();
-		visualizerEBOs.clear();
-		visualizerVBOs.clear();
+		visualizerVAOs.bindDefault();
+		visualizerVBOs.unbind();
+		visualizerEBOs.unbind();
 	}
 }

@@ -14,7 +14,7 @@
 namespace SFE {
 	void Engine::init() {
 		mMainThreadID = std::this_thread::get_id();
-		mMainWindow = RenderModule::Renderer::initGLFW();
+		mMainWindow = Render::Renderer::initGLFW();
 		if (!mMainWindow) {
 			return;
 		}

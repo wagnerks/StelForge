@@ -31,7 +31,7 @@ void ECSHandler::initSystems() {
 	mSystemManager.createSystem<SFE::SystemsModule::SkeletalAnimationSystem>();
 
 	mSystemManager.createSystem<SFE::SystemsModule::CameraSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::RenderSystem>(SFE::RenderModule::Renderer::instance());
+	mSystemManager.createSystem<SFE::SystemsModule::RenderSystem>(SFE::Render::Renderer::instance());
 
 	mSystemManager.createSystem<SFE::SystemsModule::Physics>();
 	mSystemManager.setUpdateInterval<SFE::SystemsModule::Physics>(1 / 60.f);

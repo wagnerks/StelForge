@@ -10,6 +10,7 @@ namespace ecss {
 
 namespace SFE {
 	namespace ComponentsModule {
+		struct AABBComponent;
 		class LightSourceComponent;
 		class ModelComponent;
 		class TransformComponent;
@@ -37,6 +38,7 @@ namespace SFE::Debug {
 		void editComponentGui(ComponentsModule::ShaderComponent* component);
 		void editComponentGui(ComponentsModule::PhysicsComponent* component);
 		void editComponentGui(ComponentsModule::AnimationComponent* component);
+		void editComponentGui(ComponentsModule::AABBComponent* component);
 
 
 		void entitiesTreeGUI();
@@ -52,7 +54,7 @@ namespace SFE::Debug {
 		bool editorOpened = true;
 
 		std::map<CoreModule::InputKey, bool> pressedKeys;
-		RenderModule::Gizmo gizmo;
+		Render::Gizmo gizmo;
 
 		void setSelectedId(ecss::EntityId id);
 	};

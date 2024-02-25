@@ -48,6 +48,7 @@ namespace AssetsModule {
 
 			auto id = mHasher(path);
 			asset->assetId = id;
+			asset->assetPath = path;
 			mAssetsMap.insert({ id, asset });
 
 			return asset;
@@ -57,9 +58,6 @@ namespace AssetsModule {
 		SFE::MemoryModule::Allocator* mAssetsAllocator;
 		std::unordered_map<size_t, Asset*> mAssetsMap;
 		std::hash<std::string> mHasher;
-
-
 	};
-
 }
 

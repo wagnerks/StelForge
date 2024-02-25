@@ -11,12 +11,12 @@
 
 //the pass position in array is the pass draw priority, insert passes to this list
 const static inline std::array RENDER_PASSES_PRIORITY {
-	typeid(SFE::RenderModule::RenderPasses::CascadedShadowPass).hash_code(),
-	typeid(SFE::RenderModule::RenderPasses::PointLightPass).hash_code(),
-	typeid(SFE::RenderModule::RenderPasses::GeometryPass).hash_code(),
-	typeid(SFE::RenderModule::RenderPasses::ShadersPass).hash_code(),
-	typeid(SFE::RenderModule::RenderPasses::SSAOPass).hash_code(),
-	typeid(SFE::RenderModule::RenderPasses::LightingPass).hash_code(),
-	typeid(SFE::RenderModule::RenderPasses::DebugPass).hash_code(),
-	typeid(SFE::RenderModule::RenderPasses::GUIPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::CascadedShadowPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::PointLightPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::GeometryPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::ShadersPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::SSAOPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::LightingPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::DebugPass).hash_code(),
+	typeid(SFE::Render::RenderPasses::GUIPass).hash_code(),
 };

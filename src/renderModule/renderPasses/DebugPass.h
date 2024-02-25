@@ -1,13 +1,13 @@
 ﻿#pragma once
 #include "renderModule/RenderPass.h"
 
-namespace SFE::RenderModule::RenderPasses {
+namespace SFE::Render::RenderPasses {
 	class DebugPass : public RenderPass {
 	public:
 		DebugPass();
 		~DebugPass();
 		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
-		unsigned linesVAO;
-		unsigned cubeVBO;
+		VertexArray linesVAO;
+		Buffer cubeVBO{ARRAY_BUFFER};
 	};
 }

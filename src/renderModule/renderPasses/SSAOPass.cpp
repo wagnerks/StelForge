@@ -13,7 +13,7 @@
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemsPriority.h"
 
-using namespace SFE::RenderModule::RenderPasses;
+using namespace SFE::Render::RenderPasses;
 
 float lerp(float a, float b, float f) {
 	return a + f * (b - a);
@@ -186,16 +186,16 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataH
 	shaderSSAO->use();
 	shaderSSAO->setMat4("projection", renderDataHandle.current.projection);
 
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gViewPosition);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE1, GL_TEXTURE_2D, renderDataHandle.mGeometryPassData.gNormal);
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE2, GL_TEXTURE_2D, mData.mNoiseTexture);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(0, renderDataHandle.mGeometryPassData.viewPositionBuffer);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(1, renderDataHandle.mGeometryPassData.normalBuffer);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(2, AssetsModule::TEXTURE_2D, mData.mNoiseTexture);
 	Utils::renderQuad();
 
 
 	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 	shaderSSAOBlur->use();
-	AssetsModule::TextureHandler::instance()->bindTexture(GL_TEXTURE0, GL_TEXTURE_2D, mData.mSsaoColorBuffer);
+	AssetsModule::TextureHandler::instance()->bindTextureToSlot(0, AssetsModule::TEXTURE_2D, mData.mSsaoColorBuffer);
 	Utils::renderQuad();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
