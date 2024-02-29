@@ -6,8 +6,11 @@ namespace SFE::Render::RenderPasses {
 	public:
 		DebugPass();
 		~DebugPass();
-		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
-		VertexArray linesVAO;
-		Buffer cubeVBO{ARRAY_BUFFER};
+		void render(SystemsModule::RenderData& renderDataHandle) override;
+		GLW::VertexArray trianglesVAO;
+		GLW::Buffer trianglesVBO{GLW::ARRAY_BUFFER};
+
+		GLW::VertexArray linesVAO;
+		GLW::Buffer linesVBO{GLW::ARRAY_BUFFER};
 	};
 }

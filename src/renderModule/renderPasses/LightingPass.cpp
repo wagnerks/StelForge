@@ -21,100 +21,95 @@ LightingPass::LightingPass() {
 
 }
 
-void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
-	if (!renderer) {
-		return;
-	}
-	FUNCTION_BENCHMARK
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
+	FUNCTION_BENCHMARK;
+	GLW::clear(GLW::ColorBit::DEPTH_COLOR);
+
 	auto shaderLightingPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/deferred_shading.vs", "shaders/deferred_shading.fs");
 
 	shaderLightingPass->use();
-	shaderLightingPass->setInt("gPosition", 0);
-	shaderLightingPass->setInt("gNormal", 1);
-	shaderLightingPass->setInt("gAlbedoSpec", 2);
-	shaderLightingPass->setInt("ssao", 3);
-	shaderLightingPass->setInt("shadows", 4);
-	shaderLightingPass->setInt("gOutlines", 5);
+	shaderLightingPass->setUniform("gPosition", 0);
+	shaderLightingPass->setUniform("gNormal", 1);
+	shaderLightingPass->setUniform("gAlbedoSpec", 2);
+	shaderLightingPass->setUniform("ssao", 3);
+	shaderLightingPass->setUniform("shadows", 4);
+	shaderLightingPass->setUniform("gOutlines", 5);
 
-	shaderLightingPass->setInt("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData.shadowEntities.size()));
-	shaderLightingPass->setInt("PointLightShadowMapArray", 30);
+	shaderLightingPass->setUniform("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData->shadowEntities.size()));
+	shaderLightingPass->setUniform("PointLightShadowMapArray", 30);
 
-	shaderLightingPass->setFloat("fogStart", Renderer::drawDistance * 0.9f);
-	shaderLightingPass->setFloat("drawDistance", Renderer::drawDistance);
+	shaderLightingPass->setUniform("fogStart", Renderer::screenDrawData.far * 0.9f);
+	shaderLightingPass->setUniform("screenDrawData.far", Renderer::screenDrawData.far);
 
 	int offsetSum = 0;
-	for (size_t i = 0; i < renderDataHandle.mPointPassData.shadowEntities.size(); i++) {
-		auto tc = ECSHandler::registry().getComponent<TransformComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
-		auto lightComp = ECSHandler::registry().getComponent<LightSourceComponent>(renderDataHandle.mPointPassData.shadowEntities[i]);
+	for (size_t i = 0; i < renderDataHandle.mPointPassData->shadowEntities.size(); i++) {
+		auto tc = ECSHandler::registry().getComponent<TransformComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
+		auto lightComp = ECSHandler::registry().getComponent<LightSourceComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
 
-		shaderLightingPass->setVec3(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
-		shaderLightingPass->setVec2(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), Math::Vec2{lightComp->getTexelSize().x, lightComp->getTexelSize().y});
-		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].bias").c_str(), lightComp->getBias());
-		shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].samples").c_str(), lightComp->getSamples());
-		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].radius").c_str(), lightComp->mRadius);
-		shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].offset").c_str(), offsetSum);
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), Math::Vec2{lightComp->getTexelSize().x, lightComp->getTexelSize().y});
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].bias").c_str(), lightComp->getBias());
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].samples").c_str(), lightComp->getSamples());
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].radius").c_str(), lightComp->mRadius);
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].offset").c_str(), offsetSum);
 
-		shaderLightingPass->setVec3(("pointLight[" + std::to_string(i) + "].Color").c_str(), lightComp->getLightColor());
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Color").c_str(), lightComp->getLightColor());
 
-		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].Linear").c_str(), lightComp->mLinear);
-		shaderLightingPass->setFloat(("pointLight[" + std::to_string(i) + "].Quadratic").c_str(), lightComp->mQuadratic);
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Linear").c_str(), lightComp->mLinear);
+		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Quadratic").c_str(), lightComp->mQuadratic);
 
 		if (lightComp->getType() == ComponentsModule::eLightType::POINT) {
-			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Type").c_str(), 0);
-			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 6);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 0);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 6);
 		}
 		else {
-			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Type").c_str(), 1);
-			shaderLightingPass->setInt(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 1);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 1);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 1);
 		}
 
 
 		offsetSum += lightComp->getTypeOffset(lightComp->getType());
 	}
 
-	if (!renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.empty()) {
+	if (!renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.empty()) {
 
-		shaderLightingPass->setVec3("ambientColor", renderDataHandle.mCascadedShadowsPassData.lightColor);//todo 0 for night and 1 for day, some time system
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(31, AssetsModule::TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData.shadowMapTexture);
-		shaderLightingPass->setInt("cascadedShadow.shadowMap", 31);
-		shaderLightingPass->setVec3("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData.lightDirection);
-		shaderLightingPass->setVec3("cascadedShadow.color", renderDataHandle.mCascadedShadowsPassData.lightColor);
-		shaderLightingPass->setInt("cascadeCount", static_cast<int>(renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.size()));
-		shaderLightingPass->setFloat("shadowIntensity", renderDataHandle.mCascadedShadowsPassData.shadowsIntensity);
+		shaderLightingPass->setUniform("ambientColor", renderDataHandle.mCascadedShadowsPassData->lightColor);//todo 0 for night and 1 for day, some time system
+		GLW::bindTextureToSlot(31, GLW::TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData->shadowMapTexture);
+		shaderLightingPass->setUniform("cascadedShadow.shadowMap", 31);
+		shaderLightingPass->setUniform("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData->lightDirection);
+		shaderLightingPass->setUniform("cascadedShadow.color", renderDataHandle.mCascadedShadowsPassData->lightColor);
+		shaderLightingPass->setUniform("cascadeCount", static_cast<int>(renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.size()));
+		shaderLightingPass->setUniform("shadowIntensity", renderDataHandle.mCascadedShadowsPassData->shadowsIntensity);
 
-		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels.size(); ++i) {
-			shaderLightingPass->setFloat(("cascadePlaneDistances[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels[i]);
+		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.size(); ++i) {
+			shaderLightingPass->setUniform(("cascadePlaneDistances[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels[i]);
 		}
 
-		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData.shadowCascades.size(); ++i) {
-			shaderLightingPass->setVec2(("cascadedShadow.texelSize[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].texelSize);
-			shaderLightingPass->setFloat(("cascadedShadow.bias[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].bias);
-			shaderLightingPass->setInt(("cascadedShadow.samples[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData.shadowCascades[i].samples);
+		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData->shadowCascades.size(); ++i) {
+			shaderLightingPass->setUniform(("cascadedShadow.texelSize[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascades[i].texelSize);
+			shaderLightingPass->setUniform(("cascadedShadow.bias[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascades[i].bias);
+			shaderLightingPass->setUniform(("cascadedShadow.samples[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascades[i].samples);
 		}
 	}
 
 	// set light uniforms
-	shaderLightingPass->setVec3("viewPos", renderDataHandle.mCameraPos);
+	shaderLightingPass->setUniform("viewPos", renderDataHandle.mCameraPos);
 
+	GLW::bindTextureToSlot(0, &renderDataHandle.mGeometryPassData->positionBuffer);
+	GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->normalBuffer);
+	GLW::bindTextureToSlot(2, &renderDataHandle.mGeometryPassData->albedoBuffer);
+	GLW::bindTextureToSlot(3, &renderDataHandle.mSSAOPassData->mSsaoColorBufferBlur);
+	GLW::bindTextureToSlot(5, &renderDataHandle.mGeometryPassData->outlinesBuffer);
 
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(0, renderDataHandle.mGeometryPassData.positionBuffer);
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(1, renderDataHandle.mGeometryPassData.normalBuffer);
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(2, renderDataHandle.mGeometryPassData.albedoBuffer);
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(3, AssetsModule::TEXTURE_2D, renderDataHandle.mSSAOPassData.mSsaoColorBufferBlur);
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(5,  renderDataHandle.mGeometryPassData.outlinesBuffer);
-
-	// finally render quad
 	Utils::renderQuad();
 
 	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
-	// ----------------------------------------------------------------------------------
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, renderDataHandle.mGeometryPassData.gFramebuffer->id);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
-	glBlitFramebuffer(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
+	GLW::bindReadFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer.id);
+	GLW::bindDrawFramebuffer(); // write to default framebuffer
+	auto w = Renderer::screenDrawData.renderW;
+	auto h = Renderer::screenDrawData.renderH;
+	GLW::blitFramebuffer(0, 0, w, h, 0, 0, w, h, GLW::ColorBit::DEPTH, GLW::BlitFilter::NEAREST);
+	GLW::Framebuffer::bindDefaultFramebuffer();
 
 	static Math::Vec3 sunDir;
 	static float time = 0.f;
@@ -159,17 +154,17 @@ void LightingPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	if (enableSky) {
 		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
 		sky->use();
-		sky->setMat4("view", renderDataHandle.current.view);
-		sky->setMat4("projection", renderDataHandle.current.projection);
-		sky->setVec3("sun_direction", -renderDataHandle.mCascadedShadowsPassData.lightDirection);
-		sky->setFloat("time", time);
+		sky->setUniform("view", renderDataHandle.current.view);
+		sky->setUniform("projection", renderDataHandle.current.projection);
+		sky->setUniform("sun_direction", -renderDataHandle.mCascadedShadowsPassData->lightDirection);
+		sky->setUniform("time", time);
 
-		sky->setFloat("Br", Br);
-		sky->setFloat("Bm", Bm);
-		sky->setFloat("g", g);
+		sky->setUniform("Br", Br);
+		sky->setUniform("Bm", Bm);
+		sky->setUniform("g", g);
 
-		sky->setFloat("cirrus", cirrus);
-		sky->setFloat("cumulus", cumulus);
+		sky->setUniform("cirrus", cirrus);
+		sky->setUniform("cumulus", cumulus);
 
 		Utils::renderQuad2();
 	}

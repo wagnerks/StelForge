@@ -45,17 +45,17 @@ namespace SFE::SystemsModule {
 		ProjectionModule::PerspectiveProjection cameraProjection = {};
 		ProjectionModule::PerspectiveProjection nextCameraProjection =  {};
 
-		Render::RenderPasses::CascadedShadowPass::Data mCascadedShadowsPassData;
-		Render::RenderPasses::PointLightPass::Data mPointPassData;
-		Render::RenderPasses::GeometryPass::Data mGeometryPassData;
-		Render::RenderPasses::SSAOPass::Data mSSAOPassData;
+		Render::RenderPasses::CascadedShadowPass::Data* mCascadedShadowsPassData;
+		Render::RenderPasses::PointLightPass::Data* mPointPassData;
+		Render::RenderPasses::GeometryPass::Data* mGeometryPassData;
+		Render::RenderPasses::SSAOPass::Data* mSSAOPassData;
 
 		RenderMode mRenderType = RenderMode::DEFAULT;
 	};
 
 	class RenderSystem : public ecss::System {
 	public:
-		RenderSystem(Render::Renderer* renderer);
+		RenderSystem();
 		~RenderSystem() override;
 
 		void update(float_t dt) override;
@@ -74,11 +74,9 @@ namespace SFE::SystemsModule {
 		template<typename PassType>
 		inline void addRenderPass();
 
-		Render::Renderer* mRenderer = nullptr;
-
 		RenderData mRenderData;
 		std::vector<Render::RenderPass*> mRenderPasses;
 
-		Render::Buffer cameraMatricesUBO{Render::UNIFORM_BUFFER};
+		GLW::Buffer cameraMatricesUBO{GLW::UNIFORM_BUFFER};
 	};
 }

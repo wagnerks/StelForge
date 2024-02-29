@@ -1,14 +1,21 @@
 ﻿#pragma once
 
 #include <string>
-#include <unordered_map>
 
+#include "glWrapper/Shader.h"
+#include "glWrapper/Texture.h"
 #include "mathModule/Forward.h"
 
 namespace SFE::ShaderModule {
 	class ShaderBase {
 		friend class ShaderController;
 	public:
+		ShaderBase(const ShaderBase& other) = delete;
+		ShaderBase(ShaderBase&& other) noexcept = delete;
+		ShaderBase& operator=(const ShaderBase& other) = delete;
+		ShaderBase& operator=(ShaderBase&& other) noexcept = delete;
+	public:
+
 		static std::string loadShaderCode(std::string_view path);
 
 		virtual bool compile() = 0;
@@ -16,80 +23,64 @@ namespace SFE::ShaderModule {
 		unsigned int getID() const;
 
 		template <typename T>
-		void setValue(std::string_view, const T&) {}
-
-		void setInt(const char* name, int val);
-		void setBool(const char* name, bool val);
-
-		void setMat3(const char* name, const Math::Mat3& val);
-		void setMat4(const char* name, const Math::Mat4& val);
-		void setVec2(const char* name, const SFE::Math::Vec2& val);
-		void setVec3(const char* name, const SFE::Math::Vec3& val);
-		void setVec4(const char* name, const SFE::Math::Vec4& val);
-
-		void setFloat(const char* name, float val);
-		void setUniformBlockIdx(const char* name, unsigned val);
-
-		ShaderBase(const ShaderBase& other) = delete;
-		ShaderBase(ShaderBase&& other) noexcept = delete;
-		ShaderBase& operator=(const ShaderBase& other) = delete;
-		ShaderBase& operator=(ShaderBase&& other) noexcept = delete;
+		void setUniform(std::string_view, const T&) const { static_assert(sizeof(T) == 0, "setUniform is not implemented for this type."); }
 
 		std::string vertexCode;
 		std::string fragmentCode;
 
-		bool compileShader(const char* shaderCode, unsigned type);
 		inline size_t getHash() const { return mHash; }
 	protected:
 		virtual ~ShaderBase();
 		ShaderBase() = default;
 		ShaderBase(size_t hash) : mHash(hash) {};
-		unsigned int ID = 0;
-		std::unordered_map<std::string, int> cachedUniforms;
 
-
+		unsigned int id = 0;
 	private:
 		size_t mHash = 0;
-
-		static bool checkCompileErrors(unsigned int shader, std::string_view type);
-		int getUniformLocation(const std::string& name);
-
 	};
 
-
-
 	template <>
-	inline void ShaderBase::setValue<int>(std::string_view name, const int& val) {
-		setInt(name.data(), val);
+	inline void ShaderBase::setUniform<bool>(std::string_view name, const bool& val) const {
+		GLW::setUniformValue(id, name.data(), val);
 	}
 
 	template <>
-	inline void ShaderBase::setValue<float>(std::string_view name, const float& val) {
-		setFloat(name.data(), val);
+	inline void ShaderBase::setUniform<int>(std::string_view name, const int& val) const {
+		GLW::setUniformValue(id, name.data(), val);
 	}
 
 	template <>
-	inline void ShaderBase::setValue<Math::Mat4>(std::string_view name, const Math::Mat4& val) {
-		setMat4(name.data(), val);
+	inline void ShaderBase::setUniform<float>(std::string_view name, const float& val) const {
+		GLW::setUniformValue(id, name.data(), val);
 	}
 
 	template <>
-	inline void ShaderBase::setValue<Math::Mat3>(std::string_view name, const Math::Mat3& val) {
-		setMat3(name.data(), val);
+	inline void ShaderBase::setUniform<Math::Mat4>(std::string_view name, const Math::Mat4& val) const {
+		GLW::setUniformMat4Value(id, name.data(), val.data());
 	}
 
 	template <>
-	inline void ShaderBase::setValue<Math::Vec4>(std::string_view name, const Math::Vec4& val) {
-		setVec4(name.data(), val);
+	inline void ShaderBase::setUniform<Math::Mat3>(std::string_view name, const Math::Mat3& val) const {
+		GLW::setUniformMat3Value(id, name.data(), val.data());
 	}
 
 	template <>
-	inline void ShaderBase::setValue<Math::Vec3>(std::string_view name, const Math::Vec3& val) {
-		setVec3(name.data(), val);
+	inline void ShaderBase::setUniform<Math::Vec4>(std::string_view name, const Math::Vec4& val) const {
+		GLW::setUniform4Value(id, name.data(), val.data());
 	}
 
 	template <>
-	inline void ShaderBase::setValue<Math::Vec2>(std::string_view name, const Math::Vec2& val) {
-		setVec2(name.data(), val);
+	inline void ShaderBase::setUniform<Math::Vec3>(std::string_view name, const Math::Vec3& val) const {
+		GLW::setUniform3Value(id, name.data(), val.data());
+	}
+
+	template <>
+	inline void ShaderBase::setUniform<Math::Vec2>(std::string_view name, const Math::Vec2& val) const {
+		GLW::setUniform2Value(id, name.data(), val.data());
+	}
+
+	template <>
+	inline void ShaderBase::setUniform<GLW::Texture>(std::string_view name, const GLW::Texture& val) const {
+		GLW::setUniformValue(id, name.data(), val.mId);
 	}
 }

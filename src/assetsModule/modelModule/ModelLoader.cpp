@@ -309,7 +309,7 @@ void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, aiNode* 
 	readBonesData(mesh.mData.vertices, assimpMesh, scene, armature);
 	readMaterialData(mesh.mMaterial, scene->mMaterials[assimpMesh->mMaterialIndex], loader, directory);
 
-	mesh.bindMesh();
+	mesh.initMeshData();
 }
 
 std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, AssetsModule::TextureHandler* loader, const std::string& directory) {

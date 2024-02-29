@@ -90,9 +90,9 @@ namespace SFE {
 			}
 		}
 
-		std::shared_future<void> addTask(std::function<void()> task) {
+		std::shared_future<void> addTask(std::function<void()>&& task) {
 			std::lock_guard lock(mMutex);
-			mTasksQueue.emplace(std::packaged_task(task));
+			mTasksQueue.emplace(std::packaged_task(std::move(task)));
 			auto future = mTasksQueue.back().get_future();
 			mCondition.notify_one();
 
@@ -138,14 +138,14 @@ namespace SFE {
 		}
 
 		template<WorkerType Type = WorkerType::COMMON>
-		std::shared_future<void> addTask(std::function<void()> task) {
+		std::shared_future<void> addTask(std::function<void()>&& task) {
 			switch (Type) {
 			case WorkerType::COMMON:
-				return mCommonWorkers.addTask(task);
+				return mCommonWorkers.addTask(std::move(task));
 			case WorkerType::RENDER:
-				return mRenderWorkers.addTask(task);
+				return mRenderWorkers.addTask(std::move(task));
 			case WorkerType::SYNC:
-				return addTaskToSynchronization(task);
+				return addTaskToSynchronization(std::move(task));
 			}
 
 			assert(false);
@@ -155,7 +155,7 @@ namespace SFE {
 		void syncUpdate();//todo create separate thread with opengl shared context
 
 	private:
-		std::shared_future<void> addTaskToSynchronization(std::function<void()> task);
+		std::shared_future<void> addTaskToSynchronization(std::function<void()>&& task);
 
 		constexpr static inline uint8_t MAX_WORKERS = 32;
 		constexpr static inline uint8_t RENDER_WORKERS = 16;

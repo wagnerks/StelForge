@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <functional>
 
+#include "mathModule/Forward.h"
 #include "renderModule/Renderer.h"
 
 namespace SFE::CoreModule {

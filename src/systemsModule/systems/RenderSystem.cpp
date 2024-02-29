@@ -56,7 +56,7 @@ namespace SFE::SystemsModule {
 		});
 	}
 
-	RenderSystem::RenderSystem(Render::Renderer* renderer) : mRenderer(renderer) {
+	RenderSystem::RenderSystem(){
 		mRenderPasses.reserve(RENDER_PASSES_PRIORITY.size());
 
 		addRenderPass<Render::RenderPasses::CascadedShadowPass>();
@@ -70,14 +70,11 @@ namespace SFE::SystemsModule {
 
 	
 		auto guard = cameraMatricesUBO.bindWithGuard();
-		cameraMatricesUBO.allocateData<RenderMatrices>(1, Render::DYNAMIC_DRAW);
+		cameraMatricesUBO.allocateData<RenderMatrices>(1, GLW::DYNAMIC_DRAW);
 		cameraMatricesUBO.setBufferBinding(5);
 	}
 
 	void RenderSystem::update(float_t dt) {
-		if (!mRenderer) {
-			return;
-		}
 		FUNCTION_BENCHMARK;
 
 		mRenderData.current = mRenderData.next;
@@ -106,11 +103,8 @@ namespace SFE::SystemsModule {
 		mRenderData.mNextCamFrustum = cameraComp->getFrustum();
 
 		for (const auto renderPass : mRenderPasses) {
-			renderPass->render(mRenderer, mRenderData, *mRenderer->getBatcher());
+			renderPass->render(mRenderData);
 		}
-
-
-		Render::TextRenderer::instance()->renderText(std::to_string(Engine::instance()->getFPS()), 150.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 35));
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
@@ -145,33 +139,33 @@ namespace SFE::SystemsModule {
 			if (ImGui::Begin("geometry pass result", &mGeometryPassDataWindow)) {
 				float size = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
 				if (ImGui::TreeNode("gAlbedoSpec")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.albedoBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->albedoBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 
 				if (ImGui::TreeNode("gPosition")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.positionBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->positionBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNode("gNormal")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.normalBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->normalBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 
 				if (ImGui::TreeNode("gOutlines")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.outlinesBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->outlinesBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNode("gLights")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData.lightsBuffer->mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->lightsBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNode("ssao")) {
 					ImGui::Text("mSsaoColorBuffer");
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mSSAOPassData.mSsaoColorBuffer)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mSSAOPassData->mSsaoColorBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 
 					ImGui::Text("mSsaoColorBufferBlur");
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mSSAOPassData.mSsaoColorBufferBlur)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
+					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mSSAOPassData->mSsaoColorBufferBlur.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
 					ImGui::TreePop();
 				}
 			}

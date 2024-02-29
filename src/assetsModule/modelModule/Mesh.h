@@ -6,10 +6,9 @@
 
 #include "assetsModule/TextureHandler.h"
 #include "core/BoundingVolume.h"
+#include "glWrapper/Buffer.h"
+#include "glWrapper/VertexArray.h"
 #include "mathModule/Forward.h"
-#include "renderModule/Buffer.h"
-#include "renderModule/VertexArray.h"
-
 
 namespace AssetsModule {
 #define MAX_BONE_INFLUENCE 4
@@ -26,7 +25,7 @@ namespace AssetsModule {
 	};
 
 	enum MaterialType : uint8_t {
-		DIFFUSE,
+		DIFFUSE = 1,
 		NORMALS,
 		SPECULAR
 	};
@@ -52,6 +51,19 @@ namespace AssetsModule {
 		std::vector<unsigned int> indices;
 	};
 
+
+	struct MeshData {
+		SFE::GLW::VertexArray vao;
+		SFE::GLW::Buffer vboBuf;
+		SFE::GLW::Buffer eboBuf;
+
+		void release() {
+			vao.release();
+			vboBuf.release();
+			eboBuf.release();
+		}
+	};
+
 	class Mesh {
 	public:
 		Mesh(const Mesh& other) = delete;
@@ -64,11 +76,11 @@ namespace AssetsModule {
 		Mesh() = default;
 		~Mesh();
 
-		void bindMesh();
-		void unbindMesh();
+		void initMeshData();
+		void releaseMeshData();
 
-		bool isBinded() const { return glIsVertexArray(getVAO()); }
-		unsigned int getVAO() const { return vao.getID(); }
+		bool isBinded() const { return mMeshData.vao; }
+		unsigned int getVAO() const { return mMeshData.vao.getID(); }
 
 		const SFE::FrustumModule::AABB& getBounds() const { return mBounds; }
 
@@ -88,9 +100,7 @@ namespace AssetsModule {
 		void recalculateFaceNormals();
 		void recalculateVerticesNormals();
 
-		SFE::Render::VertexArray vao;
-		SFE::Render::Buffer vboBuf;
-		SFE::Render::Buffer eboBuf;
+		MeshData mMeshData;
 
 	public:
 		static void recalculateFaceNormal(Mesh& mesh, int a, int b, int c);

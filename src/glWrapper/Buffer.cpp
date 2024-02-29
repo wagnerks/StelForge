@@ -1,6 +1,6 @@
 ﻿#include "Buffer.h"
 
-namespace SFE::Render {
+namespace SFE::GLW {
 	BindGuard::~BindGuard() {
 		Buffer::bindDefaultBuffer(mType);
 	}

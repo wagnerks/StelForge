@@ -1,7 +1,5 @@
 #include "SceneGridFloor.h"
 
-#include "BlendStack.h"
-#include "CapabilitiesStack.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Engine.h"
@@ -9,6 +7,11 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "core/ECSHandler.h"
 #include "ecss/Registry.h"
+#include "glWrapper/BlendStack.h"
+#include "glWrapper/Buffer.h"
+#include "glWrapper/CapabilitiesStack.h"
+#include "glWrapper/Draw.h"
+#include "glWrapper/VertexArray.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemManager.h"
@@ -47,12 +50,12 @@ void SceneGridFloor::init() {
 	VAO.bind();
 
 	VBO.bind();
-	VBO.allocateData(6, STATIC_DRAW, &vertices);
+	VBO.allocateData(6, GLW::STATIC_DRAW, &vertices);
 
-	VAO.addAttribute<Math::Vec3>(0, 3, FLOAT, false);
+	VAO.addAttribute<Math::Vec3>(0, 3, GLW::AttributeFType::FLOAT, false);
 
-	Buffer::bindDefaultBuffer(ARRAY_BUFFER);
-	VertexArray::bindDefault();
+	GLW::Buffer::bindDefaultBuffer(GLW::ARRAY_BUFFER);
+	GLW::VertexArray::bindDefault();
 }
 
 void SceneGridFloor::draw() {
@@ -65,27 +68,27 @@ void SceneGridFloor::draw() {
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
 
-	floorShader->setMat4("PVM", renderData.current.PV * transform);
-    floorShader->setMat4("PV", renderData.current.PV);
-	floorShader->setMat4("model", transform);
+	floorShader->setUniform("PVM", renderData.current.PV * transform);
+    floorShader->setUniform("PV", renderData.current.PV);
+	floorShader->setUniform("model", transform);
 	
-	floorShader->setVec3("cameraPos", Math::Vec3{renderData.mCameraPos});
+	floorShader->setUniform("cameraPos", Math::Vec3{renderData.mCameraPos});
 
-	floorShader->setFloat("far", cameraComp->getProjection().getFar());
-	floorShader->setFloat("near", cameraComp->getProjection().getNear());
+	floorShader->setUniform("far", cameraComp->getProjection().getFar());
+	floorShader->setUniform("near", cameraComp->getProjection().getNear());
 
 
 	VAO.bind();
-	
-	CapabilitiesStack::push(CULL_FACE, false);
-	CapabilitiesStack::push(BLEND, true);
-	BlendFuncStack::push({ SRC_ALPHA, ONE_MINUS_SRC_ALPHA });
 
-	Render::Renderer::drawArrays(TRIANGLES, 6);
+	GLW::CapabilitiesStack<GLW::CULL_FACE>::push(false);
+	GLW::CapabilitiesStack<GLW::BLEND>::push(true);
+	GLW::BlendFuncStack::push({GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
 
-	CapabilitiesStack::pop();
-	CapabilitiesStack::pop();
-	BlendFuncStack::pop();
+	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 6);
 
-	VertexArray::bindDefault();
+	GLW::CapabilitiesStack<GLW::CULL_FACE>::pop();
+	GLW::CapabilitiesStack<GLW::BLEND>::pop();
+	GLW::BlendFuncStack::pop();
+
+	GLW::VertexArray::bindDefault();
 }

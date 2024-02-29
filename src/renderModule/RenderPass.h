@@ -31,7 +31,7 @@ namespace SFE::Render {
 	class RenderPass {
 	public:
 		virtual ~RenderPass() = default;
-		virtual void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) = 0;
+		virtual void render(SystemsModule::RenderData& renderDataHandle) = 0;
 		virtual void init() {}
 		void setPriority(size_t priority);
 		size_t getPriority() const;

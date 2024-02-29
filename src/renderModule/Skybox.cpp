@@ -8,6 +8,8 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "core/ECSHandler.h"
 #include "ecss/Registry.h"
+#include "glWrapper/Depth.h"
+#include "glWrapper/Draw.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/SystemManager.h"
 
@@ -31,10 +33,10 @@ void Skybox::init() {
 	}
 
 	skyboxShader->use();
-	skyboxShader->setInt("skybox", 16);
-	skyboxShader->setMat4("projection", ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection().getProjectionsMatrix());
+	skyboxShader->setUniform("skybox", 16);
+	skyboxShader->setUniform("projection", ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection().getProjectionsMatrix());
 
-	cubemapTex = AssetsModule::TextureHandler::instance()->loadCubemapTexture(skyboxPath)->mId;
+	cubemapTex = AssetsModule::TextureHandler::instance()->loadCubemapTexture(skyboxPath)->texture.mId;
 	if (cubemapTex == 0) {
 		assert(false && "can't load skybox texture");
 		return;
@@ -86,12 +88,12 @@ void Skybox::init() {
 	};
 
 	VAO.generate();
-	VBO.generate(ARRAY_BUFFER);
+	VBO.generate(GLW::ARRAY_BUFFER);
 	VAO.bind();
 	VBO.bind();
-	VBO.allocateData(108, STATIC_DRAW, skyboxVertices);
+	VBO.allocateData(108, GLW::STATIC_DRAW, skyboxVertices);
 
-	VAO.addAttribute(0, 3, FLOAT, false, 3 * sizeof(float));
+	VAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, 3 * sizeof(float));
 }
 
 void Skybox::draw() {
@@ -101,15 +103,13 @@ void Skybox::draw() {
 	skyboxShader->use();
 
 	auto view = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getViewMatrix();;
-	skyboxShader->setMat4("view", Math::Mat4(Math::Mat3{view}));
+	skyboxShader->setUniform("view", Math::Mat4(Math::Mat3{view}));
+	GLW::DepthFuncStack::push(GLW::DepthFunc::LEQUAL);
 
-	glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
-
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(16, AssetsModule::TEXTURE_CUBE_MAP, cubemapTex);
+	GLW::bindTextureToSlot(16, GLW::TEXTURE_CUBE_MAP, cubemapTex);
 
 	VAO.bind();
-	Render::Renderer::drawArrays(TRIANGLES, 36);
-
-	glDepthFunc(GL_LESS);
-	glBindVertexArray(0);
+	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 36);
+	GLW::DepthFuncStack::pop();
+	VAO.bindDefault();
 }

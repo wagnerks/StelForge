@@ -17,22 +17,17 @@ SystemManager::~SystemManager() {
 void SystemManager::startTickSystems() {
 	SFE::ThreadPool::instance()->addTask([this]() {
 		const float frameDt = 1.f / mTickRate;
-		const std::chrono::duration<float> frameDuration(frameDt);
+		auto startTime = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<float> elapsed;
 
 		while (SFE::ThreadPool::isAlive()) {
-			auto startTime = std::chrono::high_resolution_clock::now();
 			for (auto system : mTickSystems) {
-				system->update(frameDt);
+				system->update(elapsed.count());
 			}
 
 			auto endTime = std::chrono::high_resolution_clock::now();
-			auto elapsed = std::chrono::duration_cast<std::chrono::duration<float>>(endTime - startTime);
-			mTickDt = elapsed.count();
-			auto sleepTime = frameDuration - elapsed;
-			if (sleepTime.count() <= 0.f) {
-				continue;
-			}
-			std::this_thread::sleep_for(sleepTime);
+			elapsed = endTime - startTime;
+			startTime = endTime;
 		}
 	});
 }

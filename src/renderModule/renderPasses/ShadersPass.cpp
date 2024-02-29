@@ -20,13 +20,13 @@ SFE::Render::RenderPasses::ShadersPass::ShadersPass() {
 
 }
 
-void SFE::Render::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
+void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& renderDataHandle) {
 	FUNCTION_BENCHMARK;
 
-	static VertexArray VAO;
-	if (!VAO.getID()) {
-		static Buffer VBO;
-		static Buffer EBO;
+	static GLW::VertexArray VAO;
+	if (!VAO) {
+		static GLW::Buffer VBO;
+		static GLW::Buffer EBO;
 
 		std::vector<AssetsModule::Vertex> vertices = {
 			{{ 1.0, 0.f, -1.0}, {0.f,1.f,0.f}, {1.f,1.f}}, //far right
@@ -41,21 +41,21 @@ void SFE::Render::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsM
 		};
 
 		VAO.generate();
-		VBO.generate(SFE::Render::ARRAY_BUFFER);
+		VBO.generate(SFE::GLW::ARRAY_BUFFER);
 
 		VAO.bind();
 		VBO.bind();
-		VBO.allocateData(vertices.size(), SFE::Render::STATIC_DRAW, vertices.data());
+		VBO.allocateData(vertices.size(), SFE::GLW::STATIC_DRAW, vertices.data());
 
 		if (!indices.empty()) {
-			EBO.generate(SFE::Render::ELEMENT_ARRAY_BUFFER);
+			EBO.generate(SFE::GLW::ELEMENT_ARRAY_BUFFER);
 			EBO.bind();
-			EBO.allocateData(indices.size(), SFE::Render::STATIC_DRAW, indices.data());
+			EBO.allocateData(indices.size(), SFE::GLW::STATIC_DRAW, indices.data());
 		}
 
-		VAO.addAttribute(0, 3, FLOAT, true, &AssetsModule::Vertex::mPosition);
-		VAO.addAttribute(1, 3, FLOAT, true, &AssetsModule::Vertex::mNormal);
-		VAO.addAttribute(2, 2, FLOAT, true, &AssetsModule::Vertex::mTexCoords);
+		VAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, true, &AssetsModule::Vertex::mPosition);
+		VAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true, &AssetsModule::Vertex::mNormal);
+		VAO.addAttribute(2, 2, GLW::AttributeFType::FLOAT, true, &AssetsModule::Vertex::mTexCoords);
 
 		VAO.bindDefault();
 		VBO.unbind();
@@ -65,18 +65,21 @@ void SFE::Render::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsM
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
 
-	glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
-	renderDataHandle.mGeometryPassData.gFramebuffer->bind();
+	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
 
 	const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/testSh.vs", "shaders/testSh.fs");
 	shader->use();
 
-	shader->setVec3("cameraPos", Math::Vec3{renderDataHandle.mCameraPos});
+	GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->outlinesBuffer);
+	shader->setUniform("outline", 1);
 
-	shader->setFloat("far", cameraComp->getProjection().getFar());
-	shader->setFloat("near", cameraComp->getProjection().getNear());
+	shader->setUniform("cameraPos", Math::Vec3{renderDataHandle.mCameraPos});
 
+	shader->setUniform("far", cameraComp->getProjection().getFar());
+	shader->setUniform("near", cameraComp->getProjection().getNear());
 
+	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 6, 4);
+	Batcher batcher;
 	batcher.addToDrawList(VAO.getID(), 4, 6, {}, Math::translate(Math::Mat4(1.f), renderDataHandle.mCameraPos * Math::Vec3(1.f, 0.f, 1.f)) * Math::scale(Math::Mat4{ 1.f }, Math::Vec3(1.f)), {}, false);
 	batcher.flushAll(true);
 
@@ -84,9 +87,8 @@ void SFE::Render::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsM
 	if (drawableEntities.empty()) {
 		return;
 	}
-	
-	glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
-	renderDataHandle.mGeometryPassData.gFramebuffer->bind();
+
+	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
 
 	auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
 
@@ -95,17 +97,17 @@ void SFE::Render::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsM
 
 		shader->use();
 
-		shader->setMat4("P", renderDataHandle.current.projection);
-		shader->setMat4("V", renderDataHandle.current.view);
-		shader->setMat4("PV", renderDataHandle.current.PV);
+		shader->setUniform("P", renderDataHandle.current.projection);
+		shader->setUniform("V", renderDataHandle.current.view);
+		shader->setUniform("PV", renderDataHandle.current.PV);
 
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(0, renderDataHandle.mGeometryPassData.positionBuffer);
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(1, renderDataHandle.mGeometryPassData.normalBuffer);
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(2, renderDataHandle.mGeometryPassData.albedoBuffer);
+		GLW::bindTextureToSlot(0, &renderDataHandle.mGeometryPassData->positionBuffer);
+		GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->normalBuffer);
+		GLW::bindTextureToSlot(2, &renderDataHandle.mGeometryPassData->albedoBuffer);
 
-		shader->setInt("gPosition", 0);
-		shader->setInt("gNormal", 1);
-		shader->setInt("gAlbedoSpec", 2);
+		shader->setUniform("gPosition", 0);
+		shader->setUniform("gNormal", 1);
+		shader->setUniform("gAlbedoSpec", 2);
 		batcher.sort(cameraPos);
 		batcher.flushAll(true);
 	};
@@ -132,5 +134,5 @@ void SFE::Render::RenderPasses::ShadersPass::render(Renderer* renderer, SystemsM
 
 	flush(curShaderId);
 
-	renderDataHandle.mGeometryPassData.gFramebuffer->bindDefaultFramebuffer();
+	renderDataHandle.mGeometryPassData->gFramebuffer.bindDefaultFramebuffer();
 }

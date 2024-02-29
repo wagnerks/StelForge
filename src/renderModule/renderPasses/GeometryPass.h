@@ -4,8 +4,9 @@
 #include <thread>
 #include <vector>
 
+#include "glWrapper/Framebuffer.h"
+#include "glWrapper/Renderbuffer.h"
 #include "logsModule/logger.h"
-#include "renderModule/Framebuffer.h"
 #include "renderModule/RenderPass.h"
 
 class Batcher;
@@ -17,33 +18,22 @@ namespace SFE::Render::RenderPasses {
 	public:
 		void prepare() override;
 		struct Data {
-			~Data() {
-				/*delete positionBuffer;
-				delete viewPositionBuffer;
-				delete outlinesBuffer;
-				delete lightsBuffer;
-				delete normalBuffer;
-				delete albedoBuffer;
+			GLW::Framebuffer gFramebuffer;
+			GLW::Texture positionBuffer{GLW::TEXTURE_2D};
+			GLW::Texture viewPositionBuffer{GLW::TEXTURE_2D};
+			GLW::Texture outlinesBuffer{GLW::TEXTURE_2D};
+			GLW::Texture lightsBuffer{GLW::TEXTURE_2D};
+			GLW::Texture normalBuffer{GLW::TEXTURE_2D};
+			GLW::Texture albedoBuffer{GLW::TEXTURE_2D};
 
-				delete depthBuffer;*/
-			}
-
-			Render::Framebuffer* gFramebuffer; //todo leaks
-			AssetsModule::Texture* positionBuffer;
-			AssetsModule::Texture* viewPositionBuffer;
-			AssetsModule::Texture* outlinesBuffer;
-			AssetsModule::Texture* lightsBuffer;
-			AssetsModule::Texture* normalBuffer;
-			AssetsModule::Texture* albedoBuffer;
-
-			unsigned int rboDepth = 0;
-			Render::Framebuffer* outlineFramebuffer;
+			GLW::Renderbuffer rboDepth;
+			GLW::Framebuffer outlineFramebuffer;
 		};
 
 
 		
 		void init() override;
-		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
+		void render(SystemsModule::RenderData& renderDataHandle) override;
 	private:
 		bool mInited = false;
 		Data mData;

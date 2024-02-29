@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "glWrapper/Framebuffer.h"
 #include "renderModule/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
@@ -9,11 +10,11 @@ namespace SFE::Render::RenderPasses {
 	public:
 		struct Data {
 			std::vector<Math::Vec3> mSsaoKernel;
-			unsigned int mNoiseTexture = 0;
-			unsigned int mSsaoFbo = 0;
-			unsigned int mSsaoBlurFbo = 0;
-			unsigned int mSsaoColorBuffer = 0;
-			unsigned int mSsaoColorBufferBlur = 0;
+			GLW::Texture mNoiseTexture{GLW::TEXTURE_2D};
+			GLW::Framebuffer mSsaoFbo;
+			GLW::Framebuffer mSsaoBlurFbo;
+			GLW::Texture mSsaoColorBuffer{GLW::TEXTURE_2D};
+			GLW::Texture mSsaoColorBufferBlur{GLW::TEXTURE_2D};
 			int mKernelSize = 16;
 			float mRadius = 0.5f;
 			float mBias = 0.7f;
@@ -28,7 +29,7 @@ namespace SFE::Render::RenderPasses {
 		};
 		
 		void init() override;
-		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
+		void render(SystemsModule::RenderData& renderDataHandle) override;
 	private:
 
 		bool ssaoDebugWindow = false;

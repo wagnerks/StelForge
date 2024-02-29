@@ -7,15 +7,18 @@
 #include "assetsModule/shaderModule/Shader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "core/FileSystem.h"
-#include "glad/glad.h"
 #include "logsModule/logger.h"
 #include "mathModule/Forward.h"
 #include "mathModule/Utils.h"
 
 #include <ft2build.h>
 
-#include "BlendStack.h"
-#include "CapabilitiesStack.h"
+#include "assetsModule/TextureHandler.h"
+#include "glWrapper/BlendStack.h"
+#include "glWrapper/Buffer.h"
+#include "glWrapper/CapabilitiesStack.h"
+#include "glWrapper/Draw.h"
+#include "glWrapper/VertexArray.h"
 
 #include FT_FREETYPE_H
 
@@ -36,7 +39,7 @@ namespace SFE::Render {
         }
 
         void clear() const {
-            if (!mFontPath.empty()) {
+            if (mAtlasTex) {
                 delete mAtlasTex;
             }
     	}
@@ -77,16 +80,20 @@ namespace SFE::Render {
 
             FT_Set_Pixel_Sizes(face, 0, mFontSize);
             mAtlasHeight = calcAtlasHeight(face);
-            mAtlasTex = new AssetsModule::Texture{ AssetsModule::TEXTURE_2D };
-            mAtlasTex->image2D(atlasSize, mAtlasHeight, AssetsModule::R8, AssetsModule::RED, AssetsModule::UNSIGNED_BYTE);
-            mAtlasTex->setPixelStorageMode(AssetsModule::UNPACK_ALIGNMENT, AssetsModule::PixelStorageModeValue::BYTE);
-            mAtlasTex->setParameter({
-                {AssetsModule::TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE},
-                {AssetsModule::TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE},
-                {AssetsModule::TEXTURE_MIN_FILTER, GL_LINEAR},
-                {AssetsModule::TEXTURE_MAG_FILTER, GL_LINEAR},
-            });
-            
+            mAtlasTex = new GLW::Texture{ GLW::TEXTURE_2D };
+      
+            mAtlasTex->width = atlasSize;
+            mAtlasTex->height = mAtlasHeight;
+            mAtlasTex->parameters.minFilter = GLW::TextureMinFilter::LINEAR;
+            mAtlasTex->parameters.magFilter = GLW::TextureMagFilter::LINEAR;
+            mAtlasTex->parameters.wrap.S = GLW::TextureWrap::CLAMP_TO_EDGE;
+        	mAtlasTex->parameters.wrap.T = GLW::TextureWrap::CLAMP_TO_EDGE;
+            mAtlasTex->pixelFormat = GLW::R8;
+            mAtlasTex->textureFormat = GLW::RED;
+            mAtlasTex->pixelType = GLW::UNSIGNED_BYTE;
+            mAtlasTex->unpackAlignmentMode = GLW::PixelStorageModeValue::BYTE;
+            mAtlasTex->create();
+                        
             loadGlyphsToAtlas(face);
 
             FT_Done_Face(face);
@@ -94,11 +101,12 @@ namespace SFE::Render {
         }
 
         unsigned int getAtlas() const { return mAtlasTex ? mAtlasTex->mId : 0; }
+        GLW::Texture* getAtlasTex() const { return mAtlasTex; }
 
     private:
         std::string mFontPath;
 
-        AssetsModule::Texture* mAtlasTex = nullptr; //todo leak
+        GLW::Texture* mAtlasTex = nullptr; //todo leak
         uint16_t mFontSize = 0;
 
         unsigned int mAtlasHeight = 0;
@@ -143,42 +151,43 @@ namespace SFE::Render {
             FT_ULong c = FT_Get_First_Char(face, &index);
 
             unsigned int rows = 0;
-
-            while (index) {
-                if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
-                    continue;
-                }
-
-                if (x + face->glyph->bitmap.width + offset >= atlasSize) {
-                    x = 2;
-                    y += rows;
-                    rows = 0;
-                }
-                rows = std::max(face->glyph->bitmap.rows + offset, rows);
-
-                glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
-                glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
-
-                mAtlasTex->setSubImageData2D(x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, face->glyph->bitmap.buffer, AssetsModule::RED, AssetsModule::UNSIGNED_BYTE);
-
-                if (mGlyphs.size() <= c) {
-                    mGlyphs.resize(c + 1);
-                }
-
-                mGlyphs[c] = GlyphInfo {
-                    {face->glyph->bitmap.width, face->glyph->bitmap.rows},
-                    {face->glyph->bitmap_left, face->glyph->bitmap_top},
-                    static_cast<unsigned int>(face->glyph->advance.x),
-                    {
-                    	Math::Vec2{static_cast<float>(x) / atlasSize,static_cast<float>(y) / mAtlasHeight},
-                    	Math::Vec2{static_cast<float>(x + face->glyph->bitmap.width) / atlasSize,static_cast<float>(y + face->glyph->bitmap.rows) / mAtlasHeight}
+            mAtlasTex->bind([&](const GLW::Texture* texture) {
+                while (index) {
+                    if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
+                        continue;
                     }
-                };
 
-                x += face->glyph->bitmap.width + offset;
+                    if (x + face->glyph->bitmap.width + offset >= atlasSize) {
+                        x = 2;
+                        y += rows;
+                        rows = 0;
+                    }
+                    rows = std::max(face->glyph->bitmap.rows + offset, rows);
 
-                c = FT_Get_Next_Char(face, c, &index);
-            }
+                    glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
+                    glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
+
+                    texture->setSubImageData2D(x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, face->glyph->bitmap.buffer, GLW::RED);
+
+                    if (mGlyphs.size() <= c) {
+                        mGlyphs.resize(c + 1);
+                    }
+
+                    mGlyphs[c] = GlyphInfo{
+                        {face->glyph->bitmap.width, face->glyph->bitmap.rows},
+                        {face->glyph->bitmap_left, face->glyph->bitmap_top},
+                        static_cast<unsigned int>(face->glyph->advance.x),
+                        {
+                            Math::Vec2{static_cast<float>(x) / atlasSize,static_cast<float>(y) / mAtlasHeight},
+                            Math::Vec2{static_cast<float>(x + face->glyph->bitmap.width) / atlasSize,static_cast<float>(y + face->glyph->bitmap.rows) / mAtlasHeight}
+                        }
+                    };
+
+                    x += face->glyph->bitmap.width + offset;
+
+                    c = FT_Get_Next_Char(face, c, &index);
+                }
+            });
         }
     };
 
@@ -283,22 +292,13 @@ namespace SFE::Render {
         }
 
         void renderText(std::string text, float x, float y, float scale, Math::Vec3 color, Font* font) const {
-            const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/text.vs", "shaders/text.fs");
-            shader->use();
-            shader->setVec3("textColor", color);
-            shader->setInt("text", 24);
-
-            AssetsModule::TextureHandler::instance()->bindTextureToSlot(24, AssetsModule::TEXTURE_2D, font->getAtlas());
-
-         
-            VAO.bind();
             VBO.bind();
-            VBO.allocateData(sizeof(float) * 6 * 4, text.size(), DYNAMIC_DRAW, nullptr);
+            VBO.allocateData(sizeof(float) * 6 * 4, text.size(), GLW::DYNAMIC_DRAW, nullptr);
 
-            const float semiW = Render::Renderer::SCR_WIDTH * 0.5f;
-            const float semiH = Render::Renderer::SCR_HEIGHT * 0.5f;
+            const float semiW = Render::Renderer::screenDrawData.width * 0.5f;
+            const float semiH = Render::Renderer::screenDrawData.height * 0.5f;
 
-            y = Render::Renderer::SCR_HEIGHT - y;
+            y = Render::Renderer::screenDrawData.height - y;
 
             int rowH = 0;
             float curX = x;
@@ -339,28 +339,34 @@ namespace SFE::Render {
                 curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 
             }
 
-            CapabilitiesStack::push(BLEND, true);
-            BlendFuncStack::push({ SRC_ALPHA, ONE_MINUS_SRC_ALPHA });
-
-            Renderer::drawArrays(TRIANGLES, static_cast<int>(text.size() + 1) * 6);
-
-            CapabilitiesStack::pop();
-            BlendFuncStack::pop();
-
             VBO.bindDefaultBuffer(VBO.getType());
-            VAO.bindDefault();
+           
+
+            GLW::CapabilitiesStack<GLW::BLEND>::push(true);
+            GLW::BlendFuncStack::push({ GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
+            const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/text.vs", "shaders/text.fs");
+            shader->use();
+            shader->setUniform("textColor", color);
+            shader->setUniform("text", 24);
+
+            GLW::bindTextureToSlot(24, font->getAtlasTex());
+
+            drawVertices(GLW::TRIANGLES, VAO.getID(), static_cast<int>(text.size() + 1) * 6, 0, 0);
+
+            GLW::CapabilitiesStack<GLW::BLEND>::pop();
+            GLW::BlendFuncStack::pop();
         }
 
         void init() override {
             const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/text.vs", "shaders/text.fs");
             shader->use();
-            shader->setMat4("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Renderer::SCR_WIDTH), 0.f, static_cast<float>(Renderer::SCR_HEIGHT), -1.f, 1.f));
+            shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Renderer::screenDrawData.width), 0.f, static_cast<float>(Renderer::screenDrawData.height), -1.f, 1.f));
 
             VAO.generate();
             VAO.bind();
             VBO.bind();
 
-            VAO.addAttribute(0, 4, FLOAT, false, 4 * sizeof(float));
+            VAO.addAttribute(0, 4, GLW::AttributeFType::FLOAT, false, 4 * sizeof(float));
             VBO.bindDefaultBuffer(VBO.getType());
             VAO.bindDefault();
         }
@@ -375,9 +381,8 @@ namespace SFE::Render {
 
 	private:
 
-        
-        VertexArray VAO;
+        GLW::VertexArray VAO;
 
-        Buffer VBO{ ARRAY_BUFFER };
+        GLW::Buffer VBO{GLW::ARRAY_BUFFER };
 	};
 }

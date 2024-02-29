@@ -5,8 +5,7 @@
 
 #include "componentsModule/CascadeShadowComponent.h"
 #include "ecss/EntityHandle.h"
-#include "renderModule/Buffer.h"
-#include "renderModule/Framebuffer.h"
+#include "glWrapper/Framebuffer.h"
 
 #include "renderModule/RenderPass.h"
 
@@ -35,15 +34,15 @@ namespace SFE::Render::RenderPasses {
 		void init() override;
 		void initRender();
 
-		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
+		void render(SystemsModule::RenderData& renderDataHandle) override;
 	private:
-		void updateRenderData(SystemsModule::RenderData& renderDataHandle) const;
+		void updateRenderData(SystemsModule::RenderData& renderDataHandle);
 		void debug(SystemsModule::RenderData& renderDataHandle);
 
-		Render::Framebuffer lightFBO;
-		AssetsModule::Texture lightDepthMap{AssetsModule::TEXTURE_2D_ARRAY};
+		GLW::Framebuffer lightFBO;
+		AssetsModule::Texture lightDepthMap{GLW::TEXTURE_2D_ARRAY};
 
-		Buffer matricesUBO{ UNIFORM_BUFFER };
+		GLW::Buffer matricesUBO{GLW::UNIFORM_BUFFER };
 
 		ecss::EntityHandle mShadowSource;
 		bool mInited = false;

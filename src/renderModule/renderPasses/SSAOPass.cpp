@@ -20,33 +20,37 @@ float lerp(float a, float b, float f) {
 }
 
 void SSAOPass::init() {
-	glGenFramebuffers(1, &mData.mSsaoFbo);
-	glGenFramebuffers(1, &mData.mSsaoBlurFbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
+	
+	mData.mSsaoFbo.bind();
 
 	// SSAO color buffer
-	glGenTextures(1, &mData.mSsaoColorBuffer);
-	glBindTexture(GL_TEXTURE_2D, mData.mSsaoColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RED, GL_FLOAT, NULL);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.mSsaoColorBuffer, 0);
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-		LogsModule::Logger::LOG_FATAL(false, "SSAO Framebuffer not complete!");
-	}
-	// and blur stage
-	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
-	glGenTextures(1, &mData.mSsaoColorBufferBlur);
-	glBindTexture(GL_TEXTURE_2D, mData.mSsaoColorBufferBlur);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H, 0, GL_RED, GL_FLOAT, NULL);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mData.mSsaoColorBufferBlur, 0);
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-		LogsModule::Logger::LOG_FATAL(false, "SSAO Blur Framebuffer not complete!");
-	}
+	mData.mSsaoColorBuffer.width = Renderer::screenDrawData.renderW;
+	mData.mSsaoColorBuffer.height = Renderer::screenDrawData.renderH;
+	mData.mSsaoColorBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.mSsaoColorBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.mSsaoColorBuffer.pixelFormat = GLW::R8;
+	mData.mSsaoColorBuffer.textureFormat = GLW::RED;
+	mData.mSsaoColorBuffer.pixelType = GLW::FLOAT;
+	mData.mSsaoColorBuffer.create();
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	mData.mSsaoColorBufferBlur.width = Renderer::screenDrawData.renderW;
+	mData.mSsaoColorBufferBlur.height = Renderer::screenDrawData.renderH;
+	mData.mSsaoColorBufferBlur.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.mSsaoColorBufferBlur.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.mSsaoColorBufferBlur.pixelFormat = GLW::R8;
+	mData.mSsaoColorBufferBlur.textureFormat = GLW::RED;
+	mData.mSsaoColorBufferBlur.pixelType = GLW::FLOAT;
+	mData.mSsaoColorBufferBlur.create();
+	
+	mData.mSsaoFbo.addAttachmentTexture(0, &mData.mSsaoColorBuffer);
+	mData.mSsaoFbo.finalize();
+
+	// and blur stage
+	mData.mSsaoBlurFbo.bind();
+	mData.mSsaoBlurFbo.addAttachmentTexture(0, &mData.mSsaoColorBufferBlur);
+	mData.mSsaoBlurFbo.finalize();
+
+	mData.mSsaoBlurFbo.bindDefaultFramebuffer();
 
 	// generate sample kernel
 	// ----------------------
@@ -78,44 +82,44 @@ void SSAOPass::init() {
 		// rotate around z-axis (in tangent space)
 		ssaoNoise.push_back(noise);
 	}
-
-	glGenTextures(1, &mData.mNoiseTexture);
-	glBindTexture(GL_TEXTURE_2D, mData.mNoiseTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	mData.mNoiseTexture.width = 4;
+	mData.mNoiseTexture.height = 4;
+	mData.mNoiseTexture.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.mNoiseTexture.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.mNoiseTexture.pixelFormat = GLW::RGB32F;
+	mData.mNoiseTexture.textureFormat = GLW::RGB;
+	mData.mNoiseTexture.pixelType = GLW::FLOAT;
+	mData.mNoiseTexture.create(ssaoNoise.data());
 
 	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
 	shaderSSAO->use();
-	shaderSSAO->setInt("gPosition", 0);
-	shaderSSAO->setInt("gNormal", 1);
-	shaderSSAO->setInt("texNoise", 2);
+	shaderSSAO->setUniform("gPosition", 0);
+	shaderSSAO->setUniform("gNormal", 1);
+	shaderSSAO->setUniform("texNoise", 2);
 
-	shaderSSAO->setInt("kernelSize", mData.mKernelSize);
-	shaderSSAO->setFloat("radius", mData.mRadius);
-	shaderSSAO->setFloat("bias", mData.mBias);
-	shaderSSAO->setVec2("noiseScale", Math::Vec2{static_cast<float>(Renderer::SCR_RENDER_W) / 4.f, static_cast<float>(Renderer::SCR_RENDER_W) / 4.f});
+	shaderSSAO->setUniform("kernelSize", mData.mKernelSize);
+	shaderSSAO->setUniform("radius", mData.mRadius);
+	shaderSSAO->setUniform("bias", mData.mBias);
+	shaderSSAO->setUniform("noiseScale", Math::Vec2{static_cast<float>(Renderer::screenDrawData.renderW) / 4.f, static_cast<float>(Renderer::screenDrawData.renderW) / 4.f});
 	for (unsigned int i = 0; i < 64; ++i) {
-		shaderSSAO->setVec3(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
+		shaderSSAO->setUniform(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
 	}
 
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
 	shaderSSAOBlur->use();
-	shaderSSAOBlur->setInt("ssaoInput", 0);
+	shaderSSAOBlur->setUniform("ssaoInput", 0);
 
 	float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
-	shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
-	shaderSSAOBlur->setFloat("facL", facL);
+	shaderSSAOBlur->setUniform("sigmaL", mData.sigmaL);
+	shaderSSAOBlur->setUniform("facL", facL);
 
 	float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
-	shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
-	shaderSSAOBlur->setFloat("facS", facS);
+	shaderSSAOBlur->setUniform("sigmaS", mData.sigmaS);
+	shaderSSAOBlur->setUniform("facS", facS);
 
 }
 
-void SSAOPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
+void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
 	FUNCTION_BENCHMARK
 	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
@@ -136,68 +140,67 @@ void SSAOPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataH
 		if (ImGui::Begin("SSAO", &ssaoDebugWindow)) {
 			shaderSSAO->use();
 			if (ImGui::DragInt("kernelSize", &mData.mKernelSize)) {
-				shaderSSAO->setInt("kernelSize", mData.mKernelSize);
+				shaderSSAO->setUniform("kernelSize", mData.mKernelSize);
 			}
 			if (ImGui::DragFloat("radius", &mData.mRadius, 0.01f)) {
-				shaderSSAO->setFloat("radius", mData.mRadius);
+				shaderSSAO->setUniform("radius", mData.mRadius);
 			}
 			if (ImGui::DragFloat("bias", &mData.mBias, 0.001f)) {
-				shaderSSAO->setFloat("BIAS", mData.mBias);
+				shaderSSAO->setUniform("BIAS", mData.mBias);
 			}
 			if (ImGui::DragFloat("intencity", &mData.intencity, 0.1f)) {
-				shaderSSAO->setFloat("INTENSITY", mData.intencity);
+				shaderSSAO->setUniform("INTENSITY", mData.intencity);
 			}
 
 			if (ImGui::DragFloat("scale", &mData.scale, 0.1f)) {
-				shaderSSAO->setFloat("SCALE", mData.scale);
+				shaderSSAO->setUniform("SCALE", mData.scale);
 			}
 
 			if (ImGui::DragFloat("sample_rad", &mData.sample_rad, 0.1f)) {
-				shaderSSAO->setFloat("SAMPLE_RAD", mData.sample_rad);
+				shaderSSAO->setUniform("SAMPLE_RAD", mData.sample_rad);
 			}
 
 			if (ImGui::DragFloat("max_distance", &mData.max_distance, 0.1f)) {
-				shaderSSAO->setFloat("MAX_DISTANCE", mData.max_distance);
+				shaderSSAO->setUniform("MAX_DISTANCE", mData.max_distance);
 			}
 			if (ImGui::DragInt("samples", &mData.samples)) {
-				shaderSSAO->setInt("SAMPLES", mData.samples);
+				shaderSSAO->setUniform("SAMPLES", mData.samples);
 			}
 
 			if (ImGui::DragFloat("sigmaS", &mData.sigmaS, 0.01f, 0.000001f)) {
 				shaderSSAOBlur->use();
 				float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
 
-				shaderSSAOBlur->setFloat("sigmaS", mData.sigmaS);
-				shaderSSAOBlur->setFloat("facS", facS);
+				shaderSSAOBlur->setUniform("sigmaS", mData.sigmaS);
+				shaderSSAOBlur->setUniform("facS", facS);
 			}
 			if (ImGui::DragFloat("sigmaL", &mData.sigmaL, 0.01f, 0.000001f)) {
 				shaderSSAOBlur->use();
 				float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
-				shaderSSAOBlur->setFloat("sigmaL", mData.sigmaL);
-				shaderSSAOBlur->setFloat("facL", facL);
+				shaderSSAOBlur->setUniform("sigmaL", mData.sigmaL);
+				shaderSSAOBlur->setUniform("facL", facL);
 			}
 		}
 		ImGui::End();
 	}
 	
-
-	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoFbo);
-	glClear(GL_COLOR_BUFFER_BIT);
+	mData.mSsaoFbo.bind();
+	GLW::clear(GLW::ColorBit::COLOR);
 	shaderSSAO->use();
-	shaderSSAO->setMat4("projection", renderDataHandle.current.projection);
+	shaderSSAO->setUniform("projection", renderDataHandle.current.projection);
 
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(0, renderDataHandle.mGeometryPassData.viewPositionBuffer);
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(1, renderDataHandle.mGeometryPassData.normalBuffer);
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(2, AssetsModule::TEXTURE_2D, mData.mNoiseTexture);
+	GLW::bindTextureToSlot(0, &renderDataHandle.mGeometryPassData->viewPositionBuffer);
+	GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->normalBuffer);
+	GLW::bindTextureToSlot(2, &mData.mNoiseTexture);
 	Utils::renderQuad();
 
-
-	glBindFramebuffer(GL_FRAMEBUFFER, mData.mSsaoBlurFbo);
-	glClear(GL_COLOR_BUFFER_BIT);
+	mData.mSsaoBlurFbo.bind();
+	GLW::clear(GLW::ColorBit::COLOR);
 	shaderSSAOBlur->use();
-	AssetsModule::TextureHandler::instance()->bindTextureToSlot(0, AssetsModule::TEXTURE_2D, mData.mSsaoColorBuffer);
+	GLW::bindTextureToSlot(0, &mData.mSsaoColorBuffer);
 	Utils::renderQuad();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	renderDataHandle.mSSAOPassData = mData;
+	mData.mSsaoBlurFbo.bindDefaultFramebuffer();
+
+	renderDataHandle.mSSAOPassData = &mData;
 }

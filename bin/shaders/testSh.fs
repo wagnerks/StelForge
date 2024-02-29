@@ -20,6 +20,8 @@ layout(std140, binding = 5) uniform SharedMatrices {
     mat4 PV;
 } matrices;
 
+uniform sampler2D outline;
+
 uniform vec3 cameraPos;
 uniform float far;
 uniform float near;
@@ -57,7 +59,7 @@ float computeLinearDepth(vec3 pos) {
 
 void main()
 { 
-    gOutlines = vec4(0.0);
+    gOutlines.b = 0.0f;
     gLights = vec4(0.0);
     FragColor = vec4(1.0);
 
@@ -87,7 +89,7 @@ void main()
     gAlbedoSpec.rgb = mix(color2.rgb, gAlbedoSpec.rgb, 1.0);
     gAlbedoSpec.rgb = mix(color3.rgb, gAlbedoSpec.rgb, 1.0);
     gAlbedoSpec.rgb *= vec3(max(color1.a, max(color2.a, color3.a)));
-
+    gAlbedoSpec.rgb *= 3.0;
     float linearDepth = computeLinearDepth(FragPos.xyz);
     float fading = max(0, (0.8 - linearDepth));
     gAlbedoSpec.rgb *= vec3(fading);

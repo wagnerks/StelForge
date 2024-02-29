@@ -8,6 +8,7 @@
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/LightSourceComponent.h"
+#include "componentsModule/PhysicsComponent.h"
 
 namespace SFE::PropertiesModule {
 #define TYPE_NAME(type)									\
@@ -36,4 +37,5 @@ namespace SFE::PropertiesModule {
 	TYPE_NAME(ActionComponent);
 	TYPE_NAME(LightSourceComponent);
 	TYPE_NAME(AABBComponent);
+	TYPE_NAME(PhysicsComponent);
 }

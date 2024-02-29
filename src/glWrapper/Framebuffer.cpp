@@ -1,8 +1,9 @@
 ﻿#include "Framebuffer.h"
-#include "glad/glad.h"
-#include "logsModule/logger.h"
 
-namespace SFE::Render {
+#include "Texture.h"
+#include "glad/glad.h"
+
+namespace SFE::GLW {
 	Framebuffer::Framebuffer() {
 		glGenFramebuffers(1, &id);
 	}
@@ -15,7 +16,7 @@ namespace SFE::Render {
 		glDrawBuffers(static_cast<int>(attachments.size()), attachments.data());
 
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-			LogsModule::Logger::LOG_WARNING("Framebuffer not complete!");
+			assert(false && "Framebuffer not complete!");
 		}
 	}
 
@@ -30,8 +31,16 @@ namespace SFE::Render {
 		}
 	}
 
-	void Framebuffer::addAttachmentTexture(int attachment, AssetsModule::Texture* texture) {
+	void Framebuffer::addAttachmentTexture(int attachment, Texture* texture) {
 		addAttachmentTexture(attachment, texture->mId);
+	}
+
+	void Framebuffer::addAttachmentTexture(AttachmentType attachment, unsigned texture) {
+		addAttachmentTexture(static_cast<int>(attachment), texture);
+	}
+
+	void Framebuffer::addAttachmentTexture(AttachmentType attachment, Texture* texture) {
+		addAttachmentTexture(static_cast<int>(attachment), texture->mId);
 	}
 
 	void Framebuffer::bindFramebuffer(unsigned id) {
@@ -54,7 +63,7 @@ namespace SFE::Render {
 		bindFramebuffer(id);
 	}
 
-	void Framebuffer::addAttachment2D(unsigned attachment, AssetsModule::Texture* texture) {
+	void Framebuffer::addAttachment2D(unsigned attachment, Texture* texture) {
 		if (attachment == GL_DEPTH_ATTACHMENT || attachment == GL_STENCIL_ATTACHMENT || attachment == GL_DEPTH_STENCIL_ATTACHMENT) {
 			glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, texture->mType, texture->mId, 0);
 		}
@@ -66,5 +75,9 @@ namespace SFE::Render {
 
 	void Framebuffer::addRenderbuffer(unsigned attachment, unsigned renderBuffer) {
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, renderBuffer);
+	}
+
+	void Framebuffer::addRenderbuffer(AttachmentType attachment, unsigned renderBuffer) {
+		addRenderbuffer(static_cast<int>(attachment), renderBuffer);
 	}
 }

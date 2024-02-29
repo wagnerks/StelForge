@@ -3,7 +3,7 @@
 
 #include "glad/glad.h"
 
-namespace SFE::Render {
+namespace SFE::GLW {
 	enum BufferType {
 		ARRAY_BUFFER = GL_ARRAY_BUFFER,	//Vertex attributes
 		ATOMIC_COUNTER_BUFFER = GL_ATOMIC_COUNTER_BUFFER,	//Atomic counter storage
@@ -50,10 +50,31 @@ namespace SFE::Render {
 	template<size_t Count = 1>
 	class Buffers {
 	public:
+		Buffers(const Buffers& other) = delete;
+
+		Buffers(Buffers&& other) noexcept
+			: mType(other.mType) {
+			std::memmove(mId, other.mId, Count * sizeof(unsigned));
+		}
+
+		Buffers& operator=(const Buffers& other) = delete;
+
+		Buffers& operator=(Buffers&& other) noexcept {
+			if (this == &other)
+				return *this;
+			mType = other.mType;
+			std::memmove(mId, other.mId, Count * sizeof(unsigned));
+			return *this;
+		}
+
 		Buffers() = default;
 
+		operator bool() const {
+			return glIsBuffer(getID());
+		}
+		
 		Buffers(BufferType type) : mType(type) {
-			glGenBuffers(Count, mBufferId);
+			glGenBuffers(Count, mId);
 		}
 
 		~Buffers() {
@@ -61,12 +82,12 @@ namespace SFE::Render {
 		}
 
 		void release() {
-			glDeleteBuffers(Count, mBufferId);
+			glDeleteBuffers(Count, mId);
 		}
 
 		void generate(BufferType type) {
 			mType = type;
-			glGenBuffers(Count, mBufferId);
+			glGenBuffers(Count, mId);
 		}
 
 		BindGuard bindWithGuard() const {//todo some other interface
@@ -75,7 +96,7 @@ namespace SFE::Render {
 		}
 
 		void bind(size_t i = 0) const {
-			bindBuffer(mType, mBufferId[i]);
+			bindBuffer(mType, mId[i]);
 		}
 
 		void unbind() const {
@@ -83,7 +104,7 @@ namespace SFE::Render {
 		}
 
 		void setBufferBinding(int index, size_t bufferIdx = 0) {
-			glBindBufferBase(mType, index, mBufferId[bufferIdx]); //then it can be used in shader using "layout(std140, binding = index) uniform MyBlock"
+			glBindBufferBase(mType, index, mId[bufferIdx]); //then it can be used in shader using "layout(std140, binding = index) uniform MyBlock"
 		}
 
 		template<typename T>
@@ -93,12 +114,12 @@ namespace SFE::Render {
 
 		template<typename T>
 		void allocateData(size_t count, BufferAccessType accessType = STATIC_DRAW, const T* data = nullptr) {
-			allocateData(mType, count, accessType, data);
+			allocateData<T>(mType, count, accessType, data);
 		}
 
 		template<typename T>
 		void allocateData(const std::vector<T>& data, BufferAccessType accessType = STATIC_DRAW) {
-			allocateData(mType, data.size(), accessType, data.data());
+			allocateData<T>(mType, data.size(), accessType, data.data());
 		}
 
 		void allocateData(size_t size, size_t count, BufferAccessType accessType = STATIC_DRAW, const void* data = nullptr) const {
@@ -123,11 +144,11 @@ namespace SFE::Render {
 			bindBuffer(type, 0);
 		}
 
-		unsigned getID(size_t index = 0) const { return mBufferId[index]; }
+		unsigned getID(size_t index = 0) const { return mId[index]; }
 		BufferType getType() const { return mType; }
 	private:
 		BufferType mType;
-		unsigned mBufferId[Count];
+		unsigned mId[Count];
 	};
 
 	using Buffer = Buffers<>;

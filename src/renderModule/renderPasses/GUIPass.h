@@ -1,5 +1,7 @@
 ﻿#pragma once
 #include "ecss/Registry.h"
+#include "glWrapper/Buffer.h"
+#include "glWrapper/VertexArray.h"
 #include "nodeModule/TreeNode.h"
 #include "renderModule/RenderPass.h"
 #include "renderModule/TextRenderer.h"
@@ -31,12 +33,12 @@ namespace SFE::Render::RenderPasses {
 	public:
 		~GUIPass() override;
 		void init() override;
-		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
+		void render(SystemsModule::RenderData& renderDataHandle) override;
 
 		static inline ecss::Registry registry;
 
-		VertexArray VAO;
-		Buffer VBO{ ARRAY_BUFFER };
+		GLW::VertexArray VAO;
+		GLW::Buffer VBO{GLW::ARRAY_BUFFER };
 	};
 }
 

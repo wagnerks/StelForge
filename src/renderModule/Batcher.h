@@ -5,21 +5,13 @@
 #include "assetsModule/modelModule/Mesh.h"
 
 struct BonesData {
+	BonesData() = default;
 	BonesData(const std::vector<SFE::Math::Mat4>& bones) {
-		for (auto i = 0; i < bones.size(); i++) {
-			mBones[i] = bones[i];
-		}
-		for (auto i = bones.size(); i < 100; i++) {
-			mBones[i] = SFE::Math::Mat4(1.f);
-		}
+		std::copy(bones.begin(), bones.end(), mBones);
 	}
 
-	BonesData() {
-		for (auto i = 0; i < 100; i++) {
-			mBones[i] = SFE::Math::Mat4(1.f);
-		}
-	}
-	SFE::Math::Mat4 mBones[100];
+	
+	SFE::Math::Mat4 mBones[100]{ SFE::Math::Mat4(1.f) };
 };
 
 struct DrawObject {

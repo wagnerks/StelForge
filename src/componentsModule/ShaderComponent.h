@@ -144,7 +144,7 @@ namespace SFE::ComponentsModule {
 
 		ShaderVariablesStruct variables;
 
-		ShaderUniformVariables<AssetsModule::Texture*> texturesUniforms;
+		ShaderUniformVariables<GLW::Texture*> texturesUniforms;
 
 		std::vector<ShaderUniformVariablesI*> uniforms;
 
@@ -173,7 +173,13 @@ namespace SFE::ComponentsModule {
 					var.apply(shader, uniform.name + ".");
 				}
 				else {
-					shader->setValue<T>(prefix + uniform.name, uniform.value.front());
+					if constexpr (std::is_pointer_v<T>) {
+						shader->setUniform(prefix + uniform.name, *uniform.value.front());
+					}
+					else {
+						shader->setUniform(prefix + uniform.name, uniform.value.front());
+					}
+					
 				}
 
 			}
@@ -185,7 +191,13 @@ namespace SFE::ComponentsModule {
 						var.apply(shader, uniform.name + "[" + std::to_string(idx) + "]" + ".");
 					}
 					else {
-						shader->setValue<T>(prefix + uniform.name + "[" + std::to_string(idx) + "]", uniform.value[idx]);
+						if constexpr (std::is_pointer_v<T>) {
+							shader->setUniform(prefix + uniform.name + "[" + std::to_string(idx) + "]", *uniform.value[idx]);
+						}
+						else {
+							shader->setUniform(prefix + uniform.name + "[" + std::to_string(idx) + "]", uniform.value[idx]);
+						}
+						
 					}
 				}
 			}

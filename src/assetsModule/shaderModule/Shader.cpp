@@ -1,8 +1,8 @@
 ﻿#include "Shader.h"
+#include "glWrapper/Shader.h"
 
 #include <filesystem>
 #include <map>
-#include <glad/glad.h>
 #include <string>
 #include "logsModule/logger.h"
 
@@ -14,16 +14,15 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath, size_t hash) : 
 }
 
 bool Shader::compile() {
-	cachedUniforms.clear();
-	ID = glCreateProgram();
+	id = GLW::createProgram();
 
 	vertexCode = loadShaderCode(vertexPath);
 	fragmentCode = loadShaderCode(fragmentPath);
-
-	auto success = compileShader(vertexCode.c_str(), GL_VERTEX_SHADER);
-	success = compileShader(fragmentCode.c_str(), GL_FRAGMENT_SHADER) && success;
+	const char* errorStr;
+	auto success = GLW::compileShader(vertexCode.c_str(), GLW::ShaderType::VERTEX, id, errorStr);
+	success |= GLW::compileShader(fragmentCode.c_str(), GLW::ShaderType::FRAGMENT, id, errorStr);
 	if (!success) {
-		LogsModule::Logger::LOG_ERROR("[%s, %s] error downloading", vertexPath.c_str(), fragmentPath.c_str());
+		LogsModule::Logger::LOG_ERROR("[%s, %s] error downloading\n%s", vertexPath.c_str(), fragmentPath.c_str(), errorStr);
 	}
 
 	return success;

@@ -7,8 +7,10 @@
 #include "core/ECSHandler.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
-#include "glad/glad.h"
-#include "renderModule/CapabilitiesStack.h"
+#include "glWrapper/Buffer.h"
+#include "glWrapper/CapabilitiesStack.h"
+#include "glWrapper/Draw.h"
+#include "glWrapper/VertexArray.h"
 #include "renderModule/Renderer.h"
 #include "renderModule/SceneGridFloor.h"
 #include "renderModule/Utils.h"
@@ -20,100 +22,109 @@
 namespace SFE::Render::RenderPasses {
 	DebugPass::DebugPass() {
 		linesVAO.generate();
+		linesVAO.bind();
+		linesVBO.bind();
+
+		linesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, 3 * sizeof(float));
+
+		linesVAO.bindDefault();
+		linesVBO.unbind();
+
+
+		trianglesVAO.generate();
+		trianglesVAO.bind();
+		trianglesVBO.bind();
+
+		trianglesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &SFE::Render::Utils::LightVertex::position);
+		trianglesVAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true,  &SFE::Render::Utils::LightVertex::normal);
+		trianglesVAO.addAttribute(2, 4, GLW::AttributeFType::FLOAT, true,  &SFE::Render::Utils::LightVertex::color);
+
+		trianglesVAO.bindDefault();
+		trianglesVBO.unbind();
 	}
 
 	DebugPass::~DebugPass() {}
 	
 
 		
-	void DebugPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
+	void DebugPass::render(SystemsModule::RenderData& renderDataHandle) {
 		FUNCTION_BENCHMARK;
 
-		
-		auto triangleShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/simpleColoredTriangle.vs", "shaders/simpleColoredTriangle.fs");
-		triangleShader->use();
-		triangleShader->setMat4("PVM", renderDataHandle.current.PV);
-		triangleShader->setVec3("viewPos", renderDataHandle.mCameraPos);
-
-		
-		linesVAO.bind();
-		cubeVBO.bind();
-
-		linesVAO.addAttribute(0, 3, FLOAT, false, &SFE::Render::Utils::LightVertex::position);
-		linesVAO.addAttribute(1, 3, FLOAT, true, &SFE::Render::Utils::LightVertex::normal);
-
-		for (auto& [data, triangles] : Utils::renderTriangles) {
-			triangleShader->setVec4("color", data.color);
-
-			cubeVBO.allocateData(triangles.size(), STATIC_DRAW, triangles.data());
+		if (!Utils::renderTriangles.empty()) {
+			auto triangleShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/simpleColoredTriangle.vs", "shaders/simpleColoredTriangle.fs");
+			triangleShader->use();
+			triangleShader->setUniform("PVM", renderDataHandle.current.PV);
+			triangleShader->setUniform("viewPos", renderDataHandle.mCameraPos);
+			trianglesVBO.bind();
+			for (auto& [data, triangles] : Utils::renderTriangles) {
+				trianglesVBO.allocateData(triangles, GLW::STATIC_DRAW);
 
 
-			CapabilitiesStack::push(BLEND, data.blend);
-			CapabilitiesStack::push(DEPTH_TEST, data.depthTest);
-			CapabilitiesStack::push(CULL_FACE, data.cull);
+				GLW::CapabilitiesStack<GLW::BLEND>::push(data.blend);
+				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::push(data.depthTest);
+				GLW::CapabilitiesStack<GLW::CULL_FACE>::push(data.cull);
+				GLW::BlendFuncStack::push({ GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
+				GLW::drawVertices(GLW::TRIANGLES, trianglesVAO.getID(), static_cast<int>(triangles.size()) * 3);
+				GLW::BlendFuncStack::pop();
+				GLW::CapabilitiesStack<GLW::BLEND>::pop();
+				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::pop();
+				GLW::CapabilitiesStack<GLW::CULL_FACE>::pop();
+			}
+			trianglesVBO.unbind();
 
-			Render::Renderer::drawArrays(TRIANGLES, static_cast<int>(triangles.size()) * 3);
-
-			CapabilitiesStack::pop();
-			CapabilitiesStack::pop();
-			CapabilitiesStack::pop();
+			Utils::renderTriangles.clear();
 		}
+		
 
-		cubeVBO.allocateData<Utils::Triangle>(0, STATIC_DRAW, nullptr);
+		if (!Utils::renderVertices.empty()) {
+			auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
+			coloredLines->use();
+			coloredLines->setUniform("PVM", renderDataHandle.current.PV);
 
-		Utils::renderTriangles.clear();
+			linesVBO.bind();
+			for (auto& [data, vertices] : Utils::renderVertices) {
+				coloredLines->setUniform("color", data.color);
 
-		auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
-		coloredLines->use();
-		coloredLines->setMat4("PVM", renderDataHandle.current.PV);
 
-		linesVAO.addAttribute(0, 3, FLOAT, false, 3 * sizeof(float));
+				linesVBO.allocateData(vertices, GLW::STATIC_DRAW);
 
-		for (auto& [data, vertices] : Utils::renderVertices) {
-			coloredLines->setVec4("color", data.color);
 
-			cubeVBO.allocateData(vertices.size(), STATIC_DRAW, vertices.data());
+				GLW::CapabilitiesStack<GLW::BLEND>::push(true);
+				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::push(false);
+				GLW::BlendFuncStack::push({ GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
 
-			CapabilitiesStack::push(BLEND, true);
-			CapabilitiesStack::push(DEPTH_TEST, false);
+				GLW::LineWidth::push(data.thickness);
+				GLW::drawVertices(data.renderType, linesVAO.getID(), static_cast<int>(vertices.size()), 0, 0);
+				GLW::LineWidth::pop();
 
-			glLineWidth(data.thickness);
-			
-			Render::Renderer::drawArrays(data.renderType, static_cast<int>(vertices.size()));
-
-			glLineWidth(1.f);
-			
-
-			CapabilitiesStack::pop();
-			CapabilitiesStack::pop();
+				GLW::BlendFuncStack::pop();
+				GLW::CapabilitiesStack<GLW::BLEND>::pop();
+				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::pop();
+			}
+			linesVBO.unbind();
+			Utils::renderVertices.clear();
 		}
-
-		cubeVBO.allocateData<Math::Vec3>(0, STATIC_DRAW, nullptr);
-
-		VertexArray::bindDefault();
-		Buffer::bindDefaultBuffer(cubeVBO.getType());
-
-		Utils::renderVertices.clear();
+		
 
 
-		static SceneGridFloor grid;
+		//static SceneGridFloor grid;
 		//grid.draw();
 
 		auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-		CascadeShadowComponent::debugDraw(ECSHandler::registry().getComponent<CascadeShadowComponent>(renderData.mCascadedShadowsPassData.shadows)->getCacheLightSpaceMatrices(), renderData.next.projection, renderData.next.view);
+		CascadeShadowComponent::debugDraw(ECSHandler::registry().getComponent<CascadeShadowComponent>(renderData.mCascadedShadowsPassData->shadows)->getCacheLightSpaceMatrices(), renderData.next.projection, renderData.next.view);
 
-		if (!renderData.mCascadedShadowsPassData.shadowCascadeLevels.empty() && ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->isShadowsDebugData()) {
+		if (!renderData.mCascadedShadowsPassData->shadowCascadeLevels.empty() && ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->isShadowsDebugData()) {
 			auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
 			sh->use();
-			sh->setInt("depthMap", 31);
+			sh->setUniform("depthMap", 31);
 
-			auto a = 250.f / Render::Renderer::SCR_WIDTH;
-			auto b = 250.f / Render::Renderer::SCR_HEIGHT;
+			auto a = 250.f / Render::Renderer::screenDrawData.width;
+			auto b = 250.f / Render::Renderer::screenDrawData.height;
 
-			for (auto i = 0; i < renderData.mCascadedShadowsPassData.shadowCascadeLevels.size() - 1; i++) {
-				sh->setFloat("near_plane", renderData.mCascadedShadowsPassData.shadowCascadeLevels[i]);
-				sh->setFloat("far_plane", renderData.mCascadedShadowsPassData.shadowCascadeLevels[i + 1]);
-				sh->setInt("layer", i);
+			for (auto i = 0; i < renderData.mCascadedShadowsPassData->shadowCascadeLevels.size() - 1; i++) {
+				sh->setUniform("near_plane", renderData.mCascadedShadowsPassData->shadowCascadeLevels[i]);
+				sh->setUniform("far_plane", renderData.mCascadedShadowsPassData->shadowCascadeLevels[i + 1]);
+				sh->setUniform("layer", i);
 
 				Render::Utils::renderQuad(1.f - a, 1.f - (static_cast<float>(i) + 1.f) * b, 1.f, 1.f - static_cast<float>(i) * b);
 			}

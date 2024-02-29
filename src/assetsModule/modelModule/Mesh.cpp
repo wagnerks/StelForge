@@ -10,11 +10,11 @@ using namespace AssetsModule;
 Mesh::Mesh(std::vector<Vertex>& vertices, std::vector<unsigned>& indices) : mData{ std::move(vertices), std::move(indices) } {
 	calculateBounds();
 
-	bindMesh();
+	initMeshData();
 }
 
 Mesh::~Mesh() {
-	unbindMesh();
+	releaseMeshData();
 }
 
 void Mesh::recalculateFaceNormal(Mesh& mesh, int a, int b, int c) {
@@ -59,60 +59,57 @@ void Mesh::recalculateFaceNormal(Mesh& mesh, int a, int b, int c) {
 	mesh.mData.vertices[c].mBiTangent = biTangent;
 }
 
-void Mesh::bindMesh() {
+void Mesh::initMeshData() {
 	if (mData.vertices.empty()) {
 		return;
 	}
 
 	if (SFE::Engine::isMainThread()) {
-		unbindMesh();
+		releaseMeshData();
 
-		vao.generate();
-		vboBuf.generate(SFE::Render::ARRAY_BUFFER);
+		mMeshData.vao.generate();
+		mMeshData.vboBuf.generate(SFE::GLW::ARRAY_BUFFER);
 
-		vao.bind();
-		vboBuf.bind();
-		vboBuf.allocateData(mData.vertices.size(), SFE::Render::STATIC_DRAW, mData.vertices.data());
+		mMeshData.vao.bind();
+		mMeshData.vboBuf.bind();
+		mMeshData.vboBuf.allocateData(mData.vertices.size(), SFE::GLW::STATIC_DRAW, mData.vertices.data());
 
 		if (!mData.indices.empty()) {
-			eboBuf.generate(SFE::Render::ELEMENT_ARRAY_BUFFER);
-			eboBuf.bind();
-			eboBuf.allocateData(mData.indices.size(), SFE::Render::STATIC_DRAW, mData.indices.data());
+			mMeshData.eboBuf.generate(SFE::GLW::ELEMENT_ARRAY_BUFFER);
+			mMeshData.eboBuf.bind();
+			mMeshData.eboBuf.allocateData(mData.indices.size(), SFE::GLW::STATIC_DRAW, mData.indices.data());
 		}
 
-		vao.addAttribute(0, 3, SFE::Render::AttributeFType::FLOAT, true, &Vertex::mPosition);
-		vao.addAttribute(1, 3, SFE::Render::AttributeFType::FLOAT, true, &Vertex::mNormal);
-		vao.addAttribute(2, 2, SFE::Render::AttributeFType::FLOAT, true, &Vertex::mTexCoords);
-		vao.addAttribute(3, 3, SFE::Render::AttributeFType::FLOAT, true, &Vertex::mTangent);
-		vao.addAttribute(4, 3, SFE::Render::AttributeFType::FLOAT, true, &Vertex::mBiTangent);
+		mMeshData.vao.addAttribute(0, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex::mPosition);
+		mMeshData.vao.addAttribute(1, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex::mNormal);
+		mMeshData.vao.addAttribute(2, 2, SFE::GLW::AttributeFType::FLOAT, true, &Vertex::mTexCoords);
+		mMeshData.vao.addAttribute(3, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex::mTangent);
+		mMeshData.vao.addAttribute(4, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex::mBiTangent);
 
-		vao.addAttribute(5, 4, SFE::Render::AttributeIType::INT, &Vertex::mBoneIDs);
-		vao.addAttribute(6, 4, SFE::Render::AttributeFType::FLOAT, false, &Vertex::mWeights);
-		vao.bindDefault();
+		mMeshData.vao.addAttribute(5, 4, SFE::GLW::AttributeIType::INT, &Vertex::mBoneIDs);
+		mMeshData.vao.addAttribute(6, 4, SFE::GLW::AttributeFType::FLOAT, false, &Vertex::mWeights);
+		mMeshData.vao.bindDefault();
 
 	}
 	else {
 		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([this]()mutable { //easy crash 
-			bindMesh();
+			initMeshData();
 		});
 	}
 }
 
-void Mesh::unbindMesh() {
+void Mesh::releaseMeshData() {
 	if (!isBinded()) {
 		return;
 	}
 	
 	if (SFE::Engine::isMainThread()) {
-		vao.release();
-		vboBuf.release();
-		eboBuf.release();
+		mMeshData.release();
 	}
 	else {
-		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([vao = vao.getID(), vbo = vboBuf.getID(), ebo = eboBuf.getID()]()mutable {
-			glDeleteVertexArrays(1, &vao);
-			glDeleteBuffers(1, &vbo);
-			glDeleteBuffers(1, &ebo);
+		auto data = new MeshData(std::move(mMeshData));
+		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([data]()mutable {
+			delete data;
 		});
 	}
 }
@@ -124,7 +121,7 @@ void Mesh::recalculateNormals(bool smooth) {
 		recalculateVerticesNormals();
 	}
 
-	bindMesh();
+	initMeshData();
 }
 
 void Mesh::calculateBounds() {

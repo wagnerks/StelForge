@@ -45,7 +45,7 @@ namespace AssetsModule {
 
 	void Model::bindMeshes() {
 		for (auto& node : mMeshTree) {
-			node.value.bindMesh();
+			node.value.initMeshData();
 		}
 
 		mLODs.clear();

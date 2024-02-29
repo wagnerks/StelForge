@@ -4,7 +4,7 @@
 
 #include "GeometryShader.h"
 #include "Shader.h"
-#include "glad/glad.h"
+#include "glWrapper/Shader.h"
 
 using namespace SFE;
 using namespace SFE::ShaderModule;
@@ -57,7 +57,7 @@ void ShaderController::initDefaultShader() {
 
 void ShaderController::useShader(unsigned ID) {
 	if (currentShader != ID) {
-		glUseProgram(ID);
+		GLW::useProgram(ID);
 		currentShader = ID;
 	}
 }
@@ -69,10 +69,10 @@ void ShaderController::useDefaultShader() {
 
 void ShaderController::deleteShaderGL(unsigned ID) {
 	if (currentShader == ID) {
-		glUseProgram(0);
+		GLW::useProgram(0);
 		currentShader = 0;
 	}
-	glDeleteProgram(ID);
+	GLW::deleteProgram(ID);
 }
 
 void ShaderController::deleteShader(ShaderBase* shader) {

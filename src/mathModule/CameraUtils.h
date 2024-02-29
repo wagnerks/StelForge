@@ -19,7 +19,7 @@ namespace SFE::Math {
 	};
 
 	// screenCoords - is the point on "camera lense" from which ray casted
-	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords = { Render::Renderer::SCR_WIDTH * 0.5f, Render::Renderer::SCR_HEIGHT * 0.5f}) {
+	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords = { Render::Renderer::screenDrawData.width * 0.5f, Render::Renderer::screenDrawData.height * 0.5f}) {
 		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(cameraId);
 		if (!cameraComp) {
 			return {};
@@ -33,8 +33,8 @@ namespace SFE::Math {
 
 		
 		auto cameraPos = cameraTransform->getPos(true);
-		float normalizedX = (2.0f * screenCoords.x) / Render::Renderer::SCR_WIDTH - 1.0f;
-		float normalizedY = 1.0f - (2.0f * screenCoords.y) / Render::Renderer::SCR_HEIGHT;
+		float normalizedX = (2.0f * screenCoords.x) / Render::Renderer::screenDrawData.width - 1.0f;
+		float normalizedY = 1.0f - (2.0f * screenCoords.y) / Render::Renderer::screenDrawData.height;
 		auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
 		auto ndc = Math::inverse(mProjection) * clipCoords;
 		ndc /= ndc.w;
@@ -48,9 +48,9 @@ namespace SFE::Math {
 		globalCoords = ProjectView * globalCoords;
 		globalCoords.xyz /= globalCoords.w;
 		globalCoords.xyz = (globalCoords.xyz + 1.f) / 2.f;
-		globalCoords.x *= Render::Renderer::SCR_WIDTH;
-		globalCoords.y *= Render::Renderer::SCR_HEIGHT;
-		globalCoords.y = Render::Renderer::SCR_HEIGHT - globalCoords.y;
+		globalCoords.x *= Render::Renderer::screenDrawData.width;
+		globalCoords.y *= Render::Renderer::screenDrawData.height;
+		globalCoords.y = Render::Renderer::screenDrawData.height - globalCoords.y;
 
 		return globalCoords;
 	}

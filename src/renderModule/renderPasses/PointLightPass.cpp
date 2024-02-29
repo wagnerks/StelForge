@@ -12,6 +12,7 @@
 #include "core/ECSHandler.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
+#include "glWrapper/ViewportStack.h"
 
 #include "logsModule/logger.h"
 #include "systemsModule/systems/CameraSystem.h"
@@ -25,42 +26,45 @@ namespace SFE::Render::RenderPasses {
 		lightProjection = SFE::ProjectionModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
 
-		mLightDepthMaps.image3D(shadowResolution, shadowResolution, maxShadowFaces, AssetsModule::DEPTH_COMPONENT32, AssetsModule::DEPTH_COMPONENT, AssetsModule::FLOAT);
-		mLightDepthMaps.setParameter({
-			{AssetsModule::TEXTURE_MIN_FILTER, GL_LINEAR},
-			{AssetsModule::TEXTURE_MAG_FILTER, GL_LINEAR},
-			{AssetsModule::TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE},
-			{AssetsModule::TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE},
-			{AssetsModule::TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE},
-			{AssetsModule::TEXTURE_COMPARE_FUNC, GL_LESS},
-		});
+		mLightDepthMaps.texture.create3D(
+			shadowResolution, shadowResolution,
+			maxShadowFaces,
+			GLW::DEPTH_COMPONENT32,
+			GLW::DEPTH_COMPONENT,
+			{
+				{GLW::MIN_FILTER, GL_LINEAR},
+				{GLW::MAG_FILTER, GL_LINEAR},
+				{GLW::WRAP_S, GL_CLAMP_TO_EDGE},
+				{GLW::WRAP_T, GL_CLAMP_TO_EDGE},
+				{GLW::COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE},
+				{GLW::COMPARE_FUNC, GL_LESS},
+			},
+			{},
+			GLW::PixelDataType::FLOAT
+		);
 
 		lightFramebuffer.bind();
-		lightFramebuffer.addAttachmentTexture(GL_DEPTH_ATTACHMENT, &mLightDepthMaps);
-		lightFramebuffer.setDrawBuffer(NONE);
-		lightFramebuffer.setReadBuffer(NONE);
+		lightFramebuffer.addAttachmentTexture(GL_DEPTH_ATTACHMENT, &mLightDepthMaps.texture);
+		lightFramebuffer.setDrawBuffer(GLW::NONE);
+		lightFramebuffer.setReadBuffer(GLW::NONE);
 		lightFramebuffer.finalize();
 
 		auto guard = mMatricesUBO.bindWithGuard();
-		mMatricesUBO.allocateData<Math::Mat4>(maxShadowFaces, STATIC_DRAW);
+		mMatricesUBO.allocateData<Math::Mat4>(maxShadowFaces, GLW::STATIC_DRAW);
 		mMatricesUBO.setBufferBinding(lightMatricesBinding);
 
-		Framebuffer::bindDefaultFramebuffer();
+		GLW::Framebuffer::bindDefaultFramebuffer();
 	}
 
 	void PointLightPass::freeBuffers() const {
 	}
 
-	void PointLightPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
-		if (!renderer) {
-			return;
-		}
-
+	void PointLightPass::render(SystemsModule::RenderData& renderDataHandle) {
 		FUNCTION_BENCHMARK
 		lightMatrices.clear();
 		frustums.clear();
-
-		renderDataHandle.mPointPassData.shadowEntities.clear();
+		renderDataHandle.mPointPassData = &data;
+		data.shadowEntities.clear();
 
 		offsets.clear();
 		
@@ -82,7 +86,7 @@ namespace SFE::Render::RenderPasses {
 				break;
 			}
 			case ComponentsModule::eLightType::POINT: {
-				renderDataHandle.mPointPassData.shadowEntities.push_back(entity);
+				data.shadowEntities.push_back(entity);
 				offsets.emplace_back(entity, lightSource->getTypeOffset(lightSource->getType()));
 				
 				fillMatrix(transform->getPos(true), lightSource->mNear, lightSource->mRadius);
@@ -107,17 +111,16 @@ namespace SFE::Render::RenderPasses {
 			mMatricesUBO.setData(lightMatrices.size(), lightMatrices.data());
 		}
 
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(30, &mLightDepthMaps);
+		AssetsModule::TextureHandler::bindTextureToSlot(30, &mLightDepthMaps);
 		lightFramebuffer.bind();
-		glViewport(0, 0, shadowResolution, shadowResolution);
-		glClear(GL_DEPTH_BUFFER_BIT);
-
+		GLW::ViewportStack::push({ {shadowResolution, shadowResolution} });
+		GLW::clear(GLW::ColorBit::DEPTH);
 
 		int offsetSum = 0;
 		for (auto& offset : offsets) {
 			auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/pointLightMap.gs");
 			simpleDepthShader->use();
-			simpleDepthShader->setInt("offset", offsetSum);
+			simpleDepthShader->setUniform("offset", offsetSum);
 
 			auto ocTreeSystem = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
 			ocTreeSystem->readLock();
@@ -146,7 +149,7 @@ namespace SFE::Render::RenderPasses {
 				});
 			}
 
-			std::sort(entities.begin(), entities.end());
+			/*std::sort(entities.begin(), entities.end());
 			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().getComponentsArray<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
 				if (!trans || !mod || !draw) {
 					continue;
@@ -161,12 +164,11 @@ namespace SFE::Render::RenderPasses {
 
 			offsetSum += offset.second;
 			
-			batcher.flushAll(true);
+			batcher.flushAll(true);*/
 		}
 
-		Framebuffer::bindDefaultFramebuffer();
-
-		glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
+		GLW::Framebuffer::bindDefaultFramebuffer();
+		GLW::ViewportStack::pop();
 	}
 
 	void PointLightPass::fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius) {

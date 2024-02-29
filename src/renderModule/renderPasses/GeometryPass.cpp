@@ -106,98 +106,103 @@ void GeometryPass::init() {
 	mOutlineData.init(2);
 	getContainer().init(2);
 
+	const auto w = Renderer::screenDrawData.renderW;
+	const auto h = Renderer::screenDrawData.renderH;
 
 	// position color buffer
-	const auto w = Renderer::SCR_RENDER_W;
-	const auto h = Renderer::SCR_RENDER_H;
-
-	mData.positionBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
-	mData.positionBuffer->image2D(w, h, AssetsModule::RGBA32F, AssetsModule::RGBA, AssetsModule::FLOAT);
-
-	mData.positionBuffer->setParameter({ 
-		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
-		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
-	});
-
-	// normal color buffer
-	mData.normalBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
-	mData.normalBuffer->image2D(w, h, AssetsModule::RGBA16F, AssetsModule::RGBA, AssetsModule::FLOAT);
-	mData.normalBuffer->setParameter({
-		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
-		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
-	});
+	mData.positionBuffer.width = w;
+	mData.positionBuffer.height = h;
+	mData.positionBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.positionBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.positionBuffer.pixelFormat = GLW::RGBA32F;
+	mData.positionBuffer.textureFormat = GLW::RGBA;
+	mData.positionBuffer.pixelType = GLW::FLOAT;
+	mData.positionBuffer.create();
+	
+	mData.normalBuffer.width = w;
+	mData.normalBuffer.height = h;
+	mData.normalBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.normalBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.normalBuffer.pixelFormat = GLW::RGBA16F;
+	mData.normalBuffer.textureFormat = GLW::RGBA;
+	mData.normalBuffer.pixelType = GLW::FLOAT;
+	mData.normalBuffer.create();
 
 	// color + specular color buffer
-	mData.albedoBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
-	mData.albedoBuffer->image2D(w, h, AssetsModule::RGBA16F, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
-	mData.albedoBuffer->setParameter({
-		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
-		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
-	});
+	mData.albedoBuffer.width = w;
+	mData.albedoBuffer.height = h;
+	mData.albedoBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.albedoBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.albedoBuffer.pixelFormat = GLW::RGBA16F;
+	mData.albedoBuffer.textureFormat = GLW::RGBA;
+	mData.albedoBuffer.pixelType = GLW::UNSIGNED_BYTE;
+	mData.albedoBuffer.create();
 
 	// viewPos buffer
-	mData.viewPositionBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
-	mData.viewPositionBuffer->image2D(w, h, AssetsModule::RGBA32F, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
-	mData.viewPositionBuffer->setParameter({
-		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
-		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
-	});
+	mData.viewPositionBuffer.width = w;
+	mData.viewPositionBuffer.height = h;
+	mData.viewPositionBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.viewPositionBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.viewPositionBuffer.pixelFormat = GLW::RGBA32F;
+	mData.viewPositionBuffer.textureFormat = GLW::RGBA;
+	mData.viewPositionBuffer.pixelType = GLW::UNSIGNED_BYTE;
+	mData.viewPositionBuffer.create();
 
 	// outline buffer
-	mData.outlinesBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
-	mData.outlinesBuffer->image2D(w, h, AssetsModule::RGBA8, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
-	mData.outlinesBuffer->setParameter({
-		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
-		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
-	});
+	mData.outlinesBuffer.width = w;
+	mData.outlinesBuffer.height = h;
+	mData.outlinesBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.outlinesBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.outlinesBuffer.pixelFormat = GLW::RGBA8;
+	mData.outlinesBuffer.textureFormat = GLW::RGBA;
+	mData.outlinesBuffer.pixelType = GLW::UNSIGNED_BYTE;
+	mData.outlinesBuffer.create();
 
 	// light buffer
-	mData.lightsBuffer = new AssetsModule::Texture(AssetsModule::TEXTURE_2D);
-	mData.lightsBuffer->image2D(w, h, AssetsModule::RGBA8, AssetsModule::RGBA, AssetsModule::UNSIGNED_BYTE);
-	mData.lightsBuffer->setParameter({
-		{AssetsModule::TEXTURE_MIN_FILTER, GL_NEAREST},
-		{AssetsModule::TEXTURE_MAG_FILTER, GL_NEAREST}
-	});
+	mData.lightsBuffer.width = w;
+	mData.lightsBuffer.height = h;
+	mData.lightsBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
+	mData.lightsBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
+	mData.lightsBuffer.pixelFormat = GLW::RGBA8;
+	mData.lightsBuffer.textureFormat = GLW::RGBA;
+	mData.lightsBuffer.pixelType = GLW::UNSIGNED_BYTE;
+	mData.lightsBuffer.create();
 
-	mData.gFramebuffer = new Render::Framebuffer();
-	mData.gFramebuffer->bind();
+	mData.gFramebuffer.bind();
 
-	mData.gFramebuffer->addAttachmentTexture(0, mData.positionBuffer);
-	mData.gFramebuffer->addAttachmentTexture(1, mData.normalBuffer);
-	mData.gFramebuffer->addAttachmentTexture(2, mData.albedoBuffer);
-	mData.gFramebuffer->addAttachmentTexture(3, mData.viewPositionBuffer);
-	mData.gFramebuffer->addAttachmentTexture(4, mData.outlinesBuffer);
-	mData.gFramebuffer->addAttachmentTexture(5, mData.lightsBuffer);
+	mData.gFramebuffer.addAttachmentTexture(0, &mData.positionBuffer);
+	mData.gFramebuffer.addAttachmentTexture(1, &mData.normalBuffer);
+	mData.gFramebuffer.addAttachmentTexture(2, &mData.albedoBuffer);
+	mData.gFramebuffer.addAttachmentTexture(3, &mData.viewPositionBuffer);
+	mData.gFramebuffer.addAttachmentTexture(4, &mData.outlinesBuffer);
+	mData.gFramebuffer.addAttachmentTexture(5, &mData.lightsBuffer);
 
 	// create and attach depth buffer (renderbuffer)
-	glGenRenderbuffers(1, &mData.rboDepth);
-	glBindRenderbuffer(GL_RENDERBUFFER, mData.rboDepth);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, w, h);
+	mData.rboDepth.generate();
+	mData.rboDepth.bind();
+	mData.rboDepth.storage(GLW::DEPTH_COMPONENT24, w, h);
 
-	mData.gFramebuffer->addRenderbuffer(GL_DEPTH_ATTACHMENT, mData.rboDepth);
-	mData.gFramebuffer->finalize();
+	mData.gFramebuffer.addRenderbuffer(GLW::AttachmentType::DEPTH, mData.rboDepth.id);
+	mData.gFramebuffer.finalize();
 
-	mData.outlineFramebuffer = new Render::Framebuffer();
-	mData.outlineFramebuffer->bind();
+	mData.outlineFramebuffer.bind();
+	mData.outlineFramebuffer.addAttachmentTexture(0, &mData.outlinesBuffer);
+	mData.outlineFramebuffer.finalize();
 
-	mData.outlineFramebuffer->addAttachmentTexture(0, mData.outlinesBuffer);
-
-	mData.outlineFramebuffer->finalize();
-
-	Render::Framebuffer::bindDefaultFramebuffer();
+	GLW::Framebuffer::bindDefaultFramebuffer();
 }
 
-void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
+void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 	if (!mInited) {
 		return;
 	}
 	FUNCTION_BENCHMARK
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		GLW::PolygonMode<GLW::PolygonFace::FRONT_AND_BACK>::push(GLW::PolygonType::LINE);
 	}
 
 
-	renderDataHandle.mGeometryPassData = mData;
+	renderDataHandle.mGeometryPassData = &mData;
 	if (currentLock.valid()) {
 		FUNCTION_BENCHMARK_NAMED(_lock_wait)
 		currentLock.wait();
@@ -209,48 +214,46 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 	mOutlineData.rotate();
 	prepare();
 
-	glViewport(0, 0, Renderer::SCR_RENDER_W, Renderer::SCR_RENDER_H);
-	mData.gFramebuffer->bind();
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	mData.gFramebuffer.bind();
+	GLW::clear(GLW::ColorBit::DEPTH_COLOR);
 
 	if (!curPassData->getBatcher().drawList.empty()) {
 		auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 		shaderGeometryPass->use();
-		shaderGeometryPass->setInt("texture_diffuse1", AssetsModule::DIFFUSE);
-		shaderGeometryPass->setInt("normalMap", AssetsModule::NORMALS);
-		shaderGeometryPass->setInt("texture_specular1", AssetsModule::SPECULAR);
-		shaderGeometryPass->setBool("outline", false);
+		shaderGeometryPass->setUniform<int>("texture_diffuse1", AssetsModule::DIFFUSE);
+		shaderGeometryPass->setUniform<int>("normalMap", AssetsModule::NORMALS);
+		shaderGeometryPass->setUniform<int>("texture_specular1", AssetsModule::SPECULAR);
+		shaderGeometryPass->setUniform("outline", false);
 
 		curPassData->getBatcher().flushAll(true);
 	}
 
-	if (!batcher.drawList.empty()) {
+	/*if (!batcher.drawList.empty()) {
 		auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
 		lightObjectsPass->use();
 		batcher.flushAll(true);
-	}
+	}*/
 
 	if (!outlineData->getBatcher().drawList.empty()) {
 		needClearOutlines = true;
-		mData.outlineFramebuffer->bind();
-		//glClear(GL_COLOR_BUFFER_BIT);
+
+		mData.outlineFramebuffer.bind();
 
 		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
 		g_buffer_outlines->use();
-		g_buffer_outlines->setMat4("PV", renderDataHandle.current.PV);
+		g_buffer_outlines->setUniform("PV", renderDataHandle.current.PV);
 
 		outlineData->getBatcher().flushAll(true);
 
-		mData.outlineFramebuffer->bind();
+		GLW::bindTextureToSlot(26, &mData.normalBuffer);
+		GLW::bindTextureToSlot(27, &mData.outlinesBuffer);
+		GLW::bindTextureToSlot(25, &mData.lightsBuffer);
 
 		auto outlineG = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_outline.vs", "shaders/g_outline.fs");
 		outlineG->use();
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(26, mData.normalBuffer);
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(27, mData.outlinesBuffer);
-		AssetsModule::TextureHandler::instance()->bindTextureToSlot(25, mData.lightsBuffer);
-		outlineG->setInt("gDepth", 26);
-		outlineG->setInt("gOutlinesP", 27);
-		outlineG->setInt("gLightsP", 25);
+		outlineG->setUniform("gDepth", 26);
+		outlineG->setUniform("gOutlinesP", 27);
+		outlineG->setUniform("gLightsP", 25);
 
 		Utils::renderQuad();
 	}
@@ -258,15 +261,14 @@ void GeometryPass::render(Renderer* renderer, SystemsModule::RenderData& renderD
 		if (needClearOutlines) {
 			needClearOutlines = false;
 
-			mData.outlineFramebuffer->bind();
-			glClear(GL_COLOR_BUFFER_BIT);
+			mData.outlineFramebuffer.bind();
+			GLW::clear(GLW::ColorBit::COLOR);
 		}
 	}
 
-	Render::Framebuffer::bindDefaultFramebuffer();
+	GLW::Framebuffer::bindDefaultFramebuffer();
 
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		GLW::PolygonMode<GLW::PolygonFace::FRONT_AND_BACK>::pop();
 	}
-	
 }

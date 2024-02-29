@@ -1,10 +1,7 @@
 ﻿#pragma once
-#include <stack>
-
-#include "core/Singleton.h"
 #include "glad/glad.h"
 
-namespace SFE::Render {
+namespace SFE::GLW {
 
 	enum Capability : unsigned {
 		BLEND = GL_BLEND,													// If enabled, blend the computed fragment color values with the values in the color buffers.See glBlendFunc.
@@ -66,55 +63,17 @@ namespace SFE::Render {
 	//GL_CLIP_DISTANCE i
 	// If enabled, clip geometry against user - defined half space i.
 
-
-	struct CapabilityState {
-		Capability capability;
-		bool currentState = false;
-		bool previousState = false;
-	};
-
-	struct CapabilitiesStack : Singleton<CapabilitiesStack> {//may be is should exist per opengl context, but now i have only one context todo
-		static void push(const Capability& capability, bool state) {
-			instance()->pushImpl(capability, state);
+	constexpr inline void setCapability(Capability type, bool state) {
+		if (state) {
+			glEnable(type);
 		}
-
-		static void pop() {
-			instance()->popImpl();
+		else {
+			glDisable(type);
 		}
+	}
 
-		void pushImpl(Capability capability, bool state) {
-			CapabilityState capState{ capability };
-			capState.previousState = glIsEnabled(capability);
-			capState.currentState = state;
-			
-			if (capState.previousState != capState.currentState) {
-				if (capState.currentState) {
-					glEnable(capability);
-				}
-				else {
-					glDisable(capability);
-				}
-			}
+	constexpr inline bool isCapabilityEnabled(Capability type) {
+		return glIsEnabled(type);
+	}
 
-			mStack.push(std::move(capState));
-		}
-
-		void popImpl() {
-			const auto& capState = mStack.top();
-			if (capState.previousState != capState.currentState) {
-				if (capState.previousState) {
-					glEnable(capState.capability);
-				}
-				else {
-					glDisable(capState.capability);
-				}
-			}
-
-			mStack.pop();
-		}
-
-	private:
-		std::stack<CapabilityState> mStack;
-	};
 }
-

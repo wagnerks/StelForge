@@ -7,8 +7,8 @@
 #include "assetsModule/TextureHandler.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Engine.h"
-#include "glad/glad.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "glWrapper/Draw.h"
 #include "systemsModule/systems/CameraSystem.h"
 
 void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
@@ -59,49 +59,46 @@ void Batcher::sort(const SFE::Math::Vec3& viewPos) {
 }
 
 void Batcher::flushAll(bool clear) {
-	auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png")->mId;
-	auto defaultNormal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png")->mId;
+	auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
+	auto defaultNormal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png");
 
 	for (auto& drawObjects : drawList) {
-		glBindVertexArray(drawObjects.VAO);
-		
-		glGenBuffers(2, drawObjects.batcherBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawObjects.batcherBuffer[0]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, drawObjects.batcherBuffer[0]);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(SFE::Math::Mat4) * drawObjects.transforms.size(), drawObjects.transforms.data(), GL_DYNAMIC_DRAW);
-		
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawObjects.batcherBuffer[1]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, drawObjects.batcherBuffer[1]);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(BonesData) * drawObjects.bones.size(), drawObjects.bones.data(), GL_DYNAMIC_DRAW);
+		SFE::GLW::VertexArray::bindArray(drawObjects.VAO);
+		SFE::GLW::Buffers<2> batcherBuffer{SFE::GLW::SHADER_STORAGE_BUFFER};
+
+		batcherBuffer.bind(0);
+		batcherBuffer.setBufferBinding(1, 0);
+		batcherBuffer.allocateData(drawObjects.transforms, SFE::GLW::DYNAMIC_DRAW);
+
+		batcherBuffer.bind(1);
+		batcherBuffer.setBufferBinding(2, 1);
+		batcherBuffer.allocateData(drawObjects.bones, SFE::GLW::DYNAMIC_DRAW);
 
 		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::DIFFUSE); texture && texture->isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::DIFFUSE, AssetsModule::TEXTURE_2D, texture->mId);
+			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::DIFFUSE, texture);
 		}
 		else {
-			//AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::DIFFUSE, AssetsModule::TEXTURE_2D, 0);
-			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::DIFFUSE, AssetsModule::TEXTURE_2D, defaultTex);
+			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::DIFFUSE, defaultTex);
 		}
 
 		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::NORMALS);  texture && texture->isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::NORMALS, AssetsModule::TEXTURE_2D, texture->mId);
+			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::NORMALS, texture);
 		}
 		else {
-			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::NORMALS, AssetsModule::TEXTURE_2D, defaultNormal);
+			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::NORMALS, defaultNormal);
 		}
 
 		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::SPECULAR);  texture && texture->isValid()) {
-			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::SPECULAR, AssetsModule::TEXTURE_2D, texture->mId);
+			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::SPECULAR, texture);
 		}
 		else {
-			AssetsModule::TextureHandler::instance()->bindTextureToSlot(AssetsModule::SPECULAR, AssetsModule::TEXTURE_2D, defaultTex);
+			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::SPECULAR, defaultTex);
 		}
 
-		SFE::Render::Renderer::drawVertices(SFE::Render::TRIANGLES, drawObjects.VAO, drawObjects.verticesCount, drawObjects.indicesCount, drawObjects.transforms.size());
-
-		glDeleteBuffers(2, drawObjects.batcherBuffer);
+		SFE::GLW::drawVertices(SFE::GLW::TRIANGLES, drawObjects.VAO, drawObjects.verticesCount, drawObjects.indicesCount, drawObjects.transforms.size());
 	}
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-	glBindVertexArray(0);
+	SFE::GLW::Buffer::bindDefaultBuffer(SFE::GLW::SHADER_STORAGE_BUFFER);
+	SFE::GLW::VertexArray::bindDefault();
 
 	if (clear) {
 		drawList.clear();

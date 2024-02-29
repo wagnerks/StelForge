@@ -33,15 +33,17 @@ namespace SFE::SystemsModule {
 		}
 
 		// If you take larger steps than 1 / 60th of a second you need to do multiple collision steps in order to keep the simulation stable. Do 1 collision step per 1 / 60th of a second (round up).
-		dt *= 0.5f;
-		const int cCollisionSteps = 2 * static_cast<int>(std::ceil(dt * 60.f));
-
+		//dt *= 0.5f;
+		const int cCollisionSteps = 20 * static_cast<int>(std::ceil(dt * 60.f));
+		if (!cCollisionSteps) {
+			return;
+		}
 		// Step the world
 		physics_system->Update(dt, cCollisionSteps, temp_allocator, job_system);
 	}
 
 	void Physics::debugUpdate(float dt) {
-		class renderer : public DebugRenderer {
+		/*class renderer : public DebugRenderer {
 		public:
 			renderer() {
 				Initialize();
@@ -90,6 +92,6 @@ namespace SFE::SystemsModule {
 		settings.mDrawMassAndInertia = true;
 		settings.mDrawSleepStats = true;
 		settings.mDrawSupportDirection = true;
-		physics_system->DrawBodies(settings, &lel, nullptr );
+		physics_system->DrawBodies(settings, &lel, nullptr );*/
 	}
 }

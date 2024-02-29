@@ -1,19 +1,22 @@
 ﻿#include "GeometryShader.h"
 
-#include "glad/glad.h"
+#include "glWrapper/Shader.h"
 #include "logsModule/logger.h"
 
 using namespace SFE::ShaderModule;
 
 bool GeometryShader::compile() {
-	cachedUniforms.clear();
-	ID = glCreateProgram();
+	id = GLW::createProgram();
+	
+	const char* errorStr;
+
 	auto success = true;
-	success = compileShader(loadShaderCode(vertexPath.c_str()).c_str(), GL_VERTEX_SHADER) && success;
-	success = compileShader(loadShaderCode(fragmentPath.c_str()).c_str(), GL_FRAGMENT_SHADER) && success;
-	success = compileShader(loadShaderCode(geometryPath.c_str()).c_str(), GL_GEOMETRY_SHADER) && success;
+	success |= GLW::compileShader(loadShaderCode(vertexPath.c_str()).c_str(), GLW::ShaderType::VERTEX, id, errorStr);
+	success |= GLW::compileShader(loadShaderCode(fragmentPath.c_str()).c_str(), GLW::ShaderType::FRAGMENT, id, errorStr);
+	success |= GLW::compileShader(loadShaderCode(geometryPath.c_str()).c_str(), GLW::ShaderType::GEOMETRY, id, errorStr);
+
 	if (!success){
-		LogsModule::Logger::LOG_ERROR("[%s, %s, %s] error downloading", vertexPath.c_str(), fragmentPath.c_str(), geometryPath.c_str());
+		LogsModule::Logger::LOG_ERROR("[%s, %s, %s] error downloading\n%s", vertexPath.c_str(), fragmentPath.c_str(), geometryPath.c_str(), errorStr);
 	}
 	return success;
 }

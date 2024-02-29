@@ -28,7 +28,7 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 
 				ImGui::SameLine(0, 20);
 				ImGui::PushID(btnId.c_str());
-				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(updateTex->mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
+				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(updateTex->texture.mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
 					SHADER_CONTROLLER->recompileShader(shaderBase);
 				}
 				ImGui::PopID();
@@ -38,7 +38,7 @@ void ShadersDebug::shadersDebugDraw(bool& opened) {
 				auto btnId = "edit##" + std::to_string(shaderBase->getID());
 				ImGui::SameLine();
 				ImGui::PushID(btnId.c_str());
-				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(editTex->mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
+				if (ImGui::ImageButton(reinterpret_cast<ImTextureID>(editTex->texture.mId), { size,size }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, icoColor)) {
 					if (auto it = std::find(mOpenedShaderDebugWindows.begin(), mOpenedShaderDebugWindows.end(), shaderBase->getID()); it == mOpenedShaderDebugWindows.end()) {
 						mOpenedShaderDebugWindows.push_back(shaderBase->getID());
 					}

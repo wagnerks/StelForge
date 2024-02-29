@@ -4,8 +4,7 @@
 #include "core/BoundingVolume.h"
 #include "core/Projection.h"
 #include "ecss/Types.h"
-#include "renderModule/Buffer.h"
-#include "renderModule/Framebuffer.h"
+#include "glWrapper/Framebuffer.h"
 #include "renderModule/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
@@ -18,12 +17,12 @@ namespace SFE::Render::RenderPasses {
 		void init() override;
 		void freeBuffers() const;
 
-		void render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) override;
+		void render(SystemsModule::RenderData& renderDataHandle) override;
 	private:
-		Framebuffer lightFramebuffer;
-		AssetsModule::Texture mLightDepthMaps{AssetsModule::TEXTURE_2D_ARRAY};
+		GLW::Framebuffer lightFramebuffer;
+		AssetsModule::Texture mLightDepthMaps{GLW::TEXTURE_2D_ARRAY};
 
-		Buffer mMatricesUBO{ UNIFORM_BUFFER };
+		GLW::Buffer mMatricesUBO{GLW::UNIFORM_BUFFER };
 
 		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
 		SFE::ProjectionModule::PerspectiveProjection lightProjection;
@@ -34,5 +33,7 @@ namespace SFE::Render::RenderPasses {
 		const int shadowResolution = 1024;
 		const int maxShadowFaces = 36;
 		const int lightMatricesBinding = 3;
+
+		Data data{};
 	};
 }

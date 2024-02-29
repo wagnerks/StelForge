@@ -115,7 +115,7 @@ void ComponentsDebug::init() {
 
 				auto transform = ECSHandler::registry().addComponent<TransformComponent>(bullet, bullet);
 				transform->setPos(camRay.a + camRay.direction * 100.f);
-				transform->setScale({ 0.1f, 0.1f, 0.1f });
+				transform->setScale({ 10.f, 10.f, 10.f });
 				auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
 				ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(bullet);
 				ECSHandler::registry().addComponent<OcTreeComponent>(bullet);
@@ -170,7 +170,7 @@ void ComponentsDebug::init() {
 
 				auto transform = ECSHandler::registry().addComponent<TransformComponent>(bullet, bullet);
 				transform->setPos(curColision + Math::Vec3(0.f, 10.f, 0.f));
-				transform->setScale({ 0.1f, 0.1f, 0.1f });
+				transform->setScale({ 10.f, 10.f, 10.f });
 				auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
 				ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(bullet);
 				ECSHandler::registry().addComponent<OcTreeComponent>(bullet);
@@ -214,8 +214,8 @@ void ComponentsDebug::init() {
 			auto mView = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID())->getViewMatrix();
 
 
-			float normalizedX = (2.0f * static_cast<float>(mPos.x)) / Render::Renderer::SCR_WIDTH - 1.0f;
-			float normalizedY = 1.0f - (2.0f * static_cast<float>(mPos.y)) / Render::Renderer::SCR_HEIGHT;
+			float normalizedX = (2.0f * static_cast<float>(mPos.x)) / Render::Renderer::screenDrawData.width - 1.0f;
+			float normalizedY = 1.0f - (2.0f * static_cast<float>(mPos.y)) / Render::Renderer::screenDrawData.height;
 			auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
 			auto ndc = Math::inverse(mProjection) * clipCoords;
 			ndc /= ndc.w;
@@ -758,7 +758,7 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 
 			ImGui::Text("diffuse:");
 			if (auto texture = lod->mMaterial.tryGetTexture(AssetsModule::DIFFUSE); texture && texture->isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(texture->mId), { 200.f,200.f });
+				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture.mId), { 200.f,200.f });
 
 			}
 			else {
@@ -768,7 +768,7 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 
 			ImGui::Text("specular:");
 			if (auto texture = lod->mMaterial.tryGetTexture(AssetsModule::SPECULAR); texture && texture->isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(texture->mId), { 200.f,200.f });
+				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture.mId), { 200.f,200.f });
 			}
 			else {
 				ImGui::SameLine();
@@ -777,7 +777,7 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 
 			ImGui::Text("normal:");
 			if (auto texture = lod->mMaterial.tryGetTexture(AssetsModule::NORMALS); texture && texture->isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(texture->mId), { 200.f,200.f });
+				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture.mId), { 200.f,200.f });
 			}
 			else {
 				ImGui::SameLine();
@@ -1371,17 +1371,16 @@ void ComponentsDebug::entitiesMenuGUI() {
 					}
 					else if (selected == "ph_floor") {
 						JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
-						auto tr = ECSHandler::registry().getComponent<TransformComponent>(mSelectedId);
-						tr->setScale({ 100.f, 0.05f, 100.f });
-						auto pos = tr->getPos(true);
-						auto quat = tr->getQuaternion();
-						quat.w = 1.f;
-						JPH::BoxShapeSettings cube_shape(JPH::Vec3(10000.0f, 5.0f, 10000.0f));
-						JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(quat), JPH::EMotionType::Static, Layers::NON_MOVING);
+
+					
+						JPH::BoxShapeSettings cube_shape(JPH::Vec3(100000.0f, 1.0f, 100000.0f));
+						JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3({ 0.f }), JPH::toQuat({}), JPH::EMotionType::Static, Layers::NON_MOVING);
 
 						auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
 						body_interface.SetRestitution(mBodyID, 0.5f);
-						ECSHandler::registry().addComponent<PhysicsComponent>(mSelectedId, mBodyID);
+						auto ent = ECSHandler::registry().takeEntity();
+						ECSHandler::registry().addComponent<TransformComponent>(ent, ent.getID());
+						ECSHandler::registry().addComponent<PhysicsComponent>(ent, mBodyID);
 					}
 					else if (selected == PropertiesModule::TypeName<LightSourceComponent>::name()) {
 						compManager.addComponent<LightSourceComponent>(mSelectedId, mSelectedId, ComponentsModule::eLightType::POINT);
@@ -1393,7 +1392,7 @@ void ComponentsDebug::entitiesMenuGUI() {
 						compManager.addComponent<ComponentsModule::AnimationComponent>(mSelectedId);
 					}
 					else if (selected == PropertiesModule::TypeName<CameraComponent>::name()) {
-						ECSHandler::registry().addComponent<CameraComponent>(mSelectedId, mSelectedId, 45.f, static_cast<float>(Render::Renderer::SCR_WIDTH) / static_cast<float>(Render::Renderer::SCR_HEIGHT), Render::Renderer::nearDistance, Render::Renderer::drawDistance);
+						ECSHandler::registry().addComponent<CameraComponent>(mSelectedId, mSelectedId, 45.f, static_cast<float>(Render::Renderer::screenDrawData.width) / static_cast<float>(Render::Renderer::screenDrawData.height), Render::Renderer::screenDrawData.near, Render::Renderer::screenDrawData.far);
 					}
 				}
 			}

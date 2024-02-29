@@ -1,21 +1,15 @@
 ﻿#include "Engine.h"
 
-#include "debugModule/imguiDecorator.h"
 #include <chrono>
 #include <thread>
 
 #include "Core.h"
-#include "backends/imgui_impl_glfw.h"
-#include "backends/imgui_impl_opengl3.h"
 #include "InputHandler.h"
-#include "ThreadPool.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 
 namespace SFE {
 	void Engine::init() {
 		mMainThreadID = std::this_thread::get_id();
-		mMainWindow = Render::Renderer::initGLFW();
-		if (!mMainWindow) {
+		if (mMainWindow = Render::Renderer::initGLFW(); !mMainWindow) {
 			return;
 		}
 
@@ -24,15 +18,13 @@ namespace SFE {
 		mCore = new CoreModule::Core();
 		mCore->init();
 
-		Debug::ImGuiDecorator::init(getMainWindow());
-
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
 			if (type != CoreModule::InputEventType::PRESS) {
 				return;
 			}
 
 			if (key == CoreModule::InputKey::KEY_ESCAPE) {
-				glfwSetWindowShouldClose(mMainWindow, true);
+				glfwSetWindowShouldClose(getMainWindow(), true);
 			}
 		};
 	}
@@ -79,7 +71,7 @@ namespace SFE {
 	}
 
 	void Engine::checkNeedClose() {
-		mAlive = !glfwWindowShouldClose(mMainWindow);
+		mAlive = !glfwWindowShouldClose(getMainWindow());
 	}
 
 

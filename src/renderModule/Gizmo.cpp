@@ -607,7 +607,7 @@ namespace SFE::Render {
 			}
 		}
 		else {
-			Utils::renderLine(pos - mAxisDirection[axis] * Renderer::drawDistance, pos + mAxisDirection[axis] * Renderer::drawDistance, { mColors[axis], mHintAlpha }, 2.5f);
+			Utils::renderLine(pos - mAxisDirection[axis] * Renderer::screenDrawData.far, pos + mAxisDirection[axis] * Renderer::screenDrawData.far, { mColors[axis], mHintAlpha }, 2.5f);
 		}
 	}
 

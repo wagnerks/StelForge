@@ -26,6 +26,7 @@
 #include "core/ThreadPool.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
+#include "glWrapper/ViewportStack.h"
 #include "logsModule/logger.h"
 #include "mathModule/Forward.h"
 #include "propertiesModule/PropertiesSystem.h"
@@ -151,35 +152,41 @@ void CascadedShadowPass::initRender() {
 	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
 
 	cmp->updateCascades(cameraProjection);
-
-	lightDepthMap.image3D(static_cast<int>(cmp->resolution.x), static_cast<int>(cmp->resolution.y), static_cast<int>(cmp->cascades.size()), AssetsModule::DEPTH_COMPONENT32, AssetsModule::DEPTH_COMPONENT, AssetsModule::FLOAT);
-	lightDepthMap.setParameter({
-		{AssetsModule::TEXTURE_MIN_FILTER, GL_LINEAR},
-		{AssetsModule::TEXTURE_MAG_FILTER, GL_LINEAR},
-		{AssetsModule::TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE},
-		{AssetsModule::TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE},
-		{AssetsModule::TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE},
-		{AssetsModule::TEXTURE_COMPARE_FUNC, GL_LESS},
-	});
+	lightDepthMap.texture.create3D(
+		static_cast<int>(cmp->resolution.x), static_cast<int>(cmp->resolution.y),
+		static_cast<int>(cmp->cascades.size()),
+		GLW::DEPTH_COMPONENT32,
+		GLW::DEPTH_COMPONENT,
+		{
+			{GLW::MIN_FILTER, GL_LINEAR},
+			{GLW::MAG_FILTER, GL_LINEAR},
+			{GLW::WRAP_S, GL_CLAMP_TO_EDGE},
+			{GLW::WRAP_T, GL_CLAMP_TO_EDGE},
+			{GLW::COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE},
+			{GLW::COMPARE_FUNC, GL_LESS},
+		},
+		{},
+		GLW::PixelDataType::FLOAT
+	);	
 
 	lightFBO.bind();
-	lightFBO.addAttachmentTexture(GL_DEPTH_ATTACHMENT, &lightDepthMap);
-	lightFBO.setDrawBuffer(NONE);
-	lightFBO.setReadBuffer(NONE);
+	lightFBO.addAttachmentTexture(GL_DEPTH_ATTACHMENT, &lightDepthMap.texture);
+	lightFBO.setDrawBuffer(GLW::NONE);
+	lightFBO.setReadBuffer(GLW::NONE);
 	lightFBO.finalize();
 
 	{
 		auto guard = matricesUBO.bindWithGuard();
-		matricesUBO.allocateData<Math::Mat4>(6, DYNAMIC_DRAW);
+		matricesUBO.allocateData<Math::Mat4>(6, GLW::DYNAMIC_DRAW);
 		matricesUBO.setBufferBinding(0);
 	}
 
-	Framebuffer::bindDefaultFramebuffer();
+	GLW::Framebuffer::bindDefaultFramebuffer();
 }
 
 
-void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderData& renderDataHandle, Batcher& batcher) {
-	if (!mInited || !renderer) {
+void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
+	if (!mInited) {
 		return;
 	}
 
@@ -211,31 +218,32 @@ void CascadedShadowPass::render(Renderer* renderer, SystemsModule::RenderData& r
 		matricesUBO.setData(lightMatrices.size(), lightMatrices.data());//todo crashes when calculateLightSpaceMatrices called from another thread
 	}
 
-	glViewport(0, 0, static_cast<int>(shadowsComp->resolution.x), static_cast<int>(shadowsComp->resolution.y));
+	GLW::ViewportStack::push({ {static_cast<int>(shadowsComp->resolution.x), static_cast<int>(shadowsComp->resolution.y)} });
 	lightFBO.bind();
-	glClear(GL_DEPTH_BUFFER_BIT);
+	GLW::clear(GLW::ColorBit::DEPTH);
 
 	const auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
 	simpleDepthShader->use();
 
 	curPassData->getBatcher().flushAll(true);
 
-	Framebuffer::bindDefaultFramebuffer();
-	
-	glViewport(0, 0, SFE::Render::Renderer::SCR_RENDER_W, SFE::Render::Renderer::SCR_RENDER_H);
+	GLW::Framebuffer::bindDefaultFramebuffer();
+	GLW::ViewportStack::pop();
 }
 
-void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataHandle) const {
+void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataHandle) {
 	auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
-	renderDataHandle.mCascadedShadowsPassData.shadowMapTexture = lightDepthMap.mId;
-	renderDataHandle.mCascadedShadowsPassData.lightDirection = ECSHandler::registry().getComponent<TransformComponent>(mShadowSource)->getForward();
-	renderDataHandle.mCascadedShadowsPassData.lightColor = ECSHandler::registry().getComponent<LightSourceComponent>(mShadowSource)->getLightColor();
-	renderDataHandle.mCascadedShadowsPassData.resolution = shadowsComp->resolution;
-	renderDataHandle.mCascadedShadowsPassData.cameraFarPlane = shadowsComp->cascades.back().viewProjection.getFar();
-	renderDataHandle.mCascadedShadowsPassData.shadowCascadeLevels = shadowsComp->shadowCascadeLevels;
-	renderDataHandle.mCascadedShadowsPassData.shadows = mShadowSource;
-	renderDataHandle.mCascadedShadowsPassData.shadowCascades = shadowsComp->cascades;
-	renderDataHandle.mCascadedShadowsPassData.shadowsIntensity = shadowsComp->shadowIntensity;
+	renderDataHandle.mCascadedShadowsPassData = &mData;
+
+	renderDataHandle.mCascadedShadowsPassData->shadowMapTexture = lightDepthMap.texture.mId;
+	renderDataHandle.mCascadedShadowsPassData->lightDirection = ECSHandler::registry().getComponent<TransformComponent>(mShadowSource)->getForward();
+	renderDataHandle.mCascadedShadowsPassData->lightColor = ECSHandler::registry().getComponent<LightSourceComponent>(mShadowSource)->getLightColor();
+	renderDataHandle.mCascadedShadowsPassData->resolution = shadowsComp->resolution;
+	renderDataHandle.mCascadedShadowsPassData->cameraFarPlane = shadowsComp->cascades.back().viewProjection.getFar();
+	renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels = shadowsComp->shadowCascadeLevels;
+	renderDataHandle.mCascadedShadowsPassData->shadows = mShadowSource;
+	renderDataHandle.mCascadedShadowsPassData->shadowCascades = shadowsComp->cascades;
+	renderDataHandle.mCascadedShadowsPassData->shadowsIntensity = shadowsComp->shadowIntensity;
 }
 
 void CascadedShadowPass::debug(SystemsModule::RenderData& renderDataHandle) {

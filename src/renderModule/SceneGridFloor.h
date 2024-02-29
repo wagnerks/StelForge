@@ -1,8 +1,9 @@
 ﻿#pragma once
 
-#include "Buffer.h"
-#include "VertexArray.h"
+
 #include "assetsModule/shaderModule/ShaderBase.h"
+#include "glWrapper/Buffer.h"
+#include "glWrapper/VertexArray.h"
 
 namespace SFE::Render {
 	class SceneGridFloor {
@@ -15,8 +16,8 @@ namespace SFE::Render {
 		void init();
 		SFE::ShaderModule::ShaderBase* floorShader = nullptr;
 		size_t floorShaderHash;
-		VertexArray VAO;
-		Buffer VBO{ARRAY_BUFFER};
+		GLW::VertexArray VAO;
+		GLW::Buffer VBO{GLW::ARRAY_BUFFER};
 		Math::Mat4 transform = Math::Mat4(1.f);
 	};
 }
