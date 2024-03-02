@@ -174,8 +174,8 @@ void GeometryPass::init() {
 	mData.gFramebuffer.addAttachmentTexture(1, &mData.normalBuffer);
 	mData.gFramebuffer.addAttachmentTexture(2, &mData.albedoBuffer);
 	mData.gFramebuffer.addAttachmentTexture(3, &mData.viewPositionBuffer);
-	mData.gFramebuffer.addAttachmentTexture(4, &mData.outlinesBuffer);
-	mData.gFramebuffer.addAttachmentTexture(5, &mData.lightsBuffer);
+	//mData.gFramebuffer.addAttachmentTexture(4, &mData.outlinesBuffer);
+	//mData.gFramebuffer.addAttachmentTexture(5, &mData.lightsBuffer);
 
 	// create and attach depth buffer (renderbuffer)
 	mData.rboDepth.generate();
@@ -238,16 +238,19 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 		needClearOutlines = true;
 
 		mData.outlineFramebuffer.bind();
+		mData.outlinesBuffer.create();
+		mData.outlineFramebuffer.addAttachmentTexture(0, &mData.outlinesBuffer); //todo hack to clear image
+		mData.outlineFramebuffer.finalize();
 
 		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
 		g_buffer_outlines->use();
 		g_buffer_outlines->setUniform("PV", renderDataHandle.current.PV);
 
 		outlineData->getBatcher().flushAll(true);
-
-		GLW::bindTextureToSlot(26, &mData.normalBuffer);
-		GLW::bindTextureToSlot(27, &mData.outlinesBuffer);
-		GLW::bindTextureToSlot(25, &mData.lightsBuffer);
+		
+		bindTextureToSlot(26, &mData.normalBuffer);
+		bindTextureToSlot(27, &mData.outlinesBuffer);
+		bindTextureToSlot(25, &mData.lightsBuffer);
 
 		auto outlineG = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_outline.vs", "shaders/g_outline.fs");
 		outlineG->use();
@@ -262,7 +265,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 			needClearOutlines = false;
 
 			mData.outlineFramebuffer.bind();
-			GLW::clear(GLW::ColorBit::COLOR);
+			mData.outlinesBuffer.create();
 		}
 	}
 

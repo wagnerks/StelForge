@@ -3,8 +3,6 @@ layout (location = 0) out highp vec4 gPosition;
 layout (location = 1) out vec4 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
 layout (location = 3) out highp vec3 gViewPosition;
-layout (location = 4) out vec4 gOutlines;
-layout (location = 5) out vec4 gLights;
 
 
 in vec2 TexCoords;
@@ -19,8 +17,6 @@ layout(std140, binding = 5) uniform SharedMatrices {
     mat4 view;
     mat4 PV;
 } matrices;
-
-uniform sampler2D outline;
 
 uniform vec3 cameraPos;
 uniform float far;
@@ -59,8 +55,6 @@ float computeLinearDepth(vec3 pos) {
 
 void main()
 { 
-    gOutlines.b = 0.0f;
-    gLights = vec4(0.0);
     FragColor = vec4(1.0);
 
     // store the fragment position vector in the first gbuffer texture

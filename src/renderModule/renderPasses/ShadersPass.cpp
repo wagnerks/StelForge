@@ -16,9 +16,7 @@
 #include "systemsModule/SystemsPriority.h"
 
 
-SFE::Render::RenderPasses::ShadersPass::ShadersPass() {
-
-}
+SFE::Render::RenderPasses::ShadersPass::ShadersPass() {}
 
 void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& renderDataHandle) {
 	FUNCTION_BENCHMARK;
@@ -70,18 +68,12 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 	const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/testSh.vs", "shaders/testSh.fs");
 	shader->use();
 
-	GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->outlinesBuffer);
-	shader->setUniform("outline", 1);
-
 	shader->setUniform("cameraPos", Math::Vec3{renderDataHandle.mCameraPos});
 
 	shader->setUniform("far", cameraComp->getProjection().getFar());
 	shader->setUniform("near", cameraComp->getProjection().getNear());
 
-	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 6, 4);
-	Batcher batcher;
-	batcher.addToDrawList(VAO.getID(), 4, 6, {}, Math::translate(Math::Mat4(1.f), renderDataHandle.mCameraPos * Math::Vec3(1.f, 0.f, 1.f)) * Math::scale(Math::Mat4{ 1.f }, Math::Vec3(1.f)), {}, false);
-	batcher.flushAll(true);
+	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 4, 6);
 
 	const auto& drawableEntities = ECSHandler::getSystem<SystemsModule::ShaderSystem>()->drawableEntities;
 	if (drawableEntities.empty()) {
@@ -91,7 +83,7 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
 
 	auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
-
+	Batcher batcher;
 	auto flush = [this, &renderDataHandle, &batcher, &cameraPos](size_t shaderId) {
 		const auto shader = SHADER_CONTROLLER->getShader(shaderId);
 

@@ -1,4 +1,5 @@
 ﻿#pragma once
+
 #include "glad/glad.h"
 
 namespace SFE::GLW {

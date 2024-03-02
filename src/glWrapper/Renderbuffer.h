@@ -1,6 +1,8 @@
 ﻿#pragma once
+
 #include "Texture.h"
 #include "glad/glad.h"
+
 namespace SFE::GLW {
 	struct Renderbuffer {
 		void generate() {

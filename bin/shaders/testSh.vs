@@ -14,11 +14,8 @@ layout(std140, binding = 5) uniform SharedMatrices {
     mat4 PV;
 } matrices;
 
-layout(std430, binding = 1) buffer modelMatrices {
-    mat4 model[];
-};
-
 uniform float far;
+uniform vec3 cameraPos;
 
 mat4 scaleMatrix = mat4(
     far*2.0, 0.0,   0.0,   0.0,
@@ -27,8 +24,15 @@ mat4 scaleMatrix = mat4(
     0.0,   0.0,   0.0,   1.0
 );
 
+mat4 transformMatrix = mat4(
+    1.0, 0.0,   0.0,   0.0,
+    0.0,   1.0, 0.0,   0.0,
+    0.0,   0.0,   1.0, 0.0,
+    cameraPos.x,   0.0,   cameraPos.z,   1.0
+);
+
 void main() {
-    vec4 worldPos = model[gl_InstanceID] * scaleMatrix * vec4(aPos.xyz, 1.0);
+    vec4 worldPos = transformMatrix * scaleMatrix * vec4(aPos, 1.0);
 
     ViewPos = vec3(matrices.view * worldPos);
 

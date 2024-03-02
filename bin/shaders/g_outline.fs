@@ -37,9 +37,9 @@ void main()
     float edge = sqrt(gx * gx + gy * gy);
     
     // You can apply a threshold to control the sensitivity of edge detection
-    float threshold = 4.5; // Adjust as needed
+    float threshold = 7.5; // Adjust as needed
 
-    gOutlines = vec4(0.0);
+    //gOutlines = vec4(0.0);
 
     if (edge > threshold) {
         gOutlines.r = 1.0;

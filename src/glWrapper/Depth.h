@@ -1,4 +1,5 @@
 ﻿#pragma once
+
 #include "StateStack.h"
 #include "glad/glad.h"
 

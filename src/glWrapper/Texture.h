@@ -1,7 +1,5 @@
 ﻿#pragma once
 
-#include <functional>
-
 #include "glad/glad.h"
 
 namespace SFE::GLW {
@@ -353,13 +351,16 @@ namespace SFE::GLW {
 		}
 
 		~Texture() {
+			clear();
+		}
+
+		void clear() {
 			glDeleteTextures(1, &mId);
 		}
 
 		void create(const void* data = nullptr) {
-			if (!glIsTexture(mId)) {
-				generate();
-			}
+			clear();
+			generate();
 
 			if (mType == TEXTURE_2D) {
 				bindTextureToSlot(0, mType, mId);
@@ -427,12 +428,6 @@ namespace SFE::GLW {
 
 		void bind() const {
 			bindTexture(mType, mId);
-		}
-
-		void bind(std::function<void(const Texture*)> func) const {
-			bindTextureToSlot(0, mType, mId);
-			func(this);
-			bindTexture(mType, 0);
 		}
 
 		void setSubImageData2D(int xoffset, int yoffset, int w, int h, const void* data, TextureFormat format = RGBA, PixelDataType type = UNSIGNED_BYTE) const {

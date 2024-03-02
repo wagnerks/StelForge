@@ -1,5 +1,7 @@
 ﻿#include "Framebuffer.h"
 
+#include <cassert>
+
 #include "Texture.h"
 #include "glad/glad.h"
 

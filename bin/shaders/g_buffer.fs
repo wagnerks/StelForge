@@ -3,8 +3,6 @@ layout (location = 0) out highp vec4 gPosition;
 layout (location = 1) out vec4 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
 layout (location = 3) out highp vec3 gViewPosition;
-layout (location = 4) out vec4 gOutlines;
-layout (location = 5) out vec4 gLights;
 
 
 in vec2 TexCoords;
@@ -47,7 +45,4 @@ void main()
 
     //gl_FragDepth = gl_FragCoord.z / gl_FragCoord.w; 
     FragColor = vec4(1.0);
-
-    gOutlines = vec4(0.0);
-    gLights = vec4(0.0);
 }

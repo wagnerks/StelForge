@@ -18,7 +18,7 @@ namespace SFE::Render::RenderPasses {
 
 
 		struct Data {
-			unsigned shadowMapTexture = std::numeric_limits<unsigned>::max();
+			unsigned shadowMapTexture = 0;
 			Math::Vec3 lightDirection = {};
 			Math::Vec3 lightColor = {};
 			Math::Vec2 resolution = {};

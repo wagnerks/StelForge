@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include <functional>
+
 #include <stack>
 
 namespace SFE::GLW {
