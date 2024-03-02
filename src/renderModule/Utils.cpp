@@ -1,9 +1,6 @@
 ﻿#include "Utils.h"
 #include "mathModule/Utils.h"
 
-#include <iostream>
-
-#include "Renderer.h"
 #include "glWrapper/Buffer.h"
 #include "mathModule/Quaternion.h"
 #include "systemsModule/SystemManager.h"
@@ -79,62 +76,30 @@ void Utils::renderQuad() {
 	drawVertices(GLW::TRIANGLE_STRIP, quadVAO.getID(), 4);
 }
 
-void Utils::renderQuad2() {
-	static unsigned quadVAO = 0;
-	if (quadVAO == 0) {
-		float quadVertices[] = {
-			// positions
-			 1.f,  1.f,  0.f,
-			-1.f, -1.f,  0.f,
-			-1.f,  1.f,  0.f,
-
-			-1.f, -1.f,  0.f,
-			 1.f,  1.f,  0.f,
-			 1.f, -1.f,  0.f
-		};
-		// setup plane VAO
-		unsigned quadVBO;
-		glGenVertexArrays(1, &quadVAO);
-		glGenBuffers(1, &quadVBO);
-		glBindVertexArray(quadVAO);
-		glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 18, &quadVertices, GL_STATIC_DRAW);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindVertexArray(0);
-	}
-
-	drawVertices(GLW::TRIANGLES, quadVAO, 6);
-}
-
-void Utils::renderQuad(float x1, float y1, float x2, float y2) {
-	unsigned quadVAO;
-	unsigned quadVBO;
-
-	float quadVertices[] = {
-		// positions        // texture Coords
-		x1, y2, 0.0f, 0.0f, 1.0f,
-		x1, y1, 0.0f, 0.0f, 0.0f,
-		x2, y2, 0.0f, 1.0f, 1.0f,
-		x2, y1, 0.0f, 1.0f, 0.0f,
+void Utils::renderQuad(float x1 = -1.f, float y1 = -1.f, float x2 = 1.f, float y2 = 1.f) {
+	struct Vertex {
+		Math::Vec3 pos;
+		Math::Vec2 texPos;
 	};
 
-	glGenVertexArrays(1, &quadVAO);
-	glGenBuffers(1, &quadVBO);
-	glBindVertexArray(quadVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+	std::vector<Vertex> quadVertices = {
+		// positions        // texture Coords
+		{{x1, y2, 0.0f}, {0.0f, 1.0f}},
+		{{x1, y1, 0.0f}, {0.0f, 0.0f}},
+		{{x2, y2, 0.0f}, {1.0f, 1.0f}},
+		{{x2, y1, 0.0f}, {1.0f, 0.0f}},
+	};
 
-	drawVertices(GLW::TRIANGLE_STRIP, quadVAO, 4);
+	GLW::VertexArray quadVAO;
+	GLW::Buffer quadVBO{GLW::ARRAY_BUFFER};
+	quadVAO.generate();
+	quadVAO.bind();
+	quadVBO.bind();
+	quadVBO.allocateData(quadVertices, GLW::STATIC_DRAW);
+	quadVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex::pos);
+	quadVAO.addAttribute(1, 2, GLW::AttributeFType::FLOAT, false, &Vertex::texPos);
 
-	glDeleteVertexArrays(1, &quadVAO);
-	glDeleteBuffers(1, &quadVBO);
+	drawVertices(GLW::TRIANGLE_STRIP, quadVAO.getID(), quadVertices.size());
 }
 
 void Utils::renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, float thickness) {
@@ -567,7 +532,6 @@ void Utils::renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& qua
 }
 
 void Utils::renderCamera() {
-	static unsigned linesVAO = 0;
 	float w = 15.f;
 	float h = 10.f;
 	float l = 10.f;
@@ -627,7 +591,7 @@ void Utils::renderCamera() {
 		0.f, C.y + 5.f, C.z
 	};
 
-	// setup plane VAO
+	unsigned linesVAO = 0;
 	unsigned cubeVBO;
 	glGenVertexArrays(1, &linesVAO);
 	glGenBuffers(1, &cubeVBO);

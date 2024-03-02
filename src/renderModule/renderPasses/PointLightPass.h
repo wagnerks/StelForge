@@ -20,7 +20,7 @@ namespace SFE::Render::RenderPasses {
 		void render(SystemsModule::RenderData& renderDataHandle) override;
 	private:
 		GLW::Framebuffer lightFramebuffer;
-		AssetsModule::Texture mLightDepthMaps{GLW::TEXTURE_2D_ARRAY};
+		GLW::Texture mLightDepthMaps{GLW::TEXTURE_2D_ARRAY};
 
 		GLW::Buffer mMatricesUBO{GLW::UNIFORM_BUFFER };
 

@@ -17,7 +17,7 @@
 
 constexpr int GLFW_CONTEXT_VER_MAJ = 4;
 #ifdef __APPLE__
-constexpr int GLFW_CONTEXT_VER_MIN = 1;
+constexpr int GLFW_CONTEXT_VER_MIN = 1; //apple supports maximum 4.1 opengl...
 #else
 constexpr int GLFW_CONTEXT_VER_MIN = 6;
 #endif
@@ -55,8 +55,8 @@ namespace SFE::Render {
 		glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-		auto window = glfwCreateWindow(Renderer::screenDrawData.width, Renderer::screenDrawData.height, "StelForge Engine", nullptr, nullptr);
-		if (window == nullptr) {
+		const auto window = glfwCreateWindow(Renderer::screenDrawData.width, Renderer::screenDrawData.height, "StelForge Engine", nullptr, nullptr);
+		if (!window) {
 			const char* error;
 			glfwGetError(&error);
 

@@ -166,7 +166,8 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 		sky->setUniform("cirrus", cirrus);
 		sky->setUniform("cumulus", cumulus);
 
-		Utils::renderQuad2();
+		Utils::renderQuad();
+		//Utils::renderQuad2();
 	}
 
 }

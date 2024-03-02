@@ -35,7 +35,7 @@
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/PhysicsComponent.h"
 #include "componentsModule/ShaderComponent.h"
-#include "core/OcTree.h"
+#include "containersModule//OcTree.h"
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
 #include "mathModule/CameraUtils.h"
 #include "systemsModule/systems/OcTreeSystem.h"
@@ -1307,8 +1307,6 @@ void ComponentsDebug::entitiesMenuGUI() {
 	ImGui::SameLine();
 	if (ImGui::Button("DELETE")) {
 		compManager.destroyEntity(mSelectedId);
-		ImGui::EndChild();
-		ImGui::End();
 	}
 
 	ImGui::SameLine();

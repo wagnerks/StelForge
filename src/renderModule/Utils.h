@@ -79,7 +79,6 @@ namespace SFE::Render {
 		//angles in radians
 		static void CalculateEulerAnglesFromView(const Math::Mat4& view, float& yaw, float& pitch, float& roll);
 		static void renderQuad();
-		static void renderQuad2();
 		static void renderQuad(float x1, float y1, float x2, float y2);
 
 		static void renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, float thickness = 1.f);

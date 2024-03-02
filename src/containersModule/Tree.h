@@ -1,8 +1,5 @@
 #pragma once
 #include <forward_list>
-#include <functional>
-#include <string_view>
-#include <vector>
 
 namespace SFE {
 	template<class Data>

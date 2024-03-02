@@ -7,19 +7,20 @@ namespace AssetsModule {
 		if (!mArmature.bones.empty()) {
 			mDefaultBoneMatrices.resize(mArmature.bones.size(), mArmature.transform);
 
-			/*std::function<void(Bone*, SFE::Math::Mat4, std::vector<Bone>&)> calculateBoneTransform;
-			calculateBoneTransform = [this, &calculateBoneTransform](Bone* node, SFE::Math::Mat4 parentTransform, std::vector<Bone>& bones) {
-				parentTransform *= node->transform;
-				defaultBoneMatrices[node->id] = parentTransform;
-
-				for (const auto child : node->childrenBones) {
-					calculateBoneTransform(&bones[child], parentTransform, bones);
-				}
-			};
-
-			calculateBoneTransform(&armature.getBones()[0], armature.transform, armature.getBones());*/
+			//std::function<void(Bone*, SFE::Math::Mat4, std::vector<Bone>&)> calculateBoneTransform;
+			//calculateBoneTransform = [this, &calculateBoneTransform](Bone* node, SFE::Math::Mat4 parentTransform, std::vector<Bone>& bones) {
+			//	parentTransform *= node->transform;
+			//	mDefaultBoneMatrices[node->id] = parentTransform;
+			//	
+			//	for (const auto child : node->childrenBones) {
+			//		calculateBoneTransform(&bones[child], parentTransform, bones);
+			//	}
+			//};
+			//
+			//calculateBoneTransform(&mArmature.bones[0], {}/*mArmature.transform*/, mArmature.bones);
 		}
 	}
+
 	std::vector<Model::LOD>* Model::getLODs() {
 		if (mLODs.empty()) {
 			for (auto& node : mMeshTree) {

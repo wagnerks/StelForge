@@ -152,7 +152,7 @@ void CascadedShadowPass::initRender() {
 	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
 
 	cmp->updateCascades(cameraProjection);
-	lightDepthMap.texture.create3D(
+	lightDepthMap.create3D(
 		static_cast<int>(cmp->resolution.x), static_cast<int>(cmp->resolution.y),
 		static_cast<int>(cmp->cascades.size()),
 		GLW::DEPTH_COMPONENT32,
@@ -170,7 +170,7 @@ void CascadedShadowPass::initRender() {
 	);	
 
 	lightFBO.bind();
-	lightFBO.addAttachmentTexture(GL_DEPTH_ATTACHMENT, &lightDepthMap.texture);
+	lightFBO.addAttachmentTexture(GLW::AttachmentType::DEPTH, &lightDepthMap);
 	lightFBO.setDrawBuffer(GLW::NONE);
 	lightFBO.setReadBuffer(GLW::NONE);
 	lightFBO.finalize();
@@ -235,7 +235,7 @@ void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataH
 	auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
 	renderDataHandle.mCascadedShadowsPassData = &mData;
 
-	renderDataHandle.mCascadedShadowsPassData->shadowMapTexture = lightDepthMap.texture.mId;
+	renderDataHandle.mCascadedShadowsPassData->shadowMapTexture = lightDepthMap.mId;
 	renderDataHandle.mCascadedShadowsPassData->lightDirection = ECSHandler::registry().getComponent<TransformComponent>(mShadowSource)->getForward();
 	renderDataHandle.mCascadedShadowsPassData->lightColor = ECSHandler::registry().getComponent<LightSourceComponent>(mShadowSource)->getLightColor();
 	renderDataHandle.mCascadedShadowsPassData->resolution = shadowsComp->resolution;

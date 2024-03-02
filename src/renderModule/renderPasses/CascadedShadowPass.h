@@ -40,7 +40,7 @@ namespace SFE::Render::RenderPasses {
 		void debug(SystemsModule::RenderData& renderDataHandle);
 
 		GLW::Framebuffer lightFBO;
-		AssetsModule::Texture lightDepthMap{GLW::TEXTURE_2D_ARRAY};
+		GLW::Texture lightDepthMap{GLW::TEXTURE_2D_ARRAY};
 
 		GLW::Buffer matricesUBO{GLW::UNIFORM_BUFFER };
 

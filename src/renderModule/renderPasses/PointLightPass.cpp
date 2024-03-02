@@ -26,7 +26,7 @@ namespace SFE::Render::RenderPasses {
 		lightProjection = SFE::ProjectionModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
 
-		mLightDepthMaps.texture.create3D(
+		mLightDepthMaps.create3D(
 			shadowResolution, shadowResolution,
 			maxShadowFaces,
 			GLW::DEPTH_COMPONENT32,
@@ -44,7 +44,7 @@ namespace SFE::Render::RenderPasses {
 		);
 
 		lightFramebuffer.bind();
-		lightFramebuffer.addAttachmentTexture(GL_DEPTH_ATTACHMENT, &mLightDepthMaps.texture);
+		lightFramebuffer.addAttachmentTexture(GLW::AttachmentType::DEPTH, &mLightDepthMaps);
 		lightFramebuffer.setDrawBuffer(GLW::NONE);
 		lightFramebuffer.setReadBuffer(GLW::NONE);
 		lightFramebuffer.finalize();
@@ -111,7 +111,7 @@ namespace SFE::Render::RenderPasses {
 			mMatricesUBO.setData(lightMatrices.size(), lightMatrices.data());
 		}
 
-		AssetsModule::TextureHandler::bindTextureToSlot(30, &mLightDepthMaps);
+		GLW::bindTextureToSlot(30, &mLightDepthMaps);
 		lightFramebuffer.bind();
 		GLW::ViewportStack::push({ {shadowResolution, shadowResolution} });
 		GLW::clear(GLW::ColorBit::DEPTH);
