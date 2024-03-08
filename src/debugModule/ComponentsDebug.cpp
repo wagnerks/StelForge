@@ -7,7 +7,7 @@
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/LightSourceComponent.h"
-#include "componentsModule/MaterialComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
@@ -19,7 +19,7 @@
 #include "componentsModule/OutlineComponent.h"
 #include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "renderModule/Utils.h"
@@ -32,6 +32,7 @@
 #include "Benchmark.h"
 #include "componentsModule/ActionComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/PhysicsComponent.h"
 #include "componentsModule/ShaderComponent.h"
@@ -596,13 +597,13 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 		//vertex normals
 		if (vertexNormals) {
 			for (auto& mesh : modObj.meshes) {
-				for (int i = 0; i < mesh->mData.vertices.size(); i++) {
-					auto pos = mesh->mData.vertices[i].mPosition;
+				for (int i = 0; i < mesh->mesh.vertices.size(); i++) {
+					auto pos = mesh->mesh.vertices[i].position;
 					pos = Math::Vec3(transform * Math::Vec4(pos, 1.f));
 					if (distance(camPos, pos) < 25.f) {
 						if (drawNormales) {
 							//if (dot(viewDir, mesh->mData.vertices[i].mNormal) < 0.f) {
-							auto posEnd = pos + mesh->mData.vertices[i].mNormal * 1.5f;
+							auto posEnd = pos + mesh->mesh.vertices[i].normal * 1.5f;
 							Render::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
 
 							//}
@@ -610,13 +611,13 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 						}
 						if (drawTangent) {
 							//if (dot(viewDir, mesh->mData.vertices[i].mTangent) < 0.f) {
-							auto posEnd = pos + mesh->mData.vertices[i].mTangent * 1.5f;
+							auto posEnd = pos + mesh->mesh.vertices[i].tangent * 1.5f;
 							Render::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 1.f, 0.f, 1.f));
 							//}
 						}
 						if (drawBiTangent) {
 							//if (dot(viewDir, mesh->mData.vertices[i].mBiTangent) < 0.f) {
-							auto posEnd = pos + mesh->mData.vertices[i].mBiTangent * 1.5f;
+							auto posEnd = pos + mesh->mesh.vertices[i].biTangent * 1.5f;
 							Render::Utils::renderLine(pos, posEnd, Math::Vec4(0.f, 0.f, 1.f, 1.f));
 							//}
 						}
@@ -628,23 +629,23 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 		else {
 			//face normals
 			for (auto& mesh : modObj.meshes) {
-				for (int i = 0; i < mesh->mData.indices.size(); i += 3) {
+				for (int i = 0; i < mesh->mesh.indices.size(); i += 3) {
 
-					auto pos = mesh->mData.vertices[mesh->mData.indices[i]].mPosition;
-					pos += mesh->mData.vertices[mesh->mData.indices[i + 1]].mPosition;
-					pos += mesh->mData.vertices[mesh->mData.indices[i + 2]].mPosition;
+					auto pos = mesh->mesh.vertices[mesh->mesh.indices[i]].position;
+					pos += mesh->mesh.vertices[mesh->mesh.indices[i + 1]].position;
+					pos += mesh->mesh.vertices[mesh->mesh.indices[i + 2]].position;
 					pos /= 3.f;
 
 					if (drawNormales) {
-						auto posEnd = pos + mesh->mData.vertices[mesh->mData.indices[i]].mNormal * 5.f;
+						auto posEnd = pos + mesh->mesh.vertices[mesh->mesh.indices[i]].normal * 5.f;
 						Render::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
 					}
 					if (drawTangent) {
-						auto posEnd = pos + mesh->mData.vertices[mesh->mData.indices[i]].mTangent * 5.f;
+						auto posEnd = pos + mesh->mesh.vertices[mesh->mesh.indices[i]].tangent * 5.f;
 						Render::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
 					}
 					if (drawBiTangent) {
-						auto posEnd = pos + mesh->mData.vertices[mesh->mData.indices[i]].mBiTangent * 5.f;
+						auto posEnd = pos + mesh->mesh.vertices[mesh->mesh.indices[i]].biTangent * 5.f;
 						Render::Utils::renderLine(pos, posEnd, Math::Vec4(1.f, 0.f, 0.f, 1.f));
 					}
 
@@ -734,31 +735,31 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 		auto treeLabel = "LOD " + std::to_string(i) + "##meshLod";
 		if (ImGui::TreeNode(std::to_string(i).c_str())) {
 
-			ImGui::Text("vertices: %zu", lod->mData.vertices.size());
-			ImGui::Text("indices: %zu", lod->mData.indices.size());
+			ImGui::Text("vertices: %zu", lod->mesh.vertices.size());
+			ImGui::Text("indices: %zu", lod->mesh.indices.size());
 			ImGui::Spacing();
 
-			static std::string diffusePath = "";
+			/*static std::string diffusePath = "";
 			ImGui::InputText("diffusePath", &diffusePath);
 			if (ImGui::Button("load##diffuse")) {
-				lod->mMaterial[AssetsModule::DIFFUSE] = AssetsModule::TextureHandler::instance()->loadTexture(diffusePath);
+				lod->mMaterial[SFE::DIFFUSE] = { &AssetsModule::TextureHandler::instance()->loadTexture(diffusePath)->texture };
 			}
 
 			static std::string normalPath = "";
 			ImGui::InputText("normalPath", &normalPath);
 			if (ImGui::Button("load##normalPath")) {
-				lod->mMaterial[AssetsModule::NORMALS] = AssetsModule::TextureHandler::instance()->loadTexture(normalPath);
+				lod->mMaterial[SFE::NORMALS] = { &AssetsModule::TextureHandler::instance()->loadTexture(normalPath)->texture };
 			}
 
 			static std::string specularPath = "";
 			ImGui::InputText("specularPath", &specularPath);
 			if (ImGui::Button("load##specularPath")) {
-				lod->mMaterial[AssetsModule::SPECULAR] = AssetsModule::TextureHandler::instance()->loadTexture(specularPath);
+				lod->mMaterial[SFE::SPECULAR] = { &AssetsModule::TextureHandler::instance()->loadTexture(specularPath)->texture };
 			}
 
 			ImGui::Text("diffuse:");
-			if (auto texture = lod->mMaterial.tryGetTexture(AssetsModule::DIFFUSE); texture && texture->isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture.mId), { 200.f,200.f });
+			if (auto texture = lod->mMaterial.tryGetTexture(SFE::DIFFUSE); texture && texture->texture->isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture->mId), { 200.f,200.f });
 
 			}
 			else {
@@ -767,8 +768,8 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 			}
 
 			ImGui::Text("specular:");
-			if (auto texture = lod->mMaterial.tryGetTexture(AssetsModule::SPECULAR); texture && texture->isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture.mId), { 200.f,200.f });
+			if (auto texture = lod->mMaterial.tryGetTexture(SFE::SPECULAR); texture && texture->texture->isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture->mId), { 200.f,200.f });
 			}
 			else {
 				ImGui::SameLine();
@@ -776,13 +777,13 @@ void ComponentsDebug::editComponentGui(ComponentsModule::ModelComponent* compone
 			}
 
 			ImGui::Text("normal:");
-			if (auto texture = lod->mMaterial.tryGetTexture(AssetsModule::NORMALS); texture && texture->isValid()) {
-				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture.mId), { 200.f,200.f });
+			if (auto texture = lod->mMaterial.tryGetTexture(SFE::NORMALS); texture && texture->texture->isValid()) {
+				ImGui::Image(reinterpret_cast<ImTextureID>(texture->texture->mId), { 200.f,200.f });
 			}
 			else {
 				ImGui::SameLine();
 				ImGui::Text("none");
-			}
+			}*/
 
 
 			ImGui::TreePop();
@@ -1145,7 +1146,7 @@ void ComponentsDebug::editComponentGui(ComponentsModule::AnimationComponent* com
 	auto modelPath = ECSHandler::registry().getComponent<ModelComponent>(mSelectedId)->mPath;
 	if (auto modelOO = AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>(modelPath)) {
 		for (const auto& animation : modelOO->getAnimations()) {
-			if (ImGui::Button(animation.mName.c_str())) {
+			if (ImGui::Button(animation.getName().c_str())) {
 				component->mCurrentAnimation = &animation;
 			}
 		}
@@ -1153,16 +1154,16 @@ void ComponentsDebug::editComponentGui(ComponentsModule::AnimationComponent* com
 
 	if (component->mCurrentAnimation) {
 		ImGui::Separator();
-		if (ImGui::Button(("stop##" + component->mCurrentAnimation->mName).c_str())) {
+		if (ImGui::Button(("stop##" + component->mCurrentAnimation->getName()).c_str())) {
 			component->mPlay = false;
 		}
-		if (ImGui::Button(("continue##" + component->mCurrentAnimation->mName).c_str())) {
+		if (ImGui::Button(("continue##" + component->mCurrentAnimation->getName()).c_str())) {
 			component->mPlay = true;
 		}
 
 		if (auto anim = component->mCurrentAnimation) {
 			auto time = component->mCurrentTime;
-			if (ImGui::SliderFloat(("time##" + component->mCurrentAnimation->mName).c_str(), &time, 0.f, anim->getDuration())) {
+			if (ImGui::SliderFloat(("time##" + component->mCurrentAnimation->getName()).c_str(), &time, 0.f, anim->getDuration())) {
 				component->mCurrentTime = time;
 				component->step = true;
 			}
@@ -1184,6 +1185,39 @@ void ComponentsDebug::editComponentGui(ComponentsModule::AABBComponent* componen
 				{ 1.f }, {}, { 1.f,1.f,1.f,1.f }
 			);
 		}
+	}
+}
+
+void ComponentsDebug::editComponentGui(ComponentsModule::OcclusionComponent* component) {
+	if (ImGui::Button("add occludee")) {
+		component->occludeeAABB.emplace_back();
+	}
+	if (!component->occludeeAABB.empty()) {
+		ImGui::DragFloat3("occludee center", component->occludeeAABB[0].center, 1.f);
+		ImGui::DragFloat3("occludee extents", component->occludeeAABB[0].extents, 1.f);
+		auto& extents = component->occludeeAABB[0].extents;
+		auto& center = component->occludeeAABB[0].center;
+		Render::Utils::renderCube(
+			Math::Vec3(center - extents),
+			Math::Vec3(center + extents),
+			{ 1.f }, {}, { 1.f,0.f,0.f,1.f }
+		);
+	}
+
+	if (ImGui::Button("add occluder")) {
+		component->occluderAABB.emplace_back();
+	}
+	if (!component->occluderAABB.empty()) {
+		ImGui::DragFloat3("occluder center", component->occluderAABB[0].center, 1.f);
+		ImGui::DragFloat3("occluder extents", component->occluderAABB[0].extents, 1.f);
+
+		auto& extents = component->occluderAABB[0].extents;
+		auto& center = component->occluderAABB[0].center;
+		Render::Utils::renderCube(
+			Math::Vec3(center - extents),
+			Math::Vec3(center + extents),
+			{ 1.f }, {}, { 0.f,0.f,1.f,1.f }
+		);
 	}
 }
 
@@ -1269,7 +1303,7 @@ void ComponentsDebug::componentGUI() {
 	componentEditImpl<ModelComponent>(mSelectedId);
 
 	//componentEditImpl<LodComponent>(mSelectedId);
-	//componentEditImpl<MaterialComponent>(mSelectedId);
+	//componentEditImpl<MeshComponent>(mSelectedId);
 	//componentEditImpl<FrustumComponent>(mSelectedId);
 
 	componentEditImpl<CameraComponent>(mSelectedId);
@@ -1280,6 +1314,7 @@ void ComponentsDebug::componentGUI() {
 	componentEditImpl<PhysicsComponent>(mSelectedId);
 	componentEditImpl<ComponentsModule::AnimationComponent>(mSelectedId);
 	componentEditImpl<ComponentsModule::AABBComponent>(mSelectedId);
+	componentEditImpl<ComponentsModule::OcclusionComponent>(mSelectedId);
 }
 
 void ComponentsDebug::entitiesMenuGUI() {

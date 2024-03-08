@@ -9,8 +9,8 @@
 #include "mathModule/Forward.h"
 #include "myPhysicsEngine/Physics.h"
 #include "renderModule/Utils.h"
-#include "core/BoundingVolume.h"
-#include "core/ThreadPool.h"
+#include "assetsModule/modelModule/BoundingVolume.h"
+#include "multithreading/ThreadPool.h"
 
 namespace SFE {
 	enum Octant : uint8_t {

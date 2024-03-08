@@ -15,8 +15,7 @@ namespace SFE {
 
 		mAlive = true;
 
-		mCore = new CoreModule::Core();
-		mCore->init();
+		mCore.init();
 
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
 			if (type != CoreModule::InputEventType::PRESS) {
@@ -37,7 +36,7 @@ namespace SFE {
 		checkNeedClose();
 
 		updateDelta();
-		mCore->update(mDeltaTime);
+		mCore.update(mDeltaTime);
 
 		if (mDeltaTime < 1.f / maxFPS) {
 			std::this_thread::sleep_for(std::chrono::milliseconds((int)((1.f / maxFPS - mDeltaTime) * 1000.f)));
@@ -84,7 +83,6 @@ namespace SFE {
 	}
 
 	Engine::~Engine() {
-		delete mCore;
 		glfwDestroyWindow(getMainWindow());
 	}
 }

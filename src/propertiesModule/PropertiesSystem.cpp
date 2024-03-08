@@ -2,15 +2,19 @@
 #include "core/FileSystem.h"
 
 #include "TypeName.h"
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
+#include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/DebugDataComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
+#include "componentsModule/MaterialComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 
 namespace SFE::PropertiesModule {
 	ecss::EntityHandle PropertiesSystem::loadScene(std::string_view path) {
@@ -51,7 +55,21 @@ namespace SFE::PropertiesModule {
 		ECSHandler::registry().addComponent<OcTreeComponent>(entity);
 		applyProperties(entity, properties);
 		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
+		auto modelComp = ECSHandler::registry().getComponent<ModelComponent>(entity);
+		if (modelComp && !modelComp->getModel().meshes.empty()) {
+			auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
+			meshComp->meshTree.value = { MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh).vao.getID(), static_cast<int>(modelComp->getModel().meshes[0]->mesh.vertices.size()), static_cast<int>(modelComp->getModel().meshes[0]->mesh.indices.size()) };
+			auto materialComp = ECSHandler::registry().addComponent<MaterialComponent>(entity);
+			for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
+				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture->mId, mat.second.texture->mType});
+			}
 
+			auto armatureComp = ECSHandler::registry().addComponent<ComponentsModule::ArmatureComponent>(entity);
+			armatureComp->armature = modelComp->armature;
+			std::ranges::copy(modelComp->boneMatrices, armatureComp->boneMatrices);
+
+		}
+		
 		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity.getID());
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {

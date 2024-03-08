@@ -103,16 +103,20 @@ namespace SFE::Math {
 		};
 
 		VECTOR_DEFAULT_METHODS();
-		
-		constexpr Vector(T x, T y, T z) : x(x), y(y), z(z) {}
-		constexpr Vector(T x) : x(x), y(x), z(x) {}
+
+		template<typename OtherT>
+		constexpr Vector(OtherT x, OtherT y, OtherT z) : x(static_cast<T>(x)), y(static_cast<T>(y)), z(static_cast<T>(z)) {}
+
+		template<typename OtherT>
+		constexpr Vector(OtherT x) : x(static_cast<T>(x)), y(static_cast<T>(x)), z(static_cast<T>(x)) {}
+
 		constexpr Vector() : x{}, y{}, z{} {}
 
 		template<typename OtherT>
-		constexpr Vector(const Vector<OtherT, 4>& vec) : x(vec.x), y(vec.y), z(vec.z) {}
+		constexpr Vector(const Vector<OtherT, 4>& vec) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)), z(static_cast<T>(vec.z)) {}
 
 		template<typename OtherT>
-		constexpr Vector(const Vector<OtherT, 3>& vec) : x(vec.x), y(vec.y), z(vec.z) {}
+		constexpr Vector(const Vector<OtherT, 3>& vec) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)), z(static_cast<T>(vec.z)) {}
 	};
 
 	template <typename T>

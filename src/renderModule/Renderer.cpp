@@ -6,7 +6,7 @@
 
 
 #include "core/Engine.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 
 #include "debugModule/Benchmark.h"
 #include "glWrapper/CapabilitiesStack.h"
@@ -23,6 +23,64 @@ constexpr int GLFW_CONTEXT_VER_MIN = 6;
 #endif
 
 namespace SFE::Render {
+	void errorCallback(int error, const char* description) {
+		LogsModule::Logger::LOG_ERROR("GLFW Error: %s\n", description);
+	}
+
+	void Window::init() {
+		if (mGLFWInited) {
+			return;
+		}
+		mGLFWInited = true;
+
+		if (!glfwInit()) {
+			return;
+		}
+
+		glfwSetErrorCallback(errorCallback);
+	}
+
+	Window Window::createWindow(int w, int h, const std::string& title, GLFWwindow* share) {
+		Window res;
+		res.data.width = w;
+		res.data.height = h;
+		if (!glfwInit()) {
+			return {};
+		}
+
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GLFW_CONTEXT_VER_MAJ);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GLFW_CONTEXT_VER_MIN);
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+		glfwWindowHint(GLFW_SAMPLES, 2);
+
+#ifdef __APPLE__
+		glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
+
+		res.mWindow = glfwCreateWindow(w, h, title.c_str(), nullptr, nullptr);
+		if (!res.mWindow) {
+			glfwTerminate();
+			return {};
+		}
+
+		glfwGetWindowContentScale(res.mWindow, &res.data.renderScaleW, &res.data.renderScaleH);
+		glfwGetFramebufferSize(res.mWindow, &res.data.renderW, &res.data.renderH);
+#ifdef __APPLE__
+		res.data.width = res.data.renderW / res.data.renderScaleW;
+		res.data.height = res.data.renderH / res.data.renderScaleH;
+#endif
+
+		/*if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
+			LogsModule::Logger::LOG_ERROR("Failed to initialize GLAD");
+			glfwTerminate();
+			glfwDestroyWindow(res.mWindow);
+			return {};
+		}*/
+
+		return res;
+	}
+
 	Renderer::~Renderer() {
 		glfwTerminate();
 	}
@@ -39,11 +97,7 @@ namespace SFE::Render {
 		}
 		mGLFWInited = true;
 
-		if (!glfwInit()) {
-			LogsModule::Logger::LOG_ERROR("Failed to init GLFW window");
-			glfwTerminate();
-			return nullptr;
-		}
+		Window::init();
 
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GLFW_CONTEXT_VER_MAJ);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GLFW_CONTEXT_VER_MIN);
@@ -57,10 +111,6 @@ namespace SFE::Render {
 
 		const auto window = glfwCreateWindow(Renderer::screenDrawData.width, Renderer::screenDrawData.height, "StelForge Engine", nullptr, nullptr);
 		if (!window) {
-			const char* error;
-			glfwGetError(&error);
-
-			LogsModule::Logger::LOG_ERROR("Failed to create GLFW window %s", error);
 			glfwTerminate();
 			return nullptr;
 		}
@@ -103,13 +153,13 @@ namespace SFE::Render {
 		});
 
 		if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
-			LogsModule::Logger::LOG_ERROR("Failed to initialize GLAD");
 			glfwTerminate();
 			glfwDestroyWindow(window);
 			return nullptr;
 		}
 
-		glfwSwapInterval(3);
+		//glfwSwapInterval(3);
+		glfwSwapInterval(0);
 
 		GLW::ViewportStack::push({ { screenDrawData.renderW, screenDrawData.renderH} });
 		GLW::CapabilitiesStack<GLW::CULL_FACE>::push(true);

@@ -2,7 +2,7 @@
 #include "ecss/Registry.h"
 #include "ecss/Types.h"
 #include "componentsModule/ComponentBase.h"
-#include "nodeModule/TreeNode.h"
+#include "containersModule/TreeNode.h"
 
 namespace SFE::ComponentsModule {
 	class TreeComponent : public ecss::ComponentInterface {

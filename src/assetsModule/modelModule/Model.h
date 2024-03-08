@@ -17,21 +17,21 @@ namespace AssetsModule {
 		Model& operator=(const Model& other) = delete;
 		Model& operator=(Model&& other) noexcept = delete;
 
-		Model(SFE::Tree<Mesh> model, Armature armature, std::vector<Animation> animations);
+		Model(SFE::Tree<SFE::MeshObject3D> model, Armature armature, std::vector<Animation> animations);
 
 		void bindMeshes();
 		void recalculateNormals(bool smooth = true);
 
 	public:
 		struct LOD {
-			std::vector<Mesh*> meshes;
+			std::vector<SFE::MeshObject3D*> meshes;
 		};
 
 		std::vector<LOD>* getLODs();
-		const std::vector<Animation>& getAnimations() { return mAnimations; }
-		const std::vector<SFE::Math::Mat4>& getDefaultBoneMatrices();
-		const Armature& getArmature() { return mArmature; }
-
+		const std::vector<Animation>& getAnimations() const { return mAnimations; }
+		const std::vector<SFE::Math::Mat4>& getDefaultBoneMatrices() const ;
+		const Armature& getArmature() const { return mArmature; }
+		const SFE::Tree<SFE::MeshObject3D>& getMeshTree() const { return mMeshTree; }
 	private:
 		Armature mArmature;
 
@@ -39,6 +39,7 @@ namespace AssetsModule {
 		std::vector<Animation> mAnimations;
 		std::vector<LOD> mLODs;
 
-		SFE::Tree<Mesh> mMeshTree;
+		SFE::Tree<SFE::MeshObject3D> mMeshTree;
+
 	};
 }

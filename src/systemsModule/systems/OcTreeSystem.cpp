@@ -10,7 +10,7 @@
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 #include "ecss/Registry.h"
 
 namespace SFE::SystemsModule {

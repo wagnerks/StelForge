@@ -43,7 +43,7 @@ namespace SFE::ComponentsModule {
 		mDirty = true;
 	}
 
-	void CascadeShadowComponent::calculateLightSpaceMatrices(const ProjectionModule::PerspectiveProjection& projection, const Math::Mat4& view) {
+	void CascadeShadowComponent::calculateLightSpaceMatrices(const MathModule::PerspectiveProjection& projection, const Math::Mat4& view) {
 		if (!mLightMatricesCache.empty()) {
 			return;
 		}
@@ -113,7 +113,7 @@ namespace SFE::ComponentsModule {
 		shadowIntensity = data["shadow_intensity"].asFloat();
 	}
 
-	void CascadeShadowComponent::updateCascades(const ProjectionModule::PerspectiveProjection& cameraProjection) {
+	void CascadeShadowComponent::updateCascades(const MathModule::PerspectiveProjection& cameraProjection) {
 		if (mCameraProjection == cameraProjection && !mDirty) {
 			return;
 		}
@@ -206,7 +206,7 @@ namespace SFE::ComponentsModule {
 			maxZ = std::max(maxZ, transform.z);
 		}
 
-		auto ortho = SFE::ProjectionModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ * nearMultiplier, maxZ * farMultiplier);
+		auto ortho = SFE::MathModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ * nearMultiplier, maxZ * farMultiplier);
 
 		return ortho.getProjectionsMatrix() * lightView;
 	}

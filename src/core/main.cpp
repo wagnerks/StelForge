@@ -12,7 +12,6 @@ int main() {
 		engine->update();
 	}
 
-	SFE::Debug::ImGuiDecorator::terminate();
 	SFE::Engine::terminate();
 
 	return 0;

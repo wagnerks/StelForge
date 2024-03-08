@@ -2,7 +2,7 @@
 
 #include "mathModule/Utils.h"
 
-using namespace SFE::ProjectionModule;
+using namespace SFE::MathModule;
 
 OrthoProjection::OrthoProjection(Math::Vec2 leftBtm, Math::Vec2 rightTop, float zNear, float zFar) : Projection(zNear, zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
 	OrthoProjection::initProjection();

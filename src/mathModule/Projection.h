@@ -2,7 +2,7 @@
 
 #include "mathModule/Forward.h"
 
-namespace SFE::ProjectionModule {
+namespace SFE::MathModule {
 	enum eProjectionType {
 		NONE,
 		ORTHO,

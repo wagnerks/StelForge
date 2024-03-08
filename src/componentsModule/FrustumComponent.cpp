@@ -1,6 +1,6 @@
 ﻿#include "FrustumComponent.h"
 
-void FrustumComponent::updateFrustum(const ProjectionModule::Projection& projection, const Math::Mat4& view) {
+void FrustumComponent::updateFrustum(const MathModule::Projection& projection, const Math::Mat4& view) {
 	mFrustum = FrustumModule::createFrustum(projection.getProjectionsMatrix() * view);
 }
 

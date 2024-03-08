@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "glWrapper/Framebuffer.h"
-#include "renderModule/RenderPass.h"
+#include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
 	class SSAOPass : public RenderPass {

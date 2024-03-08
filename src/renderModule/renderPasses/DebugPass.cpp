@@ -35,9 +35,9 @@ namespace SFE::Render::RenderPasses {
 		trianglesVAO.bind();
 		trianglesVBO.bind();
 
-		trianglesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &SFE::Render::Utils::LightVertex::position);
-		trianglesVAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true,  &SFE::Render::Utils::LightVertex::normal);
-		trianglesVAO.addAttribute(2, 4, GLW::AttributeFType::FLOAT, true,  &SFE::Render::Utils::LightVertex::color);
+		trianglesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &SFE::Vertex3D::position);
+		trianglesVAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true,  &SFE::Vertex3D::normal);
+		trianglesVAO.addAttribute(2, 4, GLW::AttributeFType::FLOAT, true,  &SFE::Vertex3D::color);
 
 		trianglesVAO.bindDefault();
 		trianglesVBO.unbind();

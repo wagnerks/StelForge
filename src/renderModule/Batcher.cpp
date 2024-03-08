@@ -2,46 +2,38 @@
 
 #include <algorithm>
 
-#include "imgui.h"
 #include "Renderer.h"
 #include "assetsModule/TextureHandler.h"
+#include "componentsModule/MaterialComponent.h"
 #include "componentsModule/TransformComponent.h"
-#include "core/Engine.h"
-#include "assetsModule/shaderModule/ShaderController.h"
+#include "glWrapper/Buffer.h"
 #include "glWrapper/Draw.h"
 #include "systemsModule/systems/CameraSystem.h"
 
 void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
-	if (sortedPos == viewPos) {
-		return;
-	}
-	sortedPos = viewPos;
-	std::ranges::sort(transforms, [&viewPos](const SFE::Math::Mat4& a, const SFE::Math::Mat4& b) {
+	std::ranges::sort(transforms, [&viewPos](const SFE::Math::Mat4& a, const SFE::Math::Mat4& b) {//todo sort bones too
 		return SFE::Math::distanceSqr(viewPos, SFE::Math::Vec3(a[3])) < SFE::Math::distanceSqr(viewPos, SFE::Math::Vec3(b[3]));
 	});
 }
 
-Batcher::Batcher() {
-}
-
-void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& textures, const SFE::Math::Mat4& transform, const std::vector<SFE::Math::Mat4>& bonesTransforms, bool transparentForShadow) {
-	auto it = std::find_if(drawList.rbegin(), drawList.rend(), [transparentForShadow, VAO, maxDrawSize = maxDrawSize](const DrawObject& obj) {
-		return obj == VAO && obj.transforms.size() < maxDrawSize && obj.transparentForShadow == transparentForShadow;
+void Batcher::addToDrawList(unsigned VAO, size_t vertices, size_t indices, const SFE::ComponentsModule::Materials& textures, const SFE::Math::Mat4& transform, SFE::Math::Mat4* bonesTransforms) {
+	const auto drawObj = drawList.findReverse([VAO, maxDrawSize = maxDrawSize](const DrawObject& obj) {
+		return obj == VAO && obj.transforms.size() < maxDrawSize;
 	});
 
-	if (it == drawList.rend()) {
+	if (drawObj) {
+		drawObj->transforms.emplace_back(transform);
+		drawObj->bones.emplace_back(bonesTransforms);
+	}
+	else {
 		drawList.emplace_back();
 		drawList.back().VAO = VAO;
 		drawList.back().verticesCount = vertices;
 		drawList.back().indicesCount = indices;
-		drawList.back().material = textures;
+		drawList.back().materialData = textures;
+
 		drawList.back().transforms.emplace_back(transform);
-		drawList.back().transparentForShadow = transparentForShadow;
 		drawList.back().bones.emplace_back(bonesTransforms);
-	}
-	else {
-		it->transforms.emplace_back(transform);
-		it->bones.emplace_back(bonesTransforms);
 	}
 }
 
@@ -50,11 +42,8 @@ void Batcher::sort(const SFE::Math::Vec3& viewPos) {
 		drawObjects.sortTransformAccordingToView(viewPos);
 	}
 
-	std::ranges::sort(drawList, [&viewPos](const DrawObject& a, const DrawObject& b) {
-		auto apos = SFE::Math::Vec3(a.transforms.front()[3]);
-		auto bpos = SFE::Math::Vec3(b.transforms.front()[3]);
-
-		return SFE::Math::distanceSqr(viewPos, apos) > SFE::Math::distanceSqr(viewPos, bpos);
+	drawList.sort([&viewPos](const DrawObject& a, const DrawObject& b) {
+		return SFE::Math::distanceSqr(viewPos, a.transforms.front()[3].xyz) > SFE::Math::distanceSqr(viewPos, b.transforms.front()[3].xyz);
 	});
 }
 
@@ -74,26 +63,15 @@ void Batcher::flushAll(bool clear) {
 		batcherBuffer.setBufferBinding(2, 1);
 		batcherBuffer.allocateData(drawObjects.bones, SFE::GLW::DYNAMIC_DRAW);
 
-		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::DIFFUSE); texture && texture->isValid()) {
-			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::DIFFUSE, texture);
-		}
-		else {
-			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::DIFFUSE, defaultTex);
-		}
+		AssetsModule::TextureHandler::bindTextureToSlot(SFE::DIFFUSE, defaultTex);
+		AssetsModule::TextureHandler::bindTextureToSlot(SFE::NORMALS, defaultNormal);
+		AssetsModule::TextureHandler::bindTextureToSlot(SFE::SPECULAR, defaultTex);
 
-		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::NORMALS);  texture && texture->isValid()) {
-			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::NORMALS, texture);
+		for (auto i = 0; i < drawObjects.materialData.materialsCount; i++) {
+			const auto& mat = drawObjects.materialData.material[i];
+			SFE::GLW::bindTextureToSlot(mat.slot, mat.type, mat.textureId);
 		}
-		else {
-			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::NORMALS, defaultNormal);
-		}
-
-		if (auto texture = drawObjects.material.tryGetTexture(AssetsModule::SPECULAR);  texture && texture->isValid()) {
-			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::SPECULAR, texture);
-		}
-		else {
-			AssetsModule::TextureHandler::bindTextureToSlot(AssetsModule::SPECULAR, defaultTex);
-		}
+		
 
 		SFE::GLW::drawVertices(SFE::GLW::TRIANGLES, drawObjects.VAO, drawObjects.verticesCount, drawObjects.indicesCount, drawObjects.transforms.size());
 	}

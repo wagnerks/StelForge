@@ -62,7 +62,7 @@ namespace SFE::GLW {
 		glDrawArraysInstanced(mode, first, size, instancesCount);
 	}
 
-	constexpr inline void drawVerticesW(RenderMode mode, size_t verticesCount, size_t indicesCount = 0, size_t instancesCount = 1, RenderDataType indicesType = RenderDataType::UNSIGNED_INT, const void* place = nullptr) {
+	constexpr inline void drawVerticesW(RenderMode mode, size_t verticesCount, size_t indicesCount = 0, size_t instancesCount = 0, RenderDataType indicesType = RenderDataType::UNSIGNED_INT, const void* place = nullptr) {
 		if (verticesCount == 0) {
 			return;
 		}

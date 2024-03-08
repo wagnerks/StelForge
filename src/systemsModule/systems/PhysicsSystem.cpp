@@ -10,7 +10,7 @@ namespace SFE::SystemsModule {
 
 	void Physics::update(float dt) {
 		auto& bodyInterface = physics_system->GetBodyInterface();
-		for (const auto& [entity, physicsComp, transform] : ECSHandler::registry().getComponentsArray<PhysicsComponent, TransformComponent>()) {
+		for (const auto& [entity, physicsComp, transform] : ECSHandler::registry().forEach<PhysicsComponent, TransformComponent>()) {
 			if (!transform) {
 				continue;
 			}

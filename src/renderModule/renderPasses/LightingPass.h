@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "renderModule/RenderPass.h"
+#include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
 	class LightingPass : public RenderPass {

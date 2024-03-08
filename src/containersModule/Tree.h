@@ -1,5 +1,6 @@
 #pragma once
 #include <forward_list>
+#include <functional>
 
 namespace SFE {
 	template<class Data>
@@ -123,10 +124,26 @@ namespace SFE {
 			return children;
 		}
 
-	public:
+		template<typename OtherT>
+		void fillTree(const SFE::Tree<OtherT>& sourceNode, std::function<Data(const OtherT&)> extractData) {
+			value = extractData(sourceNode.value);
+			fillTreeImpl<OtherT>(sourceNode, extractData);
+		}
+
 		Data value;
 
+	public:
+		
 		std::forward_list<Tree> children;
 		Tree* parent = nullptr;
+
+	private:
+		template<typename OtherT>
+		void fillTreeImpl(const SFE::Tree<OtherT>& sourceNode, std::function<Data(const OtherT&)> extractData) {
+			for (auto& child : sourceNode.children) {
+				addChild(std::move(extractData(child.value)));
+				children.front().template fillTreeImpl<OtherT>(child, extractData);
+			}
+		}
 	};
 }

@@ -21,7 +21,7 @@ namespace SFE::Render {
 			}
 
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_LEFT && eventType == CoreModule::InputEventType::PRESS) {
-				mMousePos = static_cast<Math::Vec2>(mousePos);
+				mMousePos = { static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)};
 
 				mActiveAxis = mHoveredAxis;
 
@@ -43,7 +43,7 @@ namespace SFE::Render {
 				return;
 			}
 
-			mMousePos = { mousePos };
+			mMousePos = { static_cast<float>(mousePos.x), static_cast<float>(mousePos.y) };
 			if (mActiveAxis == Axis::NONE) {
 				mHoveredAxis = findHoveredGizmo(mCurrentMode).first;
 			}

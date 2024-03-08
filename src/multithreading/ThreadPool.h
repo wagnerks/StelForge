@@ -9,8 +9,9 @@
 #include <shared_mutex>
 #include <thread>
 #include <vector>
+#include <core/Engine.h>
 
-#include "Singleton.h"
+#include "core/Singleton.h"
 
 namespace SFE {
 
@@ -112,12 +113,14 @@ namespace SFE {
 	enum class WorkerType {
 		COMMON,
 		RENDER,
-		SYNC
+		SYNC,
+		RESOURCE_LOADING
 	};
 
 	class ThreadPool : public Singleton<ThreadPool> {
 	public:
 		ThreadPool();
+		~ThreadPool();
 
 		template<WorkerType Type = WorkerType::COMMON>
 		FuturesBunch addBatchTasks(size_t size, size_t batchSize, std::function<void(size_t)> task) {
@@ -146,6 +149,8 @@ namespace SFE {
 				return mRenderWorkers.addTask(std::move(task));
 			case WorkerType::SYNC:
 				return addTaskToSynchronization(std::move(task));
+			case WorkerType::RESOURCE_LOADING:
+				return addLoadingTask(std::move(task));
 			}
 
 			assert(false);
@@ -156,15 +161,19 @@ namespace SFE {
 
 	private:
 		std::shared_future<void> addTaskToSynchronization(std::function<void()>&& task);
+		std::shared_future<void> addLoadingTask(std::function<void()>&& task);
 
 		constexpr static inline uint8_t MAX_WORKERS = 32;
 		constexpr static inline uint8_t RENDER_WORKERS = 16;
+		constexpr static inline uint8_t LOADING_WORKERS = 8;
 
 		WorkersPool<MAX_WORKERS> mCommonWorkers;
 		WorkersPool<RENDER_WORKERS> mRenderWorkers;
-
+		WorkersPool<LOADING_WORKERS> mLoadingWorkers;
 
 		std::queue<std::packaged_task<void()>> mSyncTasks;
 		std::mutex mSyncMtx;
+
+		GLFWwindow* mLoadingWindow = nullptr;
 	};
 }

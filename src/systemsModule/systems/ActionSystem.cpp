@@ -7,7 +7,7 @@
 void SFE::SystemsModule::ActionSystem::update(float dt) {
 	static std::map<unsigned, int> step;
 	
-	for (auto [entity, action, transform] : ECSHandler::registry().getComponentsArray<ComponentsModule::ActionComponent, TransformComponent>()) {
+	for (auto [entity, action, transform] : ECSHandler::registry().forEach<ComponentsModule::ActionComponent, TransformComponent>()) {
 		if (action->progress == 0.f) {
 			action->initialPos = transform->getPos();
 		}

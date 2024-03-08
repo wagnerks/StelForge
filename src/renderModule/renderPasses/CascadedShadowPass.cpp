@@ -7,23 +7,26 @@
 #include "renderModule/Renderer.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/RenderSystem.h"
-#include "core/BoundingVolume.h"
+#include "assetsModule/modelModule/BoundingVolume.h"
 #include "systemsModule/systems/CameraSystem.h"
 
 #include <thread>
 
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/DebugDataComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/LightSourceComponent.h"
+#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
 #include "core/FileSystem.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 #include "glWrapper/ViewportStack.h"
@@ -62,7 +65,6 @@ void CascadedShadowPass::prepare() {
 
 			const auto& cascades = shadowsComp->cascades;
 			auto aabbOctrees = octreeSys->getAABBOctrees(nextFrust.generateAABB());
-			int d = 0;
 			ThreadPool::instance()->addBatchTasks(aabbOctrees.size(), 5, [aabbOctrees,octreeSys, &addMtx, &cascades, &entities](size_t it) {
 				if (auto treeIt = octreeSys->getOctree(aabbOctrees[it])) {
 					auto lock = treeIt->readLock();
@@ -90,14 +92,18 @@ void CascadedShadowPass::prepare() {
 
 		{
 			auto& batcher = curPassData->getBatcher();
-			for (auto [ent, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<ComponentsModule::TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>(entities)) {
-				if (!modelComp) {
+			for (auto [ent, transform, meshComp, armatComp, oclComp] : ECSHandler::registry().forEach<TransformComponent, MeshComponent, ArmatureComponent, ComponentsModule::OcclusionComponent>(entities)) {
+				if (!meshComp) {
 					continue;
 				}
-				const auto& transformMatrix = transform->getTransform();
-				for (const auto& mesh : modelComp->getModelLowestDetails().meshes) {
-					batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transformMatrix, modelComp->boneMatrices, false);
+				if (oclComp && oclComp->occluded) {
+					continue;
 				}
+
+				for (auto& mesh : meshComp->meshTree) {
+					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->getTransform(), armatComp ? armatComp->boneMatrices : nullptr);
+				}
+				
 			}
 
 			//batcher.sort({100.f,1300.f, 600.f});
@@ -152,22 +158,21 @@ void CascadedShadowPass::initRender() {
 	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
 
 	cmp->updateCascades(cameraProjection);
-	lightDepthMap.create3D(
-		static_cast<int>(cmp->resolution.x), static_cast<int>(cmp->resolution.y),
-		static_cast<int>(cmp->cascades.size()),
-		GLW::DEPTH_COMPONENT32,
-		GLW::DEPTH_COMPONENT,
-		{
-			{GLW::MIN_FILTER, GL_LINEAR},
-			{GLW::MAG_FILTER, GL_LINEAR},
-			{GLW::WRAP_S, GL_CLAMP_TO_EDGE},
-			{GLW::WRAP_T, GL_CLAMP_TO_EDGE},
-			{GLW::COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE},
-			{GLW::COMPARE_FUNC, GL_LESS},
-		},
-		{},
-		GLW::PixelDataType::FLOAT
-	);	
+	lightDepthMap.parameters.minFilter = GLW::TextureMinFilter::LINEAR;
+	lightDepthMap.parameters.magFilter = GLW::TextureMagFilter::LINEAR;
+	lightDepthMap.parameters.wrap.S = GLW::TextureWrap::CLAMP_TO_EDGE;
+	lightDepthMap.parameters.wrap.T = GLW::TextureWrap::CLAMP_TO_EDGE;
+	lightDepthMap.parameters.compareMode = GLW::TextureCompareMode::COMPARE_REF_TO_TEXTURE;
+	lightDepthMap.parameters.compareFunc = GLW::CompareFunc::LESS;
+	lightDepthMap.width = static_cast<int>(cmp->resolution.x);
+	lightDepthMap.height = static_cast<int>(cmp->resolution.y);
+	lightDepthMap.depth = static_cast<int>(cmp->cascades.size());
+	lightDepthMap.pixelFormat = GLW::DEPTH_COMPONENT32;
+	lightDepthMap.textureFormat = GLW::DEPTH_COMPONENT;
+	lightDepthMap.pixelType = GLW::FLOAT;
+
+
+	lightDepthMap.create3D();	
 
 	lightFBO.bind();
 	lightFBO.addAttachmentTexture(GLW::AttachmentType::DEPTH, &lightDepthMap);

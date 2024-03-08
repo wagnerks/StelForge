@@ -28,6 +28,7 @@
 #include "componentsModule/TransformComponent.h"
 #include "renderModule/TextRenderer.h"
 #include "renderModule/renderPasses/GUIPass.h"
+#include "renderModule/renderPasses/OcclusionPass.h"
 
 namespace SFE::SystemsModule {
 
@@ -67,7 +68,7 @@ namespace SFE::SystemsModule {
 		addRenderPass<Render::RenderPasses::SSAOPass>();
 		addRenderPass<Render::RenderPasses::DebugPass>();
 		addRenderPass<Render::RenderPasses::GUIPass>();
-
+		addRenderPass<Render::RenderPasses::OcclusionPass>();
 	
 		auto guard = cameraMatricesUBO.bindWithGuard();
 		cameraMatricesUBO.allocateData<RenderMatrices>(1, GLW::DYNAMIC_DRAW);

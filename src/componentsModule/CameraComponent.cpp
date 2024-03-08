@@ -12,15 +12,15 @@ CameraComponent::CameraComponent(ecss::SectorId id, float FOV, float aspect, flo
 	initProjection(FOV, aspect, zNear, zFar);
 }
 
-SFE::ProjectionModule::PerspectiveProjection& CameraComponent::getProjection() {
+SFE::MathModule::PerspectiveProjection& CameraComponent::getProjection() {
 	return mProjection;
 }
 
-void CameraComponent::initProjection(float FOV, float aspect, float zNear, float zFar) {
-	mProjection = SFE::ProjectionModule::PerspectiveProjection(FOV, aspect, zNear, zFar);
+void CameraComponent::initProjection(const float FOV, float aspect, float zNear, float zFar) {
+	mProjection = SFE::MathModule::PerspectiveProjection(FOV, aspect, zNear, zFar);
 }
 
-void CameraComponent::initProjection(const SFE::ProjectionModule::PerspectiveProjection& projection) {
+void CameraComponent::initProjection(const SFE::MathModule::PerspectiveProjection& projection) {
 	mProjection = projection;
 }
 

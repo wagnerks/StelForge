@@ -4,15 +4,15 @@
 
 #include "ComponentBase.h"
 #include "assetsModule/shaderModule/ShaderBase.h"
-#include "core/BoundingVolume.h"
-#include "core/Projection.h"
+#include "assetsModule/modelModule/BoundingVolume.h"
+#include "mathModule/Projection.h"
 #include "propertiesModule/Serializable.h"
 
 
 namespace SFE::ComponentsModule {
 	struct ShadowCascade {
 		SFE::FrustumModule::Frustum frustum = {};
-		SFE::ProjectionModule::PerspectiveProjection viewProjection {};
+		SFE::MathModule::PerspectiveProjection viewProjection {};
 		float bias = 0.f;
 		int samples = 64;
 
@@ -24,7 +24,7 @@ namespace SFE::ComponentsModule {
 	public:
 		CascadeShadowComponent(ecss::SectorId id) : ComponentInterface(id) {};
 
-		void updateCascades(const ProjectionModule::PerspectiveProjection& cameraProjection);
+		void updateCascades(const MathModule::PerspectiveProjection& cameraProjection);
 		void updateLightSpaceMatrices(const Math::Mat4& cameraView);
 
 		static SFE::Math::Mat4 getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier = 1.f, float farMultiplier = 1.f);
@@ -35,11 +35,11 @@ namespace SFE::ComponentsModule {
 		std::vector<float> shadowCascadeLevels;
 		Math::Vec2 resolution = {};
 
-		ProjectionModule::PerspectiveProjection mCameraProjection = {};
+		MathModule::PerspectiveProjection mCameraProjection = {};
 
 
 		void markDirty();
-		void calculateLightSpaceMatrices(const ProjectionModule::PerspectiveProjection& projection, const Math::Mat4& view);
+		void calculateLightSpaceMatrices(const MathModule::PerspectiveProjection& projection, const Math::Mat4& view);
 		const std::vector<Math::Mat4>& getLightSpaceMatrices();
 
 		void serialize(Json::Value& data) override;

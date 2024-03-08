@@ -10,6 +10,7 @@ namespace ecss {
 
 namespace SFE {
 	namespace ComponentsModule {
+		struct OcclusionComponent;
 		struct AABBComponent;
 		class LightSourceComponent;
 		class ModelComponent;
@@ -39,6 +40,7 @@ namespace SFE::Debug {
 		void editComponentGui(ComponentsModule::PhysicsComponent* component);
 		void editComponentGui(ComponentsModule::AnimationComponent* component);
 		void editComponentGui(ComponentsModule::AABBComponent* component);
+		void editComponentGui(ComponentsModule::OcclusionComponent* component);
 
 
 		void entitiesTreeGUI();

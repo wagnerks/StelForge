@@ -1,5 +1,7 @@
 ﻿#pragma once
-#include "renderModule/RenderPass.h"
+#include "glWrapper/Buffer.h"
+#include "glWrapper/VertexArray.h"
+#include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
 	class DebugPass : public RenderPass {

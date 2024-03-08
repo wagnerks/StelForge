@@ -5,9 +5,10 @@
 #include <assimp/scene.h>
 
 #include "Animation.h"
+#include "MeshVaoRegistry.h"
 #include "logsModule/logger.h"
 #include "assetsModule/TextureHandler.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 
 using namespace AssetsModule;
 
@@ -41,13 +42,13 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	mtx.unlock();
 
 	Assimp::Importer import;
-	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		SFE::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
 		return nullptr;
 	}
 	
-	auto model = loadModel(scene, path);
+	auto [meshes, armatur] = loadModel(scene, path);
 
 	std::vector<Animation> animations;
 	animations.reserve(scene->mNumAnimations);
@@ -57,70 +58,52 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	}
 
 	mtx.lock();
-	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(model.first), std::move(model.second), std::move(animations));
+	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(meshes), std::move(armatur), std::move(animations));
 
 
 	loading[path].notify_all();
 	loading.erase(path);
 
 	mtx.unlock();
-	asset->recalculateNormals();
+	
 
 	return asset;
 }
 
-void ModelLoader::releaseModel(const std::string& path) {
-	//const auto it = std::ranges::find_if(models, [path](const std::pair<std::string, ModelModule::Model*>& a) {
-	//	return a.first == path;
-	//});
-
-	//if (it == models.end()) {
-	//	return;
-	//}
-
-	//models.erase(it);
-}
-
-
-ModelLoader::~ModelLoader() {}
-
-void ModelLoader::init() {}
-
-std::pair<SFE::Tree<Mesh>, Armature> ModelLoader::loadModel(const aiScene* scene, const std::string& path) {
+std::tuple<SFE::Tree<SFE::MeshObject3D>, Armature> ModelLoader::loadModel(const aiScene* scene, const std::string& path) {
 	auto directory = path.substr(0, path.find_last_of('/'));
 
-	std::pair<SFE::Tree<Mesh>, Armature> res;
+	SFE::Tree<SFE::MeshObject3D> meshes;
+	Armature armat;
 
-	processNode(scene->mRootNode, scene, TextureHandler::instance(), directory, res.first, res.second);
+	processNode(scene->mRootNode, scene, directory, meshes, armat);
 
-	return res;
+	return { meshes, armat };
 }
 
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, TextureHandler* loader, const std::string& directory, SFE::Tree<Mesh>& rawModel, Armature& armature) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, const std::string& directory, SFE::Tree<SFE::MeshObject3D>& meshes, Armature& armature) {
 	{
-		rawModel.value.transform = assimpMatToMat4(node->mTransformation);
+		meshes.value.transform = assimpMatToMat4(node->mTransformation);
 
-		auto parent = rawModel.parent;
+		auto parent = meshes.parent;
 		while (parent) {
-			rawModel.value.transform *= parent->value.transform;
+			meshes.value.transform *= parent->value.transform;
 			parent = parent->parent;
 		}
 	}
 
 	for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		processMesh(mesh, scene, node, loader, directory, rawModel.value, armature);
-		rawModel.value.calculateBounds();
+		processMesh(scene->mMeshes[node->mMeshes[i]], scene, directory, meshes.value, armature);
 	}
 
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
-		rawModel.addChild({});
-		processNode(node->mChildren[i], scene, loader, directory, rawModel.children.front(), armature);
+		meshes.addChild({});
+		processNode(node->mChildren[i], scene, directory, meshes.children.front(), armature);
 	}
 }
 
-void ModelLoader::readBonesData(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature) {
+void ModelLoader::readBonesData(std::vector<SFE::Vertex3D>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature) {
 	auto& bones = armature.bones;
 	bones.reserve(mesh->mNumBones);
 
@@ -166,9 +149,9 @@ void ModelLoader::readBonesData(std::vector<Vertex>& vertices, aiMesh* mesh, con
 			}
 			
 			for (int i = 0; i < 4; ++i) {
-				if (vertices[vertexId].mBoneIDs[i] < 0) {
-					vertices[vertexId].mWeights[i] = weight;
-					vertices[vertexId].mBoneIDs[i] = boneID;
+				if (vertices[vertexId].boneIDs[i] < 0) {
+					vertices[vertexId].weights[i] = weight;
+					vertices[vertexId].boneIDs[i] = boneID;
 					break;
 				}
 			}
@@ -202,43 +185,22 @@ void ModelLoader::readBonesData(std::vector<Vertex>& vertices, aiMesh* mesh, con
 	}
 }
 
-void ModelLoader::readMaterialData(Material& material, aiMaterial* assimpMaterial, AssetsModule::TextureHandler* loader, const std::string& directory) {
-	auto diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE, loader, directory);
+void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMaterial, const std::string& directory) {
+	auto diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE, directory);
 	assert(diffuseMaps.size() < 2);
 	if (!diffuseMaps.empty()) {
-		material[DIFFUSE] = diffuseMaps.front();
+		material[SFE::DIFFUSE] = SFE::MaterialTexture{ &diffuseMaps.front()->texture, SFE::DIFFUSE, SFE::DIFFUSE };
 	}
 
-	auto specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_SPECULAR, loader, directory);
+	auto specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_SPECULAR, directory);
 	if (!specularMaps.empty()) {
-		material[SPECULAR] = specularMaps.front();
+		material[SFE::SPECULAR] = SFE::MaterialTexture{ &specularMaps.front()->texture, SFE::SPECULAR, SFE::SPECULAR };
 	}
 
-	auto normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMALS, loader, directory);
+	auto normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMALS, directory);
 	if (!normalMaps.empty()) {
-		material[NORMALS] = normalMaps.front();
+		material[SFE::NORMALS] = SFE::MaterialTexture{ &normalMaps.front()->texture, SFE::NORMALS, SFE::NORMALS };
 	}
-
-	/*specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_HEIGHT, "texture_specular", loader, directory);
-	if (!specularMaps.empty()) {
-		material.mSpecular = specularMaps.front();
-	}
-
-	specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_EMISSIVE, "texture_specular", loader, directory);
-	if (!specularMaps.empty()) {
-		material.mSpecular = specularMaps.front();
-	}
-
-	specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_AMBIENT, "texture_specular", loader, directory);
-	if (!specularMaps.empty()) {
-		material.mSpecular = specularMaps.front();
-	}
-	for (int i = aiTextureType_SHININESS; i <= aiTextureType_REFLECTION; i++) {
-		specularMaps = loadMaterialTextures(assimpMaterial, (aiTextureType)i, "texture_specular", loader, directory);
-		if (!specularMaps.empty()) {
-			material.mSpecular = specularMaps.front();
-		}
-	}*/
 }
 
 void ModelLoader::readIndicesData(std::vector<unsigned>& indices, unsigned numFaces, aiFace* faces) {
@@ -251,7 +213,7 @@ void ModelLoader::readIndicesData(std::vector<unsigned>& indices, unsigned numFa
 	}
 }
 
-void ModelLoader::readVerticesData(std::vector<Vertex>& vertices, unsigned numVertices, aiMesh* assimpMesh) {
+void ModelLoader::readVerticesData(std::vector<SFE::Vertex3D>& vertices, unsigned numVertices, aiMesh* assimpMesh) {
 	vertices.resize(numVertices);
 
 	for (unsigned int i = 0; i < numVertices; i++) {
@@ -259,25 +221,25 @@ void ModelLoader::readVerticesData(std::vector<Vertex>& vertices, unsigned numVe
 
 		auto newPos =/* meshNode->mTransformation **/ assimpMesh->mVertices[i];
 		// process vertex positions, normals and texture coordinates
-		vertex.mPosition.x = newPos.x;
-		vertex.mPosition.y = newPos.y;
-		vertex.mPosition.z = newPos.z;
+		vertex.position.x = newPos.x;
+		vertex.position.y = newPos.y;
+		vertex.position.z = newPos.z;
 
 		if (assimpMesh->mTextureCoords[0]) {
-			vertex.mTexCoords.x = assimpMesh->mTextureCoords[0][i].x;
-			vertex.mTexCoords.y = assimpMesh->mTextureCoords[0][i].y;
+			vertex.texCoords.x = assimpMesh->mTextureCoords[0][i].x;
+			vertex.texCoords.y = assimpMesh->mTextureCoords[0][i].y;
 		}
 
 		if (assimpMesh->mNormals) {
-			vertex.mNormal.x = assimpMesh->mNormals[i].x;
-			vertex.mNormal.y = assimpMesh->mNormals[i].y;
-			vertex.mNormal.z = assimpMesh->mNormals[i].z;
+			vertex.normal.x = assimpMesh->mNormals[i].x;
+			vertex.normal.y = assimpMesh->mNormals[i].y;
+			vertex.normal.z = assimpMesh->mNormals[i].z;
 		}
 
 		if (assimpMesh->mTangents) {
-			vertex.mTangent.x = assimpMesh->mTangents[i].x;
-			vertex.mTangent.y = assimpMesh->mTangents[i].y;
-			vertex.mTangent.z = assimpMesh->mTangents[i].z;
+			vertex.tangent.x = assimpMesh->mTangents[i].x;
+			vertex.tangent.y = assimpMesh->mTangents[i].y;
+			vertex.tangent.z = assimpMesh->mTangents[i].z;
 		}
 	}
 }
@@ -301,30 +263,25 @@ int ModelLoader::extractLodLevel(const std::string& meshName) {
 	return std::atoi(meshName.substr(i + 4, meshName.size() - i).c_str());
 }
 
-void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, aiNode* meshNode, AssetsModule::TextureHandler* loader, const std::string& directory, AssetsModule::Mesh& mesh, Armature& armature) {
-	mesh.lod = extractLodLevel(meshNode->mName.data);
+void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, const std::string& directory, SFE::MeshObject3D& meshObject, Armature& armature) {
+	//meshObject.mesh.lod = extractLodLevel(meshNode->mName.data); //todo lods support, probably not throug model, but load it as separate meshes instead
 
-	readVerticesData(mesh.mData.vertices, assimpMesh->mNumVertices, assimpMesh);
-	readIndicesData(mesh.mData.indices, assimpMesh->mNumFaces, assimpMesh->mFaces);
-	readBonesData(mesh.mData.vertices, assimpMesh, scene, armature);
-	readMaterialData(mesh.mMaterial, scene->mMaterials[assimpMesh->mMaterialIndex], loader, directory);
-
-	mesh.initMeshData();
+	readVerticesData(meshObject.mesh.vertices, assimpMesh->mNumVertices, assimpMesh);
+	readIndicesData(meshObject.mesh.indices, assimpMesh->mNumFaces, assimpMesh->mFaces);
+	readBonesData(meshObject.mesh.vertices, assimpMesh, scene, armature);
+	readMaterialData(meshObject.material, scene->mMaterials[assimpMesh->mMaterialIndex], directory);
 }
 
-std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, AssetsModule::TextureHandler* loader, const std::string& directory) {
+std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, const std::string& directory) {
 	std::vector<Texture*> textures;
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
-		//if(!loader->loadedTex.contains(directory + "/" + str.C_Str())){
-		
 		std::string path = std::string(str.C_Str());
 		path.erase(0, std::string(str.C_Str()).find_last_of("\\") + 1);
 
-		textures.emplace_back(loader->loadTexture(directory + "/" + path));
-		//}
+		textures.emplace_back(TextureHandler::loadTexture(directory + "/" + path));
 	}
 	return textures;
 }

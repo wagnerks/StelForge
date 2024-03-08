@@ -50,7 +50,7 @@ namespace SFE::Math {
 		MATRIX_DEFAULT_METHODS();
 
 		constexpr Matrix() {}
-		constexpr Matrix(T s) : m{ Vector<T, 3> {s,0,0}, Vector<T, 3> {0, s, 0}, Vector<T, 3> {0, 0, s} } {}
+		constexpr Matrix(T s) : m{ Vector<T, 3> {s,static_cast<T>(0),static_cast<T>(0)}, Vector<T, 3> {static_cast<T>(0), s, static_cast<T>(0)}, Vector<T, 3> {static_cast<T>(0), static_cast<T>(0), s} } {}
 		constexpr Matrix(const Vector<T, 3>& a, const Vector<T, 3>& b, const Vector<T, 3>& c) : m{ a,b,c } {}
 		constexpr Matrix(const Matrix<T, 4, 4>& mat) : m{ Vector<T, 3>(mat[0]), Vector<T, 3>(mat[1]), Vector<T, 3>(mat[2])} {}
 	};

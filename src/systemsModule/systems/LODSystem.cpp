@@ -22,7 +22,7 @@ void LODSystem::update(float_t dt) {
 	}
 
 	auto playerPos = ECSHandler::registry().getComponent<TransformComponent>(playerCamera)->getPos(true);
-	for (const auto& [entity, isDraw, transform, lodObject] : ECSHandler::registry().getComponentsArray<const IsDrawableComponent, const TransformComponent, ModelComponent>()) {
+	for (const auto& [entity, isDraw, transform, lodObject] : ECSHandler::registry().forEach<const IsDrawableComponent, const TransformComponent, ModelComponent>()) {
 		if (!isDraw) {
 			continue;
 		}

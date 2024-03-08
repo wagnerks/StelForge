@@ -5,7 +5,7 @@
 
 #include "AssetsManager.h"
 #include "core/Engine.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 #include "logsModule/logger.h"
 
 using namespace AssetsModule;
@@ -58,7 +58,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::GL
 		stbi_image_free(data);
 	}
 	else {
-		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([id = texture->assetId, data]()mutable {
+		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::RESOURCE_LOADING>([id = texture->assetId, data]()mutable {
 			AssetsManager::instance()->getAsset<Texture>(id)->texture.create(data);
 			stbi_image_free(data);
 		});

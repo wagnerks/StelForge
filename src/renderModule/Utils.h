@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include "Renderer.h"
+#include "assetsModule/modelModule/Vertex.h"
 #include "glWrapper/Draw.h"
 
 #include "mathModule/Forward.h"
@@ -36,14 +37,6 @@ namespace SFE::Render {
 			bool cull = false;
 
 		};
-		struct LightVertex {
-			LightVertex() = default;
-			LightVertex(const Math::Vec3& pos) : position(pos) {}
-
-			SFE::Math::Vec3 position;
-			SFE::Math::Vec3 normal;
-			Math::Vec4 color {1.f};
-		};
 
 		struct Triangle {
 			Triangle() = default;
@@ -66,9 +59,9 @@ namespace SFE::Render {
 				C.normal = Normal;
 			}
 
-			LightVertex A;
-			LightVertex B;
-			LightVertex C;
+			Vertex3D A;
+			Vertex3D B;
+			Vertex3D C;
 		};
 
 		inline static std::vector<std::pair<TriangleData, std::vector<Triangle>>> renderTriangles;

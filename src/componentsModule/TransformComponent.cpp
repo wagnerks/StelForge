@@ -1,7 +1,7 @@
 ﻿#include "TransformComponent.h"
 
 #include "TreeComponent.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "propertiesModule/TypeName.h"
 #include "systemsModule/SystemManager.h"

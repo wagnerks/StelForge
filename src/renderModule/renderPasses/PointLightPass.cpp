@@ -23,25 +23,23 @@
 
 namespace SFE::Render::RenderPasses {
 	void PointLightPass::init() {
-		lightProjection = SFE::ProjectionModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
+		lightProjection = SFE::MathModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
 
-		mLightDepthMaps.create3D(
-			shadowResolution, shadowResolution,
-			maxShadowFaces,
-			GLW::DEPTH_COMPONENT32,
-			GLW::DEPTH_COMPONENT,
-			{
-				{GLW::MIN_FILTER, GL_LINEAR},
-				{GLW::MAG_FILTER, GL_LINEAR},
-				{GLW::WRAP_S, GL_CLAMP_TO_EDGE},
-				{GLW::WRAP_T, GL_CLAMP_TO_EDGE},
-				{GLW::COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE},
-				{GLW::COMPARE_FUNC, GL_LESS},
-			},
-			{},
-			GLW::PixelDataType::FLOAT
-		);
+		mLightDepthMaps.parameters.minFilter = GLW::TextureMinFilter::LINEAR;
+		mLightDepthMaps.parameters.magFilter = GLW::TextureMagFilter::LINEAR;
+		mLightDepthMaps.parameters.wrap.S = GLW::TextureWrap::CLAMP_TO_EDGE;
+		mLightDepthMaps.parameters.wrap.T = GLW::TextureWrap::CLAMP_TO_EDGE;
+		mLightDepthMaps.parameters.compareMode = GLW::TextureCompareMode::COMPARE_REF_TO_TEXTURE;
+		mLightDepthMaps.parameters.compareFunc = GLW::CompareFunc::LESS;
+		mLightDepthMaps.width = shadowResolution;
+		mLightDepthMaps.height = shadowResolution;
+		mLightDepthMaps.depth = maxShadowFaces;
+		mLightDepthMaps.pixelFormat = GLW::DEPTH_COMPONENT32;
+		mLightDepthMaps.textureFormat = GLW::DEPTH_COMPONENT;
+		mLightDepthMaps.pixelType = GLW::FLOAT;
+
+		mLightDepthMaps.create3D();
 
 		lightFramebuffer.bind();
 		lightFramebuffer.addAttachmentTexture(GLW::AttachmentType::DEPTH, &mLightDepthMaps);
@@ -68,7 +66,7 @@ namespace SFE::Render::RenderPasses {
 
 		offsets.clear();
 		
-		for (const auto& [entity,lightSource, transform] : ECSHandler::registry().getComponentsArray<LightSourceComponent, TransformComponent>()) {
+		for (const auto& [entity,lightSource, transform] : ECSHandler::registry().forEach<LightSourceComponent, TransformComponent>()) {
 			//todo check is light side frustum in camera frustum, and filter it to ignore light sources which is not on your screen
 			if (!FrustumModule::SquareAABB::isOnFrustum(renderDataHandle.mCamFrustum, transform->getPos(true), lightSource->mRadius)) {
 				continue;
@@ -79,7 +77,7 @@ namespace SFE::Render::RenderPasses {
 			case ComponentsModule::eLightType::DIRECTIONAL: {
 				/*float shadowHeight = 100.f;
 				float shadowWidth = 100.f;
-				SFE::ProjectionModule::OrthoProjection proj = SFE::ProjectionModule::OrthoProjection({ -shadowWidth * 0.5f, -shadowHeight * 0.5f }, { shadowWidth * 0.5f, shadowHeight * 0.5f }, 0.01f, lightSource.mRadius);
+				SFE::MathModule::OrthoProjection proj = SFE::MathModule::OrthoProjection({ -shadowWidth * 0.5f, -shadowHeight * 0.5f }, { shadowWidth * 0.5f, shadowHeight * 0.5f }, 0.01f, lightSource.mRadius);
 
 				lightMatrices.push_back(proj.getProjectionsMatrix() * owner->getComponent<TransformComponent>()->getViewMatrix());
 				frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));*/
@@ -150,14 +148,14 @@ namespace SFE::Render::RenderPasses {
 			}
 
 			/*std::sort(entities.begin(), entities.end());
-			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().getComponentsArray<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
+			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().forEach<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
 				if (!trans || !mod || !draw) {
 					continue;
 				}
 
 				const auto& transformMatrix = trans->getTransform();
 				for (auto& mesh : mod->getModelLowestDetails().meshes) {
-					batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transformMatrix, {}, false);
+					batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transformMatrix, {});
 				}
 			}
 			batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(offset.first)->getPos(true));

@@ -1,8 +1,12 @@
 ﻿#include "Model.h"
 
+#include "MeshUtils.h"
+#include "MeshVaoRegistry.h"
+
 namespace AssetsModule {
-	Model::Model(SFE::Tree<Mesh> model, Armature armature, std::vector<Animation> animations) : mArmature(std::move(armature)), mAnimations(std::move(animations)), mMeshTree(std::move(model)) {
-		getLODs();
+	Model::Model(SFE::Tree<SFE::MeshObject3D> model, Armature armature, std::vector<Animation> animations) : mArmature(std::move(armature)), mAnimations(std::move(animations)), mMeshTree(std::move(model)) {
+		recalculateNormals(true);
+		bindMeshes();
 
 		if (!mArmature.bones.empty()) {
 			mDefaultBoneMatrices.resize(mArmature.bones.size(), mArmature.transform);
@@ -24,14 +28,14 @@ namespace AssetsModule {
 	std::vector<Model::LOD>* Model::getLODs() {
 		if (mLODs.empty()) {
 			for (auto& node : mMeshTree) {
-				if (node.value.mData.vertices.empty()) {
+				if (node.value.mesh.vertices.empty()) {
 					continue;
 				}
-				if (node.value.lod >= mLODs.size()) {
-					mLODs.resize(node.value.lod + 1);
+				if (0/*node.value.mesh.lod*/ >= mLODs.size()) {
+					mLODs.resize(/*node.value.mesh.lod +*/ 1);
 				}
 
-				mLODs[node.value.lod].meshes.push_back(&node.value);
+				mLODs[/*node.value.mesh.lod*/0].meshes.push_back(&node.value);
 			}
 		}
 
@@ -40,20 +44,20 @@ namespace AssetsModule {
 
 	void Model::recalculateNormals(bool smooth) {
 		for (auto& node : mMeshTree) {
-			node.value.recalculateNormals(smooth);
+			SFE::MeshUtils::recalculateNormals(&node.value.mesh, smooth);
 		}
 	}
 
 	void Model::bindMeshes() {
 		for (auto& node : mMeshTree) {
-			node.value.initMeshData();
+			SFE::MeshVaoRegistry::instance()->initMesh(&node.value.mesh);
 		}
 
 		mLODs.clear();
 		getLODs();
 	}
 
-	const std::vector<SFE::Math::Mat4>& Model::getDefaultBoneMatrices() {
+	const std::vector<SFE::Math::Mat4>& Model::getDefaultBoneMatrices() const {
 		return mDefaultBoneMatrices;
 	}
 }

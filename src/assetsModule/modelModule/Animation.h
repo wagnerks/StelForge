@@ -17,8 +17,9 @@ namespace AssetsModule {
 
         inline float getTicksPerSecond() const { return mTicksPerSecond; }
         inline float getDuration() const { return mDuration; }
+        inline const std::string& getName() const { return mName; }
 
-   // private:
+    private:
         static void readKeys(const aiAnimation* animation, std::unordered_map<std::string, BoneAnimationKeys>& keys);
         std::string mName;
         float mDuration;

@@ -16,6 +16,9 @@ namespace SFE::GLW {
 		ALWAYS = GL_ALWAYS, // Always passes.
 	};
 
+	constexpr inline void setDepthMask(bool enabled) {
+		glDepthMask(enabled);
+	}
 
 	constexpr inline void setDepthFunc(DepthFunc func) {
 		glDepthFunc(static_cast<GLenum>(func));
@@ -32,6 +35,17 @@ namespace SFE::GLW {
 			}
 
 			setDepthFunc(*state);
+		}
+	};
+
+	struct DepthMaskStack : StateStack<bool, DepthMaskStack> {
+		constexpr void apply(bool* state) override {
+			if (!state) {
+				setDepthMask(true);
+				return;
+			}
+
+			setDepthMask(*state);
 		}
 	};
 }

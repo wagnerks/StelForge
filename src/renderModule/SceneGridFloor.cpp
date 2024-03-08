@@ -37,13 +37,13 @@ void SceneGridFloor::init() {
 	transform = Math::translate(transform, Math::Vec3(0.f));
 
 	Math::Vec3 vertices[] = {
-		{ 1.0, 0.f, -1.0}, //far right
-		{-1.0, 0.f, -1.0},//far left
-		{-1.0, 0.f,  1.0}, //near left
+		{ 1.f, 0.f, -1.f}, //far right
+		{-1.f, 0.f, -1.f},//far left
+		{-1.f, 0.f,  1.f}, //near left
 
-		{ 1.0, 0.f, -1.0}, //far right
-		{-1.0, 0.f,  1.0},//near left
-		{ 1.0, 0.f,  1.0}, //near right
+		{ 1.f, 0.f, -1.f}, //far right
+		{-1.f, 0.f,  1.f},//near left
+		{ 1.f, 0.f,  1.f}, //near right
 	};
 
 	VAO.generate();

@@ -151,43 +151,43 @@ namespace SFE::Render {
             FT_ULong c = FT_Get_First_Char(face, &index);
 
             unsigned int rows = 0;
-            mAtlasTex->bind([&](const GLW::Texture* texture) {
-                while (index) {
-                    if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
-                        continue;
-                    }
-
-                    if (x + face->glyph->bitmap.width + offset >= atlasSize) {
-                        x = 2;
-                        y += rows;
-                        rows = 0;
-                    }
-                    rows = std::max(face->glyph->bitmap.rows + offset, rows);
-
-                    glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
-                    glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
-
-                    texture->setSubImageData2D(x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, face->glyph->bitmap.buffer, GLW::RED);
-
-                    if (mGlyphs.size() <= c) {
-                        mGlyphs.resize(c + 1);
-                    }
-
-                    mGlyphs[c] = GlyphInfo{
-                        {face->glyph->bitmap.width, face->glyph->bitmap.rows},
-                        {face->glyph->bitmap_left, face->glyph->bitmap_top},
-                        static_cast<unsigned int>(face->glyph->advance.x),
-                        {
-                            Math::Vec2{static_cast<float>(x) / atlasSize,static_cast<float>(y) / mAtlasHeight},
-                            Math::Vec2{static_cast<float>(x + face->glyph->bitmap.width) / atlasSize,static_cast<float>(y + face->glyph->bitmap.rows) / mAtlasHeight}
-                        }
-                    };
-
-                    x += face->glyph->bitmap.width + offset;
-
-                    c = FT_Get_Next_Char(face, c, &index);
+            mAtlasTex->bind();
+            while (index) {
+                if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
+                    continue;
                 }
-            });
+
+                if (x + face->glyph->bitmap.width + offset >= atlasSize) {
+                    x = 2;
+                    y += rows;
+                    rows = 0;
+                }
+                rows = std::max(face->glyph->bitmap.rows + offset, rows);
+
+                glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
+                glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
+
+                mAtlasTex->setSubImageData2D(x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, face->glyph->bitmap.buffer, GLW::RED);
+
+                if (mGlyphs.size() <= c) {
+                    mGlyphs.resize(c + 1);
+                }
+
+                mGlyphs[c] = GlyphInfo{
+                    {face->glyph->bitmap.width, face->glyph->bitmap.rows},
+                    {face->glyph->bitmap_left, face->glyph->bitmap_top},
+                    static_cast<unsigned int>(face->glyph->advance.x),
+                    {
+                        Math::Vec2{static_cast<float>(x) / atlasSize,static_cast<float>(y) / mAtlasHeight},
+                        Math::Vec2{static_cast<float>(x + face->glyph->bitmap.width) / atlasSize,static_cast<float>(y + face->glyph->bitmap.rows) / mAtlasHeight}
+                    }
+                };
+
+                x += face->glyph->bitmap.width + offset;
+
+                c = FT_Get_Next_Char(face, c, &index);
+            }
+            mAtlasTex->unbind();
         }
     };
 

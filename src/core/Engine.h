@@ -40,7 +40,7 @@ namespace SFE {
 
 		bool mAlive = false;
 
-		CoreModule::Core* mCore = nullptr;
+		CoreModule::Core mCore;
 
 		GLFWwindow* mMainWindow = nullptr;
 

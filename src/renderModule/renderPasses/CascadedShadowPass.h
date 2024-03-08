@@ -5,9 +5,10 @@
 
 #include "componentsModule/CascadeShadowComponent.h"
 #include "ecss/EntityHandle.h"
+#include "glWrapper/Buffer.h"
 #include "glWrapper/Framebuffer.h"
 
-#include "renderModule/RenderPass.h"
+#include "renderModule/renderPasses/RenderPass.h"
 
 
 namespace SFE::Render::RenderPasses {

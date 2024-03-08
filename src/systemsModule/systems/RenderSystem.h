@@ -2,9 +2,9 @@
 
 #include <vector>
 
-#include "core/BoundingVolume.h"
+#include "assetsModule/modelModule/BoundingVolume.h"
 #include "systemsModule/SystemBase.h"
-#include "renderModule/RenderPass.h"
+#include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/GeometryPass.h"
 #include "renderModule/renderPasses/PointLightPass.h"
@@ -42,8 +42,8 @@ namespace SFE::SystemsModule {
 		Math::Vec3 mNextCameraPos = {};
 		Math::Vec3 mNextViewDir = {};
 
-		ProjectionModule::PerspectiveProjection cameraProjection = {};
-		ProjectionModule::PerspectiveProjection nextCameraProjection =  {};
+		MathModule::PerspectiveProjection cameraProjection = {};
+		MathModule::PerspectiveProjection nextCameraProjection =  {};
 
 		Render::RenderPasses::CascadedShadowPass::Data* mCascadedShadowsPassData;
 		Render::RenderPasses::PointLightPass::Data* mPointPassData;

@@ -3,6 +3,9 @@
 #include <vector>
 
 #include "assetsModule/modelModule/Mesh.h"
+#include "componentsModule/MaterialComponent.h"
+#include "componentsModule/MeshComponent.h"
+#include "containersModule/Vector.h"
 
 struct BonesData {
 	BonesData() = default;
@@ -10,7 +13,14 @@ struct BonesData {
 		std::copy(bones.begin(), bones.end(), mBones);
 	}
 
-	
+	BonesData(SFE::Math::Mat4* bones) {
+		if (!bones) {
+			return;
+		}
+		
+		std::memcpy(mBones, bones, sizeof(mBones));//maybe mat4 is not trivially copyable.. todo
+	}
+
 	SFE::Math::Mat4 mBones[100]{ SFE::Math::Mat4(1.f) };
 };
 
@@ -33,26 +43,24 @@ struct DrawObject {
 	unsigned VAO;
 	size_t verticesCount;
 	size_t indicesCount;
-	AssetsModule::Material material;
+	SFE::ComponentsModule::Materials materialData;
+
 	std::vector<SFE::Math::Mat4> transforms;
 	std::vector<BonesData> bones;
 
-	bool transparentForShadow = false;
-	SFE::Math::Vec3 sortedPos = {};
-	unsigned batcherBuffer[2];
 	void sortTransformAccordingToView(const SFE::Math::Vec3& viewPos);
 };
 
 
 class Batcher {
 public:
-	Batcher();
-	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, const AssetsModule::Material& material, const SFE::Math::Mat4&  transform, const std::vector<SFE::Math::Mat4>& bonesTransforms, bool transparentForShadow);
+	Batcher() = default;
+
+	void addToDrawList(unsigned VAO, size_t vertices, size_t indices, const SFE::ComponentsModule::Materials& material, const SFE::Math::Mat4& transform, SFE::Math::Mat4* bonesTransforms);
 	void sort(const SFE::Math::Vec3& viewPos = {});
 	void flushAll(bool clear = false);
 
-	std::vector<DrawObject> drawList;
+	SFE::Vector<DrawObject> drawList;
 
-	unsigned instanceVBO = -1;
 	unsigned maxDrawSize = 100000;
 };

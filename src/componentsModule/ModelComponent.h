@@ -6,6 +6,7 @@
 
 #include "ComponentBase.h"
 #include "assetsModule/modelModule/Animation.h"
+#include "assetsModule/modelModule/BoundingVolume.h"
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/modelModule/Model.h"
 #include "ecss/Types.h"
@@ -52,6 +53,7 @@ namespace SFE::ComponentsModule {
 		}
 
 		std::vector<FrustumModule::AABB> aabbs;
+		std::vector<FrustumModule::AABB> defaultAabbs;
 		std::shared_mutex mtx;
 	};
 
@@ -93,7 +95,6 @@ namespace SFE::ComponentsModule {
 		float mCurrentTime = 0.f;
 
 		bool mLoop = true;
-
 	};
 }
 

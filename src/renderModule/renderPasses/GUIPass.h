@@ -2,8 +2,7 @@
 #include "ecss/Registry.h"
 #include "glWrapper/Buffer.h"
 #include "glWrapper/VertexArray.h"
-#include "nodeModule/TreeNode.h"
-#include "renderModule/RenderPass.h"
+#include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/TextRenderer.h"
 
 namespace SFE::Render::RenderPasses {

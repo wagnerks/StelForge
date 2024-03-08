@@ -1,13 +1,7 @@
 ﻿#pragma once
 
 #include <vector>
-
 #include "mathModule/Forward.h"
-
-namespace AssetsModule {
-	struct Vertex;
-	class Mesh;
-}
 
 namespace SFE::FrustumModule {
 
@@ -225,9 +219,9 @@ namespace SFE::FrustumModule {
 	};
 
 
-	inline AABB generateAABB(const std::vector<AssetsModule::Vertex>& mesh);
+	//inline AABB generateAABB(const std::vector<SFE::Vertex3D>& mesh);
 
-	inline Sphere generateSphereBV(const AssetsModule::Mesh& mesh);
+	//inline Sphere generateSphereBV(const SFE::Mesh<Vertex3D>& mesh);
 	
 	//https://www.gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf
 	inline Frustum createFrustum(const Math::Mat4& projView) {

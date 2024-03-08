@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "Asset.h"
+#include "core/Singleton.h"
 #include "modelModule/Model.h"
 #include "memoryModule/GlobalMemoryUser.h"
 

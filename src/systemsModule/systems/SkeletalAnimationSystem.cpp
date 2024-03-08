@@ -1,17 +1,21 @@
 ﻿#include "SkeletalAnimationSystem.h"
 
+#include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/OcclusionComponent.h"
 #include "core/ECSHandler.h"
 
 namespace SFE::SystemsModule {
 	void SkeletalAnimationSystem::update(float dt) {
-		for (auto [entityId, animationComp, modeComp] : ECSHandler::registry().getComponentsArray<ComponentsModule::AnimationComponent, ModelComponent>()) {
+		for (auto [entityId, animationComp, armatureComp, ocComp] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, ComponentsModule::OcclusionComponent>()) {
 			if (animationComp->mCurrentAnimation && (animationComp->mPlay || animationComp->step)) {
 				animationComp->step = false;
 				animationComp->mCurrentTime += animationComp->mCurrentAnimation->getTicksPerSecond() * dt;
 				animationComp->mCurrentTime = fmod(animationComp->mCurrentTime, animationComp->mCurrentAnimation->getDuration());
-
-				updateAnimation(animationComp->mCurrentAnimation, animationComp->mCurrentTime, modeComp->armature, modeComp->boneMatrices);
+				if (ocComp && ocComp->occluded) {
+					continue;
+				}
+				updateAnimation(animationComp->mCurrentAnimation, animationComp->mCurrentTime, armatureComp->armature, &armatureComp->boneMatrices[0]);
 			}
 		}
 	}
@@ -28,7 +32,7 @@ namespace SFE::SystemsModule {
 		return keys.size() - 2;
 	}
 
-	void SkeletalAnimationSystem::updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices) {
+	void SkeletalAnimationSystem::updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, Math::Mat4* boneMatrices) {
 		if (!animation) {
 			return;
 		}
@@ -38,7 +42,7 @@ namespace SFE::SystemsModule {
 		}
 	}
 
-	void SkeletalAnimationSystem::calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, SFE::Math::Mat4 parentTransform,	std::vector<AssetsModule::Bone>& bones, std::vector<SFE::Math::Mat4>& boneMatrices) {
+	void SkeletalAnimationSystem::calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, SFE::Math::Mat4 parentTransform,	std::vector<AssetsModule::Bone>& bones, Math::Mat4* boneMatrices) {
 		if (const auto animationKeys = animation->getBoneAnimationInfo(bone->name)) {
 			bone->pos = interpolatePosition(currentTime, animationKeys->positions);
 			bone->rotation = interpolateRotation(currentTime, animationKeys->rotations);

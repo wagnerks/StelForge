@@ -200,7 +200,7 @@ namespace SFE::Math {
 			auto quaternionAxis = cross(axis, direction);
 			quaternionAxis.normalize();
 
-			auto angle = acos(dot(axis, direction)) * 0.5;
+			auto angle = acos(dot(axis, direction)) * static_cast<T>(0.5);
 			auto s = sin(angle);
 
 			w = cos(angle);

@@ -1,8 +1,5 @@
 ﻿#pragma once
-
-namespace AssetsModule {
-	class Mesh;
-}
+#include "Mesh.h"
 
 namespace SFE::ModelModule {
 	enum class eDrawObjectType {
@@ -15,8 +12,6 @@ namespace SFE::ModelModule {
 
 	class MeshFactory {
 	public:
-		static AssetsModule::Mesh* createPrimitiveMesh(eDrawObjectType type);
+		static Mesh3D createPrimitiveMesh(eDrawObjectType type);
 	};
-
-
 }

@@ -4,17 +4,22 @@
 #include "componentsModule/ModelComponent.h"
 #include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
+#include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/LightSourceComponent.h"
+#include "componentsModule/MeshComponent.h"
+#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/OutlineComponent.h"
 #include "componentsModule/ShaderComponent.h"
 #include "componentsModule/TransformComponent.h"
+#include "containersModule/Vector.h"
 #include "core/ECSHandler.h"
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 #include "logsModule/logger.h"
@@ -32,7 +37,7 @@ void GeometryPass::prepare() {
 	//mStatus = RenderPreparingStatus::PREPARING;
 
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, entities = std::vector<unsigned>(), outlineData]() mutable {
+	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, entities = SFE::Vector<unsigned>(), outlineData]() mutable {
 		FUNCTION_BENCHMARK
 		curPassData->getBatcher().drawList.clear();
 
@@ -58,41 +63,44 @@ void GeometryPass::prepare() {
 		if (entities.empty()) {
 			return;
 		}
-		std::ranges::sort(entities);
+		entities.sort();
 
 		{
 			auto& batcher = curPassData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
-			for (auto [ent, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>(entities)) {
-				if (!modelComp) {
+			for (auto [ent, transform, meshComp, matComp, armatComp, oclComp] : ECSHandler::registry().forEach<TransformComponent, MeshComponent, MaterialComponent, ArmatureComponent, ComponentsModule::OcclusionComponent>(entities)) {
+				if (!meshComp) {
+					continue;
+				}
+				if (oclComp && oclComp->occluded) {
 					continue;
 				}
 
-				for (auto& mesh : modelComp->getModel().meshes) {
-					batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
+				for (auto& mesh : meshComp->meshTree) {
+					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, (matComp ? matComp->materials : ComponentsModule::Materials{}), transform->getTransform(), armatComp ? armatComp->boneMatrices : nullptr);
 				}
 			}
-			batcher.sort(camPos);
+			//batcher.sort(camPos);
 		}
 
 		{
 			auto& outlineBatcher = outlineData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
-			for (const auto& [entity, outline, transform, modelComp, animComp] : ECSHandler::registry().getComponentsArray<OutlineComponent, TransformComponent, ModelComponent, ComponentsModule::AnimationComponent>()) {
-				if (!modelComp || !transform) {
+			for (const auto& [entity, outline, transform, meshComp,  armatComp] : ECSHandler::registry().forEach<OutlineComponent, TransformComponent, MeshComponent,  ArmatureComponent>()) {
+				if (!entities.containsSorted(entity)) {//need to check - if draw all outline objects is faster then cull all of them such way?//todo
 					continue;
 				}
 
-				if (std::find(entities.begin(), entities.end(), entity) == entities.end()) {
+				if (!meshComp) {
 					continue;
 				}
-			
-				for (auto& mesh : modelComp->getModel().meshes) {
-					outlineBatcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transform->getTransform(), modelComp->boneMatrices, false);
+
+				for (auto& mesh : meshComp->meshTree) {
+					outlineBatcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->getTransform(), armatComp ? armatComp->boneMatrices : nullptr);
 				}
 			}
 
-			outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
+			//outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
 		}
 	});
 }
@@ -220,9 +228,9 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 	if (!curPassData->getBatcher().drawList.empty()) {
 		auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 		shaderGeometryPass->use();
-		shaderGeometryPass->setUniform<int>("texture_diffuse1", AssetsModule::DIFFUSE);
-		shaderGeometryPass->setUniform<int>("normalMap", AssetsModule::NORMALS);
-		shaderGeometryPass->setUniform<int>("texture_specular1", AssetsModule::SPECULAR);
+		shaderGeometryPass->setUniform<int>("texture_diffuse1", SFE::DIFFUSE);
+		shaderGeometryPass->setUniform<int>("normalMap", SFE::NORMALS);
+		shaderGeometryPass->setUniform<int>("texture_specular1", SFE::SPECULAR);
 		shaderGeometryPass->setUniform("outline", false);
 
 		curPassData->getBatcher().flushAll(true);

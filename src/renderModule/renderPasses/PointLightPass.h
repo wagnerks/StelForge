@@ -1,11 +1,12 @@
 ﻿#pragma once
 #include <limits>
 
-#include "core/BoundingVolume.h"
-#include "core/Projection.h"
+#include "assetsModule/modelModule/BoundingVolume.h"
+#include "mathModule/Projection.h"
 #include "ecss/Types.h"
+#include "glWrapper/Buffer.h"
 #include "glWrapper/Framebuffer.h"
-#include "renderModule/RenderPass.h"
+#include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
 	class PointLightPass : public RenderPass {
@@ -25,7 +26,7 @@ namespace SFE::Render::RenderPasses {
 		GLW::Buffer mMatricesUBO{GLW::UNIFORM_BUFFER };
 
 		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
-		SFE::ProjectionModule::PerspectiveProjection lightProjection;
+		SFE::MathModule::PerspectiveProjection lightProjection;
 		std::vector<Math::Mat4> lightMatrices;
 		std::vector<FrustumModule::Frustum> frustums;
 		std::vector<std::pair<ecss::SectorId, int>> offsets;

@@ -359,55 +359,36 @@ namespace SFE::GLW {
 		}
 
 		void create(const void* data = nullptr) {
-			clear();
-			generate();
-
 			if (mType == TEXTURE_2D) {
-				bindTextureToSlot(0, mType, mId);
-
-				image2D(width, height, pixelFormat, textureFormat, pixelType, data);
-
-				parameters.apply(this);
-				applyPixelStorageMode();
-
-				bindTexture(mType, 0);
+				create2D(data);
 			}
 			else if (mType == TEXTURE_3D) {
-				bindTextureToSlot(0, mType, mId);
-
-				image3D(width, height, depth, pixelFormat, textureFormat, pixelType, data);
-
-				parameters.apply(this);
-				applyPixelStorageMode();
-
-				bindTexture(mType, 0);
+				create3D(data);
 			}
 		}
 
-		void create2D(int width, int height, PixelFormat pixelFormat = RGBA8, TextureFormat format = RGBA, std::initializer_list<std::pair<SFE::GLW::TextureIParameter, unsigned>> parametersI = {}, std::initializer_list<std::pair<SFE::GLW::TextureFParameter, float>> parametersF = {}, PixelDataType type = UNSIGNED_BYTE,  const void* data = nullptr) {
-			if (!glIsTexture(mId)) {
-				generate();
-			}
+		void create2D(const void* data = nullptr) {
+			clear();
+			generate();
 
 			bindTextureToSlot(0, mType, mId);
 
-			image2D(width, height, pixelFormat, format, type, data);
-			setParameter(parametersI);
-			setParameter(parametersF);
+			image2D(width, height, pixelFormat, textureFormat, pixelType, data);
+			parameters.apply(this);
+			applyPixelStorageMode();
 
 			bindTexture(mType, 0);
 		}
 
-		void create3D(int width, int height, int depth, PixelFormat pixelFormat = RGBA8, TextureFormat format = RGBA, std::initializer_list<std::pair<SFE::GLW::TextureIParameter, unsigned>> parametersI = {}, std::initializer_list<std::pair<SFE::GLW::TextureFParameter, float>> parametersF = {}, PixelDataType type = UNSIGNED_BYTE, const void* data = nullptr) {
-			if (!glIsTexture(mId)) {
-				generate();
-			}
+		void create3D(const void* data = nullptr) {
+			clear();
+			generate();
 
 			bindTextureToSlot(0, mType, mId);
 
-			image3D(width, height, depth, pixelFormat, format, type, data);
-			setParameter(parametersI);
-			setParameter(parametersF);
+			image3D(width, height, depth, pixelFormat, textureFormat, pixelType, data);
+			parameters.apply(this);
+			applyPixelStorageMode();
 
 			bindTexture(mType, 0);
 		}
@@ -428,6 +409,10 @@ namespace SFE::GLW {
 
 		void bind() const {
 			bindTexture(mType, mId);
+		}
+
+		void unbind() const {
+			bindTexture(mType, 0);
 		}
 
 		void setSubImageData2D(int xoffset, int yoffset, int w, int h, const void* data, TextureFormat format = RGBA, PixelDataType type = UNSIGNED_BYTE) const {

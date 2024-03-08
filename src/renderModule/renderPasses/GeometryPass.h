@@ -7,7 +7,7 @@
 #include "glWrapper/Framebuffer.h"
 #include "glWrapper/Renderbuffer.h"
 #include "logsModule/logger.h"
-#include "renderModule/RenderPass.h"
+#include "renderModule/renderPasses/RenderPass.h"
 
 class Batcher;
 

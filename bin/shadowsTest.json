@@ -6,68 +6,6 @@
 			{
 				"ModelComponent" : 
 				{
-					"ModelPath" : "models/test_rotation_anim.fbx"
-				},
-				"TransformComponent" : 
-				{
-					"Pos" : 
-					[
-						300.0,
-						0.0,
-						0.0
-					],
-					"Rotate" : 
-					[
-						-90.0,
-						0.0,
-						0.0
-					],
-					"Scale" : 
-					[
-						1.0,
-						1.0,
-						1.0
-					]
-				}
-			},
-			"id" : "test_rotation_anim"
-		},
-		{
-			"Properties" : 
-			{
-				"ModelComponent" : 
-				{
-					"ModelPath" : "models/animatedPeasant.fbx"
-				},
-				"TransformComponent" : 
-				{
-					"Pos" : 
-					[
-						150.0,
-						0.0,
-						0.0
-					],
-					"Rotate" : 
-					[
-						0.0,
-						0.0,
-						0.0
-					],
-					"Scale" : 
-					[
-						1.0,
-						1.0,
-						1.0
-					]
-				}
-			},
-			"id" : "animatedPeasant"
-		},
-		{
-			"Properties" : 
-			{
-				"ModelComponent" : 
-				{
 					"ModelPath" : "models/vampire.fbx"
 				},
 				"TransformComponent" : 
@@ -92,7 +30,69 @@
 					]
 				}
 			},
-			"id" : "vampire"
+			"id" : "vampire1"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/vampire.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "vampire2"
+		},
+		{
+			"Properties" : 
+			{
+				"ModelComponent" : 
+				{
+					"ModelPath" : "models/vampire.fbx"
+				},
+				"TransformComponent" : 
+				{
+					"Pos" : 
+					[
+						-150.0,
+						0.0,
+						0.0
+					],
+					"Rotate" : 
+					[
+						0.0,
+						0.0,
+						0.0
+					],
+					"Scale" : 
+					[
+						1.0,
+						1.0,
+						1.0
+					]
+				}
+			},
+			"id" : "vampire3"
 		}
 	],
 	"Properties" : 

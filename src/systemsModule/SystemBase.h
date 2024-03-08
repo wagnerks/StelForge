@@ -4,7 +4,7 @@
 
 #include "ecss/Types.h"
 #include <vector>
-#include "core/ThreadPool.h"
+#include "multithreading/ThreadPool.h"
 
 namespace ecss {
 	using SystemType = uint16_t;

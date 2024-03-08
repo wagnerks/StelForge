@@ -1,16 +1,20 @@
 ﻿#pragma once
 
+struct ImGuiContext;
 struct GLFWwindow;
 
 namespace SFE::Debug {
 	class ImGuiDecorator {
 	public:
-		static void init(GLFWwindow*);
-		static void preDraw();
-		static void draw();
-		static void terminate();
-	private:
-		inline static bool inited = false;
+		void init(GLFWwindow*);
+		void setStyle();
+		void preDraw();
+		void draw();
+		void destroyContext();
+
+	public:
+		ImGuiContext* context = nullptr;
+		ImGuiContext* previous = nullptr;
 	};
 }
 

@@ -1,8 +1,17 @@
 ﻿#include "ThreadPool.h"
 
+#include "core/Engine.h"
+
 
 namespace SFE {
-	ThreadPool::ThreadPool() {}
+	ThreadPool::ThreadPool() {
+		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // Create an invisible window
+		mLoadingWindow = glfwCreateWindow(1, 1, "loading", nullptr, Engine::instance()->getMainWindow());
+	}
+
+	ThreadPool::~ThreadPool() {
+		glfwDestroyWindow(mLoadingWindow);
+	}
 
 	void ThreadPool::syncUpdate() {
 		while (!mSyncTasks.empty()) { //mainThreadTasksQueue can be popped only in main thread, and update calling only in main thread, so it safe to check empty without lock
@@ -24,5 +33,13 @@ namespace SFE {
 		mSyncTasks.emplace(std::move(task));
 
 		return mSyncTasks.back().get_future();
+	}
+
+	std::shared_future<void> ThreadPool::addLoadingTask(std::function<void()>&& task) {
+		return mLoadingWorkers.addTask([this, task]() {
+			glfwMakeContextCurrent(mLoadingWindow);
+			task();
+			glfwMakeContextCurrent(nullptr);
+		});
 	}
 }
