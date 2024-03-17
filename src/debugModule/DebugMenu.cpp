@@ -25,12 +25,12 @@ void DebugMenu::draw() {
 			ImGui::DragFloat("camera speed", &ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->movementSpeed, 5.f);
 			if (ImGui::DragFloat("screenDrawData.far", &Render::Renderer::screenDrawData.far, 100.f)) {
 				GLW::setDepthDistance(Render::Renderer::screenDrawData.far);
-				auto camComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID());
+				auto camComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera());
 				camComp->initProjection(camComp->getProjection().getFOV(), camComp->getProjection().getAspect(), camComp->getProjection().getNear(), Render::Renderer::screenDrawData.far);
 			}
 
 			if (ImGui::DragFloat("near", &Render::Renderer::screenDrawData.near, 0.1f)) {
-				auto camComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID());
+				auto camComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera());
 				camComp->initProjection(camComp->getProjection().getFOV(), camComp->getProjection().getAspect(), Render::Renderer::screenDrawData.near, Render::Renderer::screenDrawData.far);
 			}
 

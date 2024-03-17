@@ -16,7 +16,7 @@
 namespace SFE::Render {
 	Gizmo::Gizmo() {
 		onMouseBtnEvent = [this](Math::DVec2 mousePos, CoreModule::MouseButton btn, CoreModule::InputEventType eventType) {
-			if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity) || mHoveredAxis == NONE) {
+			if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().contains(mEntity) || mHoveredAxis == NONE) {
 				return;
 			}
 
@@ -39,7 +39,7 @@ namespace SFE::Render {
 		};
 
 		onMouseEvent = [this](Math::DVec2 mousePos, Math::DVec2 mouseOffset) {
-			if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity)) {
+			if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().contains(mEntity)) {
 				return;
 			}
 
@@ -80,7 +80,7 @@ namespace SFE::Render {
 			ImGui::EndMainMenuBar();
 		}
 
-		if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity)) {
+		if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().contains(mEntity)) {
 			return;
 		}
 
@@ -108,7 +108,7 @@ namespace SFE::Render {
 
 	//process logic
 	std::pair<Axis, Math::Vec3> Gizmo::findHoveredGizmo(GizmoMode mode) const {
-		if (mode == GizmoMode::NONE || !ECSHandler::registry().isEntity(mEntity)) {
+		if (mode == GizmoMode::NONE || !ECSHandler::registry().contains(mEntity)) {
 			return {};
 		}
 
@@ -684,6 +684,7 @@ namespace SFE::Render {
 
 			mText = RenderPasses::GUIPass::registry.takeEntity();
 			color = RenderPasses::GUIPass::registry.addComponent<RenderPasses::ColorComponent>(mText);
+			RenderPasses::GUIPass::registry.addComponent<TransformComponent>(mText, mText);
 			color->color = Math::Vec4{ 0.85f, 0.85f, 0.85f, 1.f };
 
 			auto fontComponent = RenderPasses::GUIPass::registry.addComponent<RenderPasses::FontComponent>(mText);

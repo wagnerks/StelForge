@@ -101,7 +101,8 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 		shader->setUniform("gNormal", 1);
 		shader->setUniform("gAlbedoSpec", 2);
 		batcher.sort(cameraPos);
-		batcher.flushAll(true);
+		batcher.flushAll();
+		batcher.clear();
 	};
 
 	size_t curShaderId = drawableEntities.front().first;

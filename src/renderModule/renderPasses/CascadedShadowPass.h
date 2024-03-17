@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "componentsModule/CascadeShadowComponent.h"
-#include "ecss/EntityHandle.h"
 #include "glWrapper/Buffer.h"
 #include "glWrapper/Framebuffer.h"
 
@@ -25,7 +24,7 @@ namespace SFE::Render::RenderPasses {
 			Math::Vec2 resolution = {};
 			float cameraFarPlane = 0.f;
 			std::vector<float> shadowCascadeLevels;
-			ecss::EntityHandle shadows;
+			ecss::EntityId shadows;
 			std::vector<ComponentsModule::ShadowCascade> shadowCascades;
 			float shadowsIntensity = 0.f;
 		};
@@ -45,7 +44,7 @@ namespace SFE::Render::RenderPasses {
 
 		GLW::Buffer matricesUBO{GLW::UNIFORM_BUFFER };
 
-		ecss::EntityHandle mShadowSource;
+		ecss::EntityId mShadowSource;
 		bool mInited = false;
 		Data mData;
 	};

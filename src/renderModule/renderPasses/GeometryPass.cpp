@@ -34,41 +34,40 @@ using namespace SFE::Render::RenderPasses;
 void GeometryPass::prepare() {
 	auto curPassData = getContainer().getCurrentPassData();
 	auto outlineData = mOutlineData.getCurrentPassData();
-	//mStatus = RenderPreparingStatus::PREPARING;
+	curPassData->mStatus = RenderPreparingStatus::PREPARING;
 
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, entities = SFE::Vector<unsigned>(), outlineData]() mutable {
-		FUNCTION_BENCHMARK
-		curPassData->getBatcher().drawList.clear();
+	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, outlineData]() mutable {
+		FUNCTION_BENCHMARK;
+		curPassData->getBatcher().clear();
+		outlineData->getBatcher().clear();
 
+		SFE:Vector<ecss::EntityId> entities;
 		{
-			FUNCTION_BENCHMARK_NAMED(octree);
+			FUNCTION_BENCHMARK_NAMED(GeometryPass_octree);
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			std::mutex addMtx;
-			auto aabbOctrees = octreeSys->getAABBOctrees(camFrustum.generateAABB());
-			ThreadPool::instance()->addBatchTasks(aabbOctrees.size(), 5, [aabbOctrees, octreeSys, &addMtx, &camFrustum, &entities](size_t it) {
-				if (auto treeIt = octreeSys->getOctree(aabbOctrees[it])) {
-					auto lock = treeIt->readLock();
-					treeIt->forEachObjectInFrustum(camFrustum, [&entities, &camFrustum, &addMtx](const auto& obj) {
-						if (FrustumModule::AABB::isOnFrustum(camFrustum, obj.pos, obj.size)) {
-							std::unique_lock lock(addMtx);
-							entities.emplace_back(obj.data.getID());
+			for (auto& treePos : octreeSys->getAABBOctrees(camFrustum.generateAABB())) {
+				if (const auto tree = octreeSys->getOctree(treePos)) {
+					auto lock = tree->readLock();
+					tree->forEachObjectInFrustum(camFrustum, [&entities, &camFrustum](const auto& obj, bool entirely) {
+						if (entirely || FrustumModule::AABB::isOnFrustum(camFrustum, obj.pos, obj.size)) {
+							entities.emplace_back(obj.data);
 						}
 					});
 				}
-				
-			}).waitAll();
+			}
 		}
 
 		if (entities.empty()) {
+			curPassData->mStatus = RenderPreparingStatus::READY;
 			return;
 		}
 		entities.sort();
 
 		{
+			FUNCTION_BENCHMARK_NAMED(addedToBatcher);
 			auto& batcher = curPassData->getBatcher();
-			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
-			for (auto [ent, transform, meshComp, matComp, armatComp, oclComp] : ECSHandler::registry().forEach<TransformComponent, MeshComponent, MaterialComponent, ArmatureComponent, ComponentsModule::OcclusionComponent>(entities)) {
+			for (auto [ent, transform, meshComp, matComp, armatComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent, const ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OccludedComponent>({entities}, false)) {
 				if (!meshComp) {
 					continue;
 				}
@@ -76,18 +75,18 @@ void GeometryPass::prepare() {
 					continue;
 				}
 
-				for (auto& mesh : meshComp->meshTree) {
-					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, (matComp ? matComp->materials : ComponentsModule::Materials{}), transform->getTransform(), armatComp ? armatComp->boneMatrices : nullptr);
+				for (const auto& mesh : meshComp->meshGraph) {
+					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, matComp ? matComp->materials : ComponentsModule::Materials{}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
 				}
 			}
-			//batcher.sort(camPos);
+			batcher.sort(camPos);
 		}
 
 		{
 			auto& outlineBatcher = outlineData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
-			for (const auto& [entity, outline, transform, meshComp,  armatComp] : ECSHandler::registry().forEach<OutlineComponent, TransformComponent, MeshComponent,  ArmatureComponent>()) {
-				if (!entities.containsSorted(entity)) {//need to check - if draw all outline objects is faster then cull all of them such way?//todo
+				for (const auto& [entity, outline, transform, meshComp, armatComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const OutlineComponent, const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent>({}, false)) {
+				if (!entities.contains(entity)) {//need to check - if draw all outline objects is faster then cull all of them such way?//todo
 					continue;
 				}
 
@@ -95,13 +94,14 @@ void GeometryPass::prepare() {
 					continue;
 				}
 
-				for (auto& mesh : meshComp->meshTree) {
-					outlineBatcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->getTransform(), armatComp ? armatComp->boneMatrices : nullptr);
+				for (const auto& mesh : meshComp->meshGraph) {
+					outlineBatcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
 				}
 			}
 
 			//outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
 		}
+		curPassData->mStatus = RenderPreparingStatus::READY;
 	});
 }
 
@@ -211,10 +211,15 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 
 	renderDataHandle.mGeometryPassData = &mData;
-	if (currentLock.valid()) {
+	{
+		FUNCTION_BENCHMARK_NAMED(_wait_lock);
+		const auto curPassData = getContainer().getCurrentPassData();
+		while (curPassData->mStatus != RenderPreparingStatus::READY) {}
+	}
+	/*if (currentLock.valid()) {
 		FUNCTION_BENCHMARK_NAMED(_lock_wait)
 		currentLock.wait();
-	}
+	}*/
 
 	const auto curPassData = getContainer().getCurrentPassData();
 	const auto outlineData = mOutlineData.getCurrentPassData();
@@ -224,7 +229,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	mData.gFramebuffer.bind();
 	GLW::clear(GLW::ColorBit::DEPTH_COLOR);
-
+	//if (!curPassData->getBatchers().empty()){
 	if (!curPassData->getBatcher().drawList.empty()) {
 		auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 		shaderGeometryPass->use();
@@ -233,7 +238,11 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 		shaderGeometryPass->setUniform<int>("texture_specular1", SFE::SPECULAR);
 		shaderGeometryPass->setUniform("outline", false);
 
-		curPassData->getBatcher().flushAll(true);
+		FUNCTION_BENCHMARK_NAMED(_flush)
+		/*for (auto& batcher : curPassData->getBatchers()) {
+			batcher.flushAll();
+		}*/
+		curPassData->getBatcher().flushAll();
 	}
 
 	/*if (!batcher.drawList.empty()) {
@@ -254,8 +263,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 		g_buffer_outlines->use();
 		g_buffer_outlines->setUniform("PV", renderDataHandle.current.PV);
 
-		outlineData->getBatcher().flushAll(true);
-		
+		outlineData->getBatcher().flushAll();
 		bindTextureToSlot(26, &mData.normalBuffer);
 		bindTextureToSlot(27, &mData.outlinesBuffer);
 		bindTextureToSlot(25, &mData.lightsBuffer);

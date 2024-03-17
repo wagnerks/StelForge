@@ -13,7 +13,7 @@
 
 
 void SFE::SystemsModule::AABBSystem::update(const std::vector<ecss::SectorId>& entitiesToProcess) {
-	ECSHandler::registry().forEach<ComponentsModule::AABBComponent, TransformComponent>(entitiesToProcess, [this](auto entity, ComponentsModule::AABBComponent* aabbcomp, TransformComponent* transform) {
+	ECSHandler::registry().forEachAsync<ComponentsModule::AABBComponent, const TransformComponent>(entitiesToProcess, [this](auto entity, ComponentsModule::AABBComponent* aabbcomp, const TransformComponent* transform) {
 		if (!aabbcomp) {
 			return;
 		}
@@ -40,7 +40,8 @@ void SFE::SystemsModule::AABBSystem::update(const std::vector<ecss::SectorId>& e
 					maxAABB.z = std::max(maxAABB.z, vertex.position.z);
 				}
 
-				aabbcomp->defaultAabbs.emplace_back(minAABB, maxAABB);
+				aabbcomp->defaultAabbs.emplace_back(minAABB / 100.f, maxAABB / 100.f);
+				//aabbcomp->defaultAabbs.emplace_back(minAABB, maxAABB);
 			}
 			aabbcomp->mtx.unlock();
 		}

@@ -11,6 +11,30 @@
 namespace SFE::ComponentsModule {
 	class TransformComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
 	public:
+		TransformComponent(const TransformComponent& other)
+			: ecss::ComponentInterface(other),
+			  PropertiesModule::Serializable(other),
+			  mDirty(other.mDirty),
+			  mRotateQuaternion(other.mRotateQuaternion),
+			  mTransform(other.mTransform),
+			  mPos(other.mPos),
+			  mScale(other.mScale),
+			  mRotate(other.mRotate) {}
+
+		TransformComponent& operator=(const TransformComponent& other) {
+			if (this == &other)
+				return *this;
+			ecss::ComponentInterface::operator =(other);
+			PropertiesModule::Serializable::operator =(other);
+			mDirty = other.mDirty;
+			mRotateQuaternion = other.mRotateQuaternion;
+			mTransform = other.mTransform;
+			mPos = other.mPos;
+			mScale = other.mScale;
+			mRotate = other.mRotate;
+			return *this;
+		}
+
 		TransformComponent(TransformComponent&& other) noexcept
 			: ecss::ComponentInterface(std::move(other)),
 			  PropertiesModule::Serializable(std::move(other)),
@@ -91,6 +115,10 @@ namespace SFE::ComponentsModule {
 		Math::Vec3 mRotate = { 0.f }; 
 		
 		mutable std::shared_mutex mtx;
+	};
+
+	struct TransformMatComp {
+		Math::Mat4 mTransform = Math::Mat4{ 1.f };
 	};
 
 }

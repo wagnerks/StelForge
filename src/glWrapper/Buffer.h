@@ -39,9 +39,9 @@ namespace SFE::GLW {
 		DYNAMIC_COPY = GL_DYNAMIC_COPY,
 	};
 
-	struct BindGuard {
-		BindGuard(BufferType type) : mType(type) {}
-		~BindGuard();
+	struct BindLock {
+		BindLock(BufferType type) : mType(type) {}
+		~BindLock();
 
 	private:
 		BufferType mType;
@@ -91,7 +91,7 @@ namespace SFE::GLW {
 			glGenBuffers(Count, mId);
 		}
 
-		BindGuard bindWithGuard() const {//todo some other interface
+		BindLock lock() const {//todo some other interface
 			bind();
 			return { mType };
 		}

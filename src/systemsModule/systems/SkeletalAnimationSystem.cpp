@@ -1,5 +1,6 @@
 ﻿#include "SkeletalAnimationSystem.h"
 
+#include "RenderSystem.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcclusionComponent.h"
@@ -7,7 +8,7 @@
 
 namespace SFE::SystemsModule {
 	void SkeletalAnimationSystem::update(float dt) {
-		for (auto [entityId, animationComp, armatureComp, ocComp] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, ComponentsModule::OcclusionComponent>()) {
+		for (auto [entityId, animationComp, armatureComp, ocComp] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, const ComponentsModule::OcclusionComponent>()) {
 			if (animationComp->mCurrentAnimation && (animationComp->mPlay || animationComp->step)) {
 				animationComp->step = false;
 				animationComp->mCurrentTime += animationComp->mCurrentAnimation->getTicksPerSecond() * dt;
@@ -15,7 +16,17 @@ namespace SFE::SystemsModule {
 				if (ocComp && ocComp->occluded) {
 					continue;
 				}
+
 				updateAnimation(animationComp->mCurrentAnimation, animationComp->mCurrentTime, armatureComp->armature, &armatureComp->boneMatrices[0]);
+
+				auto bonesComp = ECSHandler::registry().addComponent<ComponentsModule::ArmatureBonesComponent>(entityId);
+				if (auto renderSys = ECSHandler::systemManager().getSystem<RenderSystem>()) {
+					renderSys->markDirty<ComponentsModule::ArmatureBonesComponent>(entityId);
+				}
+
+				bonesComp->boneMatrices.resize(100);
+				std::memcpy(bonesComp->boneMatrices.data(), armatureComp->boneMatrices, sizeof(armatureComp->boneMatrices));
+				
 			}
 		}
 	}

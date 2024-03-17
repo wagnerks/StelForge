@@ -14,11 +14,11 @@ namespace SFE::SystemsModule {
 		auto aspect = static_cast<float>(Render::Renderer::screenDrawData.width) / static_cast<float>(Render::Renderer::screenDrawData.height);
 		mDefaultCamera = ECSHandler::registry().takeEntity();
 
-		auto transform = ECSHandler::registry().addComponent<TransformComponent>(mDefaultCamera, mDefaultCamera.getID());
+		auto transform = ECSHandler::registry().addComponent<TransformComponent>(mDefaultCamera, mDefaultCamera);
 		transform->setPos({ 0.f, 200.f, 400.f });
 		transform->setRotate({ -20.f, 0.f, 0.0f });
-		ECSHandler::registry().addComponent<CameraComponent>(mDefaultCamera, mDefaultCamera.getID(), 45.f, aspect, Render::Renderer::screenDrawData.near, Render::Renderer::screenDrawData.far);
-		//ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(transform->getViewMatrix());
+		transform->reloadTransform();
+		ECSHandler::registry().addComponent<CameraComponent>(mDefaultCamera, 45.f, aspect, Render::Renderer::screenDrawData.near, Render::Renderer::screenDrawData.far)->updateFrustum(transform->getViewMatrix());
 		initKeyEvents();
 	}
 
@@ -44,12 +44,12 @@ namespace SFE::SystemsModule {
 		}
 	}
 
-	void CameraSystem::setCurrentCamera(const ecss::EntityHandle& camera) {
+	void CameraSystem::setCurrentCamera(ecss::EntityId camera) {
 		mCurrentCamera = camera;
 	}
 
-	const ecss::EntityHandle& CameraSystem::getCurrentCamera() const {
-		if (mCurrentCamera) {
+	ecss::EntityId CameraSystem::getCurrentCamera() const {
+		if (mCurrentCamera != ecss::INVALID_ID) {
 			return mCurrentCamera;
 		}
 
@@ -86,8 +86,8 @@ namespace SFE::SystemsModule {
 		};
 	}
 
-	void CameraSystem::processKeyboard(const ecss::EntityHandle& camera, CameraMovement direction, float deltaTime) {
-		if (!camera) {
+	void CameraSystem::processKeyboard(ecss::EntityId camera, CameraMovement direction, float deltaTime) {
+		if (camera == ecss::INVALID_ID) {
 			return;
 		}
 

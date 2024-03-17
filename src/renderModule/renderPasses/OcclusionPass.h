@@ -13,7 +13,7 @@ namespace SFE::Render::RenderPasses {
 		GLW::Framebuffer occlusionFrameBuffer;
 		GLW::Texture depthTex;
 
-		const float w = Renderer::screenDrawData.renderW / 32.f;
-		const float h = Renderer::screenDrawData.renderH / 32.f;
+		const float w = Renderer::screenDrawData.renderW / 16.f;
+		const float h = Renderer::screenDrawData.renderH / 16.f;
 	};
 }

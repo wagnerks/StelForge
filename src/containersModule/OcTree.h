@@ -281,6 +281,18 @@ namespace SFE {
 		}
 
 	public:
+		static inline Math::Vec3 calculateCenter(const Math::Vec3& ltfPos, float size) {
+			return ltfPos + Math::Vec3(size, -size, size) * 0.5f;
+		}
+
+		static inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
+			return FrustumModule::SquareAABB::isOnFrustum(camFrustum, calculateCenter(ltf, size), size * 0.5f);
+		}
+
+		static inline bool isOnFrustumEntirely(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
+			return FrustumModule::SquareAABB::isOnFrustumEntirely(camFrustum, calculateCenter(ltf, size), size * 0.5f);
+		}
+
 		inline void clear() {
 			std::unique_lock lock(mtx);
 			data.clear();
@@ -380,6 +392,26 @@ namespace SFE {
 
 			forEachNode(nodePos, nodeSize, [func, pred](const SFE::Math::Vec3& pos, float size, OcTreeNode& node) {
 				node.forEachNode(pos, size, func, pred);
+			});
+		}
+
+		inline void forEachNodeInFrustum(const SFE::Math::Vec3& nodePos, float nodeSize, std::function<void(const ObjectType&, bool)> func, const SFE::FrustumModule::Frustum& frustum) {
+			bool entirely = false;
+			if (isOnFrustum(frustum, nodePos, nodeSize)) {
+				if (isOnFrustumEntirely(frustum, nodePos, nodeSize)) {
+					entirely = true;
+				}
+			}
+			else {
+				return;
+			}
+
+			for (const auto& object : data) {
+				func(object, entirely);
+			}
+
+			forEachNode(nodePos, nodeSize, [func, frustum](const SFE::Math::Vec3& pos, float size, OcTreeNode& node) {
+				node.forEachNodeInFrustum(pos, size, func, frustum);
 			});
 		}
 
@@ -689,13 +721,9 @@ namespace SFE {
 			return isPointInBox(pos - size, nodePos, nodeSize) && isPointInBox(pos + size, nodePos, nodeSize);
 		}
 
-		static inline Math::Vec3 calculateCenter(const Math::Vec3& ltfPos, float size) {
-			return ltfPos + Math::Vec3(size, -size, size) * 0.5f;
-		}
+		
 
-		static inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
-			return FrustumModule::SquareAABB::isOnFrustum(camFrustum, calculateCenter(ltf, size), size * 0.5f);
-		}
+		
 
 	public:
 		static inline void drawOctreeHelper(const NodeType& node, float nodeSize, const Math::Vec3& nodePos, bool drawObjAABB) {
@@ -750,10 +778,8 @@ namespace SFE {
 		}
 
 	public:
-		inline void forEachObjectInFrustum(const SFE::FrustumModule::Frustum& frustum, std::function<void(const ObjectType&)> func) {
-			root.forEachNode(mPos, mSize, func, [&frustum](const SFE::Math::Vec3& pos, float size, NodeType& node) {
-				return isOnFrustum(frustum, pos, size);
-			});
+		inline void forEachObjectInFrustum(const SFE::FrustumModule::Frustum& frustum, std::function<void(const ObjectType&, bool)> func) {
+			root.forEachNodeInFrustum(mPos, mSize, func, frustum);
 		}
 
 		inline void forEachObject(std::function<void(const ObjectType&)> func, std::function<bool(const SFE::Math::Vec3&, float, NodeType&)> pred) {
@@ -879,7 +905,11 @@ namespace SFE {
 		}
 
 		inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum) const {
-			return isOnFrustum(camFrustum, mPos, mSize);
+			return NodeType::isOnFrustum(camFrustum, mPos, mSize);
+		}
+
+		static inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
+			return NodeType::isOnFrustum(camFrustum, ltf, size);
 		}
 
 	public:

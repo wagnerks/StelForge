@@ -4,10 +4,6 @@
 #include "ecss/Types.h"
 #include "renderModule/Gizmo.h"
 
-namespace ecss {
-	class EntityHandle;
-}
-
 namespace SFE {
 	namespace ComponentsModule {
 		struct OcclusionComponent;
@@ -28,7 +24,7 @@ namespace SFE::Debug {
 	class ComponentsDebug : public Singleton<ComponentsDebug>, public CoreModule::InputObserver {
 	public:
 		void init() override;
-		void drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID);
+		void drawTree(ecss::EntityId entity, ecss::SectorId& selectedID);
 		void entitiesDebug();
 
 		void editComponentGui(ComponentsModule::CameraComponent* component);

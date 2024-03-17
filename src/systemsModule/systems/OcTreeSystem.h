@@ -1,7 +1,6 @@
 ﻿#pragma once
 #include "systemsModule/SystemBase.h"
 #include "containersModule//OcTree.h"
-#include "ecss/EntityHandle.h"
 
 namespace SFE {
 	namespace FrustumModule {
@@ -14,7 +13,7 @@ namespace SFE::SystemsModule {
 	class OcTreeSystem : public ecss::System, public ThreadSynchronizer {
 	public:
 		inline static constexpr size_t OCTREE_SIZE = 4096;
-		using SysOcTree = OcTree<ecss::EntityHandle, 5, OCTREE_SIZE>;
+		using SysOcTree = OcTree<ecss::EntityId, 5, OCTREE_SIZE>;
 
 		OcTreeSystem();
 
@@ -23,7 +22,7 @@ namespace SFE::SystemsModule {
 		std::vector<Math::Vec3> getAABBOctrees(const FrustumModule::AABB& aabb);
 
 		void forEachOctreeInAABB(const FrustumModule::AABB& aabb, std::function<void(SysOcTree&)> func);
-		void forEachOctreePosInAABB(const FrustumModule::AABB& aabb, std::function<void(const Math::Vec3&)> func);
+		void forEachOctreePosInAABB(const FrustumModule::AABB& aabb, std::function<void(const Math::Vec3&)> func, bool onlyExisted = false);
 
 		SysOcTree* getOctree(const Math::Vec3& octree) {
 			auto treeIt = mOctrees.find(octree);
@@ -34,6 +33,9 @@ namespace SFE::SystemsModule {
 			return nullptr;
 		}
 
+		float curMinX, curMinY, curMinZ;
+		float curMaxX, curMaxY, curMaxZ;
+		
 		void deleteOctree(const Math::Vec3& octree);
 	public:
 

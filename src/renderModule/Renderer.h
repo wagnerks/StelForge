@@ -26,7 +26,7 @@ namespace SFE::Render {
 		~Renderer() override;
 
 		void swapBuffer();
-
+		void update();
 		inline static CoreModule::ScreenDrawData screenDrawData;
 
 	public:

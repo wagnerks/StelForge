@@ -1,7 +1,7 @@
 ﻿#include "Buffer.h"
 
 namespace SFE::GLW {
-	BindGuard::~BindGuard() {
+	BindLock::~BindLock() {
 		Buffer::bindDefaultBuffer(mType);
 	}
 }

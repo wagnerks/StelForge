@@ -4,10 +4,10 @@
 #include "assetsModule/modelModule/BoundingVolume.h"
 
 namespace SFE::ComponentsModule {
-	class CameraComponent : public ecss::ComponentInterface {
+	class CameraComponent {
 	public:
-		CameraComponent(ecss::SectorId id);
-		CameraComponent(ecss::SectorId id, float FOV, float aspect, float zNear, float zFar);
+		CameraComponent() = default;
+		CameraComponent(float FOV, float aspect, float zNear, float zFar);
 		MathModule::PerspectiveProjection& getProjection();
 
 		void initProjection(const float FOV, float aspect, float zNear, float zFar);

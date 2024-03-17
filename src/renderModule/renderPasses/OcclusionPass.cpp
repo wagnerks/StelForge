@@ -5,6 +5,7 @@
 #include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
+#include "debugModule/Benchmark.h"
 #include "glWrapper/Depth.h"
 #include "glWrapper/ViewportStack.h"
 #include "systemsModule/systems/OcTreeSystem.h"
@@ -37,8 +38,10 @@ namespace SFE::Render::RenderPasses {
 	}
 
 	void OcclusionPass::render(SystemsModule::RenderData& renderDataHandle) {
+		FUNCTION_BENCHMARK
+			return;
 		//todo update it only for objects with dirty transforms, or if camera moved (especially for shadows)
-		SFE::Vector<unsigned> entities;
+		ecss::EntitiesRanges entities;
 		{
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
 			std::mutex addMtx;
@@ -46,10 +49,10 @@ namespace SFE::Render::RenderPasses {
 			ThreadPool::instance()->addBatchTasks(aabbOctrees.size(), 5, [aabbOctrees, octreeSys, &addMtx, &renderDataHandle, &entities](size_t it)mutable {
 				if (auto treeIt = octreeSys->getOctree(aabbOctrees[it])) {
 					auto lock = treeIt->readLock();
-					treeIt->forEachObjectInFrustum(renderDataHandle.mNextCamFrustum, [&entities, &renderDataHandle, &addMtx](const auto& obj) {
-						if (FrustumModule::AABB::isOnFrustum(renderDataHandle.mNextCamFrustum, obj.pos, obj.size)) {
+					treeIt->forEachObjectInFrustum(renderDataHandle.mNextCamFrustum, [&entities, &renderDataHandle, &addMtx](const auto& obj, bool entirely) {
+						if (entirely || FrustumModule::AABB::isOnFrustum(renderDataHandle.mNextCamFrustum, obj.pos, obj.size)) {
 							std::unique_lock lock(addMtx);
-							entities.emplace_back(obj.data.getID());
+							entities.insert(obj.data);
 						}
 					});
 				}
@@ -60,7 +63,6 @@ namespace SFE::Render::RenderPasses {
 		if (entities.empty()) {
 			return;
 		}
-		entities.sort();
 		
 		GLW::ViewportStack::push({ {static_cast<int>(w), static_cast<int>(h)} });
 		occlusionFrameBuffer.bind();
@@ -91,6 +93,8 @@ namespace SFE::Render::RenderPasses {
 				}
 				occlusion->query->getResult(res);
 				occlusion->occluded = res == 0;
+				auto occluded = ECSHandler::registry().addComponent<ComponentsModule::OccludedComponent>(entity);
+				occluded->occluded = occlusion->occluded;
 			}
 
 			if (!occlusion->occluderAABB.empty()) {

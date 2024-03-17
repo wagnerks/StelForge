@@ -23,9 +23,10 @@ namespace SFE::Render {
 	public:
 		virtual ~RenderPassData() = default;
 		Batcher& getBatcher() { return mBatcher; }
+		std::atomic<RenderPreparingStatus> mStatus = RenderPreparingStatus::READY; //default status is ready for passes without render data
+
 	private:
 		Batcher mBatcher;
-		
 	};
 
 	class RenderPass {
@@ -59,8 +60,6 @@ namespace SFE::Render {
 			passData.clear();
 		}
 
-		RenderPreparingStatus getStatus() { return mStatus; }
-
 		void rotate() {
 			if (cur == passData.size() - 1) {
 				cur = 0;
@@ -74,8 +73,9 @@ namespace SFE::Render {
 			return passData[cur];
 		}
 
+		
 	private:
-		RenderPreparingStatus mStatus = RenderPreparingStatus::READY; //default status is ready for passes without render data
+		
 		std::vector<RenderPassData*> passData;
 		int cur = 0;
 	};

@@ -4,7 +4,34 @@
 
 namespace SFE {
 	template<class Data>
-	struct Tree {
+	struct Graph {
+		struct Node {
+			Data value = {};
+			int parent = 0;
+			int id = 0;
+			std::vector<size_t> children;
+		};
+
+		void addChild(Data&& data, int parent = 0) {
+			tree.emplace_back(std::forward<Data>(data), parent, tree.size());
+			tree[parent].children.push_back(tree.size() - 1);
+		}
+
+		typename std::vector<Node>::iterator begin() { return tree.begin(); }
+		typename std::vector<Node>::iterator end() { return tree.end(); }
+
+		typename std::vector<Node>::const_iterator begin() const { return tree.cbegin(); }
+		typename std::vector<Node>::const_iterator end() const { return tree.cend(); }
+
+		Node& root() { return tree[0]; }
+	private:
+
+		std::vector<Node> tree = {{}};
+	};
+
+	template<class Data>
+	struct Tree { //todo custom allocator and fast iteration, store data sequentially
+		//the problem is that reference on parent should be updated every add child if data was reallocated
 		Tree(const Tree& other)
 			: value(other.value),
 			  children(other.children),
@@ -109,8 +136,73 @@ namespace SFE {
 			Tree* mCurrentNode = nullptr;
 		};
 
+		class ConstIterator {
+		public:
+			ConstIterator(const Tree* tree) {
+				mCurrentNode = tree;
+			}
+
+			const Tree& operator*() const {
+				return *mCurrentNode;
+			}
+
+			ConstIterator& operator++() {
+				if (mPosition.empty()) {
+					if (mCurrentNode->children.empty()) {
+						mCurrentNode = nullptr;
+						return *this;
+					}
+
+					mPosition.push_back(mCurrentNode->children.cbegin());
+					mCurrentNode = &*mPosition.back();
+
+					return *this;
+				}
+
+				if (!mCurrentNode->children.empty() && !mVisited.contains(mCurrentNode)) {
+					mPosition.push_back(mCurrentNode->children.cbegin());
+					mCurrentNode = &*mPosition.back();
+
+					return *this;
+				}
+
+				while (++mPosition.back() == mCurrentNode->parent->children.cend()) {
+					mPosition.pop_back();
+					if (mPosition.empty()) {
+						mCurrentNode = nullptr;
+						return *this;
+					}
+
+					mVisited.insert(mCurrentNode->parent);
+
+					mCurrentNode = &*(mPosition.back());
+					auto next = mPosition.back();
+					++next;
+					if (next == mCurrentNode->parent->children.cend()) {
+						continue;
+					}
+
+					mCurrentNode = &*(next);
+					return *this;
+				}
+
+				mCurrentNode = &*mPosition.back();
+				return *this;
+			}
+
+			bool operator!=(const ConstIterator& other) const { return other.mCurrentNode != mCurrentNode; }
+
+		private:
+			std::vector<typename std::forward_list<Tree>::const_iterator> mPosition;
+			std::set<const Tree*> mVisited;
+			const Tree* mCurrentNode = nullptr;
+		};
+
 		Iterator begin() { return Iterator(this); }
 		Iterator end() { return Iterator(nullptr); }
+
+		ConstIterator begin() const { return ConstIterator(this); }
+		ConstIterator end() const { return ConstIterator(nullptr); }
 
 	public:
 		Tree() = default;

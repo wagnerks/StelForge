@@ -3,6 +3,10 @@
 #include <vector>
 
 #include "assetsModule/modelModule/BoundingVolume.h"
+#include "componentsModule/ArmatureComponent.h"
+#include "componentsModule/OcclusionComponent.h"
+#include "componentsModule/OutlineComponent.h"
+#include "componentsModule/TransformComponent.h"
 #include "systemsModule/SystemBase.h"
 #include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
@@ -51,6 +55,13 @@ namespace SFE::SystemsModule {
 		Render::RenderPasses::SSAOPass::Data* mSSAOPassData;
 
 		RenderMode mRenderType = RenderMode::DEFAULT;
+
+		uint8_t currentRegistry = 0;
+		uint8_t nextRegistry = 1;
+
+		void rotate() {
+			std::swap(currentRegistry, nextRegistry);
+		}
 	};
 
 	class RenderSystem : public ecss::System {
@@ -67,7 +78,63 @@ namespace SFE::SystemsModule {
 			return mShadowsDebugDataDraw;
 		}
 
+		static inline ecss::ECSType types = 0;
+
+		template<typename T>
+		static ecss::ECSType getDirtyId() {
+			static ecss::ECSType typeId = types++;
+			return typeId;
+		}
+
+		template<typename CompType>
+		void markDirty(ecss::EntityId id) {
+			if constexpr
+			(
+				std::is_same_v<CompType, MaterialComponent> ||
+				std::is_same_v<CompType, ComponentsModule::TransformMatComp> ||
+				std::is_same_v<CompType, ComponentsModule::ArmatureBonesComponent> ||
+				std::is_same_v<CompType, OutlineComponent> ||
+				std::is_same_v<CompType, MeshComponent> ||
+				std::is_same_v<CompType, ComponentsModule::OccludedComponent>
+			)
+			{
+				markDirtyImpl<CompType>(id);
+			}
+		}
+
+		template<typename T>
+		void markRemoved(ecss::EntityId id) {
+			auto lock = std::unique_lock(dirtiesMutex);
+			auto& entities = removed[getDirtyId<T>()];
+
+			if (auto it = entities.find([id](const std::pair<ecss::EntityId, uint8_t>& a) { return a.first == id; })) {
+				it->second = 2;
+			}
+			else {
+				entities.emplace_back(id, 2);
+			}
+		}
+
+		
 	private:
+
+		template<typename T>
+		void markDirtyImpl(ecss::EntityId id) {
+			auto lock = std::unique_lock(dirtiesMutex);
+			auto& entities = dirties[getDirtyId<T>()];
+
+			if (auto it = entities.find([id](const std::pair<ecss::EntityId, uint8_t>& a) { return a.first == id; })) {
+				it->second = 2;
+			}
+			else {
+				entities.emplace_back(id, 2);
+			}
+		}
+
+		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dirties;
+		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> removed;
+		std::shared_mutex dirtiesMutex;
+
 		bool mGeometryPassDataWindow = false;
 		bool mShadowsDebugDataDraw = false;
 
@@ -76,7 +143,7 @@ namespace SFE::SystemsModule {
 
 		RenderData mRenderData;
 		std::vector<Render::RenderPass*> mRenderPasses;
-
+		std::shared_future<void> updateLock;
 		GLW::Buffer cameraMatricesUBO{GLW::UNIFORM_BUFFER};
 	};
 }

@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "core/InputHandler.h"
-#include "ecss/EntityHandle.h"
 #include "systemsModule/SystemBase.h"
 
 namespace SFE::SystemsModule {
@@ -23,8 +22,8 @@ namespace SFE::SystemsModule {
 		void processMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
 		void processMouseScroll(float yoffset);
 
-		void setCurrentCamera(const ecss::EntityHandle& camera);
-		const ecss::EntityHandle& getCurrentCamera() const;
+		void setCurrentCamera(ecss::EntityId camera);
+		ecss::EntityId getCurrentCamera() const;
 
 		bool processMouse = false;
 		float movementSpeed = 100.f;
@@ -32,10 +31,10 @@ namespace SFE::SystemsModule {
 	
 	private:
 		void initKeyEvents();
-		void processKeyboard(const ecss::EntityHandle& camera, CameraMovement direction, float deltaTime);
-		ecss::EntityHandle mCurrentCamera;
+		void processKeyboard(ecss::EntityId camera, CameraMovement direction, float deltaTime);
+		ecss::EntityId mCurrentCamera = ecss::INVALID_ID;
 
-		ecss::EntityHandle mDefaultCamera;
+		ecss::EntityId mDefaultCamera = ecss::INVALID_ID;
 
 		std::map<CoreModule::InputKey, bool> isPressed;
 	};

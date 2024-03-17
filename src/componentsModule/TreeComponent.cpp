@@ -18,7 +18,7 @@ namespace SFE::ComponentsModule {
 	void TreeComponent::addChildEntityForce(ecss::SectorId id) {
 		if (std::find(mChildrenEntities.begin(), mChildrenEntities.end(), id) == mChildrenEntities.end()) {
 			mChildrenEntities.push_back(id);
-			if (auto tree = ECSHandler::registry().getComponentForce<TreeComponent>(id)) {
+			if (auto tree = ECSHandler::registry().getComponentNotSafe<TreeComponent>(id)) {
 				tree->setParent(getEntityId());;
 			}
 		}
@@ -26,7 +26,7 @@ namespace SFE::ComponentsModule {
 
 	void TreeComponent::removeChildEntityForce(ecss::SectorId id) {
 		std::erase(mChildrenEntities, id);
-		if (auto tree = ECSHandler::registry().getComponentForce<TreeComponent>(id)) {
+		if (auto tree = ECSHandler::registry().getComponentNotSafe<TreeComponent>(id)) {
 			tree->setParent(ecss::INVALID_ID);
 		}
 	}
@@ -67,12 +67,12 @@ namespace SFE::ComponentsModule {
 	}
 
 	TreeComponent::~TreeComponent() {
-		if (const auto parent = ECSHandler::registry().getComponentForce<TreeComponent>(mParentEntity)) {
+		if (const auto parent = ECSHandler::registry().getComponentNotSafe<TreeComponent>(mParentEntity)) {
 			parent->removeChildEntityForce(getEntityId());
 		}
 
 		for (const auto child : mChildrenEntities) {
-			if (auto childNode = ECSHandler::registry().getComponentForce<TreeComponent>(child)) {
+			if (auto childNode = ECSHandler::registry().getComponentNotSafe<TreeComponent>(child)) {
 				childNode->setParent(ecss::INVALID_ID);
 			}
 		}

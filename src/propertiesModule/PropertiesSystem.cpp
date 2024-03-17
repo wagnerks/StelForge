@@ -1,7 +1,6 @@
 #include "propertiesModule/PropertiesSystem.h"
 #include "core/FileSystem.h"
 
-#include "TypeName.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
@@ -17,7 +16,7 @@
 #include "multithreading/ThreadPool.h"
 
 namespace SFE::PropertiesModule {
-	ecss::EntityHandle PropertiesSystem::loadScene(std::string_view path) {
+	ecss::EntityId PropertiesSystem::loadScene(std::string_view path) {
 		if (!FileSystem::isFileExists(path)) {
 			return {};
 		}
@@ -29,8 +28,8 @@ namespace SFE::PropertiesModule {
 		return scene;
 	}
 
-	void PropertiesSystem::applyProperties(const ecss::EntityHandle& entity, const Json::Value& properties) {
-		if (!entity) {
+	void PropertiesSystem::applyProperties(ecss::EntityId entity, const Json::Value& properties) {
+		if (entity == ecss::INVALID_ID) {
 			return;
 		}
 		if (!properties.isMember("Properties")) {
@@ -41,7 +40,7 @@ namespace SFE::PropertiesModule {
 		deserializeProperty<TransformComponent>(entity, properties["Properties"]);
 	}
 
-	void PropertiesSystem::fillTree(const ecss::EntityHandle& entity, const Json::Value& properties) {
+	void PropertiesSystem::fillTree(ecss::EntityId entity, const Json::Value& properties) {
 		if (!properties.isObject()) {
 			return;
 		}
@@ -58,7 +57,7 @@ namespace SFE::PropertiesModule {
 		auto modelComp = ECSHandler::registry().getComponent<ModelComponent>(entity);
 		if (modelComp && !modelComp->getModel().meshes.empty()) {
 			auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
-			meshComp->meshTree.value = { MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh).vao.getID(), static_cast<int>(modelComp->getModel().meshes[0]->mesh.vertices.size()), static_cast<int>(modelComp->getModel().meshes[0]->mesh.indices.size()) };
+			meshComp->meshGraph.root().value = { MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh).vao.getID(), static_cast<int>(modelComp->getModel().meshes[0]->mesh.vertices.size()), static_cast<int>(modelComp->getModel().meshes[0]->mesh.indices.size()) };
 			auto materialComp = ECSHandler::registry().addComponent<MaterialComponent>(entity);
 			for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
 				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture->mId, mat.second.texture->mType});
@@ -70,20 +69,20 @@ namespace SFE::PropertiesModule {
 
 		}
 		
-		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity.getID());
+		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity);
 
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
 				auto child = ECSHandler::registry().takeEntity();				
 				fillTree(child, element);
-				treeComp->addChildEntity(child.getID());
+				treeComp->addChildEntity(child);
 			}
 		}
 	}
 
-	Json::Value PropertiesSystem::serializeEntity(const ecss::EntityHandle& entity) {
+	Json::Value PropertiesSystem::serializeEntity(ecss::EntityId entity) {
 		Json::Value result = Json::objectValue;
-		if (!entity) {
+		if (entity == ecss::INVALID_ID) {
 			return result;
 		}
 
@@ -102,7 +101,7 @@ namespace SFE::PropertiesModule {
 			result["Children"] = Json::arrayValue;
 			auto& childrenJson = result["Children"];
 			for (auto node : children) {
-				childrenJson.append(serializeEntity(ECSHandler::registry().getEntity(node)));
+				childrenJson.append(serializeEntity(node));
 			}
 		}
 

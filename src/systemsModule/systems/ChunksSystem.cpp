@@ -85,7 +85,7 @@ namespace SFE::SystemsModule {
 						ECSHandler::getSystem<OcTreeSystem>()->forEachOctreeInAABB(FrustumModule::AABB{{chunk + CHUNK_SIZE * 0.5f}, CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f}, [&entitiesToDelete](OcTreeSystem::SysOcTree& octree) mutable {
 							auto lock = octree.readLock();
 							octree.forEach([octree, &entitiesToDelete](auto& obj) mutable {
-								auto octreeComp = ECSHandler::registry().getComponent<OcTreeComponent>(obj.data.getID());
+								auto octreeComp = ECSHandler::registry().getComponent<OcTreeComponent>(obj.data);
 								assert(octreeComp);
 								if (!octreeComp->mParentOcTrees.empty()) {
 									auto it = std::find(octreeComp->mParentOcTrees.begin(), octreeComp->mParentOcTrees.end(), octree.mPos);
@@ -96,7 +96,7 @@ namespace SFE::SystemsModule {
 								}
 								
 								if (octreeComp->mParentOcTrees.empty()) {
-									entitiesToDelete.push_back(obj.data.getID());
+									entitiesToDelete.push_back(obj.data);
 								}
 							});
 							lock.unlock();
@@ -211,11 +211,11 @@ namespace SFE::SystemsModule {
 						float randomValue2 = distribution1(generator);
 						ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(cube);
 						ECSHandler::registry().addComponent<OcTreeComponent>(cube);
-						ECSHandler::registry().addComponentWithInit<ModelComponent>(cube, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, cube.getID());
+						/*ECSHandler::registry().addComponentWithInit<ModelComponent>(cube, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, cube);
 						ECSHandler::registry().addComponentWithInit<TransformComponent>(cube, [chunk, i ,step,y,z, randomValue, randomValue2](TransformComponent* comp) {
 							comp->setPos(chunk + Math::Vec3{ i* step, y* step + randomValue, z* step });
 							comp->setScale({ randomValue2 * 0.1f, randomValue2 * 0.1f, randomValue2 * 0.1f });
-						}, cube.getID());
+						}, cube);*/
 					}
 				}
 			}

@@ -30,6 +30,7 @@
 #include <Jolt/Jolt.h>
 
 #include "Benchmark.h"
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "componentsModule/ActionComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcclusionComponent.h"
@@ -88,7 +89,7 @@ void ComponentsDebug::init() {
 						auto dist = Math::lengthSquared(collisionPos - camRay.a);
 						if (dist < minDistance) {
 							minDistance = dist;
-							setSelectedId(object.data.getID());
+							setSelectedId(object.data);
 						}
 					}
 				});
@@ -118,18 +119,37 @@ void ComponentsDebug::init() {
 				transform->setPos(camRay.a + camRay.direction * 100.f);
 				transform->setScale({ 10.f, 10.f, 10.f });
 				auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
+	
 				ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(bullet);
 				ECSHandler::registry().addComponent<OcTreeComponent>(bullet);
-				ECSHandler::registry().addComponentWithInit<ModelComponent>(bullet, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, bullet.getID());
+				auto modelComp = ECSHandler::registry().addComponent<ModelComponent>(bullet, bullet);
 
+				modelComp->mPath = "models/cube.fbx";
+				modelComp->boneMatrices = cubeModel->getDefaultBoneMatrices();
+				modelComp->armature = cubeModel->getArmature();
+				modelComp->setModel(cubeModel->getLODs());
+
+				ECSHandler::registry().addComponent<IsDrawableComponent>(bullet);
+
+				if (modelComp && !modelComp->getModel().meshes.empty()) {
+					auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(bullet);
+
+					for (const auto& node : cubeModel->getMeshTree()) {
+						auto& meshObj = node.value;
+						if (!meshObj.mesh.vertices.size()) {
+							continue;
+						}
+						meshComp->meshGraph.addChild(MeshComponent::MeshData { SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(), static_cast<int>(meshObj.mesh.vertices.size()), static_cast<int>(meshObj.mesh.indices.size()) });
+					}
+				}
+
+
+					
 
 				JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
-				auto tr = ECSHandler::registry().getComponent<TransformComponent>(bullet);
-				auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(bullet);
-
 
 				JPH::BoxShapeSettings cube_shape(JPH::Vec3(10.f, 10.f, 10.f));
-				JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(tr->getQuaternion()), JPH::EMotionType::Dynamic, Layers::MOVING);
+				JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(transform->getQuaternion()), JPH::EMotionType::Dynamic, Layers::MOVING);
 
 				auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
 				body_interface.SetRestitution(mBodyID, 0.5f);
@@ -164,7 +184,7 @@ void ComponentsDebug::init() {
 						if (dist < minDistance) {
 							minDistance = dist;
 							curColision = collisionPos;
-							setSelectedId(object.data.getID());
+							setSelectedId(object.data);
 						}
 					}
 				});
@@ -172,19 +192,33 @@ void ComponentsDebug::init() {
 				auto transform = ECSHandler::registry().addComponent<TransformComponent>(bullet, bullet);
 				transform->setPos(curColision + Math::Vec3(0.f, 10.f, 0.f));
 				transform->setScale({ 10.f, 10.f, 10.f });
+
 				auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
 				ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(bullet);
 				ECSHandler::registry().addComponent<OcTreeComponent>(bullet);
-				ECSHandler::registry().addComponentWithInit<ModelComponent>(bullet, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, bullet.getID());
+				auto modelComp = ECSHandler::registry().addComponent<ModelComponent>(bullet, bullet);
 
+				modelComp->mPath = "models/cube.fbx";
+				modelComp->boneMatrices = cubeModel->getDefaultBoneMatrices();
+				modelComp->armature = cubeModel->getArmature();
+				modelComp->setModel(cubeModel->getLODs());
 
-				
-				auto tr = ECSHandler::registry().getComponent<TransformComponent>(bullet);
-				auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(bullet);
+				ECSHandler::registry().addComponent<IsDrawableComponent>(bullet);
+
+				if (modelComp && !modelComp->getModel().meshes.empty()) {
+					auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(bullet);
+					for (const auto& node : cubeModel->getMeshTree()) {
+						auto& meshObj = node.value;
+						if (!meshObj.mesh.vertices.size()) {
+							continue;
+						}
+						meshComp->meshGraph.addChild(MeshComponent::MeshData { SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(), static_cast<int>(meshObj.mesh.vertices.size()), static_cast<int>(meshObj.mesh.indices.size()) });
+					}
+				}
 
 
 				JPH::BoxShapeSettings cube_shape(JPH::Vec3(10.f, 10.f, 10.f));
-				JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(tr->getQuaternion()), JPH::EMotionType::Dynamic, Layers::MOVING);
+				JPH::BodyCreationSettings cube_settings(cube_shape.Create().Get(), JPH::toVec3(pos), JPH::toQuat(transform->getQuaternion()), JPH::EMotionType::Dynamic, Layers::MOVING);
 
 				JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 				auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
@@ -211,8 +245,8 @@ void ComponentsDebug::init() {
 
 			auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
 			auto pos = cameraTransform->getPos(true);
-			auto mProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID())->getProjection().getProjectionsMatrix();
-			auto mView = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera().getID())->getViewMatrix();
+			auto mProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection().getProjectionsMatrix();
+			auto mView = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera())->getViewMatrix();
 
 
 			float normalizedX = (2.0f * static_cast<float>(mPos.x)) / Render::Renderer::screenDrawData.width - 1.0f;
@@ -235,10 +269,10 @@ void ComponentsDebug::init() {
 						return data.data != ecss::INVALID_ID;
 					});
 					for (auto& obj : res) {
-						if (!ECSHandler::registry().getComponent<PhysicsComponent>(obj.second.data.getID())) {
-							auto tr = ECSHandler::registry().getComponent<TransformComponent>(obj.second.data.getID());
-							if (auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(obj.second.data.getID())) {
-								ECSHandler::registry().addComponent<OutlineComponent>(obj.second.data.getID());
+						if (!ECSHandler::registry().getComponent<PhysicsComponent>(obj.second.data)) {
+							auto tr = ECSHandler::registry().getComponent<TransformComponent>(obj.second.data);
+							if (auto aabb = ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(obj.second.data)) {
+								ECSHandler::registry().addComponent<OutlineComponent>(obj.second.data);
 								JPH::BodyInterface& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 
 								auto pos = tr->getPos(true);
@@ -249,7 +283,7 @@ void ComponentsDebug::init() {
 
 								auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
 								body_interface.SetRestitution(mBodyID, 0.5f);
-								ECSHandler::registry().addComponent<PhysicsComponent>(obj.second.data.getID(), mBodyID);
+								ECSHandler::registry().addComponent<PhysicsComponent>(obj.second.data, mBodyID);
 							}
 						}
 					}
@@ -259,47 +293,46 @@ void ComponentsDebug::init() {
 	};
 }
 
-void ComponentsDebug::drawTree(const ecss::EntityHandle& entity, ecss::SectorId& selectedID) {
+void ComponentsDebug::drawTree(ecss::EntityId entity, ecss::SectorId& selectedID) {
 	std::string strid = "";
 	if (auto debugData = ECSHandler::registry().getComponent<DebugDataComponent>(entity)) {
 		strid = debugData->stringId;
 	}
 
-	auto id = entity.getID();
-	const auto entityString = std::to_string(id) + ": " + std::string(strid);
+	const auto entityString = std::to_string(entity) + ": " + std::string(strid);
 
 	auto treeComp = ECSHandler::registry().getComponent<ComponentsModule::TreeComponent>(entity);
 	auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
 	if (!children.empty()) {
 		
 		int flag = ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_OpenOnArrow;
-		if (selectedID == id) {
+		if (selectedID == entity) {
 			flag = flag | ImGuiTreeNodeFlags_Selected;
 		}
 
 		if (ImGui::TreeNodeEx(entityString.c_str(), flag)) {
 			if (ImGui::IsItemClicked()) {
-				selectedID = id;
-				setSelectedId(id);
+				selectedID = entity;
+				setSelectedId(entity);
 			}
 
 			for (auto child : children) {
-				drawTree(ECSHandler::registry().getEntity(child), selectedID);
+				drawTree(child, selectedID);
 			}
 
 			ImGui::TreePop();
 		}
 		else {
 			if (ImGui::IsItemClicked()) {
-				selectedID = id;
-				setSelectedId(id);
+				selectedID = entity;
+				setSelectedId(entity);
 			}
 		}
 	}
 	else {
-		if (ImGui::Selectable(entityString.c_str(), selectedID == id)) {
-			selectedID = id;
-			setSelectedId(id);
+		if (ImGui::Selectable(entityString.c_str(), selectedID == entity)) {
+			selectedID = entity;
+			setSelectedId(entity);
 		}
 	}
 }
@@ -557,7 +590,7 @@ void ComponentsDebug::editComponentGui(CascadeShadowComponent* component) {
 
 
 	if (ImGui::Button("save to json")) {
-		FileSystem::writeJson("cascadedShadows.json", PropertiesModule::PropertiesSystem::serializeEntity(ECSHandler::registry().getEntity(component->getEntityId())));
+		FileSystem::writeJson("cascadedShadows.json", PropertiesModule::PropertiesSystem::serializeEntity(component->getEntityId()));
 	}
 
 }
@@ -1241,7 +1274,7 @@ void ComponentsDebug::entitiesTreeGUI() {
 
 void ComponentsDebug::componentGUI() {
 	auto& ecsRegistry = ECSHandler::registry();
-	if (!ecsRegistry.isEntity(mSelectedId)) {
+	if (!ecsRegistry.contains(mSelectedId)) {
 		return;
 	}
 
@@ -1332,11 +1365,11 @@ void ComponentsDebug::entitiesMenuGUI() {
 	auto& compManager = ECSHandler::registry();
 	if (ImGui::Button("add node")) {
 		auto createdEntity = ECSHandler::registry().takeEntity();
-		if (compManager.isEntity(mSelectedId)) {
-			compManager.addComponent<TreeComponent>(createdEntity.getID(), createdEntity.getID());
-			compManager.addComponent<TreeComponent>(mSelectedId, mSelectedId)->addChildEntity(createdEntity.getID());
+		if (compManager.contains(mSelectedId)) {
+			compManager.addComponent<TreeComponent>(createdEntity, createdEntity);
+			compManager.addComponent<TreeComponent>(mSelectedId, mSelectedId)->addChildEntity(createdEntity);
 		}
-		compManager.addComponent<TransformComponent>(createdEntity, createdEntity.getID());
+		compManager.addComponent<TransformComponent>(createdEntity, createdEntity);
 	}
 
 	ImGui::SameLine();
@@ -1365,7 +1398,7 @@ void ComponentsDebug::entitiesMenuGUI() {
 			bool isSelected = (selected == components[n]);
 			if (ImGui::Selectable(components[n].data(), isSelected)) {
 				selected = components[n];
-				if (compManager.isEntity(mSelectedId)) {
+				if (compManager.contains(mSelectedId)) {
 					if (selected == "ph_capsule") {
 						auto& body_interface = ECSHandler::getSystem<SFE::SystemsModule::Physics>()->physics_system->GetBodyInterface();
 						auto tr = ECSHandler::registry().getComponent<TransformComponent>(mSelectedId);
@@ -1412,7 +1445,7 @@ void ComponentsDebug::entitiesMenuGUI() {
 						auto mBodyID = body_interface.CreateAndAddBody(cube_settings, JPH::EActivation::Activate);
 						body_interface.SetRestitution(mBodyID, 0.5f);
 						auto ent = ECSHandler::registry().takeEntity();
-						ECSHandler::registry().addComponent<TransformComponent>(ent, ent.getID());
+						ECSHandler::registry().addComponent<TransformComponent>(ent, ent);
 						ECSHandler::registry().addComponent<PhysicsComponent>(ent, mBodyID);
 					}
 					else if (selected == PropertiesModule::TypeName<LightSourceComponent>::name()) {
@@ -1425,7 +1458,7 @@ void ComponentsDebug::entitiesMenuGUI() {
 						compManager.addComponent<ComponentsModule::AnimationComponent>(mSelectedId);
 					}
 					else if (selected == PropertiesModule::TypeName<CameraComponent>::name()) {
-						ECSHandler::registry().addComponent<CameraComponent>(mSelectedId, mSelectedId, 45.f, static_cast<float>(Render::Renderer::screenDrawData.width) / static_cast<float>(Render::Renderer::screenDrawData.height), Render::Renderer::screenDrawData.near, Render::Renderer::screenDrawData.far);
+						ECSHandler::registry().addComponent<CameraComponent>(mSelectedId, 45.f, static_cast<float>(Render::Renderer::screenDrawData.width) / static_cast<float>(Render::Renderer::screenDrawData.height), Render::Renderer::screenDrawData.near, Render::Renderer::screenDrawData.far);
 					}
 				}
 			}
@@ -1440,11 +1473,11 @@ void ComponentsDebug::entitiesMenuGUI() {
 
 	if (ImGui::Button("copy")) {
 		auto createdEntity = ECSHandler::registry().takeEntity();
-		ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<OcTreeComponent>(mSelectedId));
-		ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<ModelComponent>(mSelectedId));
-		ECSHandler::registry().copyComponentToEntity(createdEntity.getID(), ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(mSelectedId));
+		ECSHandler::registry().copyComponentToEntity(createdEntity, ECSHandler::registry().getComponent<OcTreeComponent>(mSelectedId));
+		ECSHandler::registry().copyComponentToEntity(createdEntity, ECSHandler::registry().getComponent<ModelComponent>(mSelectedId));
+		ECSHandler::registry().copyComponentToEntity(createdEntity, ECSHandler::registry().getComponent<ComponentsModule::AABBComponent>(mSelectedId));
 
-		ECSHandler::registry().addComponent<TransformComponent>(createdEntity.getID(), createdEntity.getID());
+		ECSHandler::registry().addComponent<TransformComponent>(createdEntity, createdEntity);
 	}
 }
 

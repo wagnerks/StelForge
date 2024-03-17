@@ -10,7 +10,7 @@
 namespace SFE::SystemsModule {
 	void ShaderSystem::update(float_t dt) {
 		auto compsArr = ECSHandler::registry().forEach<ComponentsModule::ShaderComponent>();
-		if (!compsArr.empty()) {
+		if (!compsArr.valid()) {
 			auto shaderController = ShaderModule::ShaderController::instance();
 			drawableEntities.clear();
 

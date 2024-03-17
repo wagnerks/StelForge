@@ -85,12 +85,6 @@ namespace SFE::Render {
 		glfwTerminate();
 	}
 
-	void Renderer::swapBuffer() {
-		FUNCTION_BENCHMARK;
-		glfwSwapBuffers(Engine::instance()->getMainWindow());
-		glfwPollEvents();
-	}
-
 	GLFWwindow* Renderer::initGLFW() {
 		if (mGLFWInited) {
 			return nullptr;
@@ -173,5 +167,15 @@ namespace SFE::Render {
 		LogsModule::Logger::LOG_INFO("GLFW initialized");
 
 		return window;
+	}
+
+	void Renderer::swapBuffer() {
+		FUNCTION_BENCHMARK;
+		glfwSwapBuffers(Engine::instance()->getMainWindow());
+		glfwPollEvents();
+	}
+
+	void Renderer::update() {
+
 	}
 }

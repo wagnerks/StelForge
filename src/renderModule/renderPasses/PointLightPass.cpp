@@ -47,7 +47,7 @@ namespace SFE::Render::RenderPasses {
 		lightFramebuffer.setReadBuffer(GLW::NONE);
 		lightFramebuffer.finalize();
 
-		auto guard = mMatricesUBO.bindWithGuard();
+		auto guard = mMatricesUBO.lock();
 		mMatricesUBO.allocateData<Math::Mat4>(maxShadowFaces, GLW::STATIC_DRAW);
 		mMatricesUBO.setBufferBinding(lightMatricesBinding);
 
@@ -105,7 +105,7 @@ namespace SFE::Render::RenderPasses {
 		}
 
 		if (!lightMatrices.empty()) {
-			auto guard = mMatricesUBO.bindWithGuard();
+			auto guard = mMatricesUBO.lock();
 			mMatricesUBO.setData(lightMatrices.size(), lightMatrices.data());
 		}
 
@@ -130,7 +130,7 @@ namespace SFE::Render::RenderPasses {
 				tree.forEachObject([this, &entities, offsetSum, &offset](const auto& obj) {
 					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
 						if (FrustumModule::AABB::isOnFrustum(frustums[i], obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size)){
-							entities.emplace_back(obj.data.getID());
+							entities.emplace_back(obj.data);
 							break;
 						}
 					}
@@ -139,7 +139,7 @@ namespace SFE::Render::RenderPasses {
 					
 				}, [this, offsetSum, &offset](const SFE::Math::Vec3& pos, float size, auto&) {
 					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
-						if (OcTree<ecss::EntityHandle>::isOnFrustum(frustums[i], pos, size)) {
+						if (OcTree<ecss::EntityId>::isOnFrustum(frustums[i], pos, size)) {
 							return true;
 						}
 					}

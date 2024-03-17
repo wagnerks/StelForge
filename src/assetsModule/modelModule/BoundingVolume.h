@@ -139,6 +139,32 @@ namespace SFE::FrustumModule {
 				&& isOnOrForwardPlan(camFrustum.farFace, center, size);
 		}
 
+		template<typename Vec3>
+		inline static bool isOnFrustumEntirely(const Frustum& camFrustum, const Vec3& center, float halfSize) {
+			Math::Vec3 corners[8];
+			corners[0] = center + Math::Vec3(-halfSize, -halfSize, -halfSize);
+			corners[1] = center + Math::Vec3(halfSize, -halfSize, -halfSize);
+			corners[2] = center + Math::Vec3(halfSize, halfSize, -halfSize);
+			corners[3] = center + Math::Vec3(-halfSize, halfSize, -halfSize);
+			corners[4] = center + Math::Vec3(-halfSize, -halfSize, halfSize);
+			corners[5] = center + Math::Vec3(halfSize, -halfSize, halfSize);
+			corners[6] = center + Math::Vec3(halfSize, halfSize, halfSize);
+			corners[7] = center + Math::Vec3(-halfSize, halfSize, halfSize);
+
+			for (int i = 0; i < 8; i++) {
+				if (!isOnOrForwardPlan(camFrustum.leftFace, corners[i], 0)
+					|| !isOnOrForwardPlan(camFrustum.rightFace, corners[i], 0)
+					|| !isOnOrForwardPlan(camFrustum.topFace, corners[i], 0)
+					|| !isOnOrForwardPlan(camFrustum.bottomFace, corners[i], 0)
+					|| !isOnOrForwardPlan(camFrustum.nearFace, corners[i], 0)
+					|| !isOnOrForwardPlan(camFrustum.farFace, corners[i], 0)) {
+					return false;
+				}
+			}
+
+			return true; 
+		}
+
 		inline bool isOnOrForwardPlan(const Plane& plan) const final {
 			return isOnOrForwardPlan(plan, center, extents);
 		}

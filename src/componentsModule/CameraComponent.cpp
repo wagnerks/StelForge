@@ -5,10 +5,7 @@
 #include "TransformComponent.h"
 #include "core/ECSHandler.h"
 
-CameraComponent::CameraComponent(ecss::SectorId id) : ComponentInterface(id) {
-}
-
-CameraComponent::CameraComponent(ecss::SectorId id, float FOV, float aspect, float zNear, float zFar) : ComponentInterface(id) {
+CameraComponent::CameraComponent(float FOV, float aspect, float zNear, float zFar){
 	initProjection(FOV, aspect, zNear, zFar);
 }
 
@@ -29,11 +26,5 @@ void CameraComponent::updateFrustum(const Math::Mat4& view) const {
 }
 
 const SFE::FrustumModule::Frustum& CameraComponent::getFrustum() const {
-	const auto curView = ECSHandler::registry().getComponent<TransformComponent>(getEntityId())->getViewMatrix();
-	if (curView != mViewCash) {
-		mViewCash = std::move(curView);
-		updateFrustum(mViewCash);
-	}
-	
 	return mFrustum;
 }

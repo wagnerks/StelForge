@@ -116,7 +116,7 @@ namespace SFE::ComponentsModule {
 		auto newTransform = calculateLocalTransform();
 
 		if (const auto tree = ECSHandler::registry().getComponent<TreeComponent>(getEntityId())) {
-			if (const auto parentTransform = ECSHandler::registry().getComponentForce<TransformComponent>(tree->getParent())) {
+			if (const auto parentTransform = ECSHandler::registry().getComponentNotSafe<TransformComponent>(tree->getParent())) {
 				newTransform = parentTransform->getTransform() * newTransform;
 			}
 
@@ -126,7 +126,7 @@ namespace SFE::ComponentsModule {
 			}
 
 			for (const auto childTransform : tree->getChildren()) {
-				if (auto transformPtr = ECSHandler::registry().getComponentForce<TransformComponent>(childTransform)) {
+				if (auto transformPtr = ECSHandler::registry().getComponentNotSafe<TransformComponent>(childTransform)) {
 					transformPtr->mDirty = true;
 					transformPtr->reloadTransform();
 				}

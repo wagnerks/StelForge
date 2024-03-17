@@ -9,8 +9,7 @@ namespace SFE::ComponentsModule {
 			int indicesCount = 0;
 		};
 
-		Tree<MeshData> meshTree;
-
+		Graph<MeshData> meshGraph;
 
 		AssetsModule::Model* meshModel = nullptr;
 	};

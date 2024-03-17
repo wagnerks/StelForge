@@ -21,7 +21,9 @@ using namespace SFE::CoreModule;
 
 void Core::update(float dt) {
 	FUNCTION_BENCHMARK;
-	
+
+	//render update
+
 	mDecorator.preDraw();
 	ECSHandler::systemManager().update(dt);
 	mDebugMenu.draw();
@@ -39,6 +41,8 @@ void Core::init() {
 	Render::Renderer::instance();
 	
 	mDecorator.init(SFE::Engine::instance()->getMainWindow());
+
+	//start systems
 }
 
 Core::~Core() {

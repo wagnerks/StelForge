@@ -14,10 +14,13 @@
 #include "ecss/Registry.h"
 
 namespace SFE::SystemsModule {
-	OcTreeSystem::OcTreeSystem() {}
+	OcTreeSystem::OcTreeSystem() {
+		curMaxX = curMaxY = curMaxZ = std::numeric_limits<float>::min();
+		curMinX = curMinY = curMinZ = std::numeric_limits<float>::max();
+	}
 
 	void OcTreeSystem::update(const std::vector<ecss::SectorId>& entitiesToProcess) {
-		ECSHandler::registry().forEach<ComponentsModule::AABBComponent, OcTreeComponent>(entitiesToProcess, [this](ecss::SectorId entity, ComponentsModule::AABBComponent* aabbcomp, OcTreeComponent* component) {
+		ECSHandler::registry().forEachAsync<ComponentsModule::AABBComponent, OcTreeComponent>(entitiesToProcess, [this](ecss::SectorId entity, ComponentsModule::AABBComponent* aabbcomp, OcTreeComponent* component) {
 			if (!aabbcomp || !component) {
 				return;
 			}
@@ -35,6 +38,15 @@ namespace SFE::SystemsModule {
 				forEachOctreePosInAABB(aabb, [&component, &aabb, entity, this, &prev](const Math::Vec3& octree)mutable {
 					auto tree = getOctree(octree);
 					if (!tree) {
+
+						curMaxX = std::max(octree.x, curMaxX);
+						curMaxY = std::max(octree.y, curMaxY);
+						curMaxZ = std::max(octree.z, curMaxZ);
+
+						curMinX = std::min(octree.x, curMinX);
+						curMinY = std::min(octree.y, curMinY);
+						curMinZ = std::min(octree.z, curMinZ);
+
 						const auto it = mOctrees.insert({ octree, {octree} });
 						tree = &it.first->second;
 					}
@@ -105,7 +117,7 @@ namespace SFE::SystemsModule {
 		std::vector<Math::Vec3> octreesInFrust;
 		forEachOctreePosInAABB(aabb, [&octreesInFrust](const Math::Vec3& octreePos)mutable {
 			octreesInFrust.emplace_back(octreePos);
-		});
+		}, true);
 
 		return octreesInFrust;
 	}
@@ -119,12 +131,21 @@ namespace SFE::SystemsModule {
 			if (auto tree = getOctree(pos)) {
 				func(*tree);
 			}
-		});
+		}, true);
 	}
 
-	void OcTreeSystem::forEachOctreePosInAABB(const FrustumModule::AABB& aabb, std::function<void(const Math::Vec3&)> func) {
+	void OcTreeSystem::forEachOctreePosInAABB(const FrustumModule::AABB& aabb, std::function<void(const Math::Vec3&)> func, bool onlyExisted) {
 		float maxX, minX, maxY, minY, maxZ, minZ;//todo bug
 		calculateAABBOctrees(aabb, OCTREE_SIZE, maxX, minX, maxY, minY, maxZ, minZ);
+		if (onlyExisted) {
+			maxX = std::min(curMaxX, maxX);
+			maxY = std::min(curMaxY, maxY);
+			maxZ = std::min(curMaxZ, maxZ);
+
+			minX = std::max(curMinX, minX);
+			minY = std::max(curMinY, minY);
+			minZ = std::max(curMinZ, minZ);
+		}
 
 		for (auto i = minX;  i < maxX; i += OCTREE_SIZE) {
 			for (auto j = maxY; minY < j; j -= OCTREE_SIZE) {
@@ -137,5 +158,14 @@ namespace SFE::SystemsModule {
 
 	void OcTreeSystem::deleteOctree(const Math::Vec3& octree) {
 		mOctrees.erase(octree);
+		for (auto& [pos, _] : mOctrees) {//todo calculate this stuff while adding new octree to map
+			curMaxX = std::max(pos.x, curMaxX);
+			curMaxY = std::max(pos.y, curMaxY);
+			curMaxZ = std::max(pos.z, curMaxZ);
+
+			curMinX = std::min(pos.x, curMinX);
+			curMinY = std::min(pos.y, curMinY);
+			curMinZ = std::min(pos.z, curMinZ);
+		}
 	}
 }

@@ -45,71 +45,67 @@ void CascadedShadowPass::prepare() {
 	}
 
 	auto curPassData = getContainer().getCurrentPassData();
-	//mStatus = RenderPreparingStatus::PREPARING;
+	curPassData->mStatus = RenderPreparingStatus::PREPARING;
 	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
-	currentLock = ThreadPool::instance()->addTask<WorkerType::RENDER>([this, curPassData, entities = std::vector<unsigned>(), camProj = renderData.nextCameraProjection, view = renderData.next.view, nextFrust = renderData.mNextCamFrustum]() mutable {
-		FUNCTION_BENCHMARK
-		curPassData->getBatcher().drawList.clear();
+	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camProj = renderData.nextCameraProjection, view = renderData.next.view]() mutable {
+		FUNCTION_BENCHMARK;
+
+		curPassData->getBatcher().clear();
 		auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
 		if (!shadowsComp) {
-			//mStatus = RenderPreparingStatus::READY;
+			curPassData->mStatus = RenderPreparingStatus::READY;
 			return;
 		}
 
 		shadowsComp->calculateLightSpaceMatrices(camProj, view);
+
+		std::vector<ecss::EntityId> entities;
 		{
 			FUNCTION_BENCHMARK_NAMED(octree);
 
-			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			std::mutex addMtx;
-
 			const auto& cascades = shadowsComp->cascades;
-			auto aabbOctrees = octreeSys->getAABBOctrees(nextFrust.generateAABB());
-			ThreadPool::instance()->addBatchTasks(aabbOctrees.size(), 5, [aabbOctrees,octreeSys, &addMtx, &cascades, &entities](size_t it) {
-				if (auto treeIt = octreeSys->getOctree(aabbOctrees[it])) {
-					auto lock = treeIt->readLock();
-					treeIt->forEachObject([&addMtx, &cascades, &entities](const auto& obj) {
-						if (std::find_if(cascades.crbegin(), cascades.crend(), [&obj](const ComponentsModule::ShadowCascade& shadow) {
-							return FrustumModule::AABB::isOnFrustum(shadow.frustum, obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size);
-						}) != cascades.crend()) {
-							std::unique_lock lock(addMtx); 
-							entities.emplace_back(obj.data.getID());
-						}
-					}, [&cascades](const SFE::Math::Vec3& pos, float size, auto&) {
-						return std::find_if(cascades.crbegin(), cascades.crend(), [pos, size](const ComponentsModule::ShadowCascade& shadow) {
-							return OcTree<ecss::EntityHandle>::isOnFrustum(shadow.frustum, pos, size);
-						}) != cascades.crend();
-					});
+
+			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+			for (auto& cascade : cascades) {
+				for (auto& treePos : octreeSys->getAABBOctrees(cascade.frustum.generateAABB())) {
+					if (const auto tree = octreeSys->getOctree(treePos)) {
+						auto lock = tree->readLock();
+						tree->forEachObjectInFrustum(cascade.frustum, [&entities, &cascade](const auto& obj, bool entirely) {
+							if (entirely || FrustumModule::AABB::isOnFrustum(cascade.frustum, obj.pos, obj.size)) {
+								entities.emplace_back(obj.data);
+							}
+						});
+					}
 				}
-				
-			}).waitAll();
+			}
 		}
 
 		if (entities.empty()) {
+			curPassData->mStatus = RenderPreparingStatus::READY;
 			return;
 		}
 		std::ranges::sort(entities);
 
 		{
+			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
 			auto& batcher = curPassData->getBatcher();
-			for (auto [ent, transform, meshComp, armatComp, oclComp] : ECSHandler::registry().forEach<TransformComponent, MeshComponent, ArmatureComponent, ComponentsModule::OcclusionComponent>(entities)) {
+			for (auto [ent, transform, meshComp, armatComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OccludedComponent>({ entities }, false)) {
 				if (!meshComp) {
 					continue;
 				}
 				if (oclComp && oclComp->occluded) {
 					continue;
 				}
-
-				for (auto& mesh : meshComp->meshTree) {
-					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->getTransform(), armatComp ? armatComp->boneMatrices : nullptr);
+				
+				for (const auto& mesh : meshComp->meshGraph) {
+					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
 				}
 				
 			}
 
-			//batcher.sort({100.f,1300.f, 600.f});
+			batcher.sort({100.f,1300.f, 600.f});//todo
 		}
-
-		//mStatus = RenderPreparingStatus::READY;
+		curPassData->mStatus = RenderPreparingStatus::READY;
 	});
 }
 
@@ -129,11 +125,11 @@ void CascadedShadowPass::init() {
 
 	mShadowSource = ECSHandler::registry().takeEntity();
 	
-	ECSHandler::registry().addComponent<ComponentsModule::TransformComponent>(mShadowSource, mShadowSource.getID());
-	ECSHandler::registry().addComponent<LightSourceComponent>(mShadowSource, mShadowSource.getID(), SFE::ComponentsModule::eLightType::WORLD);
+	auto transform = ECSHandler::registry().addComponent<TransformComponent>(mShadowSource, mShadowSource);
+	ECSHandler::registry().addComponent<LightSourceComponent>(mShadowSource, mShadowSource, SFE::ComponentsModule::eLightType::WORLD);
 
-	auto cmp = ECSHandler::registry().addComponent<CascadeShadowComponent>(mShadowSource, mShadowSource.getID());
-	cmp->resolution = Math::Vec2{ 4096.f, 4096.f };
+	auto cmp = ECSHandler::registry().addComponent<CascadeShadowComponent>(mShadowSource, mShadowSource);
+	
 
 	auto debugData = ECSHandler::registry().addComponent<DebugDataComponent>(mShadowSource);
 	debugData->stringId = "cascadeShadows";
@@ -141,14 +137,15 @@ void CascadedShadowPass::init() {
 	auto cam = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(cam)->getProjection();
 
-	cmp->shadowCascadeLevels = { cameraProjection.getNear(), 50.f, 150.f, 500.f, 5000.f };
+	
 
 	auto shadow = FileSystem::readJson("cascadedShadows.json");
 
 	PropertiesModule::PropertiesSystem::deserializeProperty<CascadeShadowComponent>(mShadowSource, shadow["Properties"]);
-
-
-	ECSHandler::registry().getComponent<ComponentsModule::TransformComponent>(mShadowSource)->setRotate({ -0.4f * 180.f,0.f, 0.4f * 5.f });
+	//cmp->resolution = Math::Vec2{ 256.f, 256.f };
+	//cmp->shadowCascadeLevels = { cameraProjection.getNear(), 50.f, 150.f, /*500.f, 5000.f*/ };
+	//cmp->updateCascades(cameraProjection);
+	transform->setRotate({ -0.4f * 180.f,0.f, 0.4f * 5.f });
 
 	initRender();
 }
@@ -171,7 +168,6 @@ void CascadedShadowPass::initRender() {
 	lightDepthMap.textureFormat = GLW::DEPTH_COMPONENT;
 	lightDepthMap.pixelType = GLW::FLOAT;
 
-
 	lightDepthMap.create3D();	
 
 	lightFBO.bind();
@@ -181,7 +177,7 @@ void CascadedShadowPass::initRender() {
 	lightFBO.finalize();
 
 	{
-		auto guard = matricesUBO.bindWithGuard();
+		auto guard = matricesUBO.lock();
 		matricesUBO.allocateData<Math::Mat4>(6, GLW::DYNAMIC_DRAW);
 		matricesUBO.setBufferBinding(0);
 	}
@@ -200,9 +196,10 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 	FUNCTION_BENCHMARK;
 
 	updateRenderData(renderDataHandle);
-	if (currentLock.valid()) {
+	{
 		FUNCTION_BENCHMARK_NAMED(_wait_lock);
-		currentLock.wait();
+		const auto curPassData = getContainer().getCurrentPassData();
+		while(curPassData->mStatus != RenderPreparingStatus::READY) {}
 	}
 
 	auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
@@ -219,7 +216,8 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 	updateRenderData(renderDataHandle);
 
 	if (!lightMatrices.empty()) {
-		auto guard = matricesUBO.bindWithGuard();
+		FUNCTION_BENCHMARK_NAMED(_bind_ubo);
+		auto guard = matricesUBO.lock();
 		matricesUBO.setData(lightMatrices.size(), lightMatrices.data());//todo crashes when calculateLightSpaceMatrices called from another thread
 	}
 
@@ -229,8 +227,10 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	const auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
 	simpleDepthShader->use();
-
-	curPassData->getBatcher().flushAll(true);
+	{
+		FUNCTION_BENCHMARK_NAMED(_flush);
+		curPassData->getBatcher().flushAll();
+	}
 
 	GLW::Framebuffer::bindDefaultFramebuffer();
 	GLW::ViewportStack::pop();
