@@ -4,6 +4,7 @@
 
 #include "Material.h"
 #include "Vertex.h"
+#include "BoundingVolume.h"
 
 namespace SFE {
 	template<class VertexType>
@@ -23,6 +24,7 @@ namespace SFE {
 		Mesh<VertexType> mesh;
 		Material material;
 		Math::Mat4 transform;
+		FrustumModule::AABB aabb;
 	};
 
 	using MeshObject3D = MeshObject<Vertex3D>;

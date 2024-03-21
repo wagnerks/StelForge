@@ -10,9 +10,9 @@ namespace SFE::SystemsModule {
 	public:
 		void update(float dt) override;
 	private:
-        void updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, Math::Mat4* boneMatrices);
+        void updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices);
 
-        void calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, Math::Mat4 parentTransform, std::vector<AssetsModule::Bone>& bones, Math::Mat4* boneMatrices);
+        void calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, Math::Mat4 parentTransform, std::vector<AssetsModule::Bone>& bones, std::vector<Math::Mat4>& boneMatrices);
 
 		static float calcScaleFactor(float lastTimeStamp, float nextTimeStamp, float animationTime);
 

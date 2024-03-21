@@ -26,22 +26,7 @@ void SFE::SystemsModule::AABBSystem::update(const std::vector<ecss::SectorId>& e
 			aabbcomp->mtx.lock();
 			aabbcomp->defaultAabbs.reserve(model.meshes.size());
 			for (auto& mesh : model.meshes) {
-				auto minAABB = SFE::Math::Vec3(std::numeric_limits<float>::max());
-				auto maxAABB = SFE::Math::Vec3(std::numeric_limits<float>::min());
-
-				for (auto vertex : mesh->mesh.vertices) {
-					vertex.position = mesh->transform * SFE::Math::Vec4(vertex.position, 1.f);
-					minAABB.x = std::min(minAABB.x, vertex.position.x);
-					minAABB.y = std::min(minAABB.y, vertex.position.y);
-					minAABB.z = std::min(minAABB.z, vertex.position.z);
-
-					maxAABB.x = std::max(maxAABB.x, vertex.position.x);
-					maxAABB.y = std::max(maxAABB.y, vertex.position.y);
-					maxAABB.z = std::max(maxAABB.z, vertex.position.z);
-				}
-
-				aabbcomp->defaultAabbs.emplace_back(minAABB / 100.f, maxAABB / 100.f);
-				//aabbcomp->defaultAabbs.emplace_back(minAABB, maxAABB);
+				aabbcomp->defaultAabbs.emplace_back(mesh->aabb);
 			}
 			aabbcomp->mtx.unlock();
 		}

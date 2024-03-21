@@ -74,6 +74,8 @@ namespace SFE::SystemsModule {
 		inline void setRenderType(RenderMode type) { mRenderData.mRenderType = type; }
 		inline RenderData& getRenderData() { return mRenderData; }
 
+		void prepareDataForNextFrame();
+
 		bool isShadowsDebugData() const {
 			return mShadowsDebugDataDraw;
 		}

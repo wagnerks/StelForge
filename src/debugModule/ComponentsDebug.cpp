@@ -133,14 +133,13 @@ void ComponentsDebug::init() {
 
 				if (modelComp && !modelComp->getModel().meshes.empty()) {
 					auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(bullet);
-
-					for (const auto& node : cubeModel->getMeshTree()) {
-						auto& meshObj = node.value;
-						if (!meshObj.mesh.vertices.size()) {
-							continue;
-						}
-						meshComp->meshGraph.addChild(MeshComponent::MeshData { SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(), static_cast<int>(meshObj.mesh.vertices.size()), static_cast<int>(meshObj.mesh.indices.size()) });
-					}
+					meshComp->meshGraph.fill<SFE::MeshObject3D>(cubeModel->getMeshTree(), [](const SFE::MeshObject3D& meshObj) {
+						return MeshComponent::MeshData {
+							SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(),
+								static_cast<int>(meshObj.mesh.vertices.size()),
+								static_cast<int>(meshObj.mesh.indices.size())
+						};
+					});
 				}
 
 
@@ -207,13 +206,13 @@ void ComponentsDebug::init() {
 
 				if (modelComp && !modelComp->getModel().meshes.empty()) {
 					auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(bullet);
-					for (const auto& node : cubeModel->getMeshTree()) {
-						auto& meshObj = node.value;
-						if (!meshObj.mesh.vertices.size()) {
-							continue;
-						}
-						meshComp->meshGraph.addChild(MeshComponent::MeshData { SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(), static_cast<int>(meshObj.mesh.vertices.size()), static_cast<int>(meshObj.mesh.indices.size()) });
-					}
+					meshComp->meshGraph.fill<SFE::MeshObject3D>(cubeModel->getMeshTree(), [](const SFE::MeshObject3D& meshObj) {
+						return MeshComponent::MeshData {
+							SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(),
+								static_cast<int>(meshObj.mesh.vertices.size()),
+								static_cast<int>(meshObj.mesh.indices.size())
+						};
+					});
 				}
 
 

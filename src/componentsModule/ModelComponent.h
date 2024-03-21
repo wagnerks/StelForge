@@ -93,7 +93,7 @@ namespace SFE::ComponentsModule {
 		const AssetsModule::Animation* mCurrentAnimation = nullptr;
 
 		float mCurrentTime = 0.f;
-
+		float mLastTime = 0.f;
 		bool mLoop = true;
 	};
 }

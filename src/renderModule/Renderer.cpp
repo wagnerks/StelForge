@@ -174,8 +174,4 @@ namespace SFE::Render {
 		glfwSwapBuffers(Engine::instance()->getMainWindow());
 		glfwPollEvents();
 	}
-
-	void Renderer::update() {
-
-	}
 }

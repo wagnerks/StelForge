@@ -4,32 +4,6 @@
 
 namespace SFE {
 	template<class Data>
-	struct Graph {
-		struct Node {
-			Data value = {};
-			int parent = 0;
-			int id = 0;
-			std::vector<size_t> children;
-		};
-
-		void addChild(Data&& data, int parent = 0) {
-			tree.emplace_back(std::forward<Data>(data), parent, tree.size());
-			tree[parent].children.push_back(tree.size() - 1);
-		}
-
-		typename std::vector<Node>::iterator begin() { return tree.begin(); }
-		typename std::vector<Node>::iterator end() { return tree.end(); }
-
-		typename std::vector<Node>::const_iterator begin() const { return tree.cbegin(); }
-		typename std::vector<Node>::const_iterator end() const { return tree.cend(); }
-
-		Node& root() { return tree[0]; }
-	private:
-
-		std::vector<Node> tree = {{}};
-	};
-
-	template<class Data>
 	struct Tree { //todo custom allocator and fast iteration, store data sequentially
 		//the problem is that reference on parent should be updated every add child if data was reallocated
 		Tree(const Tree& other)
@@ -237,5 +211,58 @@ namespace SFE {
 				children.front().template fillTreeImpl<OtherT>(child, extractData);
 			}
 		}
+	};
+
+	template<class Data>
+	struct Graph {
+		Graph() = default;
+		Graph(const Tree<Data>& treeRef) {
+			std::function<void(const Tree<Data>&, int)> helper;
+			helper = [&helper, this](const Tree<Data>& node, int parent) {
+				for (auto& child : node.children) {
+					addChild(child.value, parent);
+					helper(child, tree[parent].children.back());
+				}
+			};
+
+			tree[0].value = treeRef.value;
+			helper(treeRef, 0);
+		}
+
+		template<typename OtherT>
+		void fill(const Tree<OtherT>& treeRef, std::function<Data(const OtherT&)> extractData) {
+			std::function<void(const Tree<OtherT>&, int)> helper;
+			helper = [&helper, this, &extractData](const Tree<OtherT>& node, int parent) {
+				for (auto& child : node.children) {
+					addChild(extractData(child.value), parent);
+					helper(child, tree[parent].children.back());
+				}
+			};
+
+			tree[0].value = extractData(treeRef.value);
+			helper(treeRef, 0);
+		}
+
+		struct Node {
+			Data value = {};
+			int parent = 0;
+			std::vector<size_t> children;
+		};
+
+		void addChild(Data&& data, int parent = 0) {
+			tree.emplace_back(std::forward<Data>(data), parent);
+			tree[parent].children.push_back(tree.size() - 1);
+		}
+
+		typename std::vector<Node>::iterator begin() { return tree.begin(); }
+		typename std::vector<Node>::iterator end() { return tree.end(); }
+
+		typename std::vector<Node>::const_iterator begin() const { return tree.cbegin(); }
+		typename std::vector<Node>::const_iterator end() const { return tree.cend(); }
+
+		Node& root() { return tree[0]; }
+	private:
+
+		std::vector<Node> tree = { {} };
 	};
 }

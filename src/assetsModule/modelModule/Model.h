@@ -38,8 +38,7 @@ namespace AssetsModule {
 		std::vector<SFE::Math::Mat4> mDefaultBoneMatrices;
 		std::vector<Animation> mAnimations;
 		std::vector<LOD> mLODs;
-
+		
 		SFE::Tree<SFE::MeshObject3D> mMeshTree;
-
 	};
 }

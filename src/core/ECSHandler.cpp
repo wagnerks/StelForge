@@ -72,12 +72,12 @@ void ECSHandler::initSystems() {
 		SFE::PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
 		//SFE::PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
 		
-		//auto path = "models/vampire.fbx";
-		auto path = "models/cube.fbx";
+		auto path = "models/vampire.fbx";
+		//auto path = "models/cube.fbx";
 		auto model = AssetsModule::ModelLoader::instance()->load(path);
-		for (auto i = 0; i < 400; i++) {
-			for (auto j = 0; j < 400; j++) {
-				for (auto k = 0; k < 20; k++) {
+		for (auto i = 0; i < 20; i++) {
+			for (auto j = 0; j < 20; j++) {
+				for (auto k = 0; k < 1; k++) {
 					if (!SFE::Engine::instance()->isAlive()) {
 						return;
 					}
@@ -93,44 +93,57 @@ void ECSHandler::initSystems() {
 					modelComp->setModel(model->getLODs());
 
 					auto transformComp = ECSHandler::addComponent<TransformComponent>(entity, entity);
-					transformComp->setPos({ i * 400.f, k*400.f, j * 400.f });
-					transformComp->setScale({ 10.1f });
+					transformComp->setPos({ i * 40.f, k*40.f, j * 40.f });
+					transformComp->setScale({ 0.1f });
 					ECSHandler::addComponent<IsDrawableComponent>(entity);
 
 					if (modelComp && !modelComp->getModel().meshes.empty()) {
 						auto meshComp = ECSHandler::addComponent<MeshComponent>(entity);
+						meshComp->meshGraph.fill<SFE::MeshObject3D>(model->getMeshTree(), [](const SFE::MeshObject3D& meshObj) {
+							return MeshComponent::MeshData {
+								SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(),
+								static_cast<int>(meshObj.mesh.vertices.size()),
+								static_cast<int>(meshObj.mesh.indices.size())
+							};
+						});
 
-						for (const auto& node : model->getMeshTree()) {
-							auto& meshObj = node.value;
-							if (!meshObj.mesh.vertices.size()) {
-								continue;
-							}
-							meshComp->meshGraph.addChild(MeshComponent::MeshData { SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)).vao.getID(), static_cast<int>(meshObj.mesh.vertices.size()), static_cast<int>(meshObj.mesh.indices.size()) });
-						}
 						if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
 							renderSys->markDirty<MeshComponent>(entity);
 						}
-						/*auto materialComp = ECSHandler::addComponent<MaterialComponent>(entity);
-						meshComp->meshModel = model;
-						for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
-							materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture->mId, mat.second.texture->mType });
+
+
+						if (modelComp->getModel().meshes[0]->material.materialTextures.size()) {
+							auto materialComp = ECSHandler::addComponent<MaterialComponent>(entity);
+							meshComp->meshModel = model;
+							for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
+								materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture->mId, mat.second.texture->mType });
+							}
+							if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
+								renderSys->markDirty<MaterialComponent>(entity);
+							}
 						}
-						if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
-							renderSys->markDirty<MaterialComponent>(entity);
+
+						if (modelComp->armature.bones.size()) {
+							auto armatureComp = ECSHandler::addComponent<SFE::ComponentsModule::ArmatureComponent>(entity);
+							armatureComp->armature = modelComp->armature;
+
+							auto armatureBonesComp = ECSHandler::registry().addComponent<SFE::ComponentsModule::ArmatureBonesComponent>(entity);
+							std::ranges::copy(modelComp->boneMatrices, armatureBonesComp->boneMatrices.begin());
+							if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
+								renderSys->markDirty<SFE::ComponentsModule::ArmatureComponent>(entity);
+							}
 						}
-						
-						auto armatureComp = ECSHandler::addComponent<SFE::ComponentsModule::ArmatureComponent>(entity);
-						armatureComp->armature = modelComp->armature;
-						std::ranges::copy(modelComp->boneMatrices, armatureComp->boneMatrices);
-						if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
-							renderSys->markDirty<SFE::ComponentsModule::ArmatureComponent>(entity);
-						}
-						*/
 					}
 
-					/*auto animComp = ECSHandler::addComponent<SFE::ComponentsModule::AnimationComponent>(entity);
-					animComp->mCurrentAnimation = &model->getAnimations()[0];
-					animComp->mCurrentTime = static_cast<float>(i);*/
+					if (model->getAnimations().size()) {
+						auto animComp = ECSHandler::addComponent<SFE::ComponentsModule::AnimationComponent>(entity);
+						animComp->mCurrentAnimation = &model->getAnimations()[0];
+						animComp->mCurrentTime = static_cast<float>(i);
+					}
+					
+
+
+
 					/*auto oclC = ECSHandler::addComponent<SFE::ComponentsModule::OcclusionComponent>(entity);
 					oclC->query = new SFE::GLW::Query<SFE::GLW::QueryType::SAMPLES_PASSED>();
 					oclC->query->generate();

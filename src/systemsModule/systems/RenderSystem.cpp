@@ -115,52 +115,7 @@ namespace SFE::SystemsModule {
 			i++;
 		}
 
-		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dir;
-		{
-			FUNCTION_BENCHMARK_NAMED(dirties_copy);
-			dirtiesMutex.lock();
-			dir = dirties;
-			for (auto& [id, entities] : dirties) {
-				std::erase_if(entities, [](std::pair<ecss::EntityId, uint8_t>& val) {
-					return val.second-- <= 1;
-				});
-			}
-			dirtiesMutex.unlock();
-		}
-
-		//prepare data for next frame
-		{
-			FUNCTION_BENCHMARK_NAMED(copy_components_transform_armat);
-
-			for (auto [id, entities] : dir) {
-				if (id == getDirtyId<ComponentsModule::TransformMatComp>()) {//todo support deleting
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponent<ComponentsModule::TransformMatComp>(entId));
-					}
-				}
-				else if (id == getDirtyId<ComponentsModule::ArmatureBonesComponent>()) {
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponent<ComponentsModule::ArmatureBonesComponent>(entId));
-					}
-				}
-				else if (id == getDirtyId<MeshComponent>()) {
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponent<MeshComponent>(entId));
-					}
-				}
-				else if (id == getDirtyId<MaterialComponent>()) {
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponent<MaterialComponent>(entId));
-					}
-				}
-			}
-			{
-				FUNCTION_BENCHMARK_NAMED(copy_components);
-				// todo i need some system which will handle dirty for render components, may be it should be render system itself, then when i updating draw registry
-				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<OutlineComponent>(ECSHandler::registry().getComponentContainer<OutlineComponent>());
-				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<ComponentsModule::OccludedComponent>(ECSHandler::registry().getComponentContainer<ComponentsModule::OccludedComponent>());
-			}
-		}
+		prepareDataForNextFrame();
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
@@ -228,7 +183,60 @@ namespace SFE::SystemsModule {
 			ImGui::End();
 		}
 	}
-	
+
+	void RenderSystem::prepareDataForNextFrame() {
+		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dir;
+		{
+			FUNCTION_BENCHMARK_NAMED(dirties_copy);
+			dirtiesMutex.lock();
+			dir = dirties;
+			for (auto& [id, entities] : dirties) {
+				std::erase_if(entities, [](std::pair<ecss::EntityId, uint8_t>& val) {
+					return val.second-- <= 1;
+				});
+			}
+			dirtiesMutex.unlock();
+		}
+
+		//prepare data for next frame
+		{
+			FUNCTION_BENCHMARK_NAMED(copy_components_transform_armat);
+
+			for (auto [id, entities] : dir) {
+				if (id == getDirtyId<ComponentsModule::TransformMatComp>()) {//todo support deleting
+					auto lock = ECSHandler::registry().containerReadLock<ComponentsModule::TransformMatComp>();
+					for (auto [entId, _] : entities) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<ComponentsModule::TransformMatComp>(entId));
+					}
+				}
+				else if (id == getDirtyId<ComponentsModule::ArmatureBonesComponent>()) {
+					auto lock = ECSHandler::registry().containerReadLock<ComponentsModule::ArmatureBonesComponent>();
+					for (auto [entId, _] : entities) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<ComponentsModule::ArmatureBonesComponent>(entId));
+					}
+				}
+				else if (id == getDirtyId<MeshComponent>()) {
+					auto lock = ECSHandler::registry().containerReadLock<MeshComponent>();
+					for (auto [entId, _] : entities) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<MeshComponent>(entId));
+					}
+				}
+				else if (id == getDirtyId<MaterialComponent>()) {
+					auto lock = ECSHandler::registry().containerReadLock<MaterialComponent>();
+					for (auto [entId, _] : entities) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<MaterialComponent>(entId));
+					}
+				}
+			}
+			{
+				FUNCTION_BENCHMARK_NAMED(copy_components);
+				// todo i need some system which will handle dirty for render components, may be it should be render system itself, then when i updating draw registry
+				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<OutlineComponent>(ECSHandler::registry().getComponentContainer<OutlineComponent>());
+				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<ComponentsModule::OccludedComponent>(ECSHandler::registry().getComponentContainer<ComponentsModule::OccludedComponent>());
+			}
+		}
+	}
+
 	RenderSystem::~RenderSystem() {
 		for (const auto renderPass : mRenderPasses) {
 			delete renderPass;

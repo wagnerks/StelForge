@@ -36,6 +36,7 @@ namespace SFE {
 		checkNeedClose();
 
 		updateDelta();
+
 		mCore.update(mDeltaTime);
 
 		if (mDeltaTime < 1.f / maxFPS) {

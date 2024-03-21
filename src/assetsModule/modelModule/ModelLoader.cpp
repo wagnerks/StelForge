@@ -41,7 +41,7 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	loading[path];
 	mtx.unlock();
 
-	Assimp::Importer import;
+	Assimp::Importer import;//todo create own format with aabb, materials, etc
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		SFE::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
@@ -57,6 +57,24 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 		animations.emplace_back(animation);
 	}
 
+	for (auto& meshNode : meshes) { //todo load it from model file, calculate edit, and add to model file
+		auto& mesh = meshNode.value;
+		auto minAABB = SFE::Math::Vec3(std::numeric_limits<float>::max());
+		auto maxAABB = SFE::Math::Vec3(std::numeric_limits<float>::min());
+		for (auto vertex : mesh.mesh.vertices) {
+			vertex.position = mesh.transform * SFE::Math::Vec4(vertex.position, 1.f);
+			minAABB.x = std::min(minAABB.x, vertex.position.x);
+			minAABB.y = std::min(minAABB.y, vertex.position.y);
+			minAABB.z = std::min(minAABB.z, vertex.position.z);
+
+			maxAABB.x = std::max(maxAABB.x, vertex.position.x);
+			maxAABB.y = std::max(maxAABB.y, vertex.position.y);
+			maxAABB.z = std::max(maxAABB.z, vertex.position.z);
+		}
+
+		//mesh.aabb = SFE::FrustumModule::AABB(minAABB / 100.f, maxAABB / 100.f);
+		mesh.aabb = SFE::FrustumModule::AABB(minAABB, maxAABB);
+	}
 	mtx.lock();
 	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(meshes), std::move(armatur), std::move(animations));
 

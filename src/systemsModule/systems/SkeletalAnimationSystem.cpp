@@ -1,14 +1,42 @@
 ﻿#include "SkeletalAnimationSystem.h"
 
+#include "OcTreeSystem.h"
 #include "RenderSystem.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcclusionComponent.h"
 #include "core/ECSHandler.h"
+#include "debugModule/Benchmark.h"
 
 namespace SFE::SystemsModule {
 	void SkeletalAnimationSystem::update(float dt) {
-		for (auto [entityId, animationComp, armatureComp, ocComp] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, const ComponentsModule::OcclusionComponent>()) {
+		SFE:Vector<ecss::EntityId> entities;
+		{
+			const auto renderSys = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+			auto& camFrustum = renderSys->getRenderData().mCamFrustum;
+			for (auto& treePos : octreeSys->getAABBOctrees(camFrustum.generateAABB())) {
+				if (const auto tree = octreeSys->getOctree(treePos)) {
+					auto lock = tree->readLock();
+					tree->forEachObjectInFrustum(camFrustum, [&entities, &camFrustum](const auto& obj, bool entirely) {
+						if (entirely || FrustumModule::AABB::isOnFrustum(camFrustum, obj.pos, obj.size)) {
+							entities.emplace_back(obj.data);
+						}
+					});
+				}
+			}
+		}
+
+		if (entities.empty()) {
+			return;
+		}
+		entities.sort();
+
+		FUNCTION_BENCHMARK;
+		for (auto [entityId, animationComp, armatureComp, armBones, ocComp] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OcclusionComponent>(entities)) {
+			if (!armatureComp || !armBones) {
+				continue;
+			}
 			if (animationComp->mCurrentAnimation && (animationComp->mPlay || animationComp->step)) {
 				animationComp->step = false;
 				animationComp->mCurrentTime += animationComp->mCurrentAnimation->getTicksPerSecond() * dt;
@@ -17,16 +45,11 @@ namespace SFE::SystemsModule {
 					continue;
 				}
 
-				updateAnimation(animationComp->mCurrentAnimation, animationComp->mCurrentTime, armatureComp->armature, &armatureComp->boneMatrices[0]);
+				updateAnimation(animationComp->mCurrentAnimation, animationComp->mCurrentTime, armatureComp->armature, armBones->boneMatrices);
 
-				auto bonesComp = ECSHandler::registry().addComponent<ComponentsModule::ArmatureBonesComponent>(entityId);
 				if (auto renderSys = ECSHandler::systemManager().getSystem<RenderSystem>()) {
 					renderSys->markDirty<ComponentsModule::ArmatureBonesComponent>(entityId);
-				}
-
-				bonesComp->boneMatrices.resize(100);
-				std::memcpy(bonesComp->boneMatrices.data(), armatureComp->boneMatrices, sizeof(armatureComp->boneMatrices));
-				
+				}				
 			}
 		}
 	}
@@ -43,7 +66,7 @@ namespace SFE::SystemsModule {
 		return keys.size() - 2;
 	}
 
-	void SkeletalAnimationSystem::updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, Math::Mat4* boneMatrices) {
+	void SkeletalAnimationSystem::updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices) {
 		if (!animation) {
 			return;
 		}
@@ -53,7 +76,7 @@ namespace SFE::SystemsModule {
 		}
 	}
 
-	void SkeletalAnimationSystem::calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, SFE::Math::Mat4 parentTransform,	std::vector<AssetsModule::Bone>& bones, Math::Mat4* boneMatrices) {
+	void SkeletalAnimationSystem::calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, SFE::Math::Mat4 parentTransform, std::vector<AssetsModule::Bone>& bones, std::vector<Math::Mat4>& boneMatrices) {
 		if (const auto animationKeys = animation->getBoneAnimationInfo(bone->name)) {
 			bone->pos = interpolatePosition(currentTime, animationKeys->positions);
 			bone->rotation = interpolateRotation(currentTime, animationKeys->rotations);
