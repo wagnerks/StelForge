@@ -2,6 +2,7 @@
 .vs
 /*.dll
 *.pdb
+/*.lib
 build
 bin/imgui.ini
 imgui.ini

@@ -31,6 +31,12 @@ endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set_target_properties(glad imgui Jolt PROPERTIES FOLDER Dependencies)
-set_target_properties(${ENGINE_NAME} PROPERTIES FOLDER Engine)
+
+set_target_properties(${ENGINE_NAME} PROPERTIES
+	FOLDER Engine
+    DEBUG_POSTFIX "-d"
+    ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${ENGINE_PATH}"
+    ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${ENGINE_PATH}"
+)
 
 #set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT ${CMAKE_PROJECT_NAME})

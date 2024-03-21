@@ -17,7 +17,7 @@ endforeach()
 
 if (EDITOR)
 	message("-- engine with editor")
-	add_library(${ENGINE_NAME} SHARED ${SRC})
+	add_library(${ENGINE_NAME} STATIC ${SRC})
 else()
 	message("-- engine without editor")
 	add_executable(${ENGINE_NAME} ${SRC})
@@ -73,10 +73,10 @@ if(MSVC)
 
 	add_custom_command(TARGET ${ENGINE_NAME}
 	POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/assimp/Release/assimp-vc143-mt.dll ${ENGINE_PATH}/.
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/assimp/Debug/assimp-vc143-mtd.dll ${ENGINE_PATH}/.
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/jsoncpp/lib/debug/jsoncpp_d.dll ${ENGINE_PATH}/.
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/jsoncpp/lib/release/jsoncpp.dll ${ENGINE_PATH}/.
+		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/assimp/Release/assimp-vc143-mt.dll ${CMAKE_SOURCE_DIR}/.
+		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/assimp/Debug/assimp-vc143-mtd.dll ${CMAKE_SOURCE_DIR}/.
+		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/jsoncpp/lib/debug/jsoncpp_d.dll ${CMAKE_SOURCE_DIR}/.
+		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/jsoncpp/lib/release/jsoncpp.dll ${CMAKE_SOURCE_DIR}/.
 	)
 elseif(XCODE)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")

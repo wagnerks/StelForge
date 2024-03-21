@@ -3,7 +3,7 @@
 	url = https://github.com/wagnerks/ecss.git
 [submodule "src/submodules/myPhysicsEngine"]
 	path = src/submodules/myPhysicsEngine
-	url = git@github.com:wagnerks/myPhysicsEngine.git
+	url = https://github.com/wagnerks/myPhysicsEngine.git
 [submodule "src/submodules/JoltPhysics"]
 	path = src/submodules/JoltPhysics
 	url = https://github.com/wagnerks/JoltPhysics
