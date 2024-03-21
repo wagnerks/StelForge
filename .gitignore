@@ -4,6 +4,5 @@
 *.pdb
 build
 bin/imgui.ini
-Release
 imgui.ini
 Microsoft.DTfW.DHL.manifest
