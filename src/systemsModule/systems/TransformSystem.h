@@ -3,12 +3,12 @@
 #include <vector>
 
 #include "systemsModule/SystemBase.h"
+#include "systemsModule/TasksManager.h"
 
 namespace SFE::SystemsModule {
 	class TransformSystem : public ecss::System {
 	public:
-		void update(const std::vector<ecss::SectorId>& entitiesToProcess) override;
-
-		void addDirtyComp(ecss::SectorId entity);
+		TransformSystem() : ecss::System({TRANSFORM_UPDATE}) {}
+		void updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) override;
 	};
 }

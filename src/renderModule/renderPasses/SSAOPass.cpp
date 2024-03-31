@@ -4,7 +4,6 @@
 #include <gtc/random.hpp>
 
 #include "imgui.h"
-#include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
@@ -24,8 +23,8 @@ void SSAOPass::init() {
 	mData.mSsaoFbo.bind();
 
 	// SSAO color buffer
-	mData.mSsaoColorBuffer.width = Renderer::screenDrawData.renderW;
-	mData.mSsaoColorBuffer.height = Renderer::screenDrawData.renderH;
+	mData.mSsaoColorBuffer.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	mData.mSsaoColorBuffer.height = Engine::instance()->getWindow()->getScreenData().renderH;
 	mData.mSsaoColorBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
 	mData.mSsaoColorBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
 	mData.mSsaoColorBuffer.pixelFormat = GLW::R8;
@@ -33,8 +32,8 @@ void SSAOPass::init() {
 	mData.mSsaoColorBuffer.pixelType = GLW::FLOAT;
 	mData.mSsaoColorBuffer.create();
 
-	mData.mSsaoColorBufferBlur.width = Renderer::screenDrawData.renderW;
-	mData.mSsaoColorBufferBlur.height = Renderer::screenDrawData.renderH;
+	mData.mSsaoColorBufferBlur.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	mData.mSsaoColorBufferBlur.height = Engine::instance()->getWindow()->getScreenData().renderH;
 	mData.mSsaoColorBufferBlur.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
 	mData.mSsaoColorBufferBlur.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
 	mData.mSsaoColorBufferBlur.pixelFormat = GLW::R8;
@@ -50,8 +49,8 @@ void SSAOPass::init() {
 	mData.mSsaoBlurFbo.addAttachmentTexture(0, &mData.mSsaoColorBufferBlur);
 	mData.mSsaoBlurFbo.finalize();
 
-	mData.mSsaoBlurFbo.bindDefaultFramebuffer();
-
+	GLW::Framebuffer::bindDefaultFramebuffer();
+	GLW::Framebuffer::bindDefaultFramebuffer();
 	// generate sample kernel
 	// ----------------------
 
@@ -100,7 +99,7 @@ void SSAOPass::init() {
 	shaderSSAO->setUniform("kernelSize", mData.mKernelSize);
 	shaderSSAO->setUniform("radius", mData.mRadius);
 	shaderSSAO->setUniform("bias", mData.mBias);
-	shaderSSAO->setUniform("noiseScale", Math::Vec2{static_cast<float>(Renderer::screenDrawData.renderW) / 4.f, static_cast<float>(Renderer::screenDrawData.renderW) / 4.f});
+	shaderSSAO->setUniform("noiseScale", Math::Vec2{static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderW) / 4.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderW) / 4.f});
 	for (unsigned int i = 0; i < 64; ++i) {
 		shaderSSAO->setUniform(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
 	}
@@ -124,7 +123,7 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
 	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
 	{
-		if (ImGui::BeginMainMenuBar()) {
+		/*if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::BeginMenu("Debug")) {
 				if (ImGui::BeginMenu("Systems debug")) {
 					ImGui::Checkbox("SSAO", &ssaoDebugWindow);
@@ -133,7 +132,7 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
 				ImGui::EndMenu();
 			}
 		}
-		ImGui::EndMainMenuBar();
+		ImGui::EndMainMenuBar();*/
 	}
 
 	if (ssaoDebugWindow) {
@@ -193,6 +192,7 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
 	GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->normalBuffer);
 	GLW::bindTextureToSlot(2, &mData.mNoiseTexture);
 	Utils::renderQuad();
+	
 
 	mData.mSsaoBlurFbo.bind();
 	GLW::clear(GLW::ColorBit::COLOR);
@@ -201,6 +201,6 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
 	Utils::renderQuad();
 
 	mData.mSsaoBlurFbo.bindDefaultFramebuffer();
-
+	GLW::Framebuffer::bindDefaultFramebuffer();
 	renderDataHandle.mSSAOPassData = &mData;
 }

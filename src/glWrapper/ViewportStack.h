@@ -35,10 +35,12 @@ namespace SFE::GLW {
 	struct ViewportStack : StateStack<ViewportState, ViewportStack> {
 		constexpr void apply(ViewportState* state) override {
 			if (!state) {
+				glViewport(0, 0, size.x, size.y);
 				return;
 			}
-
+			
 			glViewport(state->pos.x, state->pos.y, state->size.x, state->size.y);
 		}
+		thread_local static inline ViewportState::Vec2 size;
 	};
 }

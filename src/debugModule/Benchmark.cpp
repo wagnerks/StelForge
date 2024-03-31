@@ -1,120 +1,41 @@
 ﻿#include "Benchmark.h"
 
-#include "imgui.h"
-#include "misc/cpp/imgui_stdlib.h"
-
 namespace SFE::Debug {
-	void BenchmarkGUI::onGui() {
+	BenchmarkFunc::BenchmarkFunc(const std::string& name, int line, const std::string& customName) : name(name), customName(customName), line(line) {
 		{
-			if (ImGui::BeginMainMenuBar()) {
-				if (ImGui::BeginMenu("Debug")) {
-					ImGui::Checkbox("benchmark", &windowOpened);
-					ImGui::EndMenu();
+			std::unique_lock lock(BenchmarkSystem::instance()->mtx);
+			BenchmarkSystem::instance()->measurements[name];
+
+			if (!customName.empty()) {
+				BenchmarkSystem::instance()->measurements[name].first[customName];
+			}
+		}
+		Benchmark::start(name + customName);
+	}
+
+	BenchmarkFunc::~BenchmarkFunc() {
+		auto stopRes = Benchmark::stop(name + customName, false);
+
+		std::unique_lock lock(BenchmarkSystem::instance()->mtx);
+		{
+			auto& timings = BenchmarkSystem::instance()->measurements[name];
+			if (!customName.empty()) {
+				auto& childTimings = timings.first[customName];
+				childTimings.measurements.push_back(stopRes);
+				childTimings.plotData.push_back(static_cast<float>(childTimings.measurements.back().delta));
+				if (childTimings.measurements.size() > 100) {
+					childTimings.measurements.erase(childTimings.measurements.begin());
+					childTimings.plotData.erase(childTimings.plotData.begin());
 				}
 			}
-			ImGui::EndMainMenuBar();
-		}
-		if (!windowOpened) {
-			return;
-		}
-
-		if (ImGui::Begin("performance stats", &windowOpened)) {
-
-			if (ImGui::InputText("Filter", &filter)) {
-				std::transform(filter.begin(), filter.end(), filter.begin(), [](unsigned char c) {
-					return std::tolower(c);
-				});
-			}
-			
-			
-			for (auto& [measureName, measureData] : measurements) {
-				if (measureData.second.measurements.empty()) {
-					continue;
-				}
-
-				if (filter.size()) {
-					std::string compareStr = measureName;
-					std::transform(compareStr.begin(), compareStr.end(), compareStr.begin(), [](unsigned char c) {
-						return std::tolower(c);
-					});
-					if (compareStr.find(filter) == std::string::npos) {
-						continue;
-					}
-				}
-				bool treeOpened = false;
-				{
-					long long averageTime = 0;
-					for (const auto& time : measureData.second.measurements) {
-						averageTime += time.delta;
-					}
-					averageTime /= measureData.second.measurements.size();
-					struct Time {
-
-						long long seconds;
-						long long millisecond;
-						long long microsecond;
-						long long nanosecond;
-						long long delta;
-					};
-
-					Time time;
-					time.seconds = averageTime / 1'000'000'000;
-					time.millisecond = averageTime / 1'000'000 % 1'000;
-					time.microsecond = averageTime / 1'000 % 1'000;
-					time.nanosecond = averageTime % 1'000;
-					time.delta = averageTime;
-
-					
-					if (measureData.first.empty()) {
-						ImGui::Text("%s", measureName.c_str());
-					}
-					else {
-						treeOpened = ImGui::TreeNode(measureName.c_str());
-					}
-
-					ImGui::PlotLines(std::string("##" + measureName).c_str(), measureData.second.plotData.data(), measureData.second.plotData.size());
-					ImGui::SameLine();
-					ImGui::Text("avg: %ds: %dms: %dmu: %dns", time.seconds, time.millisecond, time.microsecond, time.nanosecond);
-				}
-
-				
-				if (treeOpened) {
-					ImGui::Separator();
-					ImGui::Separator();
-					for (auto& [name, timings] : measureData.first) {
-						long long averageTime = 0;
-						for (const auto& time : timings.measurements) {
-							averageTime += time.delta;
-						}
-						averageTime /= timings.measurements.size();
-						struct Time {
-
-							long long seconds;
-							long long millisecond;
-							long long microsecond;
-							long long nanosecond;
-							long long delta;
-						};
-
-						Time time;
-						time.seconds = averageTime / 1'000'000'000;
-						time.millisecond = averageTime / 1'000'000 % 1'000;
-						time.microsecond = averageTime / 1'000 % 1'000;
-						time.nanosecond = averageTime % 1'000;
-						time.delta = averageTime;
-
-						ImGui::Text("%s", name.c_str());
-						ImGui::PlotLines(std::string("##" + name).c_str(), timings.plotData.data(), timings.plotData.size());
-						ImGui::SameLine();
-						ImGui::Text("avg: %ds: %dms: %dmu: %dns", time.seconds, time.millisecond, time.microsecond, time.nanosecond);
-					}
-
-
-					ImGui::TreePop();
+			else {
+				timings.second.measurements.push_back(stopRes);
+				timings.second.plotData.push_back(static_cast<float>(timings.second.measurements.back().delta));
+				if (timings.second.measurements.size() > 100) {
+					timings.second.measurements.erase(timings.second.measurements.begin());
+					timings.second.plotData.erase(timings.second.plotData.begin());
 				}
 			}
 		}
-		ImGui::End();
 	}
 }
-

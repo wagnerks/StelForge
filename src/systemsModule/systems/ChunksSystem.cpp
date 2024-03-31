@@ -15,11 +15,11 @@
 #include "debugModule/Benchmark.h"
 
 namespace SFE::SystemsModule {
-	ChunksSystem::ChunksSystem() {
-		//ChunksSystem::update({ ECSHandler::getSystem<CameraSystem>()->getCurrentCamera() });
+	ChunksSystem::ChunksSystem() : System({ SFE::SystemsModule::TaskType::CAMERA_UPDATED }) {
+		//ChunksSystem::updateAsync({ ECSHandler::getSystem<CameraSystem>()->getCurrentCamera() });
 	}
 
-	void ChunksSystem::update(const std::vector<ecss::SectorId>& entitiesToProcess) {
+	void ChunksSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {
 		auto curCam = entitiesToProcess.front();
 		auto curChunkCoords = ECSHandler::registry().getComponent<TransformComponent>(curCam)->getPos(true);
 
@@ -78,7 +78,7 @@ namespace SFE::SystemsModule {
 		ThreadPool::instance()->addTask([this] {
 			while (!mUpdateQueue.empty()) {
 				auto taskContainers = mUpdateQueue.front();
-				if (mClear) {
+				if (debugData.mClear) {
 					std::vector<ecss::SectorId> entitiesToDelete;
 					for (auto& chunk : taskContainers.second) {
 						clearChunk(chunk);
@@ -121,66 +121,36 @@ namespace SFE::SystemsModule {
 
 	}
 
-	void ChunksSystem::debugUpdate(float dt) {
-		{
-			if (ImGui::BeginMainMenuBar()) {
-				if (ImGui::BeginMenu("Debug")) {
-					if (ImGui::BeginMenu("Systems debug")) {
-						ImGui::Checkbox("chunks debug", &mChunksDebugOpened);
-						ImGui::EndMenu();
-					}
-					
-					ImGui::EndMenu();
-				}
+	void ChunksSystem::debugUpdate(float dt) {		
+		if (debugData.mChunksDraw) {
+			constexpr static Math::Mat4 rotate = {
+					{1.f,0.f,0.f,0.f},
+					{0.f,1.f,0.f,0.f},
+					{0.f,0.f,1.f,0.f},
+					{0.f,0.f,0.f,1.f}
+			};
+
+			for (auto& chunkPos : mChunks) {
+
+				constexpr static auto notEmptyColor = Math::Vec4(0.5f, 0.5f, 0.5f, 0.08f);
+
+				Render::Utils::renderCubeMesh(
+					Math::Vec3(0.f, 0.f, 0.f),
+					Math::Vec3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE),
+					rotate, Math::Vec3(chunkPos), notEmptyColor
+				);
 			}
-			ImGui::EndMainMenuBar();
 		}
-		if (mChunksDebugOpened) {
-			if (ImGui::Begin("chunks debug", &mChunksDebugOpened)) {
-				ImGui::Text("cur chunk %f, %f, %f", mCurrentChunk.x, mCurrentChunk.y, mCurrentChunk.z);
-				ImGui::Text("deleted %zu", mDeleted.load());
-				ImGui::Text("created %zu", mCreated.load());
-				ImGui::Checkbox("create", &mCreate);
-				ImGui::Checkbox("clear", &mClear);
-				ImGui::Checkbox("draw chunks borders", &mChunksDraw);
-
-				if (ImGui::Button("clearEmptyEnts")) {
-					ECSHandler::registry().removeEmptySectors();
-				}
-
-				if (mChunksDraw) {
-					constexpr static Math::Mat4 rotate = {
-							{1.f,0.f,0.f,0.f},
-							{0.f,1.f,0.f,0.f},
-							{0.f,0.f,1.f,0.f},
-							{0.f,0.f,0.f,1.f}
-					};
-
-					for (auto& chunkPos : mChunks) {
-
-						constexpr static auto notEmptyColor = Math::Vec4(0.5f, 0.5f, 0.5f, 0.08f);
-
-						Render::Utils::renderCubeMesh(
-							Math::Vec3(0.f, 0.f, 0.f),
-							Math::Vec3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE),
-							rotate, Math::Vec3(chunkPos), notEmptyColor
-						);
-					}
-				}
-			}
-			ImGui::End();
-		}
-		
 	}
 
 	void ChunksSystem::clearChunk(const Chunk& chunk) {
-		if (!mClear) {
+		if (!debugData.mClear) {
 			return;
 		}		
 	}
 
 	void ChunksSystem::loadChunk(const Chunk& chunk) {
-		if (!mCreate) {
+		if (!debugData.mCreate) {
 			return;
 		}
 		return;

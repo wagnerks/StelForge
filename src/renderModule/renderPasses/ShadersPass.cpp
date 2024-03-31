@@ -1,6 +1,5 @@
 ﻿#include "ShadersPass.h"
 #include "componentsModule/ModelComponent.h"
-#include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
@@ -74,6 +73,7 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 	shader->setUniform("near", cameraComp->getProjection().getNear());
 
 	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 4, 6);
+	GLW::Framebuffer::bindDefaultFramebuffer();
 
 	const auto& drawableEntities = ECSHandler::getSystem<SystemsModule::ShaderSystem>()->drawableEntities;
 	if (drawableEntities.empty()) {
@@ -128,4 +128,5 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 	flush(curShaderId);
 
 	renderDataHandle.mGeometryPassData->gFramebuffer.bindDefaultFramebuffer();
+	
 }

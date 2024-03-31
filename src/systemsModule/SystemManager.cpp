@@ -3,47 +3,48 @@
 #include "systemsModule/SystemBase.h"
 #include "debugModule/Benchmark.h"
 
-using namespace ecss;
+namespace ecss {
 
-SystemManager::SystemManager() {
-}
-
-SystemManager::~SystemManager() {
-	for (const auto system : mSystemsMap) {
-		delete system;
-	}
-}
-
-void SystemManager::startTickSystems() {
-	SFE::ThreadPool::instance()->addTask([this]() {
-		const float frameDt = 1.f / mTickRate;
-		auto startTime = std::chrono::high_resolution_clock::now();
-		std::chrono::duration<float> elapsed;
-
-		while (SFE::ThreadPool::isAlive()) {
-			for (auto system : mTickSystems) {
-				system->update(elapsed.count());
-			}
-
-			auto endTime = std::chrono::high_resolution_clock::now();
-			elapsed = endTime - startTime;
-			startTime = endTime;
+	bool SystemManagerAlive = true;
+	SystemManager::~SystemManager() {
+		SystemManagerAlive = false;
+		for (auto& tickThread : mTickSystemThreads) {
+			tickThread.join();
 		}
-	});
-}
 
-void SystemManager::update(float_t dt) {
-	FUNCTION_BENCHMARK;
+		for (const auto system : mSystemsMap) {
+			delete system;
+		}
+	}
 
-	for (const auto system : mRenderRoot.children) {
-		if (system->mEnabled && (system->mTimeFromLastUpdate += dt) >= system->mUpdateInterval) {
-			system->mTimeFromLastUpdate = 0.f;
+	std::thread SystemManager::startTickSystem(System* system, float ticks) {
+		system->setTick(ticks);
+		return std::thread([system] {
+			float mLastFrame = 0.f;
+			
+			while (SystemManagerAlive) {
+				const auto currentFrame = static_cast<float>(glfwGetTime());
+				const auto mDeltaTime = currentFrame - mLastFrame;
+				mLastFrame = currentFrame;
+
+				system->update(mDeltaTime);
+
+				const auto tickDelta = 1.f / system->getTicks();
+				if (mDeltaTime < tickDelta) {
+					std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>((tickDelta - mDeltaTime) * 1000.f * 1000.f)));
+				}
+			}
+		});
+	}
+
+	void SystemManager::update(float_t dt) {
+		FUNCTION_BENCHMARK;
+
+		for (const auto system : mMainThreadSystems) {
 			system->update(dt);
 		}
-	}
 
-	for (auto system : mSystemsMap) {
-		if (system->mEnabled) {
+		for (auto system : mSystemsMap) {
 			system->debugUpdate(dt);
 		}
 	}

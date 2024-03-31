@@ -43,6 +43,24 @@ namespace SFE {
 		bool containsSorted(const _Ty& val) const {
 			return std::binary_search(this->begin(), this->end(), val);
 		}
+
+		void removeCopies() {
+			if (this->empty()) {
+				return;
+			}
+
+			SFE::Vector<_Ty, _Alloc> res;
+			res.reserve(this->size());
+			res.push_back(this->front());
+
+			for (auto i = 1; i < this->size(); i++) {
+				if (this->at(i) != res.back()) {
+					res.push_back(this->at(i));
+				}
+			}
+
+			*this = std::move(res);
+		}
 	};
 }
 

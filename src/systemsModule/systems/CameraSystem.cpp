@@ -11,14 +11,14 @@
 
 namespace SFE::SystemsModule {
 	CameraSystem::CameraSystem() {
-		auto aspect = static_cast<float>(Render::Renderer::screenDrawData.width) / static_cast<float>(Render::Renderer::screenDrawData.height);
+		auto aspect = static_cast<float>(Engine::instance()->getWindow()->getScreenData().width) / static_cast<float>(Engine::instance()->getWindow()->getScreenData().height);
 		mDefaultCamera = ECSHandler::registry().takeEntity();
 
 		auto transform = ECSHandler::registry().addComponent<TransformComponent>(mDefaultCamera, mDefaultCamera);
 		transform->setPos({ 0.f, 200.f, 400.f });
 		transform->setRotate({ -20.f, 0.f, 0.0f });
 		transform->reloadTransform();
-		ECSHandler::registry().addComponent<CameraComponent>(mDefaultCamera, 45.f, aspect, Render::Renderer::screenDrawData.near, Render::Renderer::screenDrawData.far)->updateFrustum(transform->getViewMatrix());
+		ECSHandler::registry().addComponent<CameraComponent>(mDefaultCamera, 45.f, aspect, Engine::instance()->getWindow()->getScreenData().near, Engine::instance()->getWindow()->getScreenData().far)->updateFrustum(transform->getViewMatrix());
 		initKeyEvents();
 	}
 
@@ -69,11 +69,11 @@ namespace SFE::SystemsModule {
 		onMouseBtnEvent = [this](Math::DVec2 mPos, CoreModule::MouseButton btn, CoreModule::InputEventType action) {
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::PRESS) {
 				processMouse = true;
-				glfwSetInputMode(Engine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+				glfwSetInputMode(glfwGetCurrentContext(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 			}
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::RELEASE) {
 				processMouse = false;
-				glfwSetInputMode(Engine::instance()->getMainWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				glfwSetInputMode(glfwGetCurrentContext(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			}
 		};
 
@@ -122,10 +122,9 @@ namespace SFE::SystemsModule {
 
 		if (dif != Math::Vec3{}) {
 			tc->setPos(tc->getPos() + dif);
-			tc->reloadTransform();
+			/*tc->reloadTransform();
 			ECSHandler::registry().getComponent<CameraComponent>(camera)->updateFrustum(tc->getViewMatrix());
-
-			updateDependents(camera);
+			TasksManager::instance()->notify({ camera, CAMERA_UPDATED });*/
 		}
 	}
 
@@ -151,8 +150,8 @@ namespace SFE::SystemsModule {
 		}
 
 		tc->setRotate({ Pitch, Yaw, 0.f });
-		tc->reloadTransform();
-		ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(tc->getViewMatrix());
+		/*tc->reloadTransform();
+		ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(tc->getViewMatrix());*/
 	}
 
 	void CameraSystem::processMouseScroll(float yoffset) {

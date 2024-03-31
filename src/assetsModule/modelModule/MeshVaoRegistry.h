@@ -3,7 +3,7 @@
 
 #include "Mesh.h"
 #include "assetsModule/RenderMeshData.h"
-#include "core/Singleton.h"
+#include "containersModule/Singleton.h"
 
 namespace SFE {
 	class MeshVaoRegistry : public Singleton<MeshVaoRegistry> {

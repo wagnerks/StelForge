@@ -59,27 +59,6 @@ namespace SFE::Render {
 	}
 
 	void Gizmo::update() {
-		{
-			if (ImGui::BeginMainMenuBar()) {
-				if (ImGui::BeginMenu("Gizmo mode")) {
-					if (ImGui::RadioButton("None", mCurrentMode == GizmoMode::NONE)) {
-						mCurrentMode = GizmoMode::NONE;
-					}
-					if (ImGui::RadioButton("Scale", mCurrentMode == GizmoMode::SCALE)) {
-						mCurrentMode = GizmoMode::SCALE;
-					}
-					if (ImGui::RadioButton("Move", mCurrentMode == GizmoMode::MOVE)) {
-						mCurrentMode = GizmoMode::MOVE;
-					}
-					if (ImGui::RadioButton("Rotate", mCurrentMode == GizmoMode::ROTATE)) {
-						mCurrentMode = GizmoMode::ROTATE;
-					}
-					ImGui::EndMenu();
-				}
-			}
-			ImGui::EndMainMenuBar();
-		}
-
 		if (mCurrentMode == GizmoMode::NONE || !ECSHandler::registry().contains(mEntity)) {
 			return;
 		}
@@ -607,7 +586,7 @@ namespace SFE::Render {
 			}
 		}
 		else {
-			Utils::renderLine(pos - mAxisDirection[axis] * Renderer::screenDrawData.far, pos + mAxisDirection[axis] * Renderer::screenDrawData.far, { mColors[axis], mHintAlpha }, 2.5f);
+			Utils::renderLine(pos - mAxisDirection[axis] * Engine::instance()->getWindow()->getScreenData().far, pos + mAxisDirection[axis] * Engine::instance()->getWindow()->getScreenData().far, { mColors[axis], mHintAlpha }, 2.5f);
 		}
 	}
 

@@ -12,6 +12,7 @@
 #include "propertiesModule/PropertiesSystem.h"
 
 #include "systemsModule/SystemManager.h"
+#include "systemsModule/TasksManager.h"
 
 #include "systemsModule/systems/AABBSystem.h"
 #include "systemsModule/systems/ActionSystem.h"
@@ -38,35 +39,31 @@ void ECSHandler::initSystems() {
 	//mDrawRegistry[0].initCustomComponentsContainer<SFE::ComponentsModule::TransformMatComp, MeshComponent, SFE::ComponentsModule::ArmatureBonesComponent>();
 	//mDrawRegistry[1].initCustomComponentsContainer<SFE::ComponentsModule::TransformMatComp, MeshComponent, SFE::ComponentsModule::ArmatureBonesComponent>();
 
+	mSystemManager.createSystem<SFE::SystemsModule::LODSystem>();
 
 	mSystemManager.createSystem<SFE::SystemsModule::TransformSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::ActionSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::OcTreeSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::AABBSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::ChunksSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::WorldTimeSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::SkeletalAnimationSystem>();
+
 
 	mSystemManager.createSystem<SFE::SystemsModule::CameraSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::RenderSystem>();
 
-	mSystemManager.createSystem<SFE::SystemsModule::Physics>();
-	mSystemManager.setUpdateInterval<SFE::SystemsModule::Physics>(1 / 60.f);
+	//mSystemManager.createSystem<SFE::SystemsModule::Physics>();
+	//mSystemManager.createSystem<SFE::SystemsModule::ActionSystem>();
+	//mSystemManager.createSystem<SFE::SystemsModule::WorldTimeSystem>();
+	//mSystemManager.createSystem<SFE::SystemsModule::SkeletalAnimationSystem>();
+	//mSystemManager.createSystem<SFE::SystemsModule::ShaderSystem>();
 
-	mSystemManager.createSystem<SFE::SystemsModule::LODSystem>();
-	mSystemManager.setUpdateInterval<SFE::SystemsModule::LODSystem>(60.f);
 
-	mSystemManager.createSystem<SFE::SystemsModule::ShaderSystem>();
-	mSystemManager.setUpdateInterval<SFE::SystemsModule::ShaderSystem>(1 / 60.f);
+	mSystemManager.addTickSystems<SFE::SystemsModule::Physics, SFE::SystemsModule::ActionSystem, SFE::SystemsModule::ShaderSystem>(32);
+	mSystemManager.addTickSystems<SFE::SystemsModule::WorldTimeSystem>(1);
+	mSystemManager.addTickSystems<SFE::SystemsModule::SkeletalAnimationSystem>(24);
+	mSystemManager.addTickSystems<SFE::SystemsModule::CameraSystem>(256);
 
-	mSystemManager.addTickSystems<SFE::SystemsModule::Physics, SFE::SystemsModule::ActionSystem, SFE::SystemsModule::WorldTimeSystem, SFE::SystemsModule::SkeletalAnimationSystem>();
-	mSystemManager.addRootSystems<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::RenderSystem, SFE::SystemsModule::ShaderSystem>();
 
-	mSystemManager.setSystemDependencies<SFE::SystemsModule::TransformSystem, SFE::SystemsModule::AABBSystem>();
-	mSystemManager.setSystemDependencies<SFE::SystemsModule::AABBSystem, SFE::SystemsModule::OcTreeSystem>();
-	mSystemManager.setSystemDependencies<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::ChunksSystem>();
-
-	mSystemManager.startTickSystems();
+	mSystemManager.addRootSystems<SFE::SystemsModule::RenderSystem>();
 
 	SFE::ThreadPool::instance()->addTask([]() {
 		SFE::PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
@@ -107,10 +104,7 @@ void ECSHandler::initSystems() {
 							};
 						});
 
-						if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
-							renderSys->markDirty<MeshComponent>(entity);
-						}
-
+						SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MESH_UPDATED });
 
 						if (modelComp->getModel().meshes[0]->material.materialTextures.size()) {
 							auto materialComp = ECSHandler::addComponent<MaterialComponent>(entity);
@@ -118,9 +112,7 @@ void ECSHandler::initSystems() {
 							for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
 								materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture->mId, mat.second.texture->mType });
 							}
-							if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
-								renderSys->markDirty<MaterialComponent>(entity);
-							}
+							SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MATERIAL_UPDATED });
 						}
 
 						if (modelComp->armature.bones.size()) {
@@ -129,9 +121,8 @@ void ECSHandler::initSystems() {
 
 							auto armatureBonesComp = ECSHandler::registry().addComponent<SFE::ComponentsModule::ArmatureBonesComponent>(entity);
 							std::ranges::copy(modelComp->boneMatrices, armatureBonesComp->boneMatrices.begin());
-							if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
-								renderSys->markDirty<SFE::ComponentsModule::ArmatureComponent>(entity);
-							}
+
+							SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ARMATURE_UPDATED });
 						}
 					}
 

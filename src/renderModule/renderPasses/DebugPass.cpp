@@ -4,6 +4,7 @@
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
+#include "componentsModule/GizmoComponent.h"
 #include "core/ECSHandler.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
@@ -11,7 +12,6 @@
 #include "glWrapper/CapabilitiesStack.h"
 #include "glWrapper/Draw.h"
 #include "glWrapper/VertexArray.h"
-#include "renderModule/Renderer.h"
 #include "renderModule/SceneGridFloor.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/CameraSystem.h"
@@ -49,6 +49,11 @@ namespace SFE::Render::RenderPasses {
 		
 	void DebugPass::render(SystemsModule::RenderData& renderDataHandle) {
 		FUNCTION_BENCHMARK;
+
+		for (auto [entId, gizmoComp] : ECSHandler::registry().forEach<ComponentsModule::GizmoComponent>()) {
+			gizmoComp->gizmo.setEntity(entId);
+			gizmoComp->gizmo.update();
+		}
 
 		if (!Utils::renderTriangles.empty()) {
 			auto triangleShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/simpleColoredTriangle.vs", "shaders/simpleColoredTriangle.fs");
@@ -117,9 +122,9 @@ namespace SFE::Render::RenderPasses {
 			auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
 			sh->use();
 			sh->setUniform("depthMap", 31);
-
-			auto a = 250.f / Render::Renderer::screenDrawData.width;
-			auto b = 250.f / Render::Renderer::screenDrawData.height;
+			
+			auto a = 250.f / Engine::instance()->getWindow()->getScreenData().width;
+			auto b = 250.f / Engine::instance()->getWindow()->getScreenData().height;
 
 			for (auto i = 0; i < renderData.mCascadedShadowsPassData->shadowCascadeLevels.size() - 1; i++) {
 				sh->setUniform("near_plane", renderData.mCascadedShadowsPassData->shadowCascadeLevels[i]);

@@ -4,7 +4,6 @@
 #include "glWrapper/Buffer.h"
 #include "glWrapper/CapabilitiesStack.h"
 #include "mathModule/Utils.h"
-#include "renderModule/Renderer.h"
 
 namespace SFE::Render::RenderPasses {
 	GUIPass::~GUIPass() {}
@@ -13,7 +12,7 @@ namespace SFE::Render::RenderPasses {
 		const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/2dshader.vs", "shaders/2dshader.fs");
 
 		shader->use();
-		shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Renderer::screenDrawData.width), 0.f, static_cast<float>(Renderer::screenDrawData.height), -1.f, 1.f));
+		shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().width), 0.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().height), -1.f, 1.f));
 		VAO.generate();
 		VAO.bind();
 		VBO.bind();
@@ -35,8 +34,8 @@ namespace SFE::Render::RenderPasses {
 		VBO.bind();
 		VBO.allocateData(sizeof(float) * 2 * 3 * 2, registry.getAllEntities().size(), GLW::DYNAMIC_DRAW);
 
-		const float semiW = Render::Renderer::screenDrawData.width * 0.5f;
-		const float semiH = Render::Renderer::screenDrawData.height * 0.5f;
+		const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
+		const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
 		int i = 0;
 		for (auto [entId, position, color, textComp] : registry.forEach<PosComponent, ColorComponent, TextComponent>()) {
 			if (textComp) {
@@ -47,7 +46,7 @@ namespace SFE::Render::RenderPasses {
 			auto pos = position->pos;
 			pos.x += -position->pivot.x * position->size.x;
 
-			pos.y = Render::Renderer::screenDrawData.height - pos.y;
+			pos.y = Engine::instance()->getWindow()->getScreenData().height - pos.y;
 			pos.y -= position->size.y;
 			pos.y += position->pivot.y * position->size.y;
 

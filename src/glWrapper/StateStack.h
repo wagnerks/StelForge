@@ -7,6 +7,7 @@ namespace SFE::GLW {
 	struct StateStack {//may be this should exists per opengl context, but now i have only one context todo
 		constexpr static void push(const StateData& data) { instance()->pushImpl(data); }
 		constexpr static void pop() {	instance()->popImpl(); }
+		static StateData* top() { return instance()->mStack.empty() ? nullptr : &instance()->mStack.top(); }
 
 		virtual ~StateStack() = default;
 	private:
@@ -32,6 +33,10 @@ namespace SFE::GLW {
 		}
 
 		constexpr void popImpl() {
+			if (mStack.empty()) {
+				apply(nullptr);
+				return;
+			}
 			auto popped = mStack.top();
 			mStack.pop();
 			if (mStack.empty()) {
@@ -44,9 +49,10 @@ namespace SFE::GLW {
 			}
 		}
 
+		
 	private:
 		constexpr virtual void apply(StateData* data) = 0;
-		static inline StateStack* mInstance = nullptr;
+		thread_local static inline StateStack* mInstance = nullptr;
 		std::stack<StateData> mStack;
 	};
 }

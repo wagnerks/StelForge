@@ -2,7 +2,7 @@
 #include <functional>
 
 #include "mathModule/Forward.h"
-#include "renderModule/Renderer.h"
+#include "..\windowsModule\Window.h"
 
 namespace SFE::CoreModule {
 
@@ -215,11 +215,11 @@ namespace SFE::CoreModule {
 
 	class InputHandler {
 	public:
-		static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-		static void mouseCallback(GLFWwindow* window, double xPos, double yPos);
-		static void scrollCallback(GLFWwindow* window, double xOffset, double yOffset);
-		static void mouseBtnInput(GLFWwindow* w, int btn, int act, int mode);
-		static void init();
+		static void keyCallback(int key, int scancode, int action, int mods);
+		static void mouseCallback(double xPos, double yPos);
+		static void scrollCallback(double xOffset, double yOffset);
+		static void mouseBtnInput(int btn, int act, int mode);
+		static void init(Render::Window* window);
 
 	private:
 		inline static Math::DVec2 mMousePos = {};

@@ -36,7 +36,7 @@ namespace SFE::Render {
 		void setMode(GizmoMode mode) {
 			mCurrentMode = mode;
 		}
-
+		GizmoMode getMode() const { return mCurrentMode; }
 	private:
 		std::pair<Axis, Math::Vec3> findHoveredGizmo(GizmoMode mode) const;
 

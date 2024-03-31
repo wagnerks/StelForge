@@ -4,7 +4,6 @@
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "core/Engine.h"
-#include "renderModule/Renderer.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "assetsModule/modelModule/BoundingVolume.h"
@@ -134,11 +133,6 @@ void CascadedShadowPass::init() {
 	auto debugData = ECSHandler::registry().addComponent<DebugDataComponent>(mShadowSource);
 	debugData->stringId = "cascadeShadows";
 
-	auto cam = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
-	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(cam)->getProjection();
-
-	
-
 	auto shadow = FileSystem::readJson("cascadedShadows.json");
 
 	PropertiesModule::PropertiesSystem::deserializeProperty<CascadeShadowComponent>(mShadowSource, shadow["Properties"]);
@@ -252,6 +246,7 @@ void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataH
 }
 
 void CascadedShadowPass::debug(SystemsModule::RenderData& renderDataHandle) {
+	return;
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("Debug")) {
 			if (ImGui::BeginMenu("Shadows debug")) {

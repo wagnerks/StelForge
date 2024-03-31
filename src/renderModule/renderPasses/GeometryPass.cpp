@@ -2,7 +2,6 @@
 
 #include "imgui.h"
 #include "componentsModule/ModelComponent.h"
-#include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
@@ -114,8 +113,8 @@ void GeometryPass::init() {
 	mOutlineData.init(2);
 	getContainer().init(2);
 
-	const auto w = Renderer::screenDrawData.renderW;
-	const auto h = Renderer::screenDrawData.renderH;
+	const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
+	const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
 
 	// position color buffer
 	mData.positionBuffer.width = w;
@@ -198,6 +197,7 @@ void GeometryPass::init() {
 	mData.outlineFramebuffer.finalize();
 
 	GLW::Framebuffer::bindDefaultFramebuffer();
+	GLW::Framebuffer::bindDefaultFramebuffer();
 }
 
 void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
@@ -275,6 +275,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 		outlineG->setUniform("gLightsP", 25);
 
 		Utils::renderQuad();
+		GLW::Framebuffer::bindDefaultFramebuffer();
 	}
 	else {
 		if (needClearOutlines) {
@@ -282,11 +283,13 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 			mData.outlineFramebuffer.bind();
 			mData.outlinesBuffer.create();
+			GLW::Framebuffer::bindDefaultFramebuffer();
 		}
 	}
 
+	
 	GLW::Framebuffer::bindDefaultFramebuffer();
-
+	
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 		GLW::PolygonMode<GLW::PolygonFace::FRONT_AND_BACK>::pop();
 	}

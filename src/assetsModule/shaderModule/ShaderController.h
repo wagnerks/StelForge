@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "Shader.h"
-#include "core/Singleton.h"
+#include "containersModule/Singleton.h"
 
 #define SHADER_CONTROLLER ::SFE::ShaderModule::ShaderController::instance()
 

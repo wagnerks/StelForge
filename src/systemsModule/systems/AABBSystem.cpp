@@ -12,7 +12,7 @@
 #include "multithreading/ThreadPool.h"
 
 
-void SFE::SystemsModule::AABBSystem::update(const std::vector<ecss::SectorId>& entitiesToProcess) {
+void SFE::SystemsModule::AABBSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {
 	ECSHandler::registry().forEachAsync<ComponentsModule::AABBComponent, const TransformComponent>(entitiesToProcess, [this](auto entity, ComponentsModule::AABBComponent* aabbcomp, const TransformComponent* transform) {
 		if (!aabbcomp) {
 			return;
@@ -59,7 +59,6 @@ void SFE::SystemsModule::AABBSystem::update(const std::vector<ecss::SectorId>& e
 			};
 		}
 		aabbcomp->mtx.unlock();
-
-		updateDependents(entity);
+		TasksManager::instance()->notify({ entity, AABB_UPDATED });
 	});
 }

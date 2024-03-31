@@ -14,12 +14,12 @@
 #include "ecss/Registry.h"
 
 namespace SFE::SystemsModule {
-	OcTreeSystem::OcTreeSystem() {
+	OcTreeSystem::OcTreeSystem() : System({ SFE::SystemsModule::TaskType::AABB_UPDATED }) {
 		curMaxX = curMaxY = curMaxZ = std::numeric_limits<float>::min();
 		curMinX = curMinY = curMinZ = std::numeric_limits<float>::max();
 	}
 
-	void OcTreeSystem::update(const std::vector<ecss::SectorId>& entitiesToProcess) {
+	void OcTreeSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {
 		ECSHandler::registry().forEachAsync<ComponentsModule::AABBComponent, OcTreeComponent>(entitiesToProcess, [this](ecss::SectorId entity, ComponentsModule::AABBComponent* aabbcomp, OcTreeComponent* component) {
 			if (!aabbcomp || !component) {
 				return;
@@ -75,42 +75,17 @@ namespace SFE::SystemsModule {
 	}
 
 	void OcTreeSystem::debugUpdate(float dt) {
-		{
-			if (ImGui::BeginMainMenuBar()) {
-				if (ImGui::BeginMenu("Debug")) {
-					if (ImGui::BeginMenu("Systems debug")) {
-						ImGui::Checkbox("OcTreeSystem debug", &debugOpened);
-						ImGui::EndMenu();
-					}
-					ImGui::EndMenu();
+		if (drawOctrees) {
+			auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
+			forEachOctreePosInAABB(renderData.mNextCamFrustum.generateAABB(), [this](const Math::Vec3& pos) {
+				if (auto tree = getOctree(pos)) {
+					tree->drawOctree(drawObjAABB);
 				}
-			}
-			ImGui::EndMainMenuBar();
+				else {
+					//mOctrees[octreePos] = { octreePos };
+				}
+			});
 		}
-		if (debugOpened) {
-			if (ImGui::Begin("OcTreeSystemDebug", &debugOpened)) {
-				ImGui::Text("octree size: %f\noctrees count: %d", OCTREE_SIZE, mOctrees.size());
-
-				ImGui::Checkbox("drawOctrees", &drawOctrees);
-				ImGui::Checkbox("drawObjAABB", &drawObjAABB);
-
-				ImGui::Text("entities: %d", ECSHandler::registry().getComponentContainer<TransformComponent>()->size());
-			}
-			ImGui::End();
-
-			if (drawOctrees) {
-				auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-				forEachOctreePosInAABB(renderData.mNextCamFrustum.generateAABB(), [this](const Math::Vec3& pos) {
-					if (auto tree = getOctree(pos)) {
-						tree->drawOctree(drawObjAABB);
-					}
-					else {
-						//mOctrees[octreePos] = { octreePos };
-					}
-				});
-			}
-		}
-		
 	}
 
 	std::vector<Math::Vec3> OcTreeSystem::getAABBOctrees(const FrustumModule::AABB& aabb) {

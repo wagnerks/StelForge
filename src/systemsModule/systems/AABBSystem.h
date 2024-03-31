@@ -4,6 +4,7 @@
 namespace SFE::SystemsModule {
 	class AABBSystem : public ecss::System {
 	public:
-		void update(const std::vector<ecss::SectorId>& entitiesToProcess) override;
+		AABBSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED }){}
+		void updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) override;
 	};
 }

@@ -2,24 +2,14 @@
 
 #include "systemsModule/SystemBase.h"
 
-namespace SFE {
-	namespace MemoryModule {
-		class ECSMemoryStack;
-	}
-}
-
 namespace ecss {
-	struct SystemsGraph {
-		std::vector<System*> children;
-	};
-
 	class SystemManager final {
 		SystemManager(const SystemManager&) = delete;
 		SystemManager& operator=(SystemManager&) = delete;
 	public:
-		SystemManager();
+		SystemManager() = default;
 		~SystemManager();
-		void startTickSystems();
+		
 		void update(float_t dt);
 		
 		template <class T>
@@ -39,53 +29,30 @@ namespace ecss {
 			}
 
 			system = new T(std::forward<ARGS>(systemArgs)...);
-			system->mType = ecss::SystemTypeCounter::type<T>();
+			ecss::SystemTypeCounter::type<T>();
 			mSystemsMap.push_back(system);
 
 			return system;
 		}
 
-		template <class T, class... ARGS>
-		void setSystemDependencies() {
-			auto system = getSystem<T>();
-
-			(system->template addDependency<ARGS>(getSystem<ARGS>()), ...);
-		}
 		
 		template <class... ARGS>
 		void addRootSystems() {
-			(mRenderRoot.children.push_back(getSystem<ARGS>()), ...);
+			(mMainThreadSystems.push_back(createSystem<ARGS>()), ...);
 		}
 
 		template <class... ARGS>
-		void addTickSystems() {
-			(mTickSystems.push_back(getSystem<ARGS>()), ...);
+		void addTickSystems(float ticks = 32) {
+			(mTickSystemThreads.push_back(startTickSystem(createSystem<ARGS>(), ticks)), ...);
 		}
 
-		template <class T>
-		void setSystemEnabled(bool enabled) {
-			if (auto system = getSystem<T>()) {
-				if (system->mEnabled == enabled) {
-					return;
-				}
-
-				system->mEnabled = enabled;
-			}
-		}
-
-		template <class T>
-		void setUpdateInterval(float_t updateInterval) {
-			if (auto system = getSystem<T>()) {
-				system->mUpdateInterval = updateInterval;
-			}
-		}
-
-		float getTickDt() const { return mTickDt; }
 	private:
-		SystemsGraph mRenderRoot;
-		size_t mTickRate = 32;
-		float mTickDt = 0.f;
+		std::thread startTickSystem(System* system, float ticks = 32);
+
 		std::vector<System*> mSystemsMap;
-		std::vector<System*> mTickSystems;
+
+		std::vector<System*> mMainThreadSystems;
+
+		std::vector<std::thread> mTickSystemThreads;
 	};
 }

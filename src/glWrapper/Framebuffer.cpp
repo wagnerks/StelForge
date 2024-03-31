@@ -46,11 +46,13 @@ namespace SFE::GLW {
 	}
 
 	void Framebuffer::bindFramebuffer(unsigned id) {
-		glBindFramebuffer(GL_FRAMEBUFFER, id);
+		FramebufferStack::push(id);
+		//glBindFramebuffer(GL_FRAMEBUFFER, id);
 	}
 
 	void Framebuffer::bindDefaultFramebuffer() {
-		bindFramebuffer(0);
+		FramebufferStack::pop();
+		//bindFramebuffer(0);
 	}
 
 	void Framebuffer::setReadBuffer(RenderBuffer buf) {
@@ -81,5 +83,15 @@ namespace SFE::GLW {
 
 	void Framebuffer::addRenderbuffer(AttachmentType attachment, unsigned renderBuffer) {
 		addRenderbuffer(static_cast<int>(attachment), renderBuffer);
+	}
+
+	constexpr void FramebufferStack::apply(unsigned* data) {
+		if (!data) {
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+		else {
+			glBindFramebuffer(GL_FRAMEBUFFER, *data);
+		}
+		
 	}
 }

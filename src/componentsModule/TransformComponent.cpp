@@ -106,15 +106,12 @@ namespace SFE::ComponentsModule {
 				return;
 			}
 			mDirty = false;
-		}
 
-		{
-			auto lock = std::unique_lock(mtx);
 			mRotateQuaternion.eulerToQuaternion(mRotate);
 		}
 		
 		auto newTransform = calculateLocalTransform();
-
+		
 		if (const auto tree = ECSHandler::registry().getComponent<TreeComponent>(getEntityId())) {
 			if (const auto parentTransform = ECSHandler::registry().getComponentNotSafe<TransformComponent>(tree->getParent())) {
 				newTransform = parentTransform->getTransform() * newTransform;
@@ -127,8 +124,7 @@ namespace SFE::ComponentsModule {
 
 			for (const auto childTransform : tree->getChildren()) {
 				if (auto transformPtr = ECSHandler::registry().getComponentNotSafe<TransformComponent>(childTransform)) {
-					transformPtr->mDirty = true;
-					transformPtr->reloadTransform();
+					transformPtr->markDirty();
 				}
 			}
 		}
@@ -173,9 +169,7 @@ namespace SFE::ComponentsModule {
 		}
 		mDirty = true;
 
-		if (auto trSys = ECSHandler::getSystem<SystemsModule::TransformSystem>()) {
-			trSys->addDirtyComp(getEntityId());
-		}
+		SystemsModule::TasksManager::instance()->notify({ getEntityId(), SystemsModule::TRANSFORM_UPDATE });
 	}
 
 	bool TransformComponent::isDirty() const {

@@ -5,16 +5,39 @@
 
 #include "Core.h"
 #include "InputHandler.h"
+#include "glWrapper/CapabilitiesStack.h"
+#include "glWrapper/Depth.h"
+#include "glWrapper/Draw.h"
+#include "glWrapper/ViewportStack.h"
+#include "logsModule/logger.h"
+#include "multithreading/ThreadPool.h"
+#include "renderModule/TextRenderer.h"
 
 namespace SFE {
-	void Engine::init() {
-		mMainThreadID = std::this_thread::get_id();
-		if (mMainWindow = Render::Renderer::initGLFW(); !mMainWindow) {
+	void Engine::setWindow(Render::Window* window) {
+		if (mWindow) {
+			delete mWindow;
+		}
+		mWindow = window;
+		if (mWindow) {
+			mWindow->onFramebufferResize = [](int width, int height) {
+				SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([width, height]() {
+					SFE::GLW::ViewportStack::size = { width, height };
+				});
+			};
+
+			checkNeedClose();
+		}
+	}
+
+	void Engine::initThread() {
+		if (!mWindow) {
+			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize thread without context, forgot to call createWindow?");
 			return;
 		}
 
-		mAlive = true;
-
+		mMainThreadID = std::this_thread::get_id();
+		glfwMakeContextCurrent(mWindow->getWindow());
 		mCore.init();
 
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
@@ -26,22 +49,56 @@ namespace SFE {
 				glfwSetWindowShouldClose(getMainWindow(), true);
 			}
 		};
+
+		SFE::LogsModule::Logger::LOG_INFO("engine thread initialized");
 	}
 
-	void Engine::update() {
-		if (!mAlive) {
+	void Engine::initRender() {
+		if(!mWindow) {
+			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize render without context, forgot to call createWindow?");
 			return;
 		}
 
-		checkNeedClose();
+		SFE::GLW::ViewportStack::size = { mWindow->getScreenData().renderW, mWindow->getScreenData().renderH };
+		glfwSwapInterval(0);
 
-		updateDelta();
+		SFE::GLW::setClearColor(0.f, 0.f, 0.f);
 
-		mCore.update(mDeltaTime);
+		GLW::CapabilitiesStack<SFE::GLW::CULL_FACE>::push(true);
+		SFE::GLW::CapabilitiesStack<SFE::GLW::DEPTH_TEST>::push(true);
+		SFE::GLW::DepthFuncStack::push(SFE::GLW::DepthFunc::LESS);
 
-		if (mDeltaTime < 1.f / maxFPS) {
-			std::this_thread::sleep_for(std::chrono::milliseconds((int)((1.f / maxFPS - mDeltaTime) * 1000.f)));
+		SFE::GLW::setDepthDistance(mWindow->getScreenData().far);
+
+		SFE::LogsModule::Logger::LOG_INFO("engine render initialized");
+	}
+
+
+	Render::Window* Engine::createWindow(int width, int height, GLFWwindow* window, const std::string& title, Render::WindowHints hints) {
+		setWindow(new Render::Window(width, height, title, window, hints));
+
+		return mWindow;
+	}
+
+	void Engine::destroyWindow() {
+		delete mWindow;
+		mWindow = nullptr;
+	}
+
+	void Engine::update() {
+		if (!checkNeedClose()) {
+			return;
 		}
+		
+		updateDelta();
+		
+		mCore.update(mDeltaTime);
+	
+		glfwPollEvents();
+
+		getWindow()->swapBuffers();
+
+		fpsSync(maxFPS);
 	}
 
 	float Engine::getDeltaTime() const {
@@ -59,7 +116,7 @@ namespace SFE {
 
 		mFramesCounter++;
 		mFramesTimer += mDeltaTime;
-		if (mFramesTimer > 1.f) {
+		if (mFramesTimer >= 1.f) {
 			mFPS = mFramesCounter;
 			mFramesCounter = 0;
 			mFramesTimer = 0.f;
@@ -70,13 +127,18 @@ namespace SFE {
 		return mAlive;
 	}
 
-	void Engine::checkNeedClose() {
-		mAlive = !glfwWindowShouldClose(getMainWindow());
+	bool Engine::checkNeedClose() {
+		mAlive = !mWindow->isClosing();
+		return mAlive;
 	}
 
 
 	GLFWwindow* Engine::getMainWindow() const {
-		return mMainWindow;
+		return mWindow->getWindow();
+	}
+
+	Render::Window* Engine::getWindow() const {
+		return mWindow;
 	}
 
 	bool Engine::isMainThread() {
@@ -84,6 +146,12 @@ namespace SFE {
 	}
 
 	Engine::~Engine() {
-		glfwDestroyWindow(getMainWindow());
+		destroyWindow();
+	}
+
+	void Engine::fpsSync(int fps) const {
+		if (mDeltaTime < 1.f / fps) {
+			std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>((1.f / fps - mDeltaTime) * 1000.f * 1000.f)));
+		}
 	}
 }

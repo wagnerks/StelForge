@@ -4,15 +4,22 @@
 
 #include "Core.h"
 #include "InputHandler.h"
-#include "Singleton.h"
+#include "containersModule/Singleton.h"
 
 class Camera;
 
 namespace SFE {
 	class Engine : public Singleton<Engine>, public CoreModule::InputObserver {
 		friend Singleton;
+
 	public:
-		void init() override;
+		Render::Window* createWindow(int width, int height, GLFWwindow* window = nullptr, const std::string& title = "Engine", Render::WindowHints hints = {});
+		void setWindow(Render::Window* window);
+		void destroyWindow();
+
+		void initThread();
+		void initRender();
+
 		void update();
 
 		float getDeltaTime() const;
@@ -21,15 +28,19 @@ namespace SFE {
 		bool isAlive() const;
 
 		GLFWwindow* getMainWindow() const;
-
+		Render::Window* getWindow() const;
 		static bool isMainThread();
 
 		int maxFPS = 60;
-	private:
+
+	protected:
 		Engine() = default;
 		~Engine() override;
+
+	private:
+		void fpsSync(int fps) const;
 		void updateDelta();
-		void checkNeedClose();
+		bool checkNeedClose();
 
 		float mLastFrame = 0.f;
 		float mDeltaTime = 0.f;
@@ -41,9 +52,8 @@ namespace SFE {
 		bool mAlive = false;
 
 		CoreModule::Core mCore;
-
-		GLFWwindow* mMainWindow = nullptr;
-
+		
+		Render::Window* mWindow = nullptr;
 		inline static std::thread::id mMainThreadID;
 	};
 }

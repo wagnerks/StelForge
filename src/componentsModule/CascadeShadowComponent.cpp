@@ -127,7 +127,7 @@ namespace SFE::ComponentsModule {
 		}
 
 		shadowCascadeLevels.front() = cameraProjection.getNear();
-		shadowCascadeLevels.back() = Render::Renderer::screenDrawData.far;
+		shadowCascadeLevels.back() = Engine::instance()->getWindow()->getScreenData().far;
 
 		auto fov = cameraProjection.getFOV();
 		auto aspect = cameraProjection.getAspect();

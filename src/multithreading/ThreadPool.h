@@ -11,7 +11,7 @@
 #include <vector>
 #include <core/Engine.h>
 
-#include "core/Singleton.h"
+#include "containersModule/Singleton.h"
 
 namespace SFE {
 
@@ -121,7 +121,7 @@ namespace SFE {
 	public:
 		ThreadPool();
 		~ThreadPool();
-
+		
 		template<WorkerType Type = WorkerType::COMMON>
 		FuturesBunch addBatchTasks(size_t size, size_t batchSize, std::function<void(size_t)> task) {
 			FuturesBunch futures;
@@ -163,7 +163,7 @@ namespace SFE {
 		std::shared_future<void> addTaskToSynchronization(std::function<void()>&& task);
 		std::shared_future<void> addLoadingTask(std::function<void()>&& task);
 
-		constexpr static inline uint8_t MAX_WORKERS = 32;
+		constexpr static inline uint8_t MAX_WORKERS = 128;
 		constexpr static inline uint8_t RENDER_WORKERS = 16;
 		constexpr static inline uint8_t LOADING_WORKERS = 8;
 

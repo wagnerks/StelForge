@@ -1,5 +1,4 @@
 ﻿#include "LightingPass.h"
-#include "renderModule/Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
@@ -38,8 +37,8 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 	shaderLightingPass->setUniform("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData->shadowEntities.size()));
 	shaderLightingPass->setUniform("PointLightShadowMapArray", 30);
 
-	shaderLightingPass->setUniform("fogStart", Renderer::screenDrawData.far * 0.9f);
-	shaderLightingPass->setUniform("screenDrawData.far", Renderer::screenDrawData.far);
+	shaderLightingPass->setUniform("fogStart", Engine::instance()->getWindow()->getScreenData().far * 0.9f);
+	shaderLightingPass->setUniform("screenDrawData.far", Engine::instance()->getWindow()->getScreenData().far);
 
 	int offsetSum = 0;
 	for (size_t i = 0; i < renderDataHandle.mPointPassData->shadowEntities.size(); i++) {
@@ -105,11 +104,21 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
 	GLW::bindReadFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer.id);
-	GLW::bindDrawFramebuffer(); // write to default framebuffer
-	auto w = Renderer::screenDrawData.renderW;
-	auto h = Renderer::screenDrawData.renderH;
-	GLW::blitFramebuffer(0, 0, w, h, 0, 0, w, h, GLW::ColorBit::DEPTH, GLW::BlitFilter::NEAREST);
-	GLW::Framebuffer::bindDefaultFramebuffer();
+	if (auto curFBO = GLW::FramebufferStack::top()) {
+		GLW::bindDrawFramebuffer(*curFBO);
+		const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
+		const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
+		GLW::blitFramebuffer(0, 0, w, h, 0, 0, w, h, GLW::ColorBit::DEPTH, GLW::BlitFilter::NEAREST);
+		GLW::bindReadFramebuffer(*curFBO);
+	}
+	else {
+		GLW::bindDrawFramebuffer(); // write to default framebuffer
+		const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
+		const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
+		GLW::blitFramebuffer(0, 0, w, h, 0, 0, w, h, GLW::ColorBit::DEPTH, GLW::BlitFilter::NEAREST);
+		GLW::bindReadFramebuffer();
+	}
+
 
 	static Math::Vec3 sunDir;
 	static float time = 0.f;
@@ -122,13 +131,13 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 	time += 0.01f;
 
 	{
-		if (ImGui::BeginMainMenuBar()) {
+		/*if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::BeginMenu("Debug")) {
 				ImGui::Checkbox("skyParams", &skyParams);
 				ImGui::EndMenu();
 			}
 		}
-		ImGui::EndMainMenuBar();
+		ImGui::EndMainMenuBar();*/
 	}
 	if (skyParams) {
 		if (ImGui::Begin("sky params", &skyParams)) {

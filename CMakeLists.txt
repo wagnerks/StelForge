@@ -23,11 +23,13 @@ add_subdirectory(src/submodules/JoltPhysics/Build)
 
 set_property(TARGET ${ENGINE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${ENGINE_PATH}/bin)
 set_property(TARGET ${ENGINE_NAME} PROPERTY WORKING_DIRECTORY ${ENGINE_PATH}/bin)
+set_property(TARGET ${ENGINE_NAME} PROPERTY CXX_STANDARD 23)
 
 if(XCODE)
 	set_target_properties(${ENGINE_NAME} PROPERTIES
 		XCODE_ATTRIBUTE_CONFIGURATION_BUILD_DIR "${ENGINE_PATH}/bin")
 endif()
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set_target_properties(glad imgui Jolt PROPERTIES FOLDER Dependencies)

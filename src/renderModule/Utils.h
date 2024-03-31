@@ -3,7 +3,6 @@
 #include <map>
 #include <unordered_map>
 
-#include "Renderer.h"
 #include "assetsModule/modelModule/Vertex.h"
 #include "glWrapper/Draw.h"
 

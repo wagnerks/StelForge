@@ -18,6 +18,7 @@ endforeach()
 if (EDITOR)
 	message("-- engine with editor")
 	add_library(${ENGINE_NAME} STATIC ${SRC})
+	add_definitions(-DEDITOR_ENABLED)
 else()
 	message("-- engine without editor")
 	add_executable(${ENGINE_NAME} ${SRC})
@@ -34,10 +35,6 @@ target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glm")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/stb")
 
 target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
-
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET ${ENGINE_NAME} PROPERTY CXX_STANDARD 20)
-endif()
 
 find_package(OpenGL REQUIRED)
 

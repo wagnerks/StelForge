@@ -15,9 +15,10 @@ namespace SFE::SystemsModule {
 		inline static constexpr size_t OCTREE_SIZE = 4096;
 		using SysOcTree = OcTree<ecss::EntityId, 5, OCTREE_SIZE>;
 
+
 		OcTreeSystem();
 
-		void update(const std::vector<ecss::SectorId>& entitiesToProcess) override;
+		void updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) override;
 		void debugUpdate(float dt) override;
 		std::vector<Math::Vec3> getAABBOctrees(const FrustumModule::AABB& aabb);
 

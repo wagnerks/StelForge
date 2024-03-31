@@ -35,6 +35,7 @@ namespace SFE::Render::RenderPasses {
 		occlusionFrameBuffer.setDrawBuffer(GLW::NONE);
 		occlusionFrameBuffer.setReadBuffer(GLW::NONE);
 		occlusionFrameBuffer.finalize();
+		occlusionFrameBuffer.bindDefaultFramebuffer();
 	}
 
 	void OcclusionPass::render(SystemsModule::RenderData& renderDataHandle) {

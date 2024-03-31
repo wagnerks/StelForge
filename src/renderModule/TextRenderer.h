@@ -3,7 +3,7 @@
 #include <map>
 #include <string>
 
-#include "Renderer.h"
+#include "windowsModule/Window.h"
 #include "assetsModule/shaderModule/Shader.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "core/FileSystem.h"
@@ -14,6 +14,7 @@
 #include <ft2build.h>
 
 #include "assetsModule/TextureHandler.h"
+#include "core/Engine.h"
 #include "glWrapper/BlendStack.h"
 #include "glWrapper/Buffer.h"
 #include "glWrapper/CapabilitiesStack.h"
@@ -295,10 +296,10 @@ namespace SFE::Render {
             VBO.bind();
             VBO.allocateData(sizeof(float) * 6 * 4, text.size(), GLW::DYNAMIC_DRAW, nullptr);
 
-            const float semiW = Render::Renderer::screenDrawData.width * 0.5f;
-            const float semiH = Render::Renderer::screenDrawData.height * 0.5f;
+            const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
+            const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
 
-            y = Render::Renderer::screenDrawData.height - y;
+            y = Engine::instance()->getWindow()->getScreenData().height - y;
 
             int rowH = 0;
             float curX = x;
@@ -360,7 +361,7 @@ namespace SFE::Render {
         void init() override {
             const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/text.vs", "shaders/text.fs");
             shader->use();
-            shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Renderer::screenDrawData.width), 0.f, static_cast<float>(Renderer::screenDrawData.height), -1.f, 1.f));
+            shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().width), 0.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().height), -1.f, 1.f));
 
             VAO.generate();
             VAO.bind();

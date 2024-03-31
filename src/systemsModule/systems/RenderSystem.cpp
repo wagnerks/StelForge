@@ -20,7 +20,6 @@
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
-#include "renderModule/Renderer.h"
 #include "renderModule/Utils.h"
 #include "renderModule/renderPasses/CascadedShadowPass.h"
 #include "renderModule/renderPasses/LightingPass.h"
@@ -61,10 +60,11 @@ namespace SFE::SystemsModule {
 		});
 	}
 
-	RenderSystem::RenderSystem(){
+	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, MATERIAL_UPDATED, MESH_UPDATED }) {
 		mRenderPasses.reserve(RENDER_PASSES_PRIORITY.size());
 
-		addRenderPass<Render::RenderPasses::CascadedShadowPass>();
+		addRenderPass<Render::RenderPasses::OcclusionPass>();
+		addRenderPass<Render::RenderPasses::CascadedShadowPass>();//todo passes shoudle be created according to settings
 		addRenderPass<Render::RenderPasses::PointLightPass>();
 		addRenderPass<Render::RenderPasses::GeometryPass>();
 		addRenderPass<Render::RenderPasses::ShadersPass>();
@@ -72,7 +72,6 @@ namespace SFE::SystemsModule {
 		addRenderPass<Render::RenderPasses::SSAOPass>();
 		addRenderPass<Render::RenderPasses::DebugPass>();
 		addRenderPass<Render::RenderPasses::GUIPass>();
-		addRenderPass<Render::RenderPasses::OcclusionPass>();
 	
 		auto guard = cameraMatricesUBO.lock();
 		cameraMatricesUBO.allocateData<RenderMatrices>(1, GLW::DYNAMIC_DRAW);
@@ -114,74 +113,14 @@ namespace SFE::SystemsModule {
 			renderPass->render(mRenderData);
 			i++;
 		}
+		Render::TextRenderer::instance()->renderText("FPS: " + std::to_string(Engine::instance()->getFPS()), 10.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		Render::TextRenderer::instance()->renderText("dt: " + std::to_string(Engine::instance()->getDeltaTime()), 10.f, 80.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
 
 		prepareDataForNextFrame();
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
-		auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-
-		{
-			if (ImGui::BeginMainMenuBar()) {
-				if (ImGui::BeginMenu("Render mode")) {
-					if (ImGui::RadioButton("default", renderData.mRenderType == SystemsModule::RenderMode::DEFAULT)) {
-						renderData.mRenderType = SystemsModule::RenderMode::DEFAULT;
-					}
-					if (ImGui::RadioButton("wireframe", renderData.mRenderType == SystemsModule::RenderMode::WIREFRAME)) {
-						renderData.mRenderType = SystemsModule::RenderMode::WIREFRAME;
-					}
-					ImGui::EndMenu();
-				}
-
-				if (ImGui::BeginMenu("Debug")) {
-					if (ImGui::BeginMenu("Shadows debug")) {
-						ImGui::Checkbox("shadows raw data show", &mShadowsDebugDataDraw);
-						ImGui::EndMenu();
-					}
-					ImGui::Checkbox("geometry pass data", &mGeometryPassDataWindow);
-					ImGui::EndMenu();
-				}
-			}
-			ImGui::EndMainMenuBar();
-		}
-
-
-		if (mGeometryPassDataWindow) {
-			if (ImGui::Begin("geometry pass result", &mGeometryPassDataWindow)) {
-				float size = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
-				if (ImGui::TreeNode("gAlbedoSpec")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->albedoBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-					ImGui::TreePop();
-				}
-
-				if (ImGui::TreeNode("gPosition")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->positionBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-					ImGui::TreePop();
-				}
-				if (ImGui::TreeNode("gNormal")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->normalBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-					ImGui::TreePop();
-				}
-
-				if (ImGui::TreeNode("gOutlines")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->outlinesBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-					ImGui::TreePop();
-				}
-				if (ImGui::TreeNode("gLights")) {
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mGeometryPassData->lightsBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-					ImGui::TreePop();
-				}
-				if (ImGui::TreeNode("ssao")) {
-					ImGui::Text("mSsaoColorBuffer");
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mSSAOPassData->mSsaoColorBuffer.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-
-					ImGui::Text("mSsaoColorBufferBlur");
-					ImGui::Image(reinterpret_cast<void*>(static_cast<size_t>(renderData.mSSAOPassData->mSsaoColorBufferBlur.mId)), { size,size }, { 0.f, 1.f }, { 1.f,0.f });
-					ImGui::TreePop();
-				}
-			}
-			ImGui::End();
-		}
+		return;
 	}
 
 	void RenderSystem::prepareDataForNextFrame() {
@@ -234,6 +173,22 @@ namespace SFE::SystemsModule {
 				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<OutlineComponent>(ECSHandler::registry().getComponentContainer<OutlineComponent>());
 				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<ComponentsModule::OccludedComponent>(ECSHandler::registry().getComponentContainer<ComponentsModule::OccludedComponent>());
 			}
+		}
+	}
+
+	void RenderSystem::notify(Task task) {
+		if (task.type == TRAHSFORM_RELOADED) {
+			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(task.entity)->mTransform = static_cast<TransformComponent*>(task.customData)->getTransform();
+			markDirty<ComponentsModule::TransformMatComp>(task.entity);
+		}
+		else if (task.type == ARMATURE_UPDATED) {
+			markDirty<ComponentsModule::ArmatureBonesComponent>(task.entity);
+		}
+		else if (task.type == MATERIAL_UPDATED) {
+			markDirty<ComponentsModule::MaterialComponent>(task.entity);
+		}
+		else if (task.type == MESH_UPDATED) {
+			markDirty<ComponentsModule::MeshComponent>(task.entity);
 		}
 	}
 

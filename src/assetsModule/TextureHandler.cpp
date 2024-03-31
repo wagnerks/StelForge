@@ -35,7 +35,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::GL
 	if (!data) {
 		SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
 		stbi_image_free(data);
-		return &mDefaultTex;
+		return &TextureHandler::instance()->mDefaultTex;
 	}
 
 	texture = AssetsManager::instance()->createAsset<Texture>(path);

@@ -1,12 +1,13 @@
 ﻿#pragma once
 #include <cassert>
 #include <chrono>
+#include <functional>
 #include <map>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
-#include "core/Singleton.h"
+#include "containersModule/Singleton.h"
 #include "logsModule/logger.h"
 
 #define BENCHMARK_ENABLED 1
@@ -24,12 +25,8 @@
 #define FUNCTION_BENCHMARK_NAMED_STR(name) SFE::Debug::BenchmarkFunc MAKE_UNIQUE(scopeObj) = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__), __LINE__, "[" + std::string(name) + "]");
 #endif
 
-
 namespace SFE::Debug {
-	
-
-	class Benchmark {
-	public:
+	struct Benchmark {
 		struct Time {
 			enum TimeUnits : int {
 				SECONDS = 1 << 0,
@@ -99,59 +96,23 @@ namespace SFE::Debug {
 	private:
 		inline static std::shared_mutex mtx;
 		inline static std::unordered_map<std::string, std::vector<long long>> mCounters; //id, startTime ns
-
 	};
 
-	class BenchmarkGUI : public Singleton<BenchmarkGUI> {
+	class BenchmarkSystem: public Singleton<BenchmarkSystem> {
 	public:
-		void onGui();
 		struct MeasureData {
 			std::vector<Benchmark::Time> measurements;
 			std::vector<float> plotData;
 		};
 
 		std::map<std::string, std::pair<std::map<std::string, MeasureData>, MeasureData>> measurements;
-		std::string filter;
-		std::shared_mutex mtx;
 
-		bool windowOpened = false;
+		std::shared_mutex mtx;
 	};
 
-	class BenchmarkFunc final {
-	public:
-		BenchmarkFunc(const std::string& name, int line = -1, const std::string& customName = "") : name(name), line(line), customName(customName) {
-			{
-				std::unique_lock lock(BenchmarkGUI::instance()->mtx);
-				BenchmarkGUI::instance()->measurements[name];
-				if (!customName.empty()) {
-					BenchmarkGUI::instance()->measurements[name].first[customName];
-				}
-			}
-			Benchmark::start(name + customName);
-		}
-
-		~BenchmarkFunc() {
-			std::unique_lock lock(BenchmarkGUI::instance()->mtx);
-			auto& timings = BenchmarkGUI::instance()->measurements[name];
-			if (!customName.empty()) {
-				auto& childTimings = timings.first[customName];
-				childTimings.measurements.push_back(Benchmark::stop(name + customName, false));
-				childTimings.plotData.push_back(static_cast<float>(childTimings.measurements.back().delta));
-				if (childTimings.measurements.size() > 100) {
-					childTimings.measurements.erase(childTimings.measurements.begin());
-					childTimings.plotData.erase(childTimings.plotData.begin());
-				}
-			}
-			else {
-				timings.second.measurements.push_back(Benchmark::stop(name + customName, false));
-				timings.second.plotData.push_back(static_cast<float>(timings.second.measurements.back().delta));
-				if (timings.second.measurements.size() > 100) {
-					timings.second.measurements.erase(timings.second.measurements.begin());
-					timings.second.plotData.erase(timings.second.plotData.begin());
-				}
-			}
-			
-		}
+	struct BenchmarkFunc final {
+		BenchmarkFunc(const std::string& name, int line = -1, const std::string& customName = "");
+		~BenchmarkFunc();
 
 		std::string name;
 		std::string customName;

@@ -6,7 +6,7 @@
 #include <unordered_map>
 
 #include "Asset.h"
-#include "core/Singleton.h"
+#include "containersModule/Singleton.h"
 #include "glWrapper/Texture.h"
 
 namespace AssetsModule {
@@ -29,7 +29,7 @@ namespace AssetsModule {
 		friend Singleton;
 	public:
 		static void bindTextureToSlot(unsigned slot, Texture* texture);
-		inline static Texture mDefaultTex;
+		Texture mDefaultTex;
 
 		static Texture* loadTexture(const std::string& path, bool flip = false, SFE::GLW::PixelFormat pixelFormat = SFE::GLW::RGBA8, SFE::GLW::TextureFormat textureFormat = SFE::GLW::RGBA, SFE::GLW::PixelDataType pixelType = SFE::GLW::UNSIGNED_BYTE);
 		static Texture* loadCubemapTexture(const std::string& path, bool flip = false);

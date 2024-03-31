@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include "Renderer.h"
 #include "assetsModule/TextureHandler.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/TransformComponent.h"

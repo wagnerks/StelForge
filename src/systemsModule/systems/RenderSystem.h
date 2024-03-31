@@ -88,6 +88,8 @@ namespace SFE::SystemsModule {
 			return typeId;
 		}
 
+		void notify(Task task) override;
+
 		template<typename CompType>
 		void markDirty(ecss::EntityId id) {
 			if constexpr
@@ -116,8 +118,8 @@ namespace SFE::SystemsModule {
 				entities.emplace_back(id, 2);
 			}
 		}
-
 		
+		bool mShadowsDebugDataDraw = false;
 	private:
 
 		template<typename T>
@@ -137,8 +139,7 @@ namespace SFE::SystemsModule {
 		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> removed;
 		std::shared_mutex dirtiesMutex;
 
-		bool mGeometryPassDataWindow = false;
-		bool mShadowsDebugDataDraw = false;
+		
 
 		template<typename PassType>
 		inline void addRenderPass();

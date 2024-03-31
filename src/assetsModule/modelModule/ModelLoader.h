@@ -5,7 +5,7 @@
 #include <assimp/material.h>
 #include <assimp/mesh.h>
 
-#include "core/Singleton.h"
+#include "containersModule/Singleton.h"
 #include "assetsModule/AssetsManager.h"
 #include "assetsModule/modelModule/Model.h"
 #include "Animation.h"

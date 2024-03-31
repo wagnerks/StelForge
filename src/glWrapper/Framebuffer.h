@@ -57,6 +57,11 @@ namespace SFE::GLW {
 		glBlitFramebuffer(srcX0, srcY0, srcW, srcH, dstX0, dstY0, dstW, dstH, static_cast<int>(mask), static_cast<int>(filter));
 	}
 
+	struct FramebufferStack : public StateStack<unsigned, FramebufferStack> {
+	private:
+		constexpr void apply(unsigned* data) override;
+	};
+
 	struct Framebuffer {
 		Framebuffer(const Framebuffer& other) = delete;
 		Framebuffer(Framebuffer&& other) noexcept = delete;

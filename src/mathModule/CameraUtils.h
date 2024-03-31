@@ -4,7 +4,7 @@
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
 #include "ecss/Types.h"
-#include "renderModule/Renderer.h"
+#include "..\windowsModule\Window.h"
 #include "systemsModule/systems/CameraSystem.h"
 
 namespace SFE::Math {
@@ -19,7 +19,7 @@ namespace SFE::Math {
 	};
 
 	// screenCoords - is the point on "camera lense" from which ray casted
-	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords = { Render::Renderer::screenDrawData.width * 0.5f, Render::Renderer::screenDrawData.height * 0.5f}) {
+	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords = { Engine::instance()->getWindow()->getScreenData().width * 0.5f, Engine::instance()->getWindow()->getScreenData().height * 0.5f}) {
 		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(cameraId);
 		if (!cameraComp) {
 			return {};
@@ -33,8 +33,8 @@ namespace SFE::Math {
 
 		
 		auto cameraPos = cameraTransform->getPos(true);
-		float normalizedX = (2.0f * screenCoords.x) / Render::Renderer::screenDrawData.width - 1.0f;
-		float normalizedY = 1.0f - (2.0f * screenCoords.y) / Render::Renderer::screenDrawData.height;
+		float normalizedX = (2.0f * screenCoords.x) / Engine::instance()->getWindow()->getScreenData().width - 1.0f;
+		float normalizedY = 1.0f - (2.0f * screenCoords.y) / Engine::instance()->getWindow()->getScreenData().height;
 		auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
 		auto ndc = Math::inverse(mProjection) * clipCoords;
 		ndc /= ndc.w;
@@ -48,20 +48,25 @@ namespace SFE::Math {
 		globalCoords = ProjectView * globalCoords;
 		globalCoords.xyz /= globalCoords.w;
 		globalCoords.xyz = (globalCoords.xyz + 1.f) / 2.f;
-		globalCoords.x *= Render::Renderer::screenDrawData.width;
-		globalCoords.y *= Render::Renderer::screenDrawData.height;
-		globalCoords.y = Render::Renderer::screenDrawData.height - globalCoords.y;
+		globalCoords.x *= Engine::instance()->getWindow()->getScreenData().width;
+		globalCoords.y *= Engine::instance()->getWindow()->getScreenData().height;
+		globalCoords.y = Engine::instance()->getWindow()->getScreenData().height - globalCoords.y;
 
 		return globalCoords;
 	}
 
 	inline Vec3 globalToScreen(const Vec4& globalCoords) {
-		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera());
+		auto cameraSys = ECSHandler::getSystem<SystemsModule::CameraSystem>();
+		if (!cameraSys) {
+			return {};
+		}
+		
+		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(cameraSys->getCurrentCamera());
 		if (!cameraComp) {
 			return {};
 		}
 
-		auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera());
+		auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(cameraSys->getCurrentCamera());
 
 		const auto& mProjection = cameraComp->getProjection().getProjectionsMatrix();
 		const auto& mView = cameraTransform->getViewMatrix();
