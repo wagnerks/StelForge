@@ -40,6 +40,14 @@ namespace SFE::Math {
 		return m[3] = m[0] * v[0] + m[1] * v[1] + m[2] * v[2] + m[3], m;
 	}
 
+	template<typename T, typename T1>
+	inline Matrix<T, 3, 3> translate(Matrix<T, 3, 3> m, const Vector<T1, 2>& v) {
+		//return m[2] = m[0] * v[0] + m[1] * v[1] + m[2], m;
+		m[2][0] += v[0];
+		m[2][1] += v[1];
+		return m;
+	}
+
 	template<typename T, typename FT>
 	inline T mix(const T& x, const T& y, FT t) {
 		return x * (1 - t) + y * t;
@@ -48,6 +56,11 @@ namespace SFE::Math {
 	template<typename T, typename T1>
 	constexpr inline Matrix<T, 4, 4> scale(Matrix<T, 4, 4> m, Vector<T1, 3> const& v) {
 		return m[0] *= v[0], m[1] *= v[1], m[2] *= v[2], m;
+	}
+
+	template<typename T, typename T1>
+	constexpr inline Matrix<T, 3, 3> scale(Matrix<T, 3, 3> m, Vector<T1, 2> const& v) {
+		return m[0] *= v[0], m[1] *= v[1], m;
 	}
 
 	template<typename T>
@@ -81,7 +94,21 @@ namespace SFE::Math {
 		return result;
 	}
 
+	template<typename T>
+	Matrix<T, 3, 3> rotate(Matrix<T, 3, 3> const& m, T angle)
+	{
+		T cosTheta = cos(angle);
+		T sinTheta = sin(angle);
 
+		Matrix<T, 3, 3> rotationMatrix = {
+			{ cosTheta, -sinTheta, 0 },
+			{ sinTheta,  cosTheta, 0 },
+			{ 0,         0,        1 }
+		};
+
+
+		return rotationMatrix * m;
+	}
 	// ---------------------------
 
 	template<typename T>
@@ -109,6 +136,15 @@ namespace SFE::Math {
 		result[3][1] = -(top + bottom) / (top - bottom);
 		result[3][2] = -(zFar + zNear) / (zFar - zNear);
 		return result;
+	}
+
+	template<typename T>
+	Matrix<T, 3, 3> orthoRH_NO_2D(T left, T right, T bottom, T top) {
+		return {
+			{ static_cast<T>(2) / (right - left), static_cast<T>(0),					static_cast<T>(0) },
+			{ static_cast<T>(0),				  static_cast<T>(2) / (top - bottom),   static_cast<T>(0) },
+			{ -(right + left) / (right - left),	  -(top + bottom) / (top - bottom),		-static_cast<T>(1)}
+		};
 	}
 
 	// ------------------------
