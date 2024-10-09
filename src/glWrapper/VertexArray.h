@@ -75,6 +75,7 @@ namespace SFE::GLW {
 			addAttribute(index, size, type, normalized, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
 		}
 
+		//stride is the whole attributes size, for example pos + color strid is 6 floats
 		void addAttribute(unsigned index, int size, AttributeFType type, bool normalized, int stride, size_t offset = 0) {
 			glEnableVertexAttribArray(index);
 			glVertexAttribPointer(index, size, static_cast<unsigned>(type), normalized, stride, reinterpret_cast<void*>(offset));
