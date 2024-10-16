@@ -48,13 +48,13 @@ void SceneGridFloor::init() {
 
 	VAO.generate();
 	VAO.bind();
-
+	VBO.generate();
 	VBO.bind();
-	VBO.allocateData(6, GLW::STATIC_DRAW, &vertices);
+	VBO.allocateData(6*3, vertices);
 
 	VAO.addAttribute<Math::Vec3>(0, 3, GLW::AttributeFType::FLOAT, false);
 
-	GLW::Buffer::bindDefaultBuffer(GLW::ARRAY_BUFFER);
+	GLW::Buffer<GLW::ARRAY_BUFFER>::bindDefaultBuffer();
 	GLW::VertexArray::bindDefault();
 }
 
