@@ -5,6 +5,7 @@
 
 #include "StateStack.h"
 #include "VertexArray.h"
+#include "debugModule/Benchmark.h"
 
 namespace SFE::GLW {
 	enum RenderMode : uint32_t {
@@ -62,11 +63,11 @@ namespace SFE::GLW {
 		glDrawArraysInstanced(mode, first, size, instancesCount);
 	}
 
-	constexpr inline void drawVerticesW(RenderMode mode, size_t verticesCount, size_t indicesCount = 0, size_t instancesCount = 0, RenderDataType indicesType = RenderDataType::UNSIGNED_INT, const void* place = nullptr) {
+	constexpr inline void drawVerticesW(size_t verticesCount, size_t indicesCount = 0, size_t instancesCount = 0, RenderMode mode = GLW::TRIANGLES, RenderDataType indicesType = RenderDataType::UNSIGNED_INT, const void* place = nullptr) {
 		if (verticesCount == 0) {
 			return;
 		}
-
+		FUNCTION_BENCHMARK;
 		if (instancesCount) {
 			if (indicesCount) {
 				drawElementsInstanced(mode, static_cast<int>(indicesCount), indicesType, static_cast<int>(instancesCount), place);

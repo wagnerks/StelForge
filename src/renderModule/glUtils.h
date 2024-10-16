@@ -11,6 +11,6 @@ namespace SFE::Render {
 
 	template<typename VertexType>
 	void drawMesh(GLW::RenderMode mode, Mesh<VertexType> mesh) {
-		GLW::drawVerticesW(mode, mesh.vertices.size(), mesh.indices.size());
+		GLW::drawVerticesW(mesh.vertices.size(), mesh.indices.size(), 0, mode);
 	}
 }
