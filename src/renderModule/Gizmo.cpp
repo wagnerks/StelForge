@@ -210,8 +210,8 @@ namespace SFE::Render {
 			if (const auto parentTransform = ECSHandler::registry().getComponent<TransformComponent>(treeComp->getParent())) {
 				const auto transform = inverse(parentTransform->getTransform());
 
-				curPos = transform * Math::Vec4(curPos, 1.f);
-				startPos = transform * Math::Vec4(startPos, 1.f);
+				curPos = transform * curPos;
+				startPos = transform * startPos;
 			}
 		}
 
@@ -268,9 +268,9 @@ namespace SFE::Render {
 		}
 		else {
 			const auto camTrans = inverse(cameraTransform->getTransform());
-			oldPos = camTrans * Math::Vec4(oldPos, 1.f);
-			newPos = camTrans * Math::Vec4(newPos, 1.f);
-			entityPos = camTrans * Math::Vec4(entityPos, 1.f);
+			oldPos = camTrans * oldPos;
+			newPos = camTrans * newPos;
+			entityPos = camTrans * entityPos;
 
 			if (Math::cross(oldPos - entityPos, newPos - entityPos).z > 0.f) {
 				difAngle = -difAngle;
@@ -332,9 +332,9 @@ namespace SFE::Render {
 				rotation = &ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion();
 
 				const auto camTrans = inverse(cameraTransform->getTransform());
-				const Math::Vec3 localOldPos = camTrans * Math::Vec4(oldPos, 1.f);
-				const Math::Vec3 localNewPos = camTrans * Math::Vec4(newPos, 1.f);
-				const Math::Vec3 localEntityPos = camTrans * Math::Vec4(pos, 1.f);
+				const Math::Vec3 localOldPos = camTrans * oldPos;
+				const Math::Vec3 localNewPos = camTrans * newPos;
+				const Math::Vec3 localEntityPos = camTrans * pos;
 
 				if (Math::cross(localOldPos - localEntityPos, localNewPos - localEntityPos).z > 0.f) {
 					difAngle = 2.0f * Math::pi<float>() - difAngle;
