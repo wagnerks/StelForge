@@ -70,9 +70,14 @@ namespace SFE::GLW {
 			addAttribute(index, size, type, normalized, sizeof(T), offset);
 		}
 
-		template <typename T, typename Member>
-		void addAttribute(unsigned index, int size, AttributeFType type, bool normalized, Member T::* memberPtr) {
-			addAttribute(index, size, type, normalized, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
+		template <AttributeFType Type = AttributeFType::FLOAT, typename T, typename Member>
+		void addAttribute(unsigned index, Member T::* memberPtr, bool normalized) {
+			if constexpr (Type == AttributeFType::FLOAT) {
+				addAttribute(index, sizeof(Member) / sizeof(float), Type, normalized, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
+			}
+			else {
+				addAttribute(index, sizeof(Member) / sizeof(double), Type, normalized, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
+			}
 		}
 
 		//stride is the whole attributes size, for example pos + color strid is 6 floats
@@ -86,9 +91,17 @@ namespace SFE::GLW {
 			addAttribute(index, size, type, sizeof(T), 0);
 		}
 
-		template <typename T, typename Member>
-		void addAttribute(unsigned index, int size, AttributeIType type, Member T::* memberPtr) {
-			addAttribute(index, size, type, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
+		template <AttributeIType Type = AttributeIType::INT, typename T, typename Member>
+		void addAttribute(unsigned index, Member T::* memberPtr) {
+			if constexpr (Type == AttributeIType::BYTE || Type == AttributeIType::UNSIGNED_BYTE) {
+				addAttribute(index, sizeof(Member) / sizeof(int8_t), Type, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
+			}
+			else if constexpr (Type == AttributeIType::SHORT || Type == AttributeIType::UNSIGNED_SHORT) {
+				addAttribute(index, sizeof(Member) / sizeof(int16_t), Type, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
+			}
+			else if constexpr (Type == AttributeIType::INT || Type == AttributeIType::UNSIGNED_INT) {
+				addAttribute(index, sizeof(Member) / sizeof(int32_t), Type, sizeof(T), (reinterpret_cast<size_t>(&((T*)nullptr->*memberPtr))));
+			}
 		}
 
 		void addAttribute(unsigned index, int size, AttributeIType type, int stride, size_t offset = 0) {

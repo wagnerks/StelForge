@@ -39,118 +39,204 @@ namespace SFE::GLW {
 		DYNAMIC_COPY = GL_DYNAMIC_COPY,
 	};
 
-	struct BindLock {
-		BindLock(BufferType type) : mType(type) {}
-		~BindLock();
+	
+	template<BufferType Type>
+	inline void bindBuffer(unsigned bufferId = 0) {
+		glBindBuffer(Type, bufferId);
+	}
+	template<BufferType Type>
+	inline void bindDefaultBuffer() {
+		bindBuffer<Type>(0);
+	}
 
-	private:
-		BufferType mType;
+	template<BufferType Type>
+	struct BindLock {
+		BindLock() {}
+		~BindLock() { bindDefaultBuffer<Type>(); };
 	};
 
 	//https://registry.khronos.org/OpenGL-Refpages/gl4/html/glBindBuffer.xhtml
-	template<size_t Count = 1>
-	class Buffers {
+	template<BufferType Type = ARRAY_BUFFER, typename DataType = void, BufferAccessType AccessType = STATIC_DRAW>
+	class Buffer {
 	public:
-		Buffers(const Buffers& other) = delete;
+		//Buffer(const Buffer& other) = delete;
+		//Buffer& operator=(const Buffer& other) = delete;
 
-		Buffers(Buffers&& other) noexcept
-			: mType(other.mType) {
-			std::memmove(mId, other.mId, Count * sizeof(unsigned));
-		}
-
-		Buffers& operator=(const Buffers& other) = delete;
-
-		Buffers& operator=(Buffers&& other) noexcept {
-			if (this == &other)
-				return *this;
-			mType = other.mType;
-			std::memmove(mId, other.mId, Count * sizeof(unsigned));
-			return *this;
-		}
-
-		Buffers() = default;
+		Buffer() = default;
 
 		operator bool() const {
 			return glIsBuffer(getID());
 		}
-		
-		Buffers(BufferType type) : mType(type) {
-			glGenBuffers(Count, mId);
-		}
 
-		~Buffers() {
+		~Buffer() {
 			release();
 		}
 
 		void release() {
-			glDeleteBuffers(Count, mId);
+			glDeleteBuffers(1, &mId);
 		}
 
-		void generate(BufferType type) {
-			mType = type;
-			glGenBuffers(Count, mId);
+		void generate() {
+			glGenBuffers(1, &mId);
 		}
 
-		BindLock lock() const {//todo some other interface
+		BindLock<Type> lock() const {//todo some other interface
 			bind();
-			return { mType };
+			return {};
 		}
 
-		void bind(size_t i = 0) const {
-			bindBuffer(mType, mId[i]);
+		void bind() const {
+			bindBuffer(mId);
 		}
 
 		void unbind() const {
-			bindDefaultBuffer(mType);
+			bindDefaultBuffer();
 		}
 
-		void setBufferBinding(int index, size_t bufferIdx = 0) {
-			glBindBufferBase(mType, index, mId[bufferIdx]); //then it can be used in shader using "layout(std140, binding = index) uniform MyBlock"
+		void setBufferBinding(int index) {
+			bindingIdx = index;
+			glBindBufferBase(Type, index, mId); //then it can be used in shader using "layout(std140, binding = index) uniform MyBlock"
 		}
 
-		template<typename T>
-		static void allocateData(BufferType type, size_t count, BufferAccessType accessType = STATIC_DRAW, const T* data = nullptr) {
-			glBufferData(type, sizeof(T) * count, static_cast<const void*>(data), accessType);
+		void setBufferRange(size_t start, size_t end) {
+			glBindBufferRange(Type, bindingIdx, mId, start * sizeof(DataType), (end - start + 1) * sizeof(DataType));
 		}
 
-		template<typename T>
-		void allocateData(size_t count, BufferAccessType accessType = STATIC_DRAW, const T* data = nullptr) {
-			allocateData<T>(mType, count, accessType, data);
+		DataType* mapBuffer() {
+			if (mMappedData) {
+				return mMappedData;
+			}
+
+			mMappedData = static_cast<DataType*>(glMapBufferRange(Type, 0, sizeof(DataType) * mCapacity, GL_MAP_WRITE_BIT));
+
+			return mMappedData;
 		}
 
-		template<typename T>
-		void allocateData(const std::vector<T>& data, BufferAccessType accessType = STATIC_DRAW) {
-			allocateData<T>(mType, data.size(), accessType, data.data());
+		void unmapBuffer() {
+			mMappedData = nullptr;
+			glUnmapBuffer(Type);
 		}
 
-		void allocateData(size_t size, size_t count, BufferAccessType accessType = STATIC_DRAW, const void* data = nullptr) const {
-			glBufferData(mType, size * count, data, accessType);
+		void allocateData(const std::vector<DataType>& data) {
+			allocateData(data.size(), data.data());
 		}
 
-		template<typename T>
-		void setData(size_t count, const T* data = nullptr, size_t offset = 0) const {
-			setData(sizeof(T), count, data, offset);
+		void allocateData(size_t count, const DataType* data = nullptr) {
+			mCapacity = count;
+			glBufferData(Type, sizeof(DataType) * count, static_cast<const void*>(data), AccessType);
+			if (mMappedData) {
+				unmapBuffer();
+				mapBuffer();
+			}
 		}
 
-		void setData(size_t size, size_t count, const void* data = nullptr, size_t offset = 0) const {
-			glBufferSubData(mType, offset * size, count * size, data);
+		void clear() {
+			mSize = 0;
 		}
 
-		static void bindBuffer(BufferType type, unsigned bufferId = 0) {
-			glBindBuffer(type, bufferId);
+		void shrinkToFit() {
+			mCapacity = mSize;
 
+			auto oldData = new DataType[mSize];
+			getData(mSize, oldData);
+			allocateData(mCapacity);
+			setData(mSize, oldData);
+			delete[] oldData;
 		}
 
-		static void bindDefaultBuffer(BufferType type) {
-			bindBuffer(type, 0);
+		void reserve(size_t newCapacity) {
+			if (newCapacity <= mCapacity) {
+				return;
+			}
+
+			if (mSize > 0) {
+				auto oldData = new DataType[mSize];
+				getData(mSize, oldData);
+				allocateData(newCapacity);
+				setData(mSize, oldData);
+				delete[] oldData;
+			}
+			else {
+				allocateData(newCapacity);
+			}
 		}
 
-		unsigned getID(size_t index = 0) const { return mId[index]; }
-		BufferType getType() const { return mType; }
+		void resize(size_t newSize) {
+			if (newSize <= mSize) {
+				return;
+			}
+			reserve(newSize);
+			mSize = newSize;
+		}
+
+		template<typename Container>
+		void setData(Container& container) {
+			setData(container.size(), container.data(), 0);
+		}
+
+		void setData(size_t count, const DataType* data = nullptr, size_t offset = 0) {
+			if (count + offset > mCapacity) {
+				reserve(std::max(mCapacity * 2, count + offset));
+				mSize = mCapacity;
+			}
+			if (mMappedData) {
+				if (count == 1) {
+					mMappedData[offset] = *data;
+				}
+				else {
+					for (auto i = 0u; i < count; i++) {
+						mMappedData[offset + i] = data[i];
+					}
+				}
+			}
+			else {
+				glBufferSubData(Type, offset * sizeof(DataType), count * sizeof(DataType), data);
+			}
+		}
+
+		void getData(size_t count, DataType* data = nullptr, size_t offset = 0) {
+			glGetBufferSubData(Type, offset * sizeof(DataType), count * sizeof(DataType), data);
+		}
+		template<typename Container>
+		void addData(Container& data) {
+			addData(data.size(), data.data());
+		}
+
+		void addData(size_t count, const DataType* data = nullptr) {
+			if (mSize + count > mCapacity) {
+				reserve(std::max(mSize + count, mCapacity == 0 ? 1 : mCapacity * 2));
+			}
+			glBufferSubData(Type, mSize * sizeof(DataType), count * sizeof(DataType), static_cast<const void*>(data));
+			mSize += count;
+		}
+
+		static void bindBuffer(unsigned bufferId = 0) {
+			glBindBuffer(Type, bufferId);
+		}
+
+		static void bindDefaultBuffer() {
+			bindBuffer(0);
+		}
+
+		unsigned getID() const { return mId; }
+
+
+		size_t size() { return mSize; }
+		size_t capacity() { return mCapacity; }
+
 	private:
-		BufferType mType;
-		unsigned mId[Count];
+		unsigned mId = 0;
+		size_t mCapacity = 0;
+		size_t mSize = 0;
+		size_t bindingIdx = 0;
+
+		DataType* mMappedData = nullptr;
 	};
 
-	using Buffer = Buffers<>;
+	template<typename DataType = void, BufferAccessType AccessType = STATIC_DRAW>
+	using ArrayBuffer = Buffer<BufferType::ARRAY_BUFFER, DataType, AccessType>;
+
+	template<typename DataType = void, BufferAccessType AccessType = STATIC_DRAW>
+	using ShaderStorageBuffer = Buffer<BufferType::SHADER_STORAGE_BUFFER, DataType, AccessType>; //std430
+	
 }
