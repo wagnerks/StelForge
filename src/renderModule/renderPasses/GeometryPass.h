@@ -39,6 +39,6 @@ namespace SFE::Render::RenderPasses {
 		Data mData;
 		bool needClearOutlines = false;
 
-		RenderPassDataContainer mOutlineData;
+		RenderPassRingBuffer mOutlineData;
 	};
 }

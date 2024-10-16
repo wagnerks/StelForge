@@ -30,6 +30,10 @@ namespace SFE::Render::RenderPasses {
 
 	class GUIPass : public RenderPass {
 	public:
+		struct Vertex {
+			Math::Vec2 pos;
+		};
+
 		~GUIPass() override;
 		void init() override;
 		void render(SystemsModule::RenderData& renderDataHandle) override;
@@ -37,7 +41,7 @@ namespace SFE::Render::RenderPasses {
 		static inline ecss::Registry registry;
 
 		GLW::VertexArray VAO;
-		GLW::Buffer VBO{GLW::ARRAY_BUFFER };
+		GLW::Buffer<GLW::ARRAY_BUFFER, Vertex, GLW::DYNAMIC_DRAW> VBO;
 	};
 }
 

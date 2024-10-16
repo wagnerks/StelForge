@@ -23,6 +23,7 @@ namespace SFE::Render::RenderPasses {
 	DebugPass::DebugPass() {
 		linesVAO.generate();
 		linesVAO.bind();
+		linesVBO.generate();
 		linesVBO.bind();
 
 		linesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, 3 * sizeof(float));
@@ -33,11 +34,12 @@ namespace SFE::Render::RenderPasses {
 
 		trianglesVAO.generate();
 		trianglesVAO.bind();
+		trianglesVBO.generate();
 		trianglesVBO.bind();
 
-		trianglesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &SFE::Vertex3D::position);
-		trianglesVAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true,  &SFE::Vertex3D::normal);
-		trianglesVAO.addAttribute(2, 4, GLW::AttributeFType::FLOAT, true,  &SFE::Vertex3D::color);
+		trianglesVAO.addAttribute(0, &SFE::Vertex3D::position, false);
+		trianglesVAO.addAttribute(1,  &SFE::Vertex3D::normal, true);
+		trianglesVAO.addAttribute(2,  &SFE::Vertex3D::color, true);
 
 		trianglesVAO.bindDefault();
 		trianglesVBO.unbind();
@@ -61,8 +63,10 @@ namespace SFE::Render::RenderPasses {
 			triangleShader->setUniform("PVM", renderDataHandle.current.PV);
 			triangleShader->setUniform("viewPos", renderDataHandle.mCameraPos);
 			trianglesVBO.bind();
+			trianglesVBO.clear();
+			trianglesVBO.shrinkToFit();
 			for (auto& [data, triangles] : Utils::renderTriangles) {
-				trianglesVBO.allocateData(triangles, GLW::STATIC_DRAW);
+				trianglesVBO.allocateData(triangles);
 
 
 				GLW::CapabilitiesStack<GLW::BLEND>::push(data.blend);
@@ -85,13 +89,13 @@ namespace SFE::Render::RenderPasses {
 			auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
 			coloredLines->use();
 			coloredLines->setUniform("PVM", renderDataHandle.current.PV);
-
 			linesVBO.bind();
+			linesVBO.clear();
+			linesVBO.shrinkToFit();
 			for (auto& [data, vertices] : Utils::renderVertices) {
 				coloredLines->setUniform("color", data.color);
 
-
-				linesVBO.allocateData(vertices, GLW::STATIC_DRAW);
+				linesVBO.allocateData(vertices);
 
 
 				GLW::CapabilitiesStack<GLW::BLEND>::push(true);

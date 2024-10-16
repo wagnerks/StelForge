@@ -48,7 +48,8 @@ namespace SFE::Render::RenderPasses {
 		lightFramebuffer.finalize();
 
 		auto guard = mMatricesUBO.lock();
-		mMatricesUBO.allocateData<Math::Mat4>(maxShadowFaces, GLW::STATIC_DRAW);
+		mMatricesUBO.generate();
+		mMatricesUBO.reserve(maxShadowFaces);
 		mMatricesUBO.setBufferBinding(lightMatricesBinding);
 
 		GLW::Framebuffer::bindDefaultFramebuffer();
@@ -106,7 +107,7 @@ namespace SFE::Render::RenderPasses {
 
 		if (!lightMatrices.empty()) {
 			auto guard = mMatricesUBO.lock();
-			mMatricesUBO.setData(lightMatrices.size(), lightMatrices.data());
+			mMatricesUBO.setData(lightMatrices);
 		}
 
 		GLW::bindTextureToSlot(30, &mLightDepthMaps);

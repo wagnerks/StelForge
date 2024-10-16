@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "glWrapper/Buffer.h"
 #include "glWrapper/VertexArray.h"
+#include "renderModule/Utils.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
@@ -10,9 +11,9 @@ namespace SFE::Render::RenderPasses {
 		~DebugPass();
 		void render(SystemsModule::RenderData& renderDataHandle) override;
 		GLW::VertexArray trianglesVAO;
-		GLW::Buffer trianglesVBO{GLW::ARRAY_BUFFER};
+		GLW::Buffer<GLW::ARRAY_BUFFER, Utils::Triangle> trianglesVBO;
 
 		GLW::VertexArray linesVAO;
-		GLW::Buffer linesVBO{GLW::ARRAY_BUFFER};
+		GLW::Buffer<GLW::ARRAY_BUFFER, Math::Vec3> linesVBO;
 	};
 }
