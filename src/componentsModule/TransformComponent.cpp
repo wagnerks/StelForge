@@ -135,7 +135,7 @@ namespace SFE::ComponentsModule {
 	}
 
 	SFE::Math::Mat4 TransformComponent::calculateLocalTransform() const {
-		return Math::translate(Math::Mat4{1.f}, mPos) * mRotateQuaternion.toMat4() * Math::scale(Math::Mat4{ 1.f }, mScale);
+		return Math::Mat4{{1.f, 0.f, 0.f, 0.f}, {0.f,1.f,0.f,0.f}, {0.f,0.f,1.f,0.f}, { mPos .x,mPos.y,mPos.z, 1.f}} * mRotateQuaternion.toMat4() * Math::Mat4{{mScale.x, 0.f, 0.f, 0.f}, { 0.f,mScale.y,0.f,0.f }, { 0.f,0.f,mScale.z,0.f }, { 0.f, 0.f, 0.f, 1.f }};
 	}
 
 	SFE::Math::Mat4 TransformComponent::getViewMatrix() const {
