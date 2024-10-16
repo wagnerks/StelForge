@@ -5,7 +5,9 @@ layout (location = 2) in vec2 aTexCoords;
 layout (location = 3) in vec3 aTangents;
 layout (location = 4) in vec3 aBiTangents;
 
-layout(std430, binding = 1) buffer modelMatrices
+layout (location = 7) in uint entityIdx;
+
+layout(std430, binding = 10) buffer modelMatrices
 {
     mat4 model[];
 };
@@ -18,5 +20,5 @@ layout(std140, binding = 5) uniform SharedMatrices {
 
 void main()
 {
-    gl_Position = matrices.PV * model[gl_InstanceID] * vec4(aPos, 1.0);
+    gl_Position = matrices.PV * model[entityIdx] * vec4(aPos, 1.0);
 }
