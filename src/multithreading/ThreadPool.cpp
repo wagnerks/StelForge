@@ -1,6 +1,7 @@
 ﻿#include "ThreadPool.h"
 
 #include "core/Engine.h"
+#include "debugModule/Benchmark.h"
 
 
 namespace SFE {
@@ -11,6 +12,7 @@ namespace SFE {
 	}
 
 	void ThreadPool::syncUpdate() {
+		FUNCTION_BENCHMARK;
 		if (!mLoadingWindow) {
 			glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // Create an invisible window
 			mLoadingWindow = glfwCreateWindow(1, 1, "loading", nullptr, Engine::instance()->getMainWindow());
