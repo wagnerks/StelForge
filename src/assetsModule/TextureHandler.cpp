@@ -113,7 +113,7 @@ Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) 
 		stbi_image_free(data);
 	}
 
-	SFE::GLW::bindTexture(texture->texture.mType, 0);
+	SFE::GLW::bindTextureToSlot(0, texture->texture.mType, 0);
 	
 	return texture;
 }
