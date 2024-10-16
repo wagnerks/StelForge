@@ -10,9 +10,12 @@
 
 namespace SFE::SystemsModule {
 	void SkeletalAnimationSystem::update(float dt) {
-		FUNCTION_BENCHMARK;
+		time += dt;
+		if (ECSHandler::registry().getComponentContainer<ComponentsModule::AnimationComponent>()->empty()) {
+			return;
+		}
 
-		SFE:Vector<ecss::EntityId> entities;
+		SFE::Vector<ecss::EntityId> entities;
 		{
 			const auto renderSys = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 			if (!renderSys) {
@@ -41,51 +44,45 @@ namespace SFE::SystemsModule {
 			return;
 		}
 		entities.sort();
-		entities.removeCopies();
+		entities.removeDublicatesSorted();
+		FUNCTION_BENCHMARK;
 
-		ThreadPool::instance()->addBatchTasks(entities.size(), 100, [this, dt, entities](size_t i) {
-			auto entityId = entities[i];
-			auto armatureComp = ECSHandler::registry().getComponent<ComponentsModule::ArmatureComponent>(entityId);
-			if (!armatureComp) {
-				return;
-			}
-			auto armBones = ECSHandler::registry().getComponent<ComponentsModule::ArmatureBonesComponent>(entityId);
-			if (!armBones) {
-				return;
-			}
-			
+		SFE::Vector<ecss::EntityId> entitiesToUpdate;
+		for (auto [entity, component ] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent>()) {
+			entitiesToUpdate.emplace_back(entity);
+		}
+
+		auto lock = ThreadPool::instance()->addBatchTasks(entitiesToUpdate.size(), 100, [&entitiesToUpdate, this](size_t idx) {
+			auto entityId = entitiesToUpdate[idx];
 			auto animationComp = ECSHandler::registry().getComponent<ComponentsModule::AnimationComponent>(entityId);
-			if (animationComp && animationComp->mCurrentAnimation && (animationComp->mPlay || animationComp->step)) {
-				animationComp->step = false;
-				animationComp->mCurrentTime += animationComp->mCurrentAnimation->getTicksPerSecond() * dt;
-				animationComp->mCurrentTime = fmod(animationComp->mCurrentTime, animationComp->mCurrentAnimation->getDuration());
+			if (!animationComp) {
+				return;
+			}
 
-				auto ocComp = ECSHandler::registry().getComponent<const ComponentsModule::OcclusionComponent>(entityId);
+			auto [armatureComp, armBones, ocComp] = ECSHandler::registry().getComponents<ComponentsModule::ArmatureComponent, ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OcclusionComponent>(entityId);
+			if (!animationComp || !armatureComp || !armBones) {
+				return;
+			}
+			if (animationComp->mCurrentAnimation && (animationComp->mPlay || animationComp->step)) {
+				animationComp->step = false;
+				float delta = time - animationComp->mLastTime;
+				animationComp->mLastTime = time;
+
+				animationComp->mCurrentTime += animationComp->mCurrentAnimation->getTicksPerSecond() * delta;
+				animationComp->mCurrentTime = fmod(animationComp->mCurrentTime, animationComp->mCurrentAnimation->getDuration());
 				if (ocComp && ocComp->occluded) {
 					return;
 				}
 
 				updateAnimation(animationComp->mCurrentAnimation, animationComp->mCurrentTime, armatureComp->armature, armBones->boneMatrices);
-				TasksManager::instance()->notify({ entityId, TaskType::ARMATURE_UPDATED });
-			}
-		}).waitAll();
-		
-		/*for (auto [entityId, animationComp, armatureComp, armBones, ocComp] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OcclusionComponent>(entities)) {
-			if (!armatureComp || !armBones) {
-				continue;
-			}
-			if (animationComp->mCurrentAnimation && (animationComp->mPlay || animationComp->step)) {
-				animationComp->step = false;
-				animationComp->mCurrentTime += animationComp->mCurrentAnimation->getTicksPerSecond() * dt;
-				animationComp->mCurrentTime = fmod(animationComp->mCurrentTime, animationComp->mCurrentAnimation->getDuration());
-				if (ocComp && ocComp->occluded) {
-					continue;
-				}
 
-				updateAnimation(animationComp->mCurrentAnimation, animationComp->mCurrentTime, armatureComp->armature, armBones->boneMatrices);
-				TasksManager::instance()->notify({ entityId, TaskType::ARMATURE_UPDATED });
+				if (auto renderSys = ECSHandler::systemManager().getSystem<RenderSystem>()) {
+					renderSys->markDirty<ComponentsModule::ArmatureBonesComponent>(entityId);
+				}
 			}
-		}*/
+		});
+
+		lock.waitAll();
 	}
 
 	template <typename KeyType>
@@ -100,7 +97,7 @@ namespace SFE::SystemsModule {
 		return keys.size() - 2;
 	}
 
-	void SkeletalAnimationSystem::updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices) {
+	void SkeletalAnimationSystem::updateAnimation(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices) {
 		if (!animation) {
 			return;
 		}

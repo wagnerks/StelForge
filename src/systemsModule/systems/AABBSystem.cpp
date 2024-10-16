@@ -52,7 +52,7 @@ void SFE::SystemsModule::AABBSystem::updateAsync(const std::vector<ecss::SectorI
 			const Math::Vec3 up		 { transformMatrix[1] * defaultAABB.extents.y};
 			const Math::Vec3 forward {-transformMatrix[2] * defaultAABB.extents.z};
 
-			aabb.center = transformMatrix * Math::Vec4{defaultAABB.center, 1.f};
+			aabb.center = transformMatrix * defaultAABB.center;
 			aabb.extents = { std::abs(Math::dot(I, right)) + std::abs(Math::dot(I, up)) + std::abs(Math::dot(I, forward)),
 				std::abs(Math::dot(J, right)) + std::abs(Math::dot(J, up)) + std::abs(Math::dot(J, forward)),
 				std::abs(Math::dot(K, right)) + std::abs(Math::dot(K, up)) + std::abs(Math::dot(K, forward))

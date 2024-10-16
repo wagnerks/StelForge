@@ -72,9 +72,10 @@ namespace SFE::SystemsModule {
 		addRenderPass<Render::RenderPasses::SSAOPass>();
 		addRenderPass<Render::RenderPasses::DebugPass>();
 		addRenderPass<Render::RenderPasses::GUIPass>();
-	
+
+		cameraMatricesUBO.generate();
 		auto guard = cameraMatricesUBO.lock();
-		cameraMatricesUBO.allocateData<RenderMatrices>(1, GLW::DYNAMIC_DRAW);
+		cameraMatricesUBO.reserve(1);
 		cameraMatricesUBO.setBufferBinding(5);
 	}
 
@@ -124,12 +125,14 @@ namespace SFE::SystemsModule {
 	}
 
 	void RenderSystem::prepareDataForNextFrame() {
-		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dir;
+		FUNCTION_BENCHMARK;
+
+		std::vector<SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dir;
 		{
 			FUNCTION_BENCHMARK_NAMED(dirties_copy);
 			dirtiesMutex.lock();
 			dir = dirties;
-			for (auto& [id, entities] : dirties) {
+			for (auto& entities : dirties) {
 				std::erase_if(entities, [](std::pair<ecss::EntityId, uint8_t>& val) {
 					return val.second-- <= 1;
 				});
@@ -140,19 +143,32 @@ namespace SFE::SystemsModule {
 		//prepare data for next frame
 		{
 			FUNCTION_BENCHMARK_NAMED(copy_components_transform_armat);
-
-			for (auto [id, entities] : dir) {
+			int id = 0;
+			for (auto entities : dir) {
+				if (entities.empty()) {
+					id++;
+					continue;
+				}
 				if (id == getDirtyId<ComponentsModule::TransformMatComp>()) {//todo support deleting
 					auto lock = ECSHandler::registry().containerReadLock<ComponentsModule::TransformMatComp>();
+					DrawDataHolder::instance()->transformsBO.bind();
 					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<ComponentsModule::TransformMatComp>(entId));
+						auto component = ECSHandler::registry().getComponentNotSafe<ComponentsModule::TransformMatComp>(entId);
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, component);
+						DrawDataHolder::instance()->updateTransform(entId, component->mTransform, false);
 					}
+					DrawDataHolder::instance()->transformsBO.unbind();
 				}
 				else if (id == getDirtyId<ComponentsModule::ArmatureBonesComponent>()) {
 					auto lock = ECSHandler::registry().containerReadLock<ComponentsModule::ArmatureBonesComponent>();
+					DrawDataHolder::instance()->bonesBO.bind();
+
 					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<ComponentsModule::ArmatureBonesComponent>(entId));
+						auto component = ECSHandler::registry().getComponentNotSafe<ComponentsModule::ArmatureBonesComponent>(entId);
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, component);						
+						DrawDataHolder::instance()->updateBones(entId, component->boneMatrices.data(), false);
 					}
+					DrawDataHolder::instance()->bonesBO.unbind();
 				}
 				else if (id == getDirtyId<MeshComponent>()) {
 					auto lock = ECSHandler::registry().containerReadLock<MeshComponent>();
@@ -166,6 +182,7 @@ namespace SFE::SystemsModule {
 						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<MaterialComponent>(entId));
 					}
 				}
+				id++;
 			}
 			{
 				FUNCTION_BENCHMARK_NAMED(copy_components);

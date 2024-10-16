@@ -10,7 +10,7 @@ namespace SFE::SystemsModule {
 	public:
 		void update(float dt) override;
 	private:
-        void updateAnimation(const AssetsModule::Animation* animation, float& currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices);
+        void updateAnimation(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Armature& armature, std::vector<Math::Mat4>& boneMatrices);
 
         void calculateBoneTransform(const AssetsModule::Animation* animation, float currentTime, AssetsModule::Bone* bone, Math::Mat4 parentTransform, std::vector<AssetsModule::Bone>& bones, std::vector<Math::Mat4>& boneMatrices);
 
@@ -22,5 +22,7 @@ namespace SFE::SystemsModule {
 
 		template<typename KeyType>
 		static size_t getKeyIndex(float animationTime, const std::vector<KeyType>& keys);
+
+		float time = 0.f;
 	};
 }
