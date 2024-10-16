@@ -14,7 +14,7 @@ namespace SFE::Render {
 	private:
 		ShaderModule::ShaderBase* skyboxShader = nullptr;
 		GLW::VertexArray VAO;
-		GLW::Buffer VBO;
+		GLW::Buffer<GLW::ARRAY_BUFFER, float> VBO;
 		unsigned cubemapTex = -1;
 		std::string skyboxPath;
 	};
