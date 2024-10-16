@@ -22,8 +22,8 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 
 	static GLW::VertexArray VAO;
 	if (!VAO) {
-		static GLW::Buffer VBO;
-		static GLW::Buffer EBO;
+		static GLW::Buffer<GLW::ARRAY_BUFFER, Vertex3D> VBO;
+		static GLW::Buffer<GLW::ELEMENT_ARRAY_BUFFER, unsigned int> EBO;
 
 		std::vector<SFE::Vertex3D> vertices = {
 			{{ 1.f, 0.f, -1.f}, {1.f,1.f}, {0.f,1.f,0.f}}, //far right
@@ -38,21 +38,21 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 		};
 
 		VAO.generate();
-		VBO.generate(SFE::GLW::ARRAY_BUFFER);
+		VBO.generate();
 
 		VAO.bind();
 		VBO.bind();
-		VBO.allocateData(vertices.size(), SFE::GLW::STATIC_DRAW, vertices.data());
+		VBO.allocateData(vertices);
 
 		if (!indices.empty()) {
-			EBO.generate(SFE::GLW::ELEMENT_ARRAY_BUFFER);
+			EBO.generate();
 			EBO.bind();
-			EBO.allocateData(indices.size(), SFE::GLW::STATIC_DRAW, indices.data());
+			EBO.allocateData(indices);
 		}
 
-		VAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::position);
-		VAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::normal);
-		VAO.addAttribute(2, 2, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::texCoords);
+		VAO.addAttribute(0, &SFE::Vertex3D::position, true);
+		VAO.addAttribute(1, &SFE::Vertex3D::normal, true);
+		VAO.addAttribute(2, &SFE::Vertex3D::texCoords, true);
 
 		VAO.bindDefault();
 		VBO.unbind();
