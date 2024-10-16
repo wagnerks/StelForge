@@ -62,15 +62,19 @@ void Utils::renderQuad() {
 			}
 		};
 
-		static GLW::Buffer quadVBO{GLW::ARRAY_BUFFER};
+		static GLW::Buffer<GLW::ARRAY_BUFFER, Vertex2D> quadVBO;
+
 		quadVAO.generate();
 		quadVAO.bind();
+		quadVBO.generate();
 		quadVBO.bind();
 
-		quadVBO.allocateData(mesh.vertices, GLW::STATIC_DRAW);
+		quadVBO.allocateData(mesh.vertices);
 
-		quadVAO.addAttribute(0, 2, GLW::AttributeFType::FLOAT, false, &Vertex2D::position);
-		quadVAO.addAttribute(1, 2, GLW::AttributeFType::FLOAT, false, &Vertex2D::texCoords);
+		quadVAO.addAttribute(0, &Vertex2D::position, false);
+		quadVAO.addAttribute(1, &Vertex2D::texCoords, false);
+		quadVAO.bindDefault();
+		quadVBO.unbind();
 	}
 
 	drawVertices(GLW::TRIANGLE_STRIP, quadVAO.getID(), 4);
@@ -86,13 +90,14 @@ void Utils::renderQuad(float x1 = -1.f, float y1 = -1.f, float x2 = 1.f, float y
 	}};
 
 	GLW::VertexArray quadVAO;
-	GLW::Buffer quadVBO{GLW::ARRAY_BUFFER};
+	GLW::Buffer<GLW::ARRAY_BUFFER, Vertex3D> quadVBO;
 	quadVAO.generate();
 	quadVAO.bind();
+	quadVBO.generate();
 	quadVBO.bind();
-	quadVBO.allocateData(mesh.vertices, GLW::STATIC_DRAW);
-	quadVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex3D::position);
-	quadVAO.addAttribute(1, 2, GLW::AttributeFType::FLOAT, false, &Vertex3D::texCoords);
+	quadVBO.allocateData(mesh.vertices);
+	quadVAO.addAttribute(0, &Vertex3D::position, false);
+	quadVAO.addAttribute(1, &Vertex3D::texCoords, false);
 
 	drawMesh(GLW::TRIANGLE_STRIP, mesh);
 
@@ -162,10 +167,10 @@ void Utils::renderBone(const Math::Vec3& begin, const Math::Vec3& end, const Mat
 	auto C = center + Math::Vec3(boneRad, 0.f, -boneRad);
 	auto D = center + Math::Vec3(-boneRad, 0.f, -boneRad);
 
-	A = transform * rotationMat * Math::Vec4(A, 1.f);
-	B = transform * rotationMat * Math::Vec4(B, 1.f);
-	C = transform * rotationMat * Math::Vec4(C, 1.f);
-	D = transform * rotationMat * Math::Vec4(D, 1.f);
+	A = transform * rotationMat * A;
+	B = transform * rotationMat * B;
+	C = transform * rotationMat * C;
+	D = transform * rotationMat * D;
 	
 	auto& arr = getTrianglesArray({ false, false, true });
 	arr.emplace_back( begin, B, A, color);
@@ -188,9 +193,9 @@ void Utils::renderTriangle(const Triangle& triangle) {
 
 void Utils::renderTriangle(const Triangle& triangle, const Math::Mat4& transform, const Math::Vec4& color) {
 	renderTriangle({
-		transform * Math::Vec4(triangle.A.position, 1.f),
-		transform * Math::Vec4(triangle.B.position, 1.f),
-		transform * Math::Vec4(triangle.C.position, 1.f),
+		transform * triangle.A.position,
+		transform * triangle.B.position,
+		transform * triangle.C.position,
 		color
 	});
 }
@@ -302,9 +307,9 @@ void Utils::renderQuad(const Math::Vec3& min, const Math::Vec3& max, const Math:
 		tr.B.color = color;
 		tr.C.color = color;
 		// Apply the model and rotation transformations
-		tr.A.position = transform * Math::Vec4(tr.A.position, 1.f);
-		tr.B.position = transform * Math::Vec4(tr.B.position, 1.f);
-		tr.C.position = transform * Math::Vec4(tr.C.position, 1.f);
+		tr.A.position = transform * tr.A.position;
+		tr.B.position = transform * tr.B.position;
+		tr.C.position = transform * tr.C.position;
 		vertArray.emplace_back(tr);
 	}
 }
@@ -367,9 +372,9 @@ void Utils::renderCubeMesh(const Math::Vec3& LTN, const Math::Vec3& RBF, const M
 		tr.C.color = color;
 
 		// Apply the model and rotation transformations
-		tr.A.position = transform * Math::Vec4(tr.A.position, 1.f);
-		tr.B.position = transform * Math::Vec4(tr.B.position, 1.f);
-		tr.C.position = transform * Math::Vec4(tr.C.position, 1.f);
+		tr.A.position = transform * tr.A.position;
+		tr.B.position = transform * tr.B.position;
+		tr.C.position = transform * tr.C.position;
 		vertArray.emplace_back(tr);
 	}
 }
@@ -460,7 +465,7 @@ void Utils::renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& q
 		float x = radius * std::cos(theta);
 		float y = radius * std::sin(theta);
 		
-		vertArray.push_back(transform * Math::Vec4{ x, y, 0.f, 1.f});
+		vertArray.push_back(transform * Math::Vec3{ x, y, 0.f});
 	}
 
 	//add GL_LINE_LOOP
@@ -479,12 +484,12 @@ void Utils::renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<flo
 		float theta = Math::radians(startAngle + delta * static_cast<float>(i) / static_cast<float>(numSegments));
 		tr.A.position.x = radius * std::cos(theta);
 		tr.A.position.y = radius * std::sin(theta);
-		tr.A.position = transform * Math::Vec4{ tr.A.position, 1.f};
+		tr.A.position = transform * tr.A.position;
 
 		theta = Math::radians(startAngle + delta * static_cast<float>(i + 1) / static_cast<float>(numSegments));
 		tr.B.position.x = radius * std::cos(theta);
 		tr.B.position.y = radius * std::sin(theta);
-		tr.B.position = transform * Math::Vec4{ tr.B.position, 1.f};
+		tr.B.position = transform * tr.B.position;
 
 		tr.C.position = pos;
 
@@ -506,15 +511,15 @@ void Utils::renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& qua
 		float theta = Math::radians(360.f * static_cast<float>(i) / static_cast<float>(numSegments));
 		tr.A.position.x = radius * std::cos(theta);
 		tr.A.position.z = radius * std::sin(theta);
-		tr.A.position = transform * Math::Vec4{ tr.A.position, 1.f};
+		tr.A.position = transform * tr.A.position;
 		
 		theta = Math::radians(360.f * static_cast<float>(i + 1) / static_cast<float>(numSegments));
 		tr.B.position.x = radius * std::cos(theta);
 		tr.B.position.z = radius * std::sin(theta);
-		tr.B.position = transform * Math::Vec4{ tr.B.position, 1.f};
+		tr.B.position = transform * tr.B.position;
 
 		tr.C.position = Math::Vec3{0.f};
-		tr.C.position = transform * Math::Vec4{ tr.C.position, 1.f};
+		tr.C.position = transform * tr.C.position;
 		tr.recalculateNormal();
 		vertArray.push_back(tr);
 
@@ -523,7 +528,7 @@ void Utils::renderCone(const Math::Vec3& pos, const Math::Quaternion<float>& qua
 		tr2.B = tr.B;
 		tr2.C.position = Math::Vec3{ 0.f };
 		tr2.C.position.y += height;
-		tr2.C.position = transform * Math::Vec4{ tr2.C.position, 1.f};
+		tr2.C.position = transform * tr2.C.position;
 
 		tr2.A.color = color;
 		tr2.B.color = color;
@@ -574,13 +579,14 @@ void Utils::renderCamera() {
 	};
 
 	GLW::VertexArray vao;
-	GLW::Buffer vbo(GLW::ARRAY_BUFFER);
+	GLW::Buffer<GLW::ARRAY_BUFFER, Vertex3D> vbo;
 
 	vao.generate();
 	vao.bind();
+	vbo.generate();
 	vbo.bind();
 	vbo.allocateData(mesh.vertices);
-	vao.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex3D::position);
+	vao.addAttribute(0, &Vertex3D::position, false);
 
 	drawMesh(GLW::LINES, mesh);
 
@@ -729,7 +735,7 @@ void Utils::renderPointLight(float near, float far, const Math::Vec3& pos) {
 	for (int i = 0; i < sizeof(vertices) / sizeof(float); i += 3) {
 		Math::Vec3 vertex(vertices[i], vertices[i + 1], vertices[i + 2]);
 		
-		vertex = transform * Math::Vec4(vertex, 1.f);
+		vertex = transform * vertex;
 		vertArray.emplace_back(vertex);
 	}
 }
