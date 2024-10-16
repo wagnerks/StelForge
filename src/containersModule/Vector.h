@@ -44,22 +44,18 @@ namespace SFE {
 			return std::binary_search(this->begin(), this->end(), val);
 		}
 
-		void removeCopies() {
-			if (this->empty()) {
-				return;
-			}
+		void removeDuplicatesSorted() {
+			std::vector<_Ty, _Alloc> tmp = std::move(*this);
 
-			SFE::Vector<_Ty, _Alloc> res;
-			res.reserve(this->size());
-			res.push_back(this->front());
-
-			for (auto i = 1; i < this->size(); i++) {
-				if (this->at(i) != res.back()) {
-					res.push_back(this->at(i));
+			this->reserve(tmp.size());
+			this->push_back(tmp.front());
+			for (size_t i = 1; i < tmp.size(); ++i) {
+				if (this->back() != tmp[i]) {
+					this->push_back(tmp[i]);
 				}
 			}
 
-			*this = std::move(res);
+			this->shrink_to_fit();
 		}
 	};
 }
