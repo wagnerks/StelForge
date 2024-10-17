@@ -67,14 +67,14 @@ void ECSHandler::initSystems() {
 
 	SFE::ThreadPool::instance()->addTask([]() {
 		SFE::PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
-		//SFE::PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
 		
-		auto path = "models/vampire.fbx";
-		//auto path = "models/cube.fbx";
+		//auto path = "models/vampire.fbx";
+		//auto path = "models/box_moving.fbx";
+		auto path = "models/cube.fbx";
 		auto model = AssetsModule::ModelLoader::instance()->load(path);
-		for (auto i = 0; i < 20; i++) {
-			for (auto j = 0; j < 20; j++) {
-				for (auto k = 0; k < 1; k++) {
+		for (auto i = 0; i < 40; i++) {
+			for (auto j = 0; j < 40; j++) {
+				for (auto k = 0; k < 40; k++) {
 					if (!SFE::Engine::instance()->isAlive()) {
 						return;
 					}
@@ -90,8 +90,8 @@ void ECSHandler::initSystems() {
 					modelComp->setModel(model->getLODs());
 
 					auto transformComp = ECSHandler::addComponent<TransformComponent>(entity, entity);
-					transformComp->setPos({ i * 40.f, k*40.f, j * 40.f });
-					transformComp->setScale({ 0.1f });
+					transformComp->setPos({ i * 100.f, k*100.f, j * 100.f });
+					transformComp->setScale({ 10.0f });
 					ECSHandler::addComponent<IsDrawableComponent>(entity);
 
 					if (modelComp && !modelComp->getModel().meshes.empty()) {
