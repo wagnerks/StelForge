@@ -1,6 +1,7 @@
 ﻿#include "ShadersPass.h"
 #include "componentsModule/ModelComponent.h"
 #include "assetsModule/TextureHandler.h"
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "renderModule/Utils.h"
 #include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
@@ -8,6 +9,7 @@
 #include "core/ECSHandler.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
+#include "renderModule/glUtils.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/systems/ShaderSystem.h"
@@ -20,47 +22,22 @@ SFE::Render::RenderPasses::ShadersPass::ShadersPass() {}
 void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& renderDataHandle) {
 	FUNCTION_BENCHMARK;
 
-	static GLW::VertexArray VAO;
-	if (!VAO) {
-		static GLW::Buffer VBO;
-		static GLW::Buffer EBO;
-
-		std::vector<SFE::Vertex3D> vertices = {
+	static Mesh3D mesh;
+	static bool created = false;
+	if (!created) {
+		created = true;
+		mesh.vertices = {
 			{{ 1.f, 0.f, -1.f}, {1.f,1.f}, {0.f,1.f,0.f}}, //far right
 			{{ 1.f, 0.f,  1.f}, {1.f,0.f}, {0.f,1.f,0.f}}, //near right
 			{{-1.f, 0.f,  1.f}, {0.f,0.f}, {0.f,1.f,0.f}}, //near left
 			{{-1.f, 0.f, -1.f}, {0.f,1.f}, {0.f,1.f,0.f}}, //far left
 		};
 
-		std::vector<unsigned> indices = {
+		mesh.indices = {
 			0,2,1,
 			3,2,0
 		};
-
-		VAO.generate();
-		VBO.generate(SFE::GLW::ARRAY_BUFFER);
-
-		VAO.bind();
-		VBO.bind();
-		VBO.allocateData(vertices.size(), SFE::GLW::STATIC_DRAW, vertices.data());
-
-		if (!indices.empty()) {
-			EBO.generate(SFE::GLW::ELEMENT_ARRAY_BUFFER);
-			EBO.bind();
-			EBO.allocateData(indices.size(), SFE::GLW::STATIC_DRAW, indices.data());
-		}
-
-		VAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::position);
-		VAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::normal);
-		VAO.addAttribute(2, 2, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::texCoords);
-
-		VAO.bindDefault();
-		VBO.unbind();
-		EBO.unbind();
 	}
-
-	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
-	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
 
 	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
 
@@ -69,10 +46,12 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 
 	shader->setUniform("cameraPos", Math::Vec3{renderDataHandle.mCameraPos});
 
+	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
 	shader->setUniform("far", cameraComp->getProjection().getFar());
 	shader->setUniform("near", cameraComp->getProjection().getNear());
 
-	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 4, 6);
+	drawMesh(GLW::TRIANGLES, mesh, SFE::MeshVaoRegistry::instance()->get(&mesh).vao.getID());
 	GLW::Framebuffer::bindDefaultFramebuffer();
 
 	const auto& drawableEntities = ECSHandler::getSystem<SystemsModule::ShaderSystem>()->drawableEntities;

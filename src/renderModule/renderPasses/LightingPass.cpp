@@ -119,64 +119,64 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 		GLW::bindReadFramebuffer();
 	}
 
-
-	static Math::Vec3 sunDir;
-	static float time = 0.f;
-	static float Br = 0.005f;
-	static float Bm = 0.001f;
-	static float g = 0.9900f;
-	static float cirrus = 0.0f;
-	static float cumulus = 0.0f;
-	static bool enableSky = 0.0f;
-	time += 0.01f;
-
 	{
-		/*if (ImGui::BeginMainMenuBar()) {
-			if (ImGui::BeginMenu("Debug")) {
-				ImGui::Checkbox("skyParams", &skyParams);
-				ImGui::EndMenu();
+		static Math::Vec3 sunDir;
+		static float time = 0.f;
+		static float Br = 0.005f;
+		static float Bm = 0.001f;
+		static float g = 0.9900f;
+		static float cirrus = 0.0f;
+		static float cumulus = 0.0f;
+		static bool enableSky = 0.0f;
+		time += 0.01f;
+
+		{
+			/*if (ImGui::BeginMainMenuBar()) {
+				if (ImGui::BeginMenu("Debug")) {
+					ImGui::Checkbox("skyParams", &skyParams);
+					ImGui::EndMenu();
+				}
 			}
+			ImGui::EndMainMenuBar();*/
 		}
-		ImGui::EndMainMenuBar();*/
-	}
-	if (skyParams) {
-		if (ImGui::Begin("sky params", &skyParams)) {
-			float sunDirCont[3] = { sunDir.x, sunDir.y, sunDir.z };
-			if (ImGui::DragFloat3("sun_Dir", sunDirCont, 0.01f, 0.f, 1.f)) {
-				sunDir.x = sunDirCont[0];
-				sunDir.y = sunDirCont[1];
-				sunDir.z = sunDirCont[2];
+		if (skyParams) {
+			if (ImGui::Begin("sky params", &skyParams)) {
+				float sunDirCont[3] = { sunDir.x, sunDir.y, sunDir.z };
+				if (ImGui::DragFloat3("sun_Dir", sunDirCont, 0.01f, 0.f, 1.f)) {
+					sunDir.x = sunDirCont[0];
+					sunDir.y = sunDirCont[1];
+					sunDir.z = sunDirCont[2];
+				}
+				ImGui::Checkbox("skyEnabled", &enableSky);
+				ImGui::DragFloat("time", &time, 0.01f);
+				ImGui::DragFloat("Br", &Br, 0.0001f);
+				ImGui::DragFloat("Bm", &Bm, 0.0001f);
+				ImGui::DragFloat("g", &g, 0.01f);
+				ImGui::DragFloat("cirrus", &cirrus, 0.01f);
+				ImGui::DragFloat("cumulus", &cumulus, 0.01f);
+
 			}
-			ImGui::Checkbox("skyEnabled", &enableSky);
-			ImGui::DragFloat("time", &time, 0.01f);
-			ImGui::DragFloat("Br", &Br, 0.0001f);
-			ImGui::DragFloat("Bm", &Bm, 0.0001f);
-			ImGui::DragFloat("g", &g, 0.01f);
-			ImGui::DragFloat("cirrus", &cirrus, 0.01f);
-			ImGui::DragFloat("cumulus", &cumulus, 0.01f);
-
+			ImGui::End();
 		}
-		ImGui::End();
+
+
+		if (enableSky) {
+			auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
+			sky->use();
+			sky->setUniform("view", renderDataHandle.current.view);
+			sky->setUniform("projection", renderDataHandle.current.projection);
+			sky->setUniform("sun_direction", -renderDataHandle.mCascadedShadowsPassData->lightDirection);
+			sky->setUniform("time", time);
+
+			sky->setUniform("Br", Br);
+			sky->setUniform("Bm", Bm);
+			sky->setUniform("g", g);
+
+			sky->setUniform("cirrus", cirrus);
+			sky->setUniform("cumulus", cumulus);
+
+			Utils::renderQuad();
+			//Utils::renderQuad2();
+		}
 	}
-	
-
-	if (enableSky) {
-		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
-		sky->use();
-		sky->setUniform("view", renderDataHandle.current.view);
-		sky->setUniform("projection", renderDataHandle.current.projection);
-		sky->setUniform("sun_direction", -renderDataHandle.mCascadedShadowsPassData->lightDirection);
-		sky->setUniform("time", time);
-
-		sky->setUniform("Br", Br);
-		sky->setUniform("Bm", Bm);
-		sky->setUniform("g", g);
-
-		sky->setUniform("cirrus", cirrus);
-		sky->setUniform("cumulus", cumulus);
-
-		Utils::renderQuad();
-		//Utils::renderQuad2();
-	}
-
 }
