@@ -7,6 +7,24 @@
 #include "mathModule/Forward.h"
 
 namespace SFE::ShaderModule {
+	enum class ShaderProgramType {
+		GEOMETRY,
+		FRAGMENT
+	};
+
+	enum class ShaderType {
+		VERTEX,
+		FRAGMENT,
+		GEOMETRY
+	};
+
+	template<ShaderProgramType Type>
+	class ShaderProgram {
+		
+	};
+
+	//template<ShaderType type>
+
 	class ShaderBase {
 		friend class ShaderController;
 	public:

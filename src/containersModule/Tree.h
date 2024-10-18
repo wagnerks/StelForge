@@ -235,7 +235,7 @@ namespace SFE {
 			helper = [&helper, this, &extractData](const Tree<OtherT>& node, int parent) {
 				for (auto& child : node.children) {
 					addChild(extractData(child.value), parent);
-					helper(child, tree[parent].children.back());
+					helper(child, static_cast<int>(tree[parent].children.back()));
 				}
 			};
 

@@ -41,7 +41,7 @@ void GeometryPass::prepare() {
 		curPassData->getBatcher().clear();
 		outlineData->getBatcher().clear();
 
-		SFE:Vector<ecss::EntityId> entities;
+		SFE::Vector<ecss::EntityId> entities;
 		{
 			FUNCTION_BENCHMARK_NAMED(GeometryPass_octree);
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
@@ -62,11 +62,12 @@ void GeometryPass::prepare() {
 			return;
 		}
 		entities.sort();
+		entities.removeDuplicatesSorted();
 
 		{
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher);
 			auto& batcher = curPassData->getBatcher();
-			for (auto [ent, transform, meshComp, matComp, armatComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent, const ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OccludedComponent>({entities}, false)) {
+			for (auto [ent, transform, meshComp, matComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent, const ComponentsModule::OccludedComponent>({entities}, false)) {
 				if (!meshComp) {
 					continue;
 				}
@@ -75,7 +76,7 @@ void GeometryPass::prepare() {
 				}
 
 				for (const auto& mesh : meshComp->meshGraph) {
-					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, matComp ? matComp->materials : ComponentsModule::Materials{}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
+					batcher.addToDrawList(ent, mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, matComp ? matComp->materials : ComponentsModule::Materials{}, transform->mTransform);
 				}
 			}
 			batcher.sort(camPos);
@@ -84,17 +85,16 @@ void GeometryPass::prepare() {
 		{
 			auto& outlineBatcher = outlineData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
-				for (const auto& [entity, outline, transform, meshComp, armatComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const OutlineComponent, const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent>({}, false)) {
-				if (!entities.contains(entity)) {//need to check - if draw all outline objects is faster then cull all of them such way?//todo
+			for (const auto& [entity, outline, transform, meshComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const OutlineComponent, const ComponentsModule::TransformMatComp, const MeshComponent>({}, false)) {
+				if (!meshComp) {
 					continue;
 				}
-
-				if (!meshComp) {
+				if (!entities.containsSorted(entity)) {//need to check - if draw all outline objects is faster then cull all of them such way?//todo
 					continue;
 				}
 
 				for (const auto& mesh : meshComp->meshGraph) {
-					outlineBatcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
+					outlineBatcher.addToDrawList(entity, mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform);
 				}
 			}
 
@@ -214,12 +214,8 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 	{
 		FUNCTION_BENCHMARK_NAMED(_wait_lock);
 		const auto curPassData = getContainer().getCurrentPassData();
-		while (curPassData->mStatus != RenderPreparingStatus::READY) {}
+		while (curPassData->mStatus != RenderPreparingStatus::READY) {}//todo do some logic on main thread while waiting preparing
 	}
-	/*if (currentLock.valid()) {
-		FUNCTION_BENCHMARK_NAMED(_lock_wait)
-		currentLock.wait();
-	}*/
 
 	const auto curPassData = getContainer().getCurrentPassData();
 	const auto outlineData = mOutlineData.getCurrentPassData();
@@ -229,7 +225,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	mData.gFramebuffer.bind();
 	GLW::clear(GLW::ColorBit::DEPTH_COLOR);
-	//if (!curPassData->getBatchers().empty()){
+	
 	if (!curPassData->getBatcher().drawList.empty()) {
 		auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
 		shaderGeometryPass->use();
@@ -239,29 +235,17 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 		shaderGeometryPass->setUniform("outline", false);
 
 		FUNCTION_BENCHMARK_NAMED(_flush)
-		/*for (auto& batcher : curPassData->getBatchers()) {
-			batcher.flushAll();
-		}*/
 		curPassData->getBatcher().flushAll();
 	}
-
-	/*if (!batcher.drawList.empty()) {
-		auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
-		lightObjectsPass->use();
-		batcher.flushAll(true);
-	}*/
 
 	if (!outlineData->getBatcher().drawList.empty()) {
 		needClearOutlines = true;
 
 		mData.outlineFramebuffer.bind();
-		mData.outlinesBuffer.create();
-		mData.outlineFramebuffer.addAttachmentTexture(0, &mData.outlinesBuffer); //todo hack to clear image
-		mData.outlineFramebuffer.finalize();
+		GLW::clear(GLW::ColorBit::COLOR);
 
 		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
 		g_buffer_outlines->use();
-		g_buffer_outlines->setUniform("PV", renderDataHandle.current.PV);
 
 		outlineData->getBatcher().flushAll();
 		bindTextureToSlot(26, &mData.normalBuffer);
@@ -282,7 +266,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 			needClearOutlines = false;
 
 			mData.outlineFramebuffer.bind();
-			mData.outlinesBuffer.create();
+			GLW::clear(GLW::ColorBit::COLOR);
 			GLW::Framebuffer::bindDefaultFramebuffer();
 		}
 	}

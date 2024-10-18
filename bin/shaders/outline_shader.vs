@@ -7,15 +7,17 @@ layout (location = 4) in vec3 aBiTangents;
 layout (location = 5) in ivec4 aBoneIds;
 layout (location = 6) in vec4 aWeights;
 
+layout (location = 7) in uint entityIdx;
+
 uniform mat4 PV;
 out vec3 texPos;
 
-layout(std430, binding = 1) buffer modelMatrices
+layout(std430, binding = 10) buffer modelMatrices
 {
     mat4 model[];
 };
 
-layout(std430, binding = 2) buffer bonesMatrices
+layout(std430, binding = 11) buffer bonesMatrices
 {
     mat4 bones[][100];
 };
@@ -33,7 +35,7 @@ void main()
         }
         noBones = false;
 
-        BoneTransform += bones[gl_InstanceID][boneIdx] * aWeights[i];
+        BoneTransform += bones[entityIdx][boneIdx] * aWeights[i];
     }
 
 
@@ -46,6 +48,6 @@ void main()
     }
 
     texPos = aPos;
-    mat4 m = model[gl_InstanceID];
+    mat4 m = model[entityIdx];
     gl_Position = PV * m  * vec4(totalPosition + aNormal* 5.0,1.0); 
 }  

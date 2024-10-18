@@ -15,5 +15,33 @@ namespace SFE::GLW {
 			}
 		}
 	};
+
+	template <Capability... CapTypes>
+	struct CapabilitiesLock {
+		CapabilitiesLock() = default;
+
+		~CapabilitiesLock() {
+			pop();
+		}
+
+		template<typename... Bools>
+		CapabilitiesLock(Bools... states) {
+			apply(states...);
+		}
+
+		CapabilitiesLock(bool state) {
+			(CapabilitiesStack<CapTypes>::push(state), ...);
+			
+		}
+
+		template<typename... Bools>
+		void apply(Bools... states) const {
+			(CapabilitiesStack<CapTypes>::push(states), ...);
+		}
+
+		void pop() {
+			(CapabilitiesStack<CapTypes>::pop(), ...);
+		}
+	};
 }
 

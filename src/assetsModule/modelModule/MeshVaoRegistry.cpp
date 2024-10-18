@@ -24,26 +24,31 @@ namespace SFE {
 			data.release();
 
 			data.vao.generate();
-			data.vboBuf.generate(SFE::GLW::ARRAY_BUFFER);
+			data.vboBuf.generate();
 
 			data.vao.bind();
 			data.vboBuf.bind();
-			data.vboBuf.allocateData(mesh->vertices, SFE::GLW::STATIC_DRAW);
+			data.vboBuf.allocateData(mesh->vertices);
 
 			if (!mesh->indices.empty()) {
-				data.eboBuf.generate(SFE::GLW::ELEMENT_ARRAY_BUFFER);
+				data.eboBuf.generate();
 				data.eboBuf.bind();
-				data.eboBuf.allocateData(mesh->indices, SFE::GLW::STATIC_DRAW);
+				data.eboBuf.allocateData(mesh->indices);
 			}
 
-			data.vao.addAttribute(0, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex3D::position);
-			data.vao.addAttribute(1, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex3D::normal);
-			data.vao.addAttribute(2, 2, SFE::GLW::AttributeFType::FLOAT, true, &Vertex3D::texCoords);
-			data.vao.addAttribute(3, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex3D::tangent);
-			data.vao.addAttribute(4, 3, SFE::GLW::AttributeFType::FLOAT, true, &Vertex3D::biTangent);
+			data.vao.addAttribute(0, &Vertex3D::position, true);
+			data.vao.addAttribute(1, &Vertex3D::normal, true);
+			data.vao.addAttribute(2, &Vertex3D::texCoords, true);
+			data.vao.addAttribute(3, &Vertex3D::tangent, true);
+			data.vao.addAttribute(4, &Vertex3D::biTangent, true);
 
-			data.vao.addAttribute(5, 4, SFE::GLW::AttributeIType::INT, &Vertex3D::boneIDs); //todo only for dynamic mesh
-			data.vao.addAttribute(6, 4, SFE::GLW::AttributeFType::FLOAT, false, &Vertex3D::weights);
+			data.vao.addAttribute(5, &Vertex3D::boneIDs); //todo only for dynamic mesh
+			data.vao.addAttribute(6, &Vertex3D::weights, false);
+
+			glVertexAttribIPointer(7, 1, GL_UNSIGNED_INT, 0, (void*)0);
+			glEnableVertexAttribArray(7);
+			glVertexAttribDivisor(7, 1);
+
 			data.vao.bindDefault();
 
 			data.verticesCount = mesh->vertices.size();

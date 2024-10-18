@@ -125,7 +125,11 @@ namespace SFE::SystemsModule {
 		template<typename T>
 		void markDirtyImpl(ecss::EntityId id) {
 			auto lock = std::unique_lock(dirtiesMutex);
-			auto& entities = dirties[getDirtyId<T>()];
+			auto dirtyId = getDirtyId<T>();
+			if (dirties.size() <= dirtyId) {
+				dirties.resize(dirtyId + 1);
+			}
+			auto& entities = dirties[dirtyId];
 
 			if (auto it = entities.find([id](const std::pair<ecss::EntityId, uint8_t>& a) { return a.first == id; })) {
 				it->second = 2;
@@ -135,7 +139,7 @@ namespace SFE::SystemsModule {
 			}
 		}
 
-		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dirties;
+		std::vector<SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dirties;
 		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> removed;
 		std::shared_mutex dirtiesMutex;
 
@@ -147,6 +151,6 @@ namespace SFE::SystemsModule {
 		RenderData mRenderData;
 		std::vector<Render::RenderPass*> mRenderPasses;
 		std::shared_future<void> updateLock;
-		GLW::Buffer cameraMatricesUBO{GLW::UNIFORM_BUFFER};
+		GLW::Buffer<GLW::UNIFORM_BUFFER, RenderMatrices, GLW::DYNAMIC_DRAW> cameraMatricesUBO;
 	};
 }

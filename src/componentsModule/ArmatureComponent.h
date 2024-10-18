@@ -10,7 +10,7 @@ namespace SFE::ComponentsModule {
 
 	struct ArmatureBonesComponent {
 		ArmatureBonesComponent() {
-			boneMatrices.resize(100);
+			boneMatrices.resize(100, {1.f});
 		}
 
 		std::vector<SFE::Math::Mat4> boneMatrices;

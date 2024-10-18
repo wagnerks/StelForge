@@ -61,7 +61,8 @@ namespace SFE::Math {
 
 		VECTOR_DEFAULT_METHODS();
 	};
-
+	//todo allignment and smid operations
+	//todo do i need simple conversion operator - to convert vectors to each other
 	template <typename T>
 	struct Vector<T, 2> {
 		union {
@@ -104,8 +105,8 @@ namespace SFE::Math {
 
 		VECTOR_DEFAULT_METHODS();
 
-		template<typename OtherT>
-		constexpr Vector(OtherT x, OtherT y, OtherT z) : x(static_cast<T>(x)), y(static_cast<T>(y)), z(static_cast<T>(z)) {}
+		template<typename T0, typename T1, typename T2>
+		constexpr Vector(T0 x, T1 y, T2 z) : x(static_cast<T>(x)), y(static_cast<T>(y)), z(static_cast<T>(z)) {}
 
 		template<typename OtherT>
 		constexpr Vector(OtherT x) : x(static_cast<T>(x)), y(static_cast<T>(x)), z(static_cast<T>(x)) {}
@@ -117,6 +118,9 @@ namespace SFE::Math {
 
 		template<typename OtherT>
 		constexpr Vector(const Vector<OtherT, 3>& vec) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)), z(static_cast<T>(vec.z)) {}
+
+		template<typename OtherT, typename T2>
+		constexpr Vector(const Vector<OtherT, 2>& vec, T2 z) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)), z(static_cast<T>(z)) {}
 	};
 
 	template <typename T>

@@ -58,7 +58,7 @@ void CascadedShadowPass::prepare() {
 
 		shadowsComp->calculateLightSpaceMatrices(camProj, view);
 
-		std::vector<ecss::EntityId> entities;
+		SFE::Vector<ecss::EntityId> entities;
 		{
 			FUNCTION_BENCHMARK_NAMED(octree);
 
@@ -83,25 +83,28 @@ void CascadedShadowPass::prepare() {
 			curPassData->mStatus = RenderPreparingStatus::READY;
 			return;
 		}
-		std::ranges::sort(entities);
-
+		entities.sort();
+		entities.removeDuplicatesSorted();
 		{
-			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
 			auto& batcher = curPassData->getBatcher();
-			for (auto [ent, transform, meshComp, armatComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OccludedComponent>({ entities }, false)) {
-				if (!meshComp) {
-					continue;
-				}
-				if (oclComp && oclComp->occluded) {
-					continue;
-				}
-				
-				for (const auto& mesh : meshComp->meshGraph) {
-					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
-				}
-				
-			}
+			{
+				FUNCTION_BENCHMARK_NAMED(addedToBatcher)
+					
+				for (auto [ent, transform, meshComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::OccludedComponent>({ entities }, false)) {
+					if (!meshComp) {
+						continue;
+					}
+					if (oclComp && oclComp->occluded) {
+						continue;
+					}
 
+					for (const auto& mesh : meshComp->meshGraph) {
+						batcher.addToDrawList(ent, mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform);
+					}
+
+				}
+			}
+			FUNCTION_BENCHMARK_NAMED(sort)
 			batcher.sort({100.f,1300.f, 600.f});//todo
 		}
 		curPassData->mStatus = RenderPreparingStatus::READY;
@@ -171,8 +174,9 @@ void CascadedShadowPass::initRender() {
 	lightFBO.finalize();
 
 	{
+		matricesUBO.generate();
 		auto guard = matricesUBO.lock();
-		matricesUBO.allocateData<Math::Mat4>(6, GLW::DYNAMIC_DRAW);
+		matricesUBO.reserve(6);
 		matricesUBO.setBufferBinding(0);
 	}
 
@@ -193,7 +197,10 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 	{
 		FUNCTION_BENCHMARK_NAMED(_wait_lock);
 		const auto curPassData = getContainer().getCurrentPassData();
-		while(curPassData->mStatus != RenderPreparingStatus::READY) {}
+		while(curPassData->mStatus != RenderPreparingStatus::READY) {
+			std::this_thread::yield();
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
 	}
 
 	auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
@@ -212,7 +219,7 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 	if (!lightMatrices.empty()) {
 		FUNCTION_BENCHMARK_NAMED(_bind_ubo);
 		auto guard = matricesUBO.lock();
-		matricesUBO.setData(lightMatrices.size(), lightMatrices.data());//todo crashes when calculateLightSpaceMatrices called from another thread
+		matricesUBO.setData(lightMatrices);//todo crashes when calculateLightSpaceMatrices called from another thread
 	}
 
 	GLW::ViewportStack::push({ {static_cast<int>(shadowsComp->resolution.x), static_cast<int>(shadowsComp->resolution.y)} });

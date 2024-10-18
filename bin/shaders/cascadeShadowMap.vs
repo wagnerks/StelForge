@@ -2,8 +2,9 @@
 layout (location = 0) in vec3 aPos;
 layout (location = 5) in ivec4 aBoneIds;
 layout (location = 6) in vec4 aWeights;
+layout (location = 7) in uint entityIdx;
 
-layout(std430, binding = 1) buffer modelMatrices
+layout(std430, binding = 10) buffer modelMatrices
 {
     mat4 model[];
 };
@@ -11,7 +12,7 @@ layout(std430, binding = 1) buffer modelMatrices
 const int MAX_BONES = 100;
 const int MAX_BONE_INFLUENCE = 4;
 
-layout(std430, binding = 2) buffer bonesMatrices
+layout(std430, binding = 11) buffer bonesMatrices
 {
     mat4 bones[][MAX_BONES];
 };
@@ -26,12 +27,12 @@ void main()
              continue;
         }
         withBones = true;
-        BoneTransform += bones[gl_InstanceID][boneIdx] * aWeights[i];
+        BoneTransform += bones[entityIdx][boneIdx] * aWeights[i];
     }
     if (!withBones){
         BoneTransform = mat4(1.f);
     }
     vec4 newPos = BoneTransform * vec4(aPos, 1.0);
     newPos /= newPos.w;
-    gl_Position = model[gl_InstanceID] * newPos;
+    gl_Position = model[entityIdx] * newPos;
 }

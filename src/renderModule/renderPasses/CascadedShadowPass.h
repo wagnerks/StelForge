@@ -42,7 +42,7 @@ namespace SFE::Render::RenderPasses {
 		GLW::Framebuffer lightFBO;
 		GLW::Texture lightDepthMap{GLW::TEXTURE_2D_ARRAY};
 
-		GLW::Buffer matricesUBO{GLW::UNIFORM_BUFFER };
+		GLW::Buffer<GLW::UNIFORM_BUFFER, Math::Mat4, GLW::DYNAMIC_DRAW> matricesUBO;
 
 		ecss::EntityId mShadowSource;
 		bool mInited = false;

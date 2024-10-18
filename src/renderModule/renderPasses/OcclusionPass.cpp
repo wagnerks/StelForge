@@ -143,16 +143,17 @@ namespace SFE::Render::RenderPasses {
 				};
 
 				GLW::VertexArray vao;
-				GLW::Buffer vbo{GLW::BufferType::ARRAY_BUFFER};
+				GLW::Buffer<GLW::ARRAY_BUFFER, Vertex3D> vbo;
 
 				vao.generate();
 				vao.bind();
+				vbo.generate();
 				vbo.bind();
 				vbo.allocateData(vertices);
 
-				vao.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex3D::position);
+				vao.addAttribute(0, &Vertex3D::position, false);
 
-				GLW::drawArrays(GLW::TRIANGLES, vertices.size());
+				GLW::drawArrays(GLW::TRIANGLES, static_cast<GLsizei>(vertices.size()));
 
 				vao.bindDefault();
 			}
@@ -198,16 +199,17 @@ namespace SFE::Render::RenderPasses {
 				};
 
 				GLW::VertexArray vao;
-				GLW::Buffer vbo{GLW::BufferType::ARRAY_BUFFER};
+				GLW::Buffer<GLW::ARRAY_BUFFER, Vertex3D> vbo;
 
 				vao.generate();
 				vao.bind();
+				vbo.generate();
 				vbo.bind();
 				vbo.allocateData(vertices);
 
-				vao.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex3D::position);
+				vao.addAttribute(0, &Vertex3D::position, false);
 
-				GLW::drawArrays(GLW::TRIANGLES, vertices.size());
+				GLW::drawArrays(GLW::TRIANGLES, static_cast<GLsizei>(vertices.size()));
 
 				vao.bindDefault();
 			}

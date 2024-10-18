@@ -292,9 +292,11 @@ namespace SFE::Render {
             return res;
         }
 
-        void renderText(std::string text, float x, float y, float scale, Math::Vec3 color, Font* font) const {
+        void renderText(std::string text, float x, float y, float scale, Math::Vec3 color, Font* font) {
             VBO.bind();
-            VBO.allocateData(sizeof(float) * 6 * 4, text.size(), GLW::DYNAMIC_DRAW, nullptr);
+            VBO.clear();
+            VBO.shrinkToFit();
+            VBO.reserve(text.size());
 
             const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
             const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
@@ -323,24 +325,24 @@ namespace SFE::Render {
                 float endX = (xpos + w - semiW) / semiW;
                 float endY = (ypos + h - semiH) / semiH;
 
-                const float vertices[24] = {
-                     startX,     endY,        ch.texCoords.first.x, ch.texCoords.first.y,
-                     startX,     startY,      ch.texCoords.first.x, ch.texCoords.second.y,
-                     endX,       startY,      ch.texCoords.second.x, ch.texCoords.second.y,
+                const GlyphVertex vertices[6] = {
+                     {{startX,     endY},        {ch.texCoords.first.x, ch.texCoords.first.y}},
+                     {{startX,     startY},      {ch.texCoords.first.x, ch.texCoords.second.y}},
+                     {{endX,       startY},      {ch.texCoords.second.x, ch.texCoords.second.y}},
                      
 
-                     startX,    endY,       ch.texCoords.first.x, ch.texCoords.first.y,
-                     endX,      startY,     ch.texCoords.second.x, ch.texCoords.second.y,
-                     endX,      endY,       ch.texCoords.second.x, ch.texCoords.first.y,
+                     {{startX,    endY},       {ch.texCoords.first.x, ch.texCoords.first.y}},
+                     {{endX,      startY},     {ch.texCoords.second.x, ch.texCoords.second.y}},
+                     {{endX,      endY},       {ch.texCoords.second.x, ch.texCoords.first.y}},
                      
                 };
-                VBO.setData(sizeof(vertices), 1, vertices, i);
+                VBO.addData(6, vertices);
 
                 // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
                 curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 
             }
 
-            VBO.bindDefaultBuffer(VBO.getType());
+            VBO.unbind();
            
 
             GLW::CapabilitiesStack<GLW::BLEND>::push(true);
@@ -365,10 +367,11 @@ namespace SFE::Render {
 
             VAO.generate();
             VAO.bind();
-            VBO.bind();
+            VBO.generate();
+        	VBO.bind();
 
             VAO.addAttribute(0, 4, GLW::AttributeFType::FLOAT, false, 4 * sizeof(float));
-            VBO.bindDefaultBuffer(VBO.getType());
+            VBO.unbind();
             VAO.bindDefault();
         }
         inline static char msgBuf[2048];
@@ -381,9 +384,13 @@ namespace SFE::Render {
         ~TextRenderer() override {}
 
 	private:
+        struct GlyphVertex {
+            Math::Vec2 pos;
+            Math::Vec2 uv;
+        };
 
         GLW::VertexArray VAO;
 
-        GLW::Buffer VBO{GLW::ARRAY_BUFFER };
+        GLW::Buffer<GLW::ARRAY_BUFFER, GlyphVertex, GLW::DYNAMIC_DRAW> VBO;
 	};
 }

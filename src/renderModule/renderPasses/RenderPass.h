@@ -41,9 +41,9 @@ namespace SFE::Render {
 		size_t mPriority = 0;
 	};
 
-	class RenderPassDataContainer {
+	class RenderPassRingBuffer {
 	public:
-		~RenderPassDataContainer() {
+		~RenderPassRingBuffer() {
 			clear();
 		}
 
@@ -86,10 +86,10 @@ namespace SFE::Render {
 		
 		virtual void prepare() {}
 
-		RenderPassDataContainer& getContainer() { return mData; }
+		RenderPassRingBuffer& getContainer() { return mData; }
 
 	protected:
-		RenderPassDataContainer mData;
+		RenderPassRingBuffer mData;
 	};
 
 }

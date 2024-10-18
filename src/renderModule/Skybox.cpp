@@ -88,10 +88,10 @@ void Skybox::init() {
 	};
 
 	VAO.generate();
-	VBO.generate(GLW::ARRAY_BUFFER);
+	VBO.generate();
 	VAO.bind();
 	VBO.bind();
-	VBO.allocateData(108, GLW::STATIC_DRAW, skyboxVertices);
+	VBO.allocateData(108, skyboxVertices);
 
 	VAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, 3 * sizeof(float));
 }

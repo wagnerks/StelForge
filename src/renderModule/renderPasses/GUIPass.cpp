@@ -15,8 +15,9 @@ namespace SFE::Render::RenderPasses {
 		shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().width), 0.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().height), -1.f, 1.f));
 		VAO.generate();
 		VAO.bind();
+		VBO.generate();
 		VBO.bind();
-		VAO.addAttribute(0, 2, GLW::AttributeFType::FLOAT, false, 2 * sizeof(float));
+		VAO.addAttribute(0, &GUIPass::Vertex::pos, false);
 		VAO.bindDefault();
 		VBO.unbind();
 	}
@@ -32,7 +33,9 @@ namespace SFE::Render::RenderPasses {
 		
 
 		VBO.bind();
-		VBO.allocateData(sizeof(float) * 2 * 3 * 2, registry.getAllEntities().size(), GLW::DYNAMIC_DRAW);
+		VBO.clear();
+		VBO.shrinkToFit();
+		VBO.reserve(registry.getAllEntities().size() * 6);
 
 		const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
 		const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
@@ -42,7 +45,7 @@ namespace SFE::Render::RenderPasses {
 				continue;
 			}
 			shader->setUniform("drawColor", color->color);
-			
+
 			auto pos = position->pos;
 			pos.x += -position->pivot.x * position->size.x;
 
@@ -56,17 +59,18 @@ namespace SFE::Render::RenderPasses {
 			const float endX = (pos.x + position->size.x - semiW) / semiW;
 			const float endY = (pos.y + position->size.y - semiH) / semiH;
 
-			const Math::Vec2 vertices[6] = {
-				 {startX,	endY},
-				 {startX,	startY},
-				 {endX,		startY},
+			const Vertex vertices[6] = {
+				{{startX, endY}},
+				{{startX, startY}},
+				{{endX, startY}},
 
-				 {startX,	endY},
-				 {endX,		startY},
-				 {endX,		endY},
+				{{startX, endY}},
+				{{endX, startY}},
+				{{endX, endY}},
 			};
 
-			VBO.setData<Math::Vec2>(6, vertices, i);
+			VBO.addData(6, vertices);
+
 			i++;
 		}
 		VBO.unbind();

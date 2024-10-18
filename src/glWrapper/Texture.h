@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "glad/glad.h"
+#include <vector>
 
 namespace SFE::GLW {
 
@@ -256,21 +257,33 @@ namespace SFE::GLW {
 	};
 	struct Texture;
 
+	inline std::vector<unsigned> bindedTexturesMap(64, 0);
+	inline unsigned currentSlot = -1;
+
 	constexpr inline void bindTexture(TextureType type, unsigned id) {
 		glBindTexture(type, id);
 	}
 
 	constexpr inline void setActiveTextureSlot(unsigned slot) {
+		if (currentSlot == slot) {
+			return;
+		}
+		currentSlot = slot;
 		glActiveTexture(TextureSlot(slot));
 	}
 
 	constexpr inline void bindTextureToSlot(unsigned slot, TextureType type, unsigned id) {
+		auto& currentTexture = bindedTexturesMap[slot];
+		if (currentTexture == id) {
+			return;
+		}
+		currentTexture = id;
+
 		setActiveTextureSlot(slot);
 		bindTexture(type, id);
 	}
 
 	constexpr inline void bindTextureToSlot(unsigned slot, Texture* texture);
-	constexpr inline void bindTexture(Texture* texture);
 
 	struct Texture {
 		Texture(const Texture& other) = delete;
@@ -377,7 +390,7 @@ namespace SFE::GLW {
 			parameters.apply(this);
 			applyPixelStorageMode();
 
-			bindTexture(mType, 0);
+			bindTextureToSlot(0, mType, 0);
 		}
 
 		void create3D(const void* data = nullptr) {
@@ -390,7 +403,7 @@ namespace SFE::GLW {
 			parameters.apply(this);
 			applyPixelStorageMode();
 
-			bindTexture(mType, 0);
+			bindTextureToSlot(0, mType, 0);
 		}
 
 		void generate() {
@@ -408,11 +421,11 @@ namespace SFE::GLW {
 		}
 
 		void bind() const {
-			bindTexture(mType, mId);
+			bindTextureToSlot(0, mType, mId);
 		}
 
 		void unbind() const {
-			bindTexture(mType, 0);
+			bindTextureToSlot(0, mType, 0);
 		}
 
 		void setSubImageData2D(int xoffset, int yoffset, int w, int h, const void* data, TextureFormat format = RGBA, PixelDataType type = UNSIGNED_BYTE) const {
@@ -456,9 +469,5 @@ namespace SFE::GLW {
 		}
 
 		bindTextureToSlot(slot, texture->mType, texture->mId);
-	}
-
-	constexpr inline void bindTexture(Texture* texture) {
-		bindTexture(texture->mType, texture->mId);
 	}
 }

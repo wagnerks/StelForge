@@ -35,7 +35,7 @@ void main()
     vec3 normal = texture(normalMap, TexCoords).rgb;
     // transform normal vector to range [-1,1]
     gNormal.xyz = normalize(TBN * normalize(normal * 2.0 - 1.0));
-
+    
     // and the diffuse per-fragment color
     gAlbedoSpec.rgb = texture(texture_diffuse1, TexCoords).rgb;
 

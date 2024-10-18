@@ -239,6 +239,7 @@ namespace SFE::ComponentsModule {
 		debugCascadeShader->setUniform("projection", cameraProjection);
 		debugCascadeShader->setUniform("view", cameraView);
 		drawCascadeVolumeVisualizers(lightSpaceMatrices, debugCascadeShader);
+
 		GLW::CapabilitiesStack<GLW::CULL_FACE>::pop();
 		GLW::CapabilitiesStack<GLW::BLEND>::pop();
 		GLW::BlendFuncStack::pop();
@@ -267,19 +268,22 @@ namespace SFE::ComponentsModule {
 		};
 
 		GLW::VertexArrays<8> visualizerVAOs;
-		GLW::Buffers<8> visualizerVBOs{GLW::ARRAY_BUFFER};
-		GLW::Buffers<8> visualizerEBOs{GLW::ELEMENT_ARRAY_BUFFER};
+
+		GLW::Buffer<GLW::ARRAY_BUFFER, Math::Vec4> visualizerVBOs[8];
+		GLW::Buffer<GLW::ELEMENT_ARRAY_BUFFER, unsigned int> visualizerEBOs[8];
 
 		visualizerVAOs.generate();
 
 		for (int i = 0; i < lightMatrices.size(); ++i) {
 			const auto corners = CascadeShadowComponent::getFrustumCornersWorldSpace(lightMatrices[i]);
 			visualizerVAOs.bind(i);
-			visualizerVBOs.bind(i);
-			visualizerVBOs.allocateData(corners.size(), GLW::STATIC_DRAW, corners.data());
+			visualizerVBOs[i].generate();
+			visualizerVBOs[i].bind();
+			visualizerVBOs[i].allocateData(corners);
 
-			visualizerEBOs.bind(i);
-			visualizerEBOs.allocateData(36, GLW::STATIC_DRAW, indices);
+			visualizerEBOs[i].generate();
+			visualizerEBOs[i].bind();
+			visualizerEBOs[i].allocateData(36, indices);
 			visualizerVAOs.addAttribute<Math::Vec4>(0, 3, GLW::AttributeFType::FLOAT, false);
 
 			shader->setUniform("color", colors[i % 3]);
@@ -287,7 +291,7 @@ namespace SFE::ComponentsModule {
 		}
 
 		visualizerVAOs.bindDefault();
-		visualizerVBOs.unbind();
-		visualizerEBOs.unbind();
+		GLW::Buffer<GLW::ARRAY_BUFFER>::bindDefaultBuffer();
+		GLW::Buffer<GLW::ELEMENT_ARRAY_BUFFER>::bindDefaultBuffer();
 	}
 }

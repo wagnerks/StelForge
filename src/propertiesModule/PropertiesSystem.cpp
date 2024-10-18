@@ -49,7 +49,7 @@ namespace SFE::PropertiesModule {
 			auto debugData = ECSHandler::registry().addComponent<DebugDataComponent>(entity);
 			debugData->stringId = properties["id"].asString();
 		}
-
+		//todo this all is dirty, need to refactor and make common logic
 		ECSHandler::registry().addComponent<ComponentsModule::AABBComponent>(entity);
 		ECSHandler::registry().addComponent<OcTreeComponent>(entity);
 		applyProperties(entity, properties);
@@ -58,10 +58,16 @@ namespace SFE::PropertiesModule {
 		if (modelComp && !modelComp->getModel().meshes.empty()) {
 			auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
 			meshComp->meshGraph.root().value = { MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh).vao.getID(), static_cast<int>(modelComp->getModel().meshes[0]->mesh.vertices.size()), static_cast<int>(modelComp->getModel().meshes[0]->mesh.indices.size()) };
+			if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
+				renderSys->markDirty<MeshComponent>(entity);
+			}
 
 			auto materialComp = ECSHandler::registry().addComponent<MaterialComponent>(entity);
 			for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
 				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture->mId, mat.second.texture->mType});
+			}
+			if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
+				renderSys->markDirty<MaterialComponent>(entity);
 			}
 
 			auto armatureComp = ECSHandler::registry().addComponent<ComponentsModule::ArmatureComponent>(entity);
@@ -70,6 +76,9 @@ namespace SFE::PropertiesModule {
 			armatureComp->armature = modelComp->armature;
 
 			std::ranges::copy(modelComp->boneMatrices, armatureBonesComp->boneMatrices.begin());
+			if (auto renderSys = ECSHandler::systemManager().getSystem<SFE::SystemsModule::RenderSystem>()) {
+				renderSys->markDirty<SFE::ComponentsModule::ArmatureComponent>(entity);
+			}
 		}
 		
 		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity);

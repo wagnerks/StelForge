@@ -17,7 +17,7 @@ namespace SFE::Render {
 		SFE::ShaderModule::ShaderBase* floorShader = nullptr;
 		size_t floorShaderHash;
 		GLW::VertexArray VAO;
-		GLW::Buffer VBO{GLW::ARRAY_BUFFER};
+		GLW::Buffer<GLW::ARRAY_BUFFER, Math::Vec3> VBO;
 		Math::Mat4 transform = Math::Mat4(1.f);
 	};
 }

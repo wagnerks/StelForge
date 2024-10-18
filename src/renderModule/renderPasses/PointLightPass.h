@@ -23,7 +23,7 @@ namespace SFE::Render::RenderPasses {
 		GLW::Framebuffer lightFramebuffer;
 		GLW::Texture mLightDepthMaps{GLW::TEXTURE_2D_ARRAY};
 
-		GLW::Buffer mMatricesUBO{GLW::UNIFORM_BUFFER };
+		GLW::Buffer<GLW::UNIFORM_BUFFER, Math::Mat4, GLW::DYNAMIC_DRAW> mMatricesUBO;
 
 		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
 		SFE::MathModule::PerspectiveProjection lightProjection;
