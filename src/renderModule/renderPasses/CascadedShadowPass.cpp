@@ -84,7 +84,7 @@ void CascadedShadowPass::prepare() {
 			return;
 		}
 		entities.sort();
-		entities.removeDublicatesSorted();
+		entities.removeDuplicatesSorted();
 		{
 			auto& batcher = curPassData->getBatcher();
 			{

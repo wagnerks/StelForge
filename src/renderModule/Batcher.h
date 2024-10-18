@@ -8,7 +8,7 @@
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "containersModule/Vector.h"
-#include "core/Singleton.h"
+#include "containersModule/Singleton.h"
 #include "ecss/Types.h"
 #include "glWrapper/Buffer.h"
 #include "systemsModule/SystemBase.h"

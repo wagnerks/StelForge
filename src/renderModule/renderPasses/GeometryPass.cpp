@@ -62,7 +62,7 @@ void GeometryPass::prepare() {
 			return;
 		}
 		entities.sort();
-		entities.removeDublicatesSorted();
+		entities.removeDuplicatesSorted();
 
 		{
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher);

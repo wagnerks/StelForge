@@ -44,7 +44,7 @@ namespace SFE::SystemsModule {
 			return;
 		}
 		entities.sort();
-		entities.removeDublicatesSorted();
+		entities.removeDuplicatesSorted();
 		FUNCTION_BENCHMARK;
 
 		SFE::Vector<ecss::EntityId> entitiesToUpdate;
