@@ -94,6 +94,8 @@ The end goal is to support a **massive procedural open world**:
 ![image](https://github.com/stalker1177/KillRealGameEngine/assets/44020451/d3b12f9f-cecf-4a9e-a9c9-94c58e93d26e)
 ![image](https://github.com/stalker1177/KillRealGameEngine/assets/44020451/478cfff6-a3db-4673-a4a7-0b7a4c3cc3ba)
 
+[![Stellar Forge Lighting Demo](https://img.youtube.com/vi/LhqjRGiegI8/hqdefault.jpg)](https://www.youtube.com/watch?v=LhqjRGiegI8)
+
 WIP screenshots / dev logs coming soon. Stay tuned!
 
 ---
