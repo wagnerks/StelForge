@@ -1,4 +1,6 @@
 # Stellar Forge Engine (STELFORGE ENGINE // SFE)
+![ChatGPT-Image-5-апр -2025-г _-00_20_25](https://github.com/user-attachments/assets/ffc7df08-5f86-4f00-b4c7-d3d97fef0a91)
+
 ![image](https://github.com/stalker1177/KillRealGameEngine/assets/44020451/d3b12f9f-cecf-4a9e-a9c9-94c58e93d26e)
 
 ![image](https://github.com/stalker1177/KillRealGameEngine/assets/44020451/478cfff6-a3db-4673-a4a7-0b7a4c3cc3ba)
