@@ -9,6 +9,10 @@ CameraComponent::CameraComponent(float FOV, float aspect, float zNear, float zFa
 	initProjection(FOV, aspect, zNear, zFar);
 }
 
+const SFE::MathModule::PerspectiveProjection& CameraComponent::getProjection() const {
+	return mProjection;
+}
+
 SFE::MathModule::PerspectiveProjection& CameraComponent::getProjection() {
 	return mProjection;
 }

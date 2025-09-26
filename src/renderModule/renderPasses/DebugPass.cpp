@@ -44,13 +44,11 @@ namespace SFE::Render::RenderPasses {
 	}
 
 	DebugPass::~DebugPass() {}
-	
 
-		
 	void DebugPass::render(SystemsModule::RenderData& renderDataHandle) {
 		FUNCTION_BENCHMARK;
 
-		for (auto [entId, gizmoComp] : ECSHandler::registry().forEach<ComponentsModule::GizmoComponent>()) {
+		for (auto [entId, gizmoComp] : ECSHandler::registry().view<ComponentsModule::GizmoComponent>()) {
 			gizmoComp->gizmo.setEntity(entId);
 			gizmoComp->gizmo.update();
 		}
@@ -116,7 +114,7 @@ namespace SFE::Render::RenderPasses {
 		//grid.draw();
 
 		auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-		CascadeShadowComponent::debugDraw(ECSHandler::registry().getComponent<CascadeShadowComponent>(renderData.mCascadedShadowsPassData->shadows)->getCacheLightSpaceMatrices(), renderData.next.projection, renderData.next.view);
+		CascadeShadowComponent::debugDraw(ECSHandler::registry().pinComponent<const CascadeShadowComponent>(renderData.mCascadedShadowsPassData->shadows)->getCacheLightSpaceMatrices(), renderData.next.projection, renderData.next.view);
 
 		if (!renderData.mCascadedShadowsPassData->shadowCascadeLevels.empty() && ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->isShadowsDebugData()) {
 			auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");

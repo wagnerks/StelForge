@@ -42,7 +42,7 @@ namespace SFE::Render::RenderPasses {
 		FUNCTION_BENCHMARK
 			return;
 		//todo update it only for objects with dirty transforms, or if camera moved (especially for shadows)
-		ecss::EntitiesRanges entities;
+		ecss::Ranges<ecss::EntityId> entities;
 		{
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
 			std::mutex addMtx;
@@ -81,7 +81,7 @@ namespace SFE::Render::RenderPasses {
 		SFE::Vector<DrawObj> occluders;
 		SFE::Vector<DrawObj> occludees;
 
-		for (auto [entity, occlusion] : ECSHandler::registry().forEach<ComponentsModule::OcclusionComponent>(entities)) {
+		for (auto [entity, occlusion] : ECSHandler::registry().view<ComponentsModule::OcclusionComponent>(entities)) {
 			if (!occlusion->query->isGenerated()) {
 				occlusion->query->generate();
 			}
@@ -152,7 +152,7 @@ namespace SFE::Render::RenderPasses {
 
 				vao.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex3D::position);
 
-				GLW::drawArrays(GLW::TRIANGLES, vertices.size());
+				GLW::drawArrays(GLW::TRIANGLES, static_cast<GLsizei>(vertices.size()));
 
 				vao.bindDefault();
 			}
@@ -207,7 +207,7 @@ namespace SFE::Render::RenderPasses {
 
 				vao.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex3D::position);
 
-				GLW::drawArrays(GLW::TRIANGLES, vertices.size());
+				GLW::drawArrays(GLW::TRIANGLES, static_cast<GLsizei>(vertices.size()));
 
 				vao.bindDefault();
 			}

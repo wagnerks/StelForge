@@ -47,9 +47,12 @@ public:
 	void sort(const SFE::Math::Vec3& viewPos = {});
 	void flushAll();
 	void clear();
-	SFE::Vector<std::shared_ptr<DrawObject>> drawList;
+	//map VAO - drawObj
+	std::unordered_map<unsigned, DrawObject> drawList;
+	//SFE::Vector<DrawObject> drawList;
+	//SFE::Vector<std::shared_ptr<DrawObject>> drawList;
 
-	unsigned maxDrawSize = 100000;
+	//unsigned maxDrawSize = 1000000;
 
 	static inline SFE::Math::Mat4 mBones[100]{ SFE::Math::Mat4(1.f) };
 };

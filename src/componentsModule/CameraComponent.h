@@ -8,6 +8,7 @@ namespace SFE::ComponentsModule {
 	public:
 		CameraComponent() = default;
 		CameraComponent(float FOV, float aspect, float zNear, float zFar);
+		const MathModule::PerspectiveProjection& getProjection() const;
 		MathModule::PerspectiveProjection& getProjection();
 
 		void initProjection(const float FOV, float aspect, float zNear, float zFar);

@@ -91,10 +91,10 @@ namespace SFE::ComponentsModule {
 		Math::Mat4 calculateLocalTransform() const;
 		Math::Mat4 getViewMatrix() const;
 
-		Math::Vec3 getRight();
-		Math::Vec3 getUp();
-		Math::Vec3 getBackward();
-		Math::Vec3 getForward();
+		Math::Vec3 getRight() const;
+		Math::Vec3 getUp() const;
+		Math::Vec3 getBackward() const;
+		Math::Vec3 getForward() const;
 
 		void reloadTransform();
 

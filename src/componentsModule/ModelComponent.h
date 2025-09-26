@@ -54,6 +54,7 @@ namespace SFE::ComponentsModule {
 
 		std::vector<FrustumModule::AABB> aabbs;
 		std::vector<FrustumModule::AABB> defaultAabbs;
+		float aabbScale = 1.f;
 		std::shared_mutex mtx;
 	};
 
@@ -65,7 +66,7 @@ namespace SFE::ComponentsModule {
 			addMeshData(model->getLODs());
 		}
 
-		const AssetsModule::Model::LOD& getModel();
+		const AssetsModule::Model::LOD& getModel() const;
 		AssetsModule::Model::LOD& getModel(size_t LOD) const;
 		const AssetsModule::Model::LOD& getModelLowestDetails() const;
 

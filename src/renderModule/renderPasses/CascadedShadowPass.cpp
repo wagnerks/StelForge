@@ -1,5 +1,7 @@
 ﻿#include "CascadedShadowPass.h"
 
+#include <iostream>
+
 #include "imgui.h"
 #include "componentsModule/FrustumComponent.h"
 #include "componentsModule/ModelComponent.h"
@@ -35,11 +37,12 @@
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
+#include "logsModule/logger.h"
 
 using namespace SFE::Render::RenderPasses;
 
 void CascadedShadowPass::prepare() {
-	if (!ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource)) {
+	if (!ECSHandler::registry().pinComponent<const CascadeShadowComponent>(mShadowSource)) {
 		return;
 	}
 
@@ -50,15 +53,14 @@ void CascadedShadowPass::prepare() {
 		FUNCTION_BENCHMARK;
 
 		curPassData->getBatcher().clear();
-		auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
+		auto shadowsComp = ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource);
 		if (!shadowsComp) {
 			curPassData->mStatus = RenderPreparingStatus::READY;
 			return;
 		}
 
 		shadowsComp->calculateLightSpaceMatrices(camProj, view);
-
-		std::vector<ecss::EntityId> entities;
+		ecss::Ranges<ecss::EntityId> entities;
 		{
 			FUNCTION_BENCHMARK_NAMED(octree);
 
@@ -71,7 +73,7 @@ void CascadedShadowPass::prepare() {
 						auto lock = tree->readLock();
 						tree->forEachObjectInFrustum(cascade.frustum, [&entities, &cascade](const auto& obj, bool entirely) {
 							if (entirely || FrustumModule::AABB::isOnFrustum(cascade.frustum, obj.pos, obj.size)) {
-								entities.emplace_back(obj.data);
+								entities.insert(obj.data);
 							}
 						});
 					}
@@ -83,19 +85,19 @@ void CascadedShadowPass::prepare() {
 			curPassData->mStatus = RenderPreparingStatus::READY;
 			return;
 		}
-		std::ranges::sort(entities);
 
 		{
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
 			auto& batcher = curPassData->getBatcher();
-			for (auto [ent, transform, meshComp, armatComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OccludedComponent>({ entities }, false)) {
+
+			for (auto [ent, transform, meshComp, armatComp/*, oclComp*/] : ECSHandler::drawRegistry(nextRegistry).view<const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent/*, const ComponentsModule::OccludedComponent*/>(entities)) {
 				if (!meshComp) {
 					continue;
 				}
-				if (oclComp && oclComp->occluded) {
+				/*if (oclComp && oclComp->occluded) {
 					continue;
-				}
-				
+				}*/
+
 				for (const auto& mesh : meshComp->meshGraph) {
 					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
 				}
@@ -145,8 +147,8 @@ void CascadedShadowPass::init() {
 }
 
 void CascadedShadowPass::initRender() {
-	auto cmp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
-	auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
+	auto cmp = ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource);
+	auto& cameraProjection = ECSHandler::registry().pinComponent<const CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
 
 	cmp->updateCascades(cameraProjection);
 	lightDepthMap.parameters.minFilter = GLW::TextureMinFilter::LINEAR;
@@ -196,7 +198,7 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 		while(curPassData->mStatus != RenderPreparingStatus::READY) {}
 	}
 
-	auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
+	auto shadowsComp = ECSHandler::registry().pinComponent<const CascadeShadowComponent>(mShadowSource);
 	if (!shadowsComp) {
 		return;
 	}
@@ -231,12 +233,12 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 }
 
 void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataHandle) {
-	auto shadowsComp = ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource);
+	auto shadowsComp = ECSHandler::registry().pinComponent<const CascadeShadowComponent>(mShadowSource);
 	renderDataHandle.mCascadedShadowsPassData = &mData;
 
 	renderDataHandle.mCascadedShadowsPassData->shadowMapTexture = lightDepthMap.mId;
-	renderDataHandle.mCascadedShadowsPassData->lightDirection = ECSHandler::registry().getComponent<TransformComponent>(mShadowSource)->getForward();
-	renderDataHandle.mCascadedShadowsPassData->lightColor = ECSHandler::registry().getComponent<LightSourceComponent>(mShadowSource)->getLightColor();
+	renderDataHandle.mCascadedShadowsPassData->lightDirection = ECSHandler::registry().pinComponent<const TransformComponent>(mShadowSource)->getForward();
+	renderDataHandle.mCascadedShadowsPassData->lightColor = ECSHandler::registry().pinComponent<const LightSourceComponent>(mShadowSource)->getLightColor();
 	renderDataHandle.mCascadedShadowsPassData->resolution = shadowsComp->resolution;
 	renderDataHandle.mCascadedShadowsPassData->cameraFarPlane = shadowsComp->cascades.back().viewProjection.getFar();
 	renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels = shadowsComp->shadowCascadeLevels;
@@ -253,18 +255,18 @@ void CascadedShadowPass::debug(SystemsModule::RenderData& renderDataHandle) {
 
 				if (mShadowSource) {
 					if (ImGui::Button("cache")) {
-						ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource)->cacheMatrices();
+						ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource)->cacheMatrices();
 					}
 
 					if (ImGui::Button("clear")) {
-						ECSHandler::registry().getComponent<CascadeShadowComponent>(mShadowSource)->clearCacheMatrices();
+						ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource)->clearCacheMatrices();
 					}
 					static float sunProgress = 0.4f;
 					if (ImGui::DragFloat("sun pos", &sunProgress, 0.001f, 0.f)) {
 						/*auto x = cosf(Math::radians(-sunProgress * 180.f));
 						auto y = sinf(Math::radians(sunProgress * 180.f));
 						auto z = sinf(Math::radians(sunProgress * 180.f));*/
-						ECSHandler::registry().getComponent<TransformComponent>(mShadowSource)->setRotate({ -sunProgress * 180.f,0.f, sunProgress * 5.f });
+						ECSHandler::registry().pinComponent<TransformComponent>(mShadowSource)->setRotate({ -sunProgress * 180.f,0.f, sunProgress * 5.f });
 					}
 				}
 				ImGui::EndMenu();

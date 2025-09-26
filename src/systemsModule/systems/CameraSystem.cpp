@@ -91,7 +91,7 @@ namespace SFE::SystemsModule {
 			return;
 		}
 
-		auto tc = ECSHandler::registry().getComponent<TransformComponent>(camera);
+		auto tc = ECSHandler::registry().pinComponent<TransformComponent>(camera);
 
 		const float velocity = movementSpeed * deltaTime;
 
@@ -122,9 +122,9 @@ namespace SFE::SystemsModule {
 
 		if (dif != Math::Vec3{}) {
 			tc->setPos(tc->getPos() + dif);
-			/*tc->reloadTransform();
-			ECSHandler::registry().getComponent<CameraComponent>(camera)->updateFrustum(tc->getViewMatrix());
-			TasksManager::instance()->notify({ camera, CAMERA_UPDATED });*/
+			tc->reloadTransform();
+			ECSHandler::registry().pinComponent<CameraComponent>(camera)->updateFrustum(tc->getViewMatrix());
+			TasksManager::instance()->notify({ camera, CAMERA_UPDATED });
 		}
 	}
 
@@ -135,7 +135,7 @@ namespace SFE::SystemsModule {
 		}
 		xoffset *= mouseSensitivity;
 		yoffset *= mouseSensitivity;
-		auto tc = ECSHandler::registry().getComponent<TransformComponent>(getCurrentCamera());
+		auto tc = ECSHandler::registry().pinComponent<TransformComponent>(getCurrentCamera());
 		if (!tc) {
 			return;
 		}
@@ -150,16 +150,17 @@ namespace SFE::SystemsModule {
 		}
 
 		tc->setRotate({ Pitch, Yaw, 0.f });
-		/*tc->reloadTransform();
-		ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(tc->getViewMatrix());*/
+		tc->reloadTransform();
+		ECSHandler::registry().pinComponent<CameraComponent>(getCurrentCamera())->updateFrustum(tc->getViewMatrix());
 	}
 
 	void CameraSystem::processMouseScroll(float yoffset) {
-		auto fov = ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->getProjection().getFOV();
+		auto cameraComp = ECSHandler::registry().pinComponent<CameraComponent>(getCurrentCamera());
+		auto fov = cameraComp->getProjection().getFOV();
 		fov -= yoffset;
+		
+		cameraComp->getProjection().setFOV(std::min(std::max(1.f, fov), 90.f));
 
-		ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->getProjection().setFOV(std::min(std::max(1.f, fov), 90.f));
-
-		ECSHandler::registry().getComponent<CameraComponent>(getCurrentCamera())->updateFrustum(ECSHandler::registry().getComponent<TransformComponent>(getCurrentCamera())->getViewMatrix());
+		cameraComp->updateFrustum(ECSHandler::registry().pinComponent<TransformComponent>(getCurrentCamera())->getViewMatrix());
 	}
 }

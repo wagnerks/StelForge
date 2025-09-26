@@ -25,10 +25,10 @@
 
 namespace SFE::Render {
     struct GlyphInfo {
-        Math::IVec2   size;      // Size of glyph
-        Math::IVec2   bearing;   // Offset from baseline to left/top of glyph
-        unsigned int advance;   // Horizontal offset to advance to next glyph
-        std::pair<Math::Vec2, Math::Vec2>   texCoords; //min max glyphCoords in atlas
+        Math::IVec2   size = {};      // Size of glyph
+        Math::IVec2   bearing = {};   // Offset from baseline to left/top of glyph
+        unsigned int advance = {};   // Horizontal offset to advance to next glyph
+        std::pair<Math::Vec2, Math::Vec2>   texCoords = {}; //min max glyphCoords in atlas
     };
 
     struct Font {

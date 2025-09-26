@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.10)
 
 project ("StelForgeEngine")
 
@@ -19,7 +19,7 @@ add_subdirectory(lib/glad/)
 add_subdirectory(lib/imgui/)
 
 add_subdirectory(src)
-add_subdirectory(src/submodules/JoltPhysics/Build)
+#add_subdirectory(src/submodules/JoltPhysics/Build)
 
 set_property(TARGET ${ENGINE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${ENGINE_PATH}/bin)
 set_property(TARGET ${ENGINE_NAME} PROPERTY WORKING_DIRECTORY ${ENGINE_PATH}/bin)
@@ -32,7 +32,7 @@ endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-set_target_properties(glad imgui Jolt PROPERTIES FOLDER Dependencies)
+set_target_properties(glad imgui PROPERTIES FOLDER Dependencies)
 
 set_target_properties(${ENGINE_NAME} PROPERTIES
 	FOLDER Engine

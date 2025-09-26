@@ -42,7 +42,7 @@ namespace SFE::PropertiesModule {
 			return;
 		}
 
-		if (auto component = ECSHandler::registry().getComponent<T>(entity)) {
+		if (auto component = ECSHandler::registry().pinComponent<T>(entity)) {
 			component->serialize(properties[TypeName<T>::name().data()]);
 		}
 

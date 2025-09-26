@@ -28,7 +28,7 @@ namespace SFE::Render {
 				mIntersectionStartPos = findHoveredGizmo(mCurrentMode).second;
 				mIntersectionCurrentPos = mIntersectionStartPos;
 
-				const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+				const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(mEntity);
 
 				mStartPos = transformComp->getPos(true);
 				mStartScale = transformComp->getScale();
@@ -63,13 +63,13 @@ namespace SFE::Render {
 			return;
 		}
 
-		const auto transform = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		const auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(mEntity);
 		if (!transform) {
 			return;
 		}
 
 		const auto& entityPos = transform->getPos(true);
-		const auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera())->getPos(true);
+		const auto& cameraPos = ECSHandler::registry().pinComponent<const TransformComponent>(ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera())->getPos(true);
 		//to save perspective in case of plane moves if there is active axis - use start pos
 		mScaleCoef = Math::distance(cameraPos, mActiveAxis ? mStartPos : entityPos) * mScaleFactor;
 
@@ -94,7 +94,7 @@ namespace SFE::Render {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
 
-		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(mEntity);
 		if (!transformComp) {
 			return {};
 		}
@@ -105,7 +105,7 @@ namespace SFE::Render {
 			return {};
 		}
 
-		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
+		const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
 
 		if (mode == GizmoMode::ROTATE) {
 			const auto innerCollideRadius = (mGizmoRadius - mTipRadius) * mScaleCoef;
@@ -130,9 +130,9 @@ namespace SFE::Render {
 			}
 		}
 		else {
-			auto resX = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[X] }, getMouseRayPlane(mouseRay, X, cameraTransform, mouseRay.a));
-			auto resY = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[Y] }, getMouseRayPlane(mouseRay, Y, cameraTransform, mouseRay.a));
-			auto resZ = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[Z] }, getMouseRayPlane(mouseRay, Z, cameraTransform, mouseRay.a));
+			auto resX = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[X] }, getMouseRayPlane(mouseRay, X, cameraTransform.get(), mouseRay.a));
+			auto resY = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[Y] }, getMouseRayPlane(mouseRay, Y, cameraTransform.get(), mouseRay.a));
+			auto resZ = findIntersectionRayWithPlane({ entityPos ,mAxisDirection[Z] }, getMouseRayPlane(mouseRay, Z, cameraTransform.get(), mouseRay.a));
 
 			{
 				const auto XD = PhysicsEngine::Physics::distancePointToLine(resX, mouseRay.a, mouseRay.direction);
@@ -176,7 +176,7 @@ namespace SFE::Render {
 		}
 
 		if (mode == GizmoMode::SCALE || mode == GizmoMode::ROTATE) {
-			const auto intersectionPos = findIntersectionRayWithPlane(mouseRay, getCamPlane(XYZ, cameraTransform, entityPos));
+			const auto intersectionPos = findIntersectionRayWithPlane(mouseRay, getCamPlane(XYZ, cameraTransform.get(), entityPos));
 			const auto distance = Math::distance(entityPos, intersectionPos);
 			if (distance < (mGizmoRadius + mCommonGizmoOffset + mTipRadius) * mScaleCoef && distance > (mGizmoRadius + mCommonGizmoOffset - mTipRadius) * mScaleCoef) {
 				return { Axis::XYZ , intersectionPos };
@@ -190,12 +190,12 @@ namespace SFE::Render {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
 
-		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
+		const auto transformComp = ECSHandler::registry().pinComponent<TransformComponent>(mEntity);
 		const auto& entityPos = transformComp->getPos(true);
 
 		if (isLineAxis(mActiveAxis)) {
-			mIntersectionCurrentPos = findIntersectionRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getMouseRayPlane(mouseRay, mActiveAxis, cameraTransform, mouseRay.a));
+			mIntersectionCurrentPos = findIntersectionRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getMouseRayPlane(mouseRay, mActiveAxis, cameraTransform.get(), mouseRay.a));
 		}
 		else {
 			mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, mPlanes[mActiveAxis] + entityPos);
@@ -206,8 +206,8 @@ namespace SFE::Render {
 
 		mIntersectionStartPos = mIntersectionCurrentPos;
 
-		if (const auto treeComp = ECSHandler::registry().getComponent<TreeComponent>(mEntity)) {
-			if (const auto parentTransform = ECSHandler::registry().getComponent<TransformComponent>(treeComp->getParent())) {
+		if (const auto treeComp = ECSHandler::registry().pinComponent<const TreeComponent>(mEntity)) {
+			if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(treeComp->getParent())) {
 				const auto transform = inverse(parentTransform->getTransform());
 
 				curPos = transform * Math::Vec4(curPos, 1.f);
@@ -222,18 +222,18 @@ namespace SFE::Render {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
 
-		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
+		const auto transformComp = ECSHandler::registry().pinComponent<TransformComponent>(mEntity);
 		const auto& entityPos = transformComp->getPos(true);
 
 		if (isLineAxis(mActiveAxis)) {
-			mIntersectionCurrentPos = findIntersectionRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getMouseRayPlane(mouseRay, mActiveAxis, cameraTransform, mouseRay.a));
+			mIntersectionCurrentPos = findIntersectionRayWithPlane({ entityPos, mAxisDirection[mActiveAxis] }, getMouseRayPlane(mouseRay, mActiveAxis, cameraTransform.get(), mouseRay.a));
 		}
 		else if (mActiveAxis != XYZ) {
 			mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, mPlanes[mActiveAxis] + entityPos);
 		}
 		else {
-			mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, getCamPlane(XYZ, cameraTransform, entityPos));
+			mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, getCamPlane(XYZ, cameraTransform.get(), entityPos));
 		}
 
 		auto scaleDir = transformComp->getQuaternion().globalToLocal(mAxisDirection[mActiveAxis]);
@@ -251,12 +251,12 @@ namespace SFE::Render {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
 
-		const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(mEntity);
+		const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
+		const auto transformComp = ECSHandler::registry().pinComponent<TransformComponent>(mEntity);
 		auto entityPos = transformComp->getPos(true);
 
 		auto oldPos = entityPos + Math::normalize(mIntersectionCurrentPos - entityPos) * mGizmoRadius;
-		mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, isLineAxis(mActiveAxis) ? mPlanes[mActiveAxis] + entityPos : getCamPlane(XYZ, cameraTransform, entityPos));
+		mIntersectionCurrentPos = findIntersectionRayWithPlane(mouseRay, isLineAxis(mActiveAxis) ? mPlanes[mActiveAxis] + entityPos : getCamPlane(XYZ, cameraTransform.get(), entityPos));
 		auto newPos = entityPos + Math::normalize(mIntersectionCurrentPos - entityPos) * mGizmoRadius;
 
 		auto difAngle = Math::calcAngleOnCircle(Math::distance(oldPos, newPos), mGizmoRadius);
@@ -301,7 +301,7 @@ namespace SFE::Render {
 			Utils::renderCircle(pos, ROTATE_ROTATIONS[Y], scale, mGizmoRadius, { mColors[Axis::Y], mAlpha.y }, 64);
 			Utils::renderCircle(pos, ROTATE_ROTATIONS[Z], scale, mGizmoRadius, { mColors[Axis::Z], mAlpha.z }, 64);
 
-			Utils::renderCircle(pos, ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion(), scale, mGizmoRadius + mCommonGizmoOffset, {1.f, 1.f, 1.f, mAlphaCommonGizmo }, 64);
+			Utils::renderCircle(pos, ECSHandler::registry().pinComponent<const TransformComponent>(camera)->getQuaternion(), scale, mGizmoRadius + mCommonGizmoOffset, {1.f, 1.f, 1.f, mAlphaCommonGizmo }, 64);
 		}
 		else {
 			const Math::Quaternion<float>* rotation = nullptr;
@@ -328,8 +328,8 @@ namespace SFE::Render {
 				prevAngle = Math::degrees(Math::calcAngleBetweenVectors(mIntersectionStartPos - pos, mAxisDirection[axis]));
 			}
 			else if (mActiveAxis == XYZ) {
-				const auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(camera);
-				rotation = &ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion();
+				const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
+				rotation = &cameraTransform->getQuaternion();
 
 				const auto camTrans = inverse(cameraTransform->getTransform());
 				const Math::Vec3 localOldPos = camTrans * Math::Vec4(oldPos, 1.f);
@@ -368,7 +368,7 @@ namespace SFE::Render {
 
 			const Math::Mat4 scaleMat = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{mScaleCoef});
 			const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-			Utils::renderCircle(pos, ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion(), scaleMat, mGizmoRadius + mCommonGizmoOffset, {1.f, 1.f, 1.f, mAlphaCommonGizmo }, 64);
+			Utils::renderCircle(pos, ECSHandler::registry().pinComponent<const TransformComponent>(camera)->getQuaternion(), scaleMat, mGizmoRadius + mCommonGizmoOffset, {1.f, 1.f, 1.f, mAlphaCommonGizmo }, 64);
 		}
 		else {
 			Utils::renderLine(mStartPos, mIntersectionCurrentPos, { 0.f,0.f,0.f,mHintAlpha }, 1.f);
@@ -471,7 +471,7 @@ namespace SFE::Render {
 		return res;
 	}
 
-	PhysicsEngine::Triangle Gizmo::getMouseRayPlane(const Math::Ray& ray, Axis plane, TransformComponent* cameraTransform, const Math::Vec3& initialPos) {
+	PhysicsEngine::Triangle Gizmo::getMouseRayPlane(const Math::Ray& ray, Axis plane, const TransformComponent* cameraTransform, const Math::Vec3& initialPos) {
 		switch (plane) {
 		case X: return getMouseRayPlane(ray, YZ, cameraTransform, initialPos);
 		case Y: return getMouseRayPlane(ray, XZ, cameraTransform, initialPos);
@@ -483,7 +483,7 @@ namespace SFE::Render {
 		}
 	}
 
-	PhysicsEngine::Triangle Gizmo::getCamPlane(Axis plane, TransformComponent* cameraTransform, const Math::Vec3& initialPos) {
+	PhysicsEngine::Triangle Gizmo::getCamPlane(Axis plane, const TransformComponent* cameraTransform, const Math::Vec3& initialPos) {
 		switch (plane) {
 		case X: return getCamPlane(YZ, cameraTransform, initialPos);
 		case Y: return getCamPlane(XZ, cameraTransform, initialPos);
@@ -593,7 +593,7 @@ namespace SFE::Render {
 	void Gizmo::drawPos(const Math::Vec3& pos, const Math::Vec4& color, float size) const {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
 		const Math::Mat4 scale = Math::scale(Math::Mat4{ 1.f }, Math::Vec3{mScaleCoef});
-		const auto& rotation = ECSHandler::registry().getComponent<TransformComponent>(camera)->getQuaternion();
+		const auto& rotation = ECSHandler::registry().pinComponent<const TransformComponent>(camera)->getQuaternion();
 
 		Utils::renderCircleFilled(pos, rotation, scale, size, color, 32);
 		Utils::renderCircle(pos, rotation, scale, size, { color.xyz, color.a * 1.2f }, 64, 0.5f);

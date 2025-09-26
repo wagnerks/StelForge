@@ -20,19 +20,19 @@ namespace SFE::Math {
 
 	// screenCoords - is the point on "camera lense" from which ray casted
 	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords = { Engine::instance()->getWindow()->getScreenData().width * 0.5f, Engine::instance()->getWindow()->getScreenData().height * 0.5f}) {
-		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(cameraId);
+		auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(cameraId);
 		if (!cameraComp) {
 			return {};
 		}
 
-		auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(cameraId);
+		auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(cameraId);
 
-		auto mProjection = cameraComp->getProjection().getProjectionsMatrix();
+		auto& mProjection = cameraComp->getProjection().getProjectionsMatrix();
 		auto mView = cameraTransform->getViewMatrix();
 
 
 		
-		auto cameraPos = cameraTransform->getPos(true);
+		auto& cameraPos = cameraTransform->getPos(true);
 		float normalizedX = (2.0f * screenCoords.x) / Engine::instance()->getWindow()->getScreenData().width - 1.0f;
 		float normalizedY = 1.0f - (2.0f * screenCoords.y) / Engine::instance()->getWindow()->getScreenData().height;
 		auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
@@ -61,12 +61,12 @@ namespace SFE::Math {
 			return {};
 		}
 		
-		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(cameraSys->getCurrentCamera());
+		auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(cameraSys->getCurrentCamera());
 		if (!cameraComp) {
 			return {};
 		}
 
-		auto cameraTransform = ECSHandler::registry().getComponent<TransformComponent>(cameraSys->getCurrentCamera());
+		auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(cameraSys->getCurrentCamera());
 
 		const auto& mProjection = cameraComp->getProjection().getProjectionsMatrix();
 		const auto& mView = cameraTransform->getViewMatrix();
@@ -113,13 +113,13 @@ namespace SFE::Math {
 	}
 
 	inline FrustumModule::Frustum createFrustum(ecss::EntityId cameraId) {
-		auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(cameraId);
+		auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(cameraId);
 		if (!cameraComp) {
 			return {};
 		}
 
-		auto mProjection = ECSHandler::registry().getComponent<CameraComponent>(cameraId)->getProjection().getProjectionsMatrix();
-		auto mView = ECSHandler::registry().getComponent<TransformComponent>(cameraId)->getViewMatrix();
+		auto& mProjection = cameraComp->getProjection().getProjectionsMatrix();
+		auto mView = ECSHandler::registry().pinComponent<const TransformComponent>(cameraId)->getViewMatrix();
 
 		return FrustumModule::createFrustum(mProjection * mView);
 	}

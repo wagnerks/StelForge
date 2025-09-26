@@ -42,8 +42,8 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	int offsetSum = 0;
 	for (size_t i = 0; i < renderDataHandle.mPointPassData->shadowEntities.size(); i++) {
-		auto tc = ECSHandler::registry().getComponent<TransformComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
-		auto lightComp = ECSHandler::registry().getComponent<LightSourceComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
+		auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
+		auto lightComp = ECSHandler::registry().pinComponent<const LightSourceComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
 
 		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
 		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), Math::Vec2{lightComp->getTexelSize().x, lightComp->getTexelSize().y});

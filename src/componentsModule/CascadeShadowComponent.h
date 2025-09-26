@@ -40,7 +40,7 @@ namespace SFE::ComponentsModule {
 
 		void markDirty();
 		void calculateLightSpaceMatrices(const MathModule::PerspectiveProjection& projection, const Math::Mat4& view);
-		const std::vector<Math::Mat4>& getLightSpaceMatrices();
+		const std::vector<Math::Mat4>& getLightSpaceMatrices() const;
 
 		void serialize(Json::Value& data) override;
 		void deserialize(const Json::Value& data) override;

@@ -3,6 +3,7 @@
 #include <json/value.h>
 
 namespace SFE::PropertiesModule {
+	//todo serialization should work without serializable object virtualization
 	class Serializable {
 	public:
 		virtual ~Serializable() = default;

@@ -41,7 +41,7 @@ void GeometryPass::prepare() {
 		curPassData->getBatcher().clear();
 		outlineData->getBatcher().clear();
 
-		SFE:Vector<ecss::EntityId> entities;
+		ecss::Ranges<ecss::EntityId> entities;
 		{
 			FUNCTION_BENCHMARK_NAMED(GeometryPass_octree);
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
@@ -50,7 +50,7 @@ void GeometryPass::prepare() {
 					auto lock = tree->readLock();
 					tree->forEachObjectInFrustum(camFrustum, [&entities, &camFrustum](const auto& obj, bool entirely) {
 						if (entirely || FrustumModule::AABB::isOnFrustum(camFrustum, obj.pos, obj.size)) {
-							entities.emplace_back(obj.data);
+							entities.insert(obj.data);
 						}
 					});
 				}
@@ -61,18 +61,17 @@ void GeometryPass::prepare() {
 			curPassData->mStatus = RenderPreparingStatus::READY;
 			return;
 		}
-		entities.sort();
 
 		{
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher);
 			auto& batcher = curPassData->getBatcher();
-			for (auto [ent, transform, meshComp, matComp, armatComp, oclComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent, const ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OccludedComponent>({entities}, false)) {
+			for (auto [ent, transform, meshComp, matComp, armatComp/*, oclComp*/] : ECSHandler::drawRegistry(nextRegistry).view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent, const ComponentsModule::ArmatureBonesComponent/*, const ComponentsModule::OccludedComponent*/>(entities)) {
 				if (!meshComp) {
 					continue;
 				}
-				if (oclComp && oclComp->occluded) {
+				/*if (oclComp && oclComp->occluded) {
 					continue;
-				}
+				}*/
 
 				for (const auto& mesh : meshComp->meshGraph) {
 					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, matComp ? matComp->materials : ComponentsModule::Materials{}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
@@ -84,7 +83,7 @@ void GeometryPass::prepare() {
 		{
 			auto& outlineBatcher = outlineData->getBatcher();
 			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
-				for (const auto& [entity, outline, transform, meshComp, armatComp] : ECSHandler::drawRegistry(nextRegistry).forEach<const OutlineComponent, const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent>({}, false)) {
+			for (const auto& [entity, outline, transform, meshComp, armatComp] : ECSHandler::drawRegistry(nextRegistry).view<const OutlineComponent, const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent>()) {
 				if (!entities.contains(entity)) {//need to check - if draw all outline objects is faster then cull all of them such way?//todo
 					continue;
 				}

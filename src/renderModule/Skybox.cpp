@@ -34,7 +34,7 @@ void Skybox::init() {
 
 	skyboxShader->use();
 	skyboxShader->setUniform("skybox", 16);
-	skyboxShader->setUniform("projection", ECSHandler::registry().getComponent<CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection().getProjectionsMatrix());
+	skyboxShader->setUniform("projection", ECSHandler::registry().pinComponent<const CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection().getProjectionsMatrix());
 
 	cubemapTex = AssetsModule::TextureHandler::instance()->loadCubemapTexture(skyboxPath)->texture.mId;
 	if (cubemapTex == 0) {
@@ -102,7 +102,7 @@ void Skybox::draw() {
 	}
 	skyboxShader->use();
 
-	auto view = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getViewMatrix();;
+	auto view = ECSHandler::registry().pinComponent<const TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getViewMatrix();;
 	skyboxShader->setUniform("view", Math::Mat4(Math::Mat3{view}));
 	GLW::DepthFuncStack::push(GLW::DepthFunc::LEQUAL);
 

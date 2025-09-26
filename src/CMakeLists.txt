@@ -1,5 +1,5 @@
 ﻿# Add source to this project's executable.
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.10)
 
 file(GLOB_RECURSE SRC
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
@@ -8,10 +8,14 @@ file(GLOB_RECURSE SRC
 	"${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
 )
 
-set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics)
+set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss)
+# file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/*")
+# list(REMOVE_ITEM SRC ${SUBMODULES_FILES})
+# file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss/*")
+# list(REMOVE_ITEM SRC ${SUBMODULES_FILES})
 
 foreach(EXCLUDE_DIR ${EXCLUDE_DIR_1})
-    file(GLOB_RECURSE EXCLUDE_FILES ${EXCLUDE_DIR}/*.cpp ${EXCLUDE_DIR}/*.h ${EXCLUDE_DIR}/*.hpp)
+   	file(GLOB_RECURSE EXCLUDE_FILES ${EXCLUDE_DIR}/*)
     list(REMOVE_ITEM SRC ${EXCLUDE_FILES})
 endforeach()
 
@@ -26,15 +30,18 @@ endif()
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC})
 
-target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules")
-target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics")
+add_subdirectory(submodules/ecss)
+target_link_libraries(${ENGINE_NAME} PUBLIC ecss)
+
+target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/myPhysicsEngine")
+#target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics")
 target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/jsoncpp/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glm")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/stb")
 
-target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
+#target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
 
 find_package(OpenGL REQUIRED)
 

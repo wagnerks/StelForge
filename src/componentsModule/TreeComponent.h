@@ -15,13 +15,13 @@ namespace SFE::ComponentsModule {
 		void removeChildEntityForce(ecss::SectorId id);
 		void addChildEntity(ecss::SectorId id);
 		void removeChildEntity(ecss::SectorId id);
-		const std::vector<ecss::SectorId>& getChildren();
+		const std::vector<ecss::SectorId>& getChildren() const;
 
-		std::vector<ecss::SectorId> getAllNodes();
+		std::vector<ecss::SectorId> getAllNodes() const;
 		
 
 	private:
-		void getAllNodesHelper(std::vector<ecss::SectorId>& res);
+		void getAllNodesHelper(std::vector<ecss::SectorId>& res) const;
 		void setParent(ecss::SectorId id);
 
 		ecss::SectorId mParentEntity = ecss::INVALID_ID;

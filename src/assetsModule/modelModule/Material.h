@@ -12,7 +12,7 @@ namespace SFE {
 	};
 
 	struct MaterialTexture {
-		GLW::Texture* texture;
+		GLW::Texture* texture = nullptr;
 		int uniformSlot = 0;
 		MaterialType type = MaterialType::CUSTOM;
 	};

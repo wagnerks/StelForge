@@ -9,6 +9,7 @@
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/TransformComponent.h"
+#include "debugModule/Benchmark.h"
 #include "propertiesModule/PropertiesSystem.h"
 
 #include "systemsModule/SystemManager.h"
@@ -27,6 +28,11 @@
 #include "systemsModule/systems/TransformSystem.h"
 #include "systemsModule/systems/WorldTimeSystem.h"
 
+namespace SectorsArrayTest
+{
+	struct Trivial;
+}
+
 void ECSHandler::initSystems() {
 	//todo separate systems into  drawData preparing and logic update
 	/*
@@ -35,16 +41,16 @@ void ECSHandler::initSystems() {
 	 * todo also create separate registries for separate data, static data - which is not changes (buildings, woods etc), dynamic data(wooden tree, players etc), shared data (static but needed both for static and dynamic entities)(mesh component for example)
 	 */
 
-	//mRegistry.initCustomComponentsContainer<TransformComponent, MeshComponent>();
-	//mDrawRegistry[0].initCustomComponentsContainer<SFE::ComponentsModule::TransformMatComp, MeshComponent, SFE::ComponentsModule::ArmatureBonesComponent>();
-	//mDrawRegistry[1].initCustomComponentsContainer<SFE::ComponentsModule::TransformMatComp, MeshComponent, SFE::ComponentsModule::ArmatureBonesComponent>();
+	//mRegistry.registerArray<TransformComponent, MeshComponent>();
+	//mDrawRegistry[0].registerArray<SFE::ComponentsModule::TransformMatComp, MeshComponent, SFE::ComponentsModule::ArmatureBonesComponent>();
+	//mDrawRegistry[1].registerArray<SFE::ComponentsModule::TransformMatComp, MeshComponent, SFE::ComponentsModule::ArmatureBonesComponent>();
 
 	mSystemManager.createSystem<SFE::SystemsModule::LODSystem>();
 
 	mSystemManager.createSystem<SFE::SystemsModule::TransformSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::OcTreeSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::AABBSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::ChunksSystem>();
+	//mSystemManager.createSystem<SFE::SystemsModule::ChunksSystem>();
 
 
 	mSystemManager.createSystem<SFE::SystemsModule::CameraSystem>();
@@ -54,10 +60,10 @@ void ECSHandler::initSystems() {
 	//mSystemManager.createSystem<SFE::SystemsModule::ActionSystem>();
 	//mSystemManager.createSystem<SFE::SystemsModule::WorldTimeSystem>();
 	//mSystemManager.createSystem<SFE::SystemsModule::SkeletalAnimationSystem>();
-	//mSystemManager.createSystem<SFE::SystemsModule::ShaderSystem>();
+	mSystemManager.createSystem<SFE::SystemsModule::ShaderSystem>();
 
 
-	mSystemManager.addTickSystems<SFE::SystemsModule::Physics, SFE::SystemsModule::ActionSystem, SFE::SystemsModule::ShaderSystem>(32);
+	//mSystemManager.addTickSystems<SFE::SystemsModule::Physics, SFE::SystemsModule::ActionSystem, SFE::SystemsModule::ShaderSystem>(32);
 	mSystemManager.addTickSystems<SFE::SystemsModule::WorldTimeSystem>(1);
 	mSystemManager.addTickSystems<SFE::SystemsModule::SkeletalAnimationSystem>(24);
 	mSystemManager.addTickSystems<SFE::SystemsModule::CameraSystem>(256);
@@ -66,21 +72,23 @@ void ECSHandler::initSystems() {
 	mSystemManager.addRootSystems<SFE::SystemsModule::RenderSystem>();
 
 	SFE::ThreadPool::instance()->addTask([]() {
-		SFE::PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
+
+		//SFE::PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
 		//SFE::PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
+		//auto path = "models/vampire.fbx";
 		
-		auto path = "models/vampire.fbx";
-		//auto path = "models/cube.fbx";
+		auto path = "models/cube.fbx";
 		auto model = AssetsModule::ModelLoader::instance()->load(path);
-		for (auto i = 0; i < 20; i++) {
-			for (auto j = 0; j < 20; j++) {
-				for (auto k = 0; k < 1; k++) {
+		for (auto i = 0u; i < 40; i++) {
+			for (auto j = 0u; j < 40; j++) {
+				for (auto k = 1u; k < 40; k++) {
 					if (!SFE::Engine::instance()->isAlive()) {
 						return;
 					}
 					auto entity = ECSHandler::registry().takeEntity();
 
-					ECSHandler::addComponent<SFE::ComponentsModule::AABBComponent>(entity);
+					auto aabbCmp = ECSHandler::addComponent<SFE::ComponentsModule::AABBComponent>(entity);
+					aabbCmp->aabbScale = 0.01f;
 					ECSHandler::addComponent<OcTreeComponent>(entity);
 					auto modelComp = ECSHandler::addComponent<ModelComponent>(entity, entity);
 
@@ -90,8 +98,8 @@ void ECSHandler::initSystems() {
 					modelComp->setModel(model->getLODs());
 
 					auto transformComp = ECSHandler::addComponent<TransformComponent>(entity, entity);
-					transformComp->setPos({ i * 40.f, k*40.f, j * 40.f });
-					transformComp->setScale({ 0.1f });
+					transformComp->setPos({ i * 14.f, k*14.f, j * 14.f });
+					transformComp->setScale({ 2.f });
 					ECSHandler::addComponent<IsDrawableComponent>(entity);
 
 					if (modelComp && !modelComp->getModel().meshes.empty()) {

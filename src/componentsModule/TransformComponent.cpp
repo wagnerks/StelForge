@@ -112,8 +112,8 @@ namespace SFE::ComponentsModule {
 		
 		auto newTransform = calculateLocalTransform();
 		
-		if (const auto tree = ECSHandler::registry().getComponent<TreeComponent>(getEntityId())) {
-			if (const auto parentTransform = ECSHandler::registry().getComponentNotSafe<TransformComponent>(tree->getParent())) {
+		if (const auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(getEntityId())) {
+			if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(tree->getParent())) {
 				newTransform = parentTransform->getTransform() * newTransform;
 			}
 
@@ -123,7 +123,7 @@ namespace SFE::ComponentsModule {
 			}
 
 			for (const auto childTransform : tree->getChildren()) {
-				if (auto transformPtr = ECSHandler::registry().getComponentNotSafe<TransformComponent>(childTransform)) {
+				if (auto transformPtr = ECSHandler::registry().pinComponent<TransformComponent>(childTransform)) {
 					transformPtr->markDirty();
 				}
 			}
@@ -143,22 +143,22 @@ namespace SFE::ComponentsModule {
 		return inverse(mTransform);;
 	}
 
-	SFE::Math::Vec3 TransformComponent::getRight() {
+	SFE::Math::Vec3 TransformComponent::getRight() const {
 		std::shared_lock lock(mtx);
 		return mTransform[0];
 	}
 
-	SFE::Math::Vec3 TransformComponent::getUp() {
+	SFE::Math::Vec3 TransformComponent::getUp() const {
 		std::shared_lock lock(mtx);
 		return mTransform[1];
 	}
 
-	SFE::Math::Vec3 TransformComponent::getBackward() {
+	SFE::Math::Vec3 TransformComponent::getBackward() const {
 		std::shared_lock lock(mtx);
 		return mTransform[2];
 	}
 
-	SFE::Math::Vec3 TransformComponent::getForward() {
+	SFE::Math::Vec3 TransformComponent::getForward() const {
 		std::shared_lock lock(mtx);
 		return -mTransform[2];
 	}

@@ -60,7 +60,7 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 	}
 
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
-	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
+	auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(camera);
 
 	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
 
@@ -82,7 +82,7 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 
 	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
 
-	auto& cameraPos = ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
+	auto& cameraPos = ECSHandler::registry().pinComponent<const TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
 	Batcher batcher;
 	auto flush = [this, &renderDataHandle, &batcher, &cameraPos](size_t shaderId) {
 		const auto shader = SHADER_CONTROLLER->getShader(shaderId);

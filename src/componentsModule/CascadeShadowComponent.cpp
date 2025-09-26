@@ -52,7 +52,7 @@ namespace SFE::ComponentsModule {
 		updateLightSpaceMatrices(view);
 	}
 
-	const std::vector<Math::Mat4>& CascadeShadowComponent::getLightSpaceMatrices() {
+	const std::vector<Math::Mat4>& CascadeShadowComponent::getLightSpaceMatrices() const {
 		if (!mLightMatricesCache.empty()) {
 			return mLightMatricesCache;
 		}
@@ -97,7 +97,7 @@ namespace SFE::ComponentsModule {
 		resolution = { data["resolution"][0].asFloat(), data["resolution"][1].asFloat() };
 
 		auto cam = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
-		auto& cameraProjection = ECSHandler::registry().getComponent<CameraComponent>(cam)->getProjection();
+		auto& cameraProjection = ECSHandler::registry().pinComponent<const CameraComponent>(cam)->getProjection();
 
 		updateCascades(cameraProjection);
 		int i = 0;
@@ -152,7 +152,7 @@ namespace SFE::ComponentsModule {
 			}
 			frustumCenter /= 8.f;
 
-			auto tc = ECSHandler::registry().getComponent<TransformComponent>(getEntityId());
+			auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(getEntityId());
 
 			auto s = Math::normalize(tc->getRight());
 			auto u = Math::normalize(tc->getUp());

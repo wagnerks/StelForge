@@ -3,6 +3,7 @@
 
 
 namespace ecss {
+	//todo components should be trivial if possible
 	class ComponentInterface {
 	public:
 		ComponentInterface(SectorId ownerId) : mOwnerId(ownerId) {};

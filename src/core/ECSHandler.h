@@ -15,7 +15,7 @@ public:
 		return instance()->mSystemManager;
 	}
 
-	inline static ecss::Registry& registry() {
+	inline static ecss::Registry<>& registry() {
 		return instance()->mRegistry;
 	}
 
@@ -37,7 +37,7 @@ public:
 
 	template<typename CompType>
 	inline static void removeComponent(ecss::EntityId entity) {
-		instance()->mRegistry.removeComponent<CompType>(entity);
+		instance()->mRegistry.destroyComponent<CompType>(entity);
 		if (auto renderSys = getSystem<SFE::SystemsModule::RenderSystem>()) {
 			renderSys->markRemoved<CompType>(entity);
 		}
@@ -45,7 +45,7 @@ public:
 
 	template<typename CompType>
 	inline static void removeComponent(std::vector<ecss::EntityId>& entities) {
-		instance()->mRegistry.removeComponent<CompType>(entities);
+		instance()->mRegistry.destroyComponent<CompType>(entities);
 		if (!entities.empty()) {
 			if (auto renderSys = getSystem<SFE::SystemsModule::RenderSystem>()) {
 				for (auto entity : entities) {
@@ -55,7 +55,7 @@ public:
 		}
 	}
 	
-	inline static ecss::Registry& drawRegistry(uint8_t index = 0) {
+	inline static auto& drawRegistry(uint8_t index = 0) {
 		return instance()->mDrawRegistry[index];
 	}
 	
@@ -63,6 +63,6 @@ public:
 
 private:
 	ecss::SystemManager mSystemManager;
-	ecss::Registry mRegistry;
-	std::array<ecss::Registry, 2> mDrawRegistry;
+	ecss::Registry<> mRegistry;
+	std::array<ecss::Registry<true, ecss::Memory::ChunksAllocator<65536>>, 2> mDrawRegistry;
 };

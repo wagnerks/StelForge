@@ -66,7 +66,7 @@ void SceneGridFloor::draw() {
 	floorShader->use();
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
-	auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(camera);
+	auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(camera);
 
 	floorShader->setUniform("PVM", renderData.current.PV * transform);
     floorShader->setUniform("PV", renderData.current.PV);

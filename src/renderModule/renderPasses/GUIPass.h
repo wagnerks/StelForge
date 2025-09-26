@@ -34,7 +34,7 @@ namespace SFE::Render::RenderPasses {
 		void init() override;
 		void render(SystemsModule::RenderData& renderDataHandle) override;
 
-		static inline ecss::Registry registry;
+		static inline ecss::Registry<> registry;
 
 		GLW::VertexArray VAO;
 		GLW::Buffer VBO{GLW::ARRAY_BUFFER };

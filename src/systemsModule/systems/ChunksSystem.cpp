@@ -21,7 +21,7 @@ namespace SFE::SystemsModule {
 
 	void ChunksSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {
 		auto curCam = entitiesToProcess.front();
-		auto curChunkCoords = ECSHandler::registry().getComponent<TransformComponent>(curCam)->getPos(true);
+		auto curChunkCoords = ECSHandler::registry().pinComponent<const TransformComponent>(curCam)->getPos(true);
 
 		auto calcMinus = [size = static_cast<int>(CHUNK_SIZE)](float val) {
 			auto remainder = [size](float val) {
@@ -85,7 +85,7 @@ namespace SFE::SystemsModule {
 						ECSHandler::getSystem<OcTreeSystem>()->forEachOctreeInAABB(FrustumModule::AABB{{chunk + CHUNK_SIZE * 0.5f}, CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f}, [&entitiesToDelete](OcTreeSystem::SysOcTree& octree) mutable {
 							auto lock = octree.readLock();
 							octree.forEach([octree, &entitiesToDelete](auto& obj) mutable {
-								auto octreeComp = ECSHandler::registry().getComponent<OcTreeComponent>(obj.data);
+								auto octreeComp = ECSHandler::registry().pinComponent<OcTreeComponent>(obj.data);
 								assert(octreeComp);
 								if (!octreeComp->mParentOcTrees.empty()) {
 									auto it = std::find(octreeComp->mParentOcTrees.begin(), octreeComp->mParentOcTrees.end(), octree.mPos);

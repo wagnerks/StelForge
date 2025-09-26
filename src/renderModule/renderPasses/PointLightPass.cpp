@@ -66,7 +66,7 @@ namespace SFE::Render::RenderPasses {
 
 		offsets.clear();
 		
-		for (const auto& [entity,lightSource, transform] : ECSHandler::registry().forEach<LightSourceComponent, TransformComponent>()) {
+		for (const auto& [entity,lightSource, transform] : ECSHandler::registry().view<LightSourceComponent, TransformComponent>()) {
 			//todo check is light side frustum in camera frustum, and filter it to ignore light sources which is not on your screen
 			if (!FrustumModule::SquareAABB::isOnFrustum(renderDataHandle.mCamFrustum, transform->getPos(true), lightSource->mRadius)) {
 				continue;
@@ -148,7 +148,7 @@ namespace SFE::Render::RenderPasses {
 			}
 
 			/*std::sort(entities.begin(), entities.end());
-			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().forEach<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
+			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().view<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
 				if (!trans || !mod || !draw) {
 					continue;
 				}

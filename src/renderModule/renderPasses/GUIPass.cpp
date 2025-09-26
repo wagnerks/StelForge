@@ -37,7 +37,7 @@ namespace SFE::Render::RenderPasses {
 		const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
 		const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
 		int i = 0;
-		for (auto [entId, position, color, textComp] : registry.forEach<PosComponent, ColorComponent, TextComponent>()) {
+		for (auto [entId, position, color, textComp] : registry.view<PosComponent, ColorComponent, TextComponent>()) {
 			if (textComp) {
 				continue;
 			}
@@ -77,7 +77,7 @@ namespace SFE::Render::RenderPasses {
 		GLW::BlendFuncStack::pop();
 		GLW::CapabilitiesStack<GLW::BLEND>::pop();
 
-		for (auto [entId, textComp, fontComp, position, color] : registry.forEach<TextComponent, FontComponent, PosComponent, ColorComponent>()) {
+		for (auto [entId, textComp, fontComp, position, color] : registry.view<TextComponent, FontComponent, PosComponent, ColorComponent>()) {
 			TextRenderer::instance()->renderText(textComp->text, position->pos.x + -position->pivot.x * position->size.x, position->pos.y + (1.f - position->pivot.y) * position->size.y, textComp->scale, color->color, fontComp->font);
 		}
 

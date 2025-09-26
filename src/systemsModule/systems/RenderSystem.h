@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <vector>
+#include <ecss/Ranges.h>
 
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "componentsModule/ArmatureComponent.h"
@@ -133,7 +134,12 @@ namespace SFE::SystemsModule {
 			else {
 				entities.emplace_back(id, 2);
 			}
+			//auto& entities = dirtiesRanges[getDirtyId<T>()];
+			//entities.insert(id);
+
 		}
+
+		//std::unordered_map<ecss::ECSType, ecss::EntitiesRanges> dirtiesRanges;
 
 		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dirties;
 		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> removed;

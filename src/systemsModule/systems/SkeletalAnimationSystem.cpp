@@ -12,7 +12,7 @@ namespace SFE::SystemsModule {
 	void SkeletalAnimationSystem::update(float dt) {
 		FUNCTION_BENCHMARK;
 
-		SFE:Vector<ecss::EntityId> entities;
+		SFE::Vector<ecss::EntityId> entities;
 		{
 			const auto renderSys = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 			if (!renderSys) {
@@ -45,22 +45,22 @@ namespace SFE::SystemsModule {
 
 		ThreadPool::instance()->addBatchTasks(entities.size(), 100, [this, dt, entities](size_t i) {
 			auto entityId = entities[i];
-			auto armatureComp = ECSHandler::registry().getComponent<ComponentsModule::ArmatureComponent>(entityId);
+			auto armatureComp = ECSHandler::registry().pinComponent<ComponentsModule::ArmatureComponent>(entityId);
 			if (!armatureComp) {
 				return;
 			}
-			auto armBones = ECSHandler::registry().getComponent<ComponentsModule::ArmatureBonesComponent>(entityId);
+			auto armBones = ECSHandler::registry().pinComponent<ComponentsModule::ArmatureBonesComponent>(entityId);
 			if (!armBones) {
 				return;
 			}
 			
-			auto animationComp = ECSHandler::registry().getComponent<ComponentsModule::AnimationComponent>(entityId);
+			auto animationComp = ECSHandler::registry().pinComponent<ComponentsModule::AnimationComponent>(entityId);
 			if (animationComp && animationComp->mCurrentAnimation && (animationComp->mPlay || animationComp->step)) {
 				animationComp->step = false;
 				animationComp->mCurrentTime += animationComp->mCurrentAnimation->getTicksPerSecond() * dt;
 				animationComp->mCurrentTime = fmod(animationComp->mCurrentTime, animationComp->mCurrentAnimation->getDuration());
 
-				auto ocComp = ECSHandler::registry().getComponent<const ComponentsModule::OcclusionComponent>(entityId);
+				auto ocComp = ECSHandler::registry().pinComponent<const ComponentsModule::OcclusionComponent>(entityId);
 				if (ocComp && ocComp->occluded) {
 					return;
 				}
@@ -70,7 +70,7 @@ namespace SFE::SystemsModule {
 			}
 		}).waitAll();
 		
-		/*for (auto [entityId, animationComp, armatureComp, armBones, ocComp] : ECSHandler::registry().forEach<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OcclusionComponent>(entities)) {
+		/*for (auto [entityId, animationComp, armatureComp, armBones, ocComp] : ECSHandler::registry().view<ComponentsModule::AnimationComponent, ComponentsModule::ArmatureComponent, ComponentsModule::ArmatureBonesComponent, const ComponentsModule::OcclusionComponent>(entities)) {
 			if (!armatureComp || !armBones) {
 				continue;
 			}

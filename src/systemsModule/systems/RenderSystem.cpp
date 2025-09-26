@@ -76,9 +76,12 @@ namespace SFE::SystemsModule {
 		auto guard = cameraMatricesUBO.lock();
 		cameraMatricesUBO.allocateData<RenderMatrices>(1, GLW::DYNAMIC_DRAW);
 		cameraMatricesUBO.setBufferBinding(5);
+
+		ECSHandler::drawRegistry(0).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
+		ECSHandler::drawRegistry(1).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
 	}
 
-	void RenderSystem:: update(float_t dt) {
+	void RenderSystem::update(float_t dt) {
 		FUNCTION_BENCHMARK;
 
 		mRenderData.current = mRenderData.next;
@@ -94,8 +97,8 @@ namespace SFE::SystemsModule {
 		}
 
 		auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
-		const auto cameraComp = ECSHandler::registry().getComponent<CameraComponent>(playerCamera);
-		const auto transformComp = ECSHandler::registry().getComponent<TransformComponent>(playerCamera);
+		const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
+		const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera);
 
 		mRenderData.nextCameraProjection = cameraComp->getProjection();
 		mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
@@ -108,8 +111,9 @@ namespace SFE::SystemsModule {
 
 		mRenderData.rotate();
 		int i = 0;
+		std::vector<std::string> names{"occlusionPass", "cascadeShadowPass", "pointLightPass", "geometryPass", "shadersPass", "SSAOPass", "lightningPass", "debugPass", "GUIPass"};
 		for (const auto renderPass : mRenderPasses) {
-			FUNCTION_BENCHMARK_NAMED_STR("pass " + std::to_string(i));
+			FUNCTION_BENCHMARK_NAMED_STR("pass: " + names[i]);
 			renderPass->render(mRenderData);
 			i++;
 		}
@@ -137,48 +141,63 @@ namespace SFE::SystemsModule {
 			dirtiesMutex.unlock();
 		}
 
+		//std::unordered_map<ecss::ECSType, ecss::EntitiesRanges> dir;
+		//{
+		//	FUNCTION_BENCHMARK_NAMED(dirties_copy);
+		//	dirtiesMutex.lock();
+		//	dir = dirtiesRanges;
+		//	/*for (auto& [id, entities] : dirties) {
+		//		std::erase_if(entities, [](std::pair<ecss::EntityId, uint8_t>& val) {
+		//			return val.second-- <= 1;
+		//		});
+		//	}*/
+		//	dirtiesMutex.unlock();
+		//}
+
 		//prepare data for next frame
 		{
 			FUNCTION_BENCHMARK_NAMED(copy_components_transform_armat);
+			
 
-			for (auto [id, entities] : dir) {
+			for (auto& [id, entities] : dir) {
+				ecss::Ranges<ecss::EntityId> range;
+				for (auto [entId, _] : entities) {
+					range.insert(entId);
+				}
+
 				if (id == getDirtyId<ComponentsModule::TransformMatComp>()) {//todo support deleting
-					auto lock = ECSHandler::registry().containerReadLock<ComponentsModule::TransformMatComp>();
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<ComponentsModule::TransformMatComp>(entId));
+					for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::TransformMatComp>(range)) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<ComponentsModule::TransformMatComp>(entId, *comp);
 					}
 				}
 				else if (id == getDirtyId<ComponentsModule::ArmatureBonesComponent>()) {
-					auto lock = ECSHandler::registry().containerReadLock<ComponentsModule::ArmatureBonesComponent>();
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<ComponentsModule::ArmatureBonesComponent>(entId));
+					for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::ArmatureBonesComponent>(range)) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<ComponentsModule::ArmatureBonesComponent>(entId, *comp);
 					}
 				}
 				else if (id == getDirtyId<MeshComponent>()) {
-					auto lock = ECSHandler::registry().containerReadLock<MeshComponent>();
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<MeshComponent>(entId));
+					for (auto [entId, comp] : ECSHandler::registry().view<MeshComponent>(range)) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<MeshComponent>(entId, *comp);
 					}
 				}
 				else if (id == getDirtyId<MaterialComponent>()) {
-					auto lock = ECSHandler::registry().containerReadLock<MaterialComponent>();
-					for (auto [entId, _] : entities) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentToEntity(entId, ECSHandler::registry().getComponentNotSafe<MaterialComponent>(entId));
+					for (auto [entId, comp] : ECSHandler::registry().view<MaterialComponent>(range)) {
+						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<MaterialComponent>(entId, *comp);
 					}
 				}
 			}
 			{
 				FUNCTION_BENCHMARK_NAMED(copy_components);
 				// todo i need some system which will handle dirty for render components, may be it should be render system itself, then when i updating draw registry
-				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<OutlineComponent>(ECSHandler::registry().getComponentContainer<OutlineComponent>());
-				ECSHandler::drawRegistry(mRenderData.currentRegistry).copyComponentsArrayToRegistry<ComponentsModule::OccludedComponent>(ECSHandler::registry().getComponentContainer<ComponentsModule::OccludedComponent>());
+				ECSHandler::drawRegistry(mRenderData.currentRegistry).insert<OutlineComponent>(*ECSHandler::registry().getComponentContainer<OutlineComponent>());
+				ECSHandler::drawRegistry(mRenderData.currentRegistry).insert<ComponentsModule::OccludedComponent>(*ECSHandler::registry().getComponentContainer<ComponentsModule::OccludedComponent>());
 			}
 		}
 	}
 
 	void RenderSystem::notify(Task task) {
 		if (task.type == TRAHSFORM_RELOADED) {
-			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(task.entity)->mTransform = static_cast<TransformComponent*>(task.customData)->getTransform();
+			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(task.entity, std::move(static_cast<TransformComponent*>(task.customData)->getTransform()));
 			markDirty<ComponentsModule::TransformMatComp>(task.entity);
 		}
 		else if (task.type == ARMATURE_UPDATED) {

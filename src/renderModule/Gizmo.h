@@ -120,8 +120,8 @@ namespace SFE::Render {
 		//constant helpers
 		static bool isLineAxis(Axis axis) { return axis == X || axis == Y || axis == Z; }
 		static Math::Vec3 findIntersectionRayWithPlane(const Math::Ray& ray, const PhysicsEngine::Triangle& plane);
-		static PhysicsEngine::Triangle getMouseRayPlane(const Math::Ray& ray, Axis plane, TransformComponent* cameraTransform, const Math::Vec3& initialPos = { 0.f });
-		static PhysicsEngine::Triangle getCamPlane(Axis plane, TransformComponent* cameraTransform, const Math::Vec3& initialPos = {0.f});
+		static PhysicsEngine::Triangle getMouseRayPlane(const Math::Ray& ray, Axis plane, const TransformComponent* cameraTransform, const Math::Vec3& initialPos = { 0.f });
+		static PhysicsEngine::Triangle getCamPlane(Axis plane, const TransformComponent* cameraTransform, const Math::Vec3& initialPos = {0.f});
 
 		const std::array<Axis, 4> mAxisPlane {
 			NONE,

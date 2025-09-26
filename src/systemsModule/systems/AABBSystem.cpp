@@ -17,32 +17,29 @@ void SFE::SystemsModule::AABBSystem::updateAsync(const std::vector<ecss::SectorI
 		if (!aabbcomp) {
 			return;
 		}
+		aabbcomp->mtx.lock();
 		if (aabbcomp->defaultAabbs.empty()) {//todo move it to some initial aabb component place
-			auto modelComp = ECSHandler::registry().getComponent<ModelComponent>(entity);
+			auto modelComp = ECSHandler::registry().pinComponent<const ModelComponent>(entity);
 			if (!modelComp) {
 				return;
 			}
 			auto& model = modelComp->getModel(0);
-			aabbcomp->mtx.lock();
+			
 			aabbcomp->defaultAabbs.reserve(model.meshes.size());
 			for (auto& mesh : model.meshes) {
 				aabbcomp->defaultAabbs.emplace_back(mesh->aabb);
 			}
-			aabbcomp->mtx.unlock();
 		}
 
 		if (aabbcomp->aabbs.empty()) {
-			aabbcomp->mtx.lock();
 			aabbcomp->aabbs.resize(aabbcomp->defaultAabbs.size());
-			aabbcomp->mtx.unlock();
 		}
 
-		static constexpr auto I = Math::Vec3{ 1.f, 0.f, 0.f };
-		static constexpr auto J = Math::Vec3{ 0.f, 1.f, 0.f };
-		static constexpr auto K = Math::Vec3{ 0.f, 0.f, 1.f };
+		auto I = Math::Vec3{ 1.f, 0.f, 0.f } * aabbcomp->aabbScale;
+		auto J = Math::Vec3{ 0.f, 1.f, 0.f } * aabbcomp->aabbScale;
+		auto K = Math::Vec3{ 0.f, 0.f, 1.f } * aabbcomp->aabbScale;
 
 		auto& transformMatrix = transform->getTransform();
-		aabbcomp->mtx.lock();
 		for (size_t i = 0; i < aabbcomp->aabbs.size(); i++) {
 			auto& aabb = aabbcomp->aabbs[i];
 

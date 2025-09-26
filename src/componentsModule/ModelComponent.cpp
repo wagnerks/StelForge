@@ -39,7 +39,7 @@ void ModelComponent::addMeshData(std::vector<AssetsModule::Model::LOD>* meshData
 	mModel = meshData;
 }
 
-const AssetsModule::Model::LOD& ModelComponent::getModel() {
+const AssetsModule::Model::LOD& ModelComponent::getModel() const {
 	return getModel(mLOD.getLodLevel());
 }
 

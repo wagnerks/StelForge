@@ -54,7 +54,7 @@ namespace SFE::PropertiesModule {
 		ECSHandler::registry().addComponent<OcTreeComponent>(entity);
 		applyProperties(entity, properties);
 		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
-		auto modelComp = ECSHandler::registry().getComponent<ModelComponent>(entity);
+		auto modelComp = ECSHandler::registry().pinComponent<const ModelComponent>(entity);
 		if (modelComp && !modelComp->getModel().meshes.empty()) {
 			auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
 			meshComp->meshGraph.root().value = { MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh).vao.getID(), static_cast<int>(modelComp->getModel().meshes[0]->mesh.vertices.size()), static_cast<int>(modelComp->getModel().meshes[0]->mesh.indices.size()) };
@@ -89,7 +89,7 @@ namespace SFE::PropertiesModule {
 			return result;
 		}
 
-		if (auto debugData = ECSHandler::registry().getComponent<DebugDataComponent>(entity)) {
+		if (auto debugData = ECSHandler::registry().pinComponent<const DebugDataComponent>(entity)) {
 			result["id"] = debugData->stringId;
 		}
 		
@@ -98,7 +98,7 @@ namespace SFE::PropertiesModule {
 		serializeProperty<ModelComponent>(entity, result["Properties"]);
 		serializeProperty<CascadeShadowComponent>(entity, result["Properties"]);
 
-		auto treeComp = ECSHandler::registry().getComponent<ComponentsModule::TreeComponent>(entity);
+		auto treeComp = ECSHandler::registry().pinComponent<const ComponentsModule::TreeComponent>(entity);
 		auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
 		if (!children.empty()) {
 			result["Children"] = Json::arrayValue;
