@@ -14,7 +14,7 @@ This is a **personal pet project**, with a lot of drafts, junk code, and experim
 
 Build a modern, high-performance game engine with:
 
-- **Data-Oriented ECS** architecture  
+- **Data-Oriented ECS** architecture [ecss](https://github.com/wagnerks/ecss)
 - **Custom renderer** (OpenGL → Vulkan/DirectX in future)  
 - Designed for large-scale **open world space survival**  
 - **High-quality lighting**, realistic planetary systems  
