@@ -105,7 +105,13 @@ namespace SFE::GLW {
 		}
 
 		void setBufferBinding(int index, size_t bufferIdx = 0) {
-			glBindBufferBase(mType, index, mId[bufferIdx]); //then it can be used in shader using "layout(std140, binding = index) uniform MyBlock"
+			if constexpr (Count == 1) {
+				glBindBufferBase(mType, index, mId[0]);
+			}
+			else {
+				glBindBufferBase(mType, index, mId[bufferIdx]);
+			}
+			//then it can be used in shader using "layout(std140, binding = index) uniform MyBlock"
 		}
 
 		template<typename T>

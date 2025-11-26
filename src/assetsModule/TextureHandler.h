@@ -8,6 +8,7 @@
 #include "Asset.h"
 #include "containersModule/Singleton.h"
 #include "glWrapper/Texture.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 namespace AssetsModule {
 	class Texture : public Asset {
@@ -18,11 +19,11 @@ namespace AssetsModule {
 		Texture& operator=(Texture&& other) noexcept = delete;
 
 		Texture() = default;
-		Texture(SFE::GLW::TextureType type) : texture{ type } {}
 
 		bool isValid() const;
 
-		SFE::GLW::Texture texture;
+		SFE::Render::TextureHandle texture;
+		SFE::Render::SamplerHandle sampler;
 	};
 
 	class TextureHandler : public SFE::Singleton<TextureHandler> {
@@ -31,7 +32,7 @@ namespace AssetsModule {
 		static void bindTextureToSlot(unsigned slot, Texture* texture);
 		Texture mDefaultTex;
 
-		static Texture* loadTexture(const std::string& path, bool flip = false, SFE::GLW::PixelFormat pixelFormat = SFE::GLW::RGBA8, SFE::GLW::TextureFormat textureFormat = SFE::GLW::RGBA, SFE::GLW::PixelDataType pixelType = SFE::GLW::UNSIGNED_BYTE);
+		static Texture* loadTexture(const std::string& path, bool flip = false, SFE::Render::TextureFormat format = SFE::Render::TextureFormat::RGBA8);
 		static Texture* loadCubemapTexture(const std::string& path, bool flip = false);
 	};
 }

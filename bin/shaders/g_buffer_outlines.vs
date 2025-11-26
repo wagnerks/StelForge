@@ -14,6 +14,11 @@ layout(std430, binding = 1) buffer modelMatrices
     mat4 model[];
 };
 
+layout(std430, binding = 3) buffer gpuIndex
+{
+    uint entToGpuIdx[];
+};
+
 const int MAX_BONES = 100;
 const int MAX_BONE_INFLUENCE = 4;
 
@@ -32,7 +37,7 @@ void main()
              continue;
         }
         withBones = true;
-        BoneTransform += bones[gl_InstanceID][boneIdx] * aWeights[i];
+        BoneTransform += bones[entToGpuIdx[gl_InstanceID]][boneIdx] * aWeights[i];
     }
     if (!withBones){
         BoneTransform = mat4(1.f);
@@ -40,5 +45,5 @@ void main()
     vec4 totalPosition = BoneTransform * vec4(aPos.xyz, 1.0);
     totalPosition /= totalPosition.w;
 
-    gl_Position = matrices.PV * (model[gl_InstanceID] * totalPosition);
+    gl_Position = matrices.PV * (model[entToGpuIdx[gl_InstanceID]] * totalPosition);
 }

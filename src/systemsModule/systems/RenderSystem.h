@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include <vector>
-#include <ecss/Ranges.h>
+#include <chrono> // added for CPU timing
 
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "componentsModule/ArmatureComponent.h"
@@ -50,10 +50,10 @@ namespace SFE::SystemsModule {
 		MathModule::PerspectiveProjection cameraProjection = {};
 		MathModule::PerspectiveProjection nextCameraProjection =  {};
 
-		Render::RenderPasses::CascadedShadowPass::Data* mCascadedShadowsPassData;
-		Render::RenderPasses::PointLightPass::Data* mPointPassData;
-		Render::RenderPasses::GeometryPass::Data* mGeometryPassData;
-		Render::RenderPasses::SSAOPass::Data* mSSAOPassData;
+		Render::RenderPasses::CascadedShadowPass::Data* mCascadedShadowsPassData = nullptr;
+		Render::RenderPasses::PointLightPass::Data* mPointPassData = nullptr;
+		Render::RenderPasses::GeometryPass::Data* mGeometryPassData = nullptr;
+		Render::RenderPasses::SSAOPass::Data* mSSAOPassData = nullptr;
 
 		RenderMode mRenderType = RenderMode::DEFAULT;
 
@@ -63,6 +63,14 @@ namespace SFE::SystemsModule {
 		void rotate() {
 			std::swap(currentRegistry, nextRegistry);
 		}
+	};
+
+	class RenderDebugInfo : public Singleton<RenderDebugInfo>
+	{
+	public:
+		size_t objectsRendered = 0;
+		size_t verticesRendered = 0;
+		size_t drawCalls = 0;
 	};
 
 	class RenderSystem : public ecss::System {
@@ -145,6 +153,12 @@ namespace SFE::SystemsModule {
 		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> removed;
 		std::shared_mutex dirtiesMutex;
 
+		// GPU/CPU profiling data
+		unsigned int mGpuTimeQueries[2] {0,0};
+		int mCurrentGpuQuery = 0;
+		double mLastGpuTimeMs = 0.0; // result from previous frame
+		std::chrono::high_resolution_clock::time_point mCpuFrameStart; // per RenderSystem update
+		double mLastCpuFrameMs = 0.0; // duration of last RenderSystem::update body
 		
 
 		template<typename PassType>
@@ -153,6 +167,10 @@ namespace SFE::SystemsModule {
 		RenderData mRenderData;
 		std::vector<Render::RenderPass*> mRenderPasses;
 		std::shared_future<void> updateLock;
-		GLW::Buffer cameraMatricesUBO{GLW::UNIFORM_BUFFER};
+
+		Render::BufferHandle cameraMatricesUBO;
+
+		Render::BufferHandle transforms;
+		Render::BufferHandle bones;
 	};
 }

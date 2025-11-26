@@ -74,6 +74,8 @@ namespace SFE::GLW {
 		void bind() const;
 
 		void addAttachment2D(unsigned attachment, Texture* texture);
+		void setAttachmentLayer(unsigned attachment, Texture* texture, int layer, int mip = 0);
+
 		void addRenderbuffer(unsigned attachment, unsigned renderBuffer);
 		void addRenderbuffer(AttachmentType attachment, unsigned renderBuffer);
 

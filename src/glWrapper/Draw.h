@@ -91,23 +91,7 @@ namespace SFE::GLW {
 		}
 
 		VertexArray::bindArray(vaoId);
-		if (instancesCount) {
-			if (indicesCount) {
-				drawElementsInstanced(mode, static_cast<int>(indicesCount), indicesType, static_cast<int>(instancesCount), place);
-			}
-			else {
-				drawArraysInstancing(mode, static_cast<int>(verticesCount), static_cast<int>(instancesCount));
-			}
-		}
-		else {
-			if (indicesCount) {
-				drawElements(mode, static_cast<int>(indicesCount), indicesType, place);
-			}
-			else {
-				drawArrays(mode, static_cast<int>(verticesCount));
-			}
-		}
-
+		drawVerticesW(mode, verticesCount, indicesCount, instancesCount, indicesType, place);
 		VertexArray::bindDefault();
 	}
 

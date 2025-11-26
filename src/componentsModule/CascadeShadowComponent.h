@@ -7,6 +7,7 @@
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "mathModule/Projection.h"
 #include "propertiesModule/Serializable.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 
 namespace SFE::ComponentsModule {
@@ -52,12 +53,18 @@ namespace SFE::ComponentsModule {
 		static void debugDraw(const std::vector<SFE::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView);
 		static void clearCacheMatrices();
 	private:
-		static void drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices, SFE::ShaderModule::ShaderBase* shader);
+		static void drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices);
 		static inline std::vector<Math::Mat4> mLightMatricesCache;
 
 
 		std::vector<Math::Mat4> mLightSpaceMatrices;
 		bool mDirty = true;
+
+		static inline bool mInited = false;
+
+		static inline Render::PipelineHandle debugPipeline;
+		static inline Render::BufferHandle debugMatricesUBO;
+		static inline Render::BufferHandle debugMatricesEBO;
 	};
 }
 

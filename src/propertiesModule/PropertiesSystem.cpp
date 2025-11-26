@@ -57,11 +57,11 @@ namespace SFE::PropertiesModule {
 		auto modelComp = ECSHandler::registry().pinComponent<const ModelComponent>(entity);
 		if (modelComp && !modelComp->getModel().meshes.empty()) {
 			auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
-			meshComp->meshGraph.root().value = { MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh).vao.getID(), static_cast<int>(modelComp->getModel().meshes[0]->mesh.vertices.size()), static_cast<int>(modelComp->getModel().meshes[0]->mesh.indices.size()) };
+			meshComp->meshGraph.root().value = MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh);
 
 			auto materialComp = ECSHandler::registry().addComponent<MaterialComponent>(entity);
 			for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
-				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture->mId, mat.second.texture->mType});
+				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture});
 			}
 
 			auto armatureComp = ECSHandler::registry().addComponent<ComponentsModule::ArmatureComponent>(entity);

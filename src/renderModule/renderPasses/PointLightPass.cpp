@@ -25,33 +25,35 @@ namespace SFE::Render::RenderPasses {
 	void PointLightPass::init() {
 		lightProjection = SFE::MathModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
+		TextureDesc texDesc;
+		texDesc.width = shadowResolution;
+		texDesc.height = shadowResolution;
+		texDesc.depth = maxShadowFaces;
+		texDesc.dimension = TextureDimension::Array;
+		texDesc.format = TextureFormat::DEPTH_COMPONENT32F;
+		texDesc.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
+		
+		SamplerDesc samplerDesc;
+		samplerDesc.minFilter = FilterMode::Linear;
+		samplerDesc.magFilter = FilterMode::Linear;
+		samplerDesc.addressU = AddressMode::ClampToEdge;
+		samplerDesc.addressV = AddressMode::ClampToEdge;
+		samplerDesc.compareOp = CompareOp::Less;
 
-		mLightDepthMaps.parameters.minFilter = GLW::TextureMinFilter::LINEAR;
-		mLightDepthMaps.parameters.magFilter = GLW::TextureMagFilter::LINEAR;
-		mLightDepthMaps.parameters.wrap.S = GLW::TextureWrap::CLAMP_TO_EDGE;
-		mLightDepthMaps.parameters.wrap.T = GLW::TextureWrap::CLAMP_TO_EDGE;
-		mLightDepthMaps.parameters.compareMode = GLW::TextureCompareMode::COMPARE_REF_TO_TEXTURE;
-		mLightDepthMaps.parameters.compareFunc = GLW::CompareFunc::LESS;
-		mLightDepthMaps.width = shadowResolution;
-		mLightDepthMaps.height = shadowResolution;
-		mLightDepthMaps.depth = maxShadowFaces;
-		mLightDepthMaps.pixelFormat = GLW::DEPTH_COMPONENT32;
-		mLightDepthMaps.textureFormat = GLW::DEPTH_COMPONENT;
-		mLightDepthMaps.pixelType = GLW::FLOAT;
+		FramebufferDesc fbDesc;
+		fbDesc.width = shadowResolution;
+		fbDesc.height = shadowResolution;
+		fbDesc.depthStencilAttachment = FramebufferAttachmentDesc{ Engine::instance()->rhi()->createTexture(texDesc) };
 
-		mLightDepthMaps.create3D();
+		lightFramebuffer = Engine::instance()->rhi()->createFramebuffer(fbDesc);
 
-		lightFramebuffer.bind();
-		lightFramebuffer.addAttachmentTexture(GLW::AttachmentType::DEPTH, &mLightDepthMaps);
-		lightFramebuffer.setDrawBuffer(GLW::NONE);
-		lightFramebuffer.setReadBuffer(GLW::NONE);
-		lightFramebuffer.finalize();
-
-		auto guard = mMatricesUBO.lock();
-		mMatricesUBO.allocateData<Math::Mat4>(maxShadowFaces, GLW::STATIC_DRAW);
-		mMatricesUBO.setBufferBinding(lightMatricesBinding);
-
-		GLW::Framebuffer::bindDefaultFramebuffer();
+		BufferDesc bufDesc;
+		bufDesc.size = sizeof(Math::Mat4) * maxShadowFaces;
+		bufDesc.usage = BufferUsage::Uniform;
+		bufDesc.cpuAccess = CpuAccess::Write;
+		bufDesc.debugName = "PointLightPass_MatricesUBO";
+		mMatricesUBO = Engine::instance()->rhi()->createBuffer(bufDesc);
+		Engine::instance()->rhi()->bindUniformBuffer(lightMatricesBinding, mMatricesUBO);
 	}
 
 	void PointLightPass::freeBuffers() const {
@@ -105,12 +107,10 @@ namespace SFE::Render::RenderPasses {
 		}
 
 		if (!lightMatrices.empty()) {
-			auto guard = mMatricesUBO.lock();
-			mMatricesUBO.setData(lightMatrices.size(), lightMatrices.data());
+			Engine::instance()->rhi()->updateBuffer(mMatricesUBO, 0, lightMatrices.size() * sizeof(Math::Mat4), lightMatrices.data());
 		}
-
-		GLW::bindTextureToSlot(30, &mLightDepthMaps);
-		lightFramebuffer.bind();
+		Engine::instance()->rhi()->bindTexture(30, mLightDepthMaps, mLightDepthMapsSampler);
+		Engine::instance()->rhi()->bindFramebuffer(lightFramebuffer);
 		GLW::ViewportStack::push({ {shadowResolution, shadowResolution} });
 		GLW::clear(GLW::ColorBit::DEPTH);
 
@@ -126,7 +126,7 @@ namespace SFE::Render::RenderPasses {
 			std::vector<ecss::SectorId> entities;
  
 			for (auto& [coords, tree] : ocTreeSystem->mOctrees) {
-				auto lock = tree.readLock();
+				//auto lock = tree.readLock();
 				tree.forEachObject([this, &entities, offsetSum, &offset](const auto& obj) {
 					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
 						if (FrustumModule::AABB::isOnFrustum(frustums[i], obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size)){
@@ -139,7 +139,7 @@ namespace SFE::Render::RenderPasses {
 					
 				}, [this, offsetSum, &offset](const SFE::Math::Vec3& pos, float size, auto&) {
 					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
-						if (OcTree<ecss::EntityId>::isOnFrustum(frustums[i], pos, size)) {
+						if (FrustumModule::SquareAABB::isOnFrustum(frustums[i], pos, size)) {
 							return true;
 						}
 					}
@@ -165,7 +165,7 @@ namespace SFE::Render::RenderPasses {
 			batcher.flushAll(true);*/
 		}
 
-		GLW::Framebuffer::bindDefaultFramebuffer();
+		Engine::instance()->rhi()->bindFramebuffer({});
 		GLW::ViewportStack::pop();
 	}
 

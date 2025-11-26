@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <functional>
+#include <numbers>
 #include <vector>
 #include <map>
 
@@ -106,35 +107,30 @@ namespace SFE {
 	};
 
 	inline static bool isPointInBox(const SFE::Math::Vec3& pos, const SFE::Math::Vec3& nodePos, float nodeSize) {
-		if (pos.x >= nodePos.x && pos.x <= nodePos.x + nodeSize) {
-			if (pos.y <= nodePos.y && pos.y >= nodePos.y - nodeSize) {
-				if (pos.z >= nodePos.z && pos.z <= nodePos.z + nodeSize) {
-					return true;
-				}
-			}
-		}
-
-		return false;
+		return (pos.x >= nodePos.x && pos.x <= nodePos.x + nodeSize)
+			&& (pos.y <= nodePos.y && pos.y >= nodePos.y - nodeSize)
+			&& (pos.z >= nodePos.z && pos.z <= nodePos.z + nodeSize);
 	}
 
 	inline static bool isBoxInBox(const SFE::Math::Vec3& pos, const SFE::Math::Vec3& nodePos, const SFE::Math::Vec3& nodeSize) {
-		if (pos.x >= nodePos.x - nodeSize.x && pos.x <= nodePos.x + nodeSize.x) {
-			if (pos.y <= nodePos.y + nodeSize.y && pos.y >= nodePos.y - nodeSize.y) {
-				if (pos.z >= nodePos.z - nodeSize.z && pos.z <= nodePos.z + nodeSize.z) {
-					return true;
-				}
-			}
-		}
-
-		return false;
+		return (pos.x >= nodePos.x - nodeSize.x && pos.x <= nodePos.x + nodeSize.x)
+			&& (pos.y <= nodePos.y + nodeSize.y && pos.y >= nodePos.y - nodeSize.y)
+			&& (pos.z >= nodePos.z - nodeSize.z && pos.z <= nodePos.z + nodeSize.z);
 	}
 
 	inline static Math::Vec3 getOctantPos(Octant boxOctant, float nodeSize) {
-		return {
-			 nodeSize * (boxOctant == RTN || boxOctant == RBN || boxOctant == RTF || boxOctant == RBF),
-			-nodeSize * (boxOctant == LBN || boxOctant == RBN || boxOctant == LBF || boxOctant == RBF),
-			 nodeSize * (boxOctant == LTN || boxOctant == RTN || boxOctant == LBN || boxOctant == RBN)
+		constexpr SFE::Math::Vec3 kOctantUnit[8] = {
+			{0,  0,  1},  // LTN
+			{1,  0,  1},  // RTN
+			{0, -1,  1},  // LBN
+			{1, -1,  1},  // RBN
+			{0,  0,  0},  // LTF
+			{1,  0,  0},  // RTF
+			{0, -1,  0},  // LBF
+			{1, -1,  0},  // RBF
 		};
+
+		return kOctantUnit[static_cast<uint8_t>(boxOctant)] * nodeSize;
 	}
 
 	inline static void calculateAABBOctrees(const FrustumModule::AABB& aabb, float octreeSize, float& maxX, float& minX, float& maxY, float& minY, float& maxZ, float& minZ) {
@@ -150,7 +146,6 @@ namespace SFE {
 		auto remainder = [octreeSize](float val) {
 			return static_cast<int>(std::fabs(val)) % static_cast<int>(octreeSize);
 		};
-
 
 		auto calcMinus = [&remainder, octreeSize](float val) {
 			if (val < 0.f) {
@@ -192,252 +187,38 @@ namespace SFE {
 		minZ = calcMinus(minZ);
 	}
 
-	template<typename DataType>
-	struct Object {
-		friend bool operator<(const Object& lhs, const Object& rhs) {
-			return lhs.data < rhs.data;
-		}
-
-		friend bool operator<=(const Object& lhs, const Object& rhs) {
-			return !(rhs < lhs);
-		}
-
-		friend bool operator>(const Object& lhs, const Object& rhs) {
-			return rhs < lhs;
-		}
-
-		friend bool operator>=(const Object& lhs, const Object& rhs) {
-			return !(lhs < rhs);
-		}
-
-		friend bool operator==(const Object& lhs, const Object& rhs) {
-			return lhs.data == rhs.data;
-		}
-
-		friend bool operator==(const Object& lhs, const DataType& rhs) {
-			return lhs.data == rhs;
-		}
-
-		bool operator==(const Object& rhs) {
-			return operator==(*this, rhs);
-		}
-
-		bool operator==(const DataType& rhs) {
-			return operator==(*this, rhs);
-		}
-
-		bool operator!=(const Object& rhs) {
-			return !(operator==(rhs));
-		}
-
-		bool operator!=(const DataType& rhs) {
-			return !(operator==(rhs));
-		}
-
-		Object(const Math::Vec3& pos, const Math::Vec3& size, const DataType& data) : pos(pos), size(size), data(data) {}
-		Object() = default;
-
-		Math::Vec3 pos;
-		Math::Vec3 size;
-		DataType data;
-	};
-
-	template<typename DataType>
-	struct OcTreeNode {
-
-		using ObjectType = Object<DataType>;
-		OcTreeNode() = default;
-
-	public:
-		OcTreeNode(const OcTreeNode& other)
-			: children(other.children),
-			  data(other.data) {}
-
-		OcTreeNode(OcTreeNode&& other) noexcept
-			: children(std::move(other.children)),
-			  data(std::move(other.data)) {}
-
-	public:
-		OcTreeNode& operator=(const OcTreeNode& other) {
-			if (this == &other)
-				return *this;
-			children = other.children;
-			data = other.data;
-			return *this;
-		}
-
-		OcTreeNode& operator=(OcTreeNode&& other) noexcept {
-			if (this == &other)
-				return *this;
-			children = std::move(other.children);
-			data = std::move(other.data);
-			return *this;
-		}
-	public:
-
-		OcTreeNode& operator[](size_t i) {
-			std::shared_lock lock(mtx);
-			return children[i];
-		}
-
-	public:
-		static inline Math::Vec3 calculateCenter(const Math::Vec3& ltfPos, float size) {
-			return ltfPos + Math::Vec3(size, -size, size) * 0.5f;
-		}
-
-		static inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
-			return FrustumModule::SquareAABB::isOnFrustum(camFrustum, calculateCenter(ltf, size), size * 0.5f);
-		}
-
-		static inline bool isOnFrustumEntirely(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
-			return FrustumModule::SquareAABB::isOnFrustumEntirely(camFrustum, calculateCenter(ltf, size), size * 0.5f);
-		}
-
-		inline void clear() {
-			std::unique_lock lock(mtx);
-			data.clear();
-			data.shrink_to_fit();
-
-			for (auto& child : children) {
-				child.clear();
-			}
-			children.clear();
-		}
-
-		inline void erase(const DataType& data) {
-			std::unique_lock lock(mtx);
-			if (!this->data.empty()) {
-				this->data.erase(std::remove_if(this->data.begin(), this->data.end(), [&data](ObjectType& _data) { return data == _data.data; }), this->data.end());
-			}
-			
-
-			bool allEmpty = true;
-			for (auto& child : children) {
-				child.erase(data);
-				allEmpty &= child.data.empty();
-				allEmpty &= child.children.empty();
-			}
-
-			if (allEmpty) {
-				children.clear();
-			}
-		}
-
-		inline ObjectType* find(const DataType& _data) {
-			std::shared_lock lock(mtx);
-			for (auto& obj : data) {
-				if (obj.data == _data) {
-					return &obj;
-				}
-			}
-
-			for (auto& child : children) {
-				if (auto result = child.find(_data)) {
-					return result;
-				}
-			}
-
-			return nullptr;
-		}
-
-		inline bool contains(const DataType& _data) {
-			return find(_data) != nullptr;
-		}
-
-	public:
-		inline void forEach(const std::function<void(ObjectType&)>& func) {
-			std::shared_lock lock(mtx);
-			for (auto& obj : data) {
-				func(obj);
-			}
-
-			for (auto& child : children) {
-				child.forEach(func);
-			}
-		}
-
-		inline void forEach(const std::function<void(const ObjectType&)>& func) const {
-			std::shared_lock lock(mtx);
-			for (auto& obj : data) {
-				func(obj);
-			}
-
-			for (auto& child : children) {
-				child.forEach(func);
-			}
-		}
-
-		inline void forEachNode(const SFE::Math::Vec3& nodePos, float nodeSize, std::function<void(const SFE::Math::Vec3&, float, OcTreeNode&)> func) {
-			std::shared_lock lock(mtx);
-			if (children.empty()) {
-				return;
-			}
-
-			nodeSize *= 0.5f;
-			for (auto octant : traversal[0]) {
-				func(nodePos + getOctantPos(static_cast<Octant>(octant), nodeSize), nodeSize, children[octant]);
-			}
-		}
-
-		inline void forEachNode(const SFE::Math::Vec3& nodePos, float nodeSize, std::function<void(const ObjectType&)> func, std::function<bool(const SFE::Math::Vec3&, float, OcTreeNode&)> pred = nullptr) {
-			if (pred) {
-				if (!pred(nodePos, nodeSize, *this)) {
-					return;
-				}
-			}
-
-			for (const auto& object : data) {
-				func(object);
-			}
-
-			forEachNode(nodePos, nodeSize, [func, pred](const SFE::Math::Vec3& pos, float size, OcTreeNode& node) {
-				node.forEachNode(pos, size, func, pred);
-			});
-		}
-
-		inline void forEachNodeInFrustum(const SFE::Math::Vec3& nodePos, float nodeSize, std::function<void(const ObjectType&, bool)> func, const SFE::FrustumModule::Frustum& frustum) {
-			bool entirely = false;
-			if (isOnFrustum(frustum, nodePos, nodeSize)) {
-				if (isOnFrustumEntirely(frustum, nodePos, nodeSize)) {
-					entirely = true;
-				}
-			}
-			else {
-				return;
-			}
-
-			for (const auto& object : data) {
-				func(object, entirely);
-			}
-
-			forEachNode(nodePos, nodeSize, [func, frustum](const SFE::Math::Vec3& pos, float size, OcTreeNode& node) {
-				node.forEachNodeInFrustum(pos, size, func, frustum);
-			});
-		}
-
-	public:
-		std::vector<ObjectType>& getData() { return data; }
-		const std::vector<ObjectType>& getData() const { return data; }
-
-	public:
-		mutable std::shared_mutex mtx; //todo dirty
-		std::vector<OcTreeNode> children;
-
-	private:
-		std::vector<ObjectType> data;
-	};
-
 	template<typename DataType, size_t Deep = 4, size_t Size = 256>
 	struct OcTree : public ThreadSynchronizer {
-	public:
-		using NodeType = OcTreeNode<DataType>;
-		using ObjectType = typename NodeType::ObjectType;
-		
-	public:
-		OcTree(const Math::Vec3& octreePos) : mPos(octreePos) {}
-		OcTree() : mPos{} {}
+		struct Object {
+			friend bool operator<(const Object& lhs, const Object& rhs) { return lhs.data < rhs.data; }
+			friend bool operator<=(const Object& lhs, const Object& rhs) { return !(rhs < lhs); }
+			friend bool operator>(const Object& lhs, const Object& rhs) { return rhs < lhs; }
+			friend bool operator>=(const Object& lhs, const Object& rhs) { return !(lhs < rhs); }
+			friend bool operator==(const Object& lhs, const Object& rhs) { return lhs.data == rhs.data; }
+			friend bool operator==(const Object& lhs, const DataType& rhs) { return lhs.data == rhs; }
+
+			bool operator==(const Object& rhs) { return operator==(*this, rhs); }
+			bool operator==(const DataType& rhs) { return operator==(*this, rhs); }
+			bool operator!=(const Object& rhs) { return !(operator==(rhs)); }
+			bool operator!=(const DataType& rhs) { return !(operator==(rhs)); }
+
+			Object(const Math::Vec3& pos, const Math::Vec3& size, const DataType& data) : pos(pos), size(size), data(data) {}
+			Object() = default;
+
+			Math::Vec3 pos;
+			Math::Vec3 size;
+			DataType data;
+		};
+
+		struct Node { std::vector<Object> data; };
 
 	public:
+		OcTree(const Math::Vec3& octreePos) : mPos(octreePos) {}
+		OcTree() = default;
+
+	public:
+		static inline Math::Vec3 calculateNodeCenter(const Math::Vec3& ltfPos, float size) { return ltfPos + Math::Vec3(size, -size, size) * 0.5f; }
+
 		static inline CardinalDirection getSourceCardinalDirection(const SFE::Math::Vec3& nodePos, float nodeSize, const SFE::Math::Vec3& srcPoint) {
 			bool left = false;
 			bool xMid = false;
@@ -615,118 +396,36 @@ namespace SFE {
 		}
 
 		static inline bool isAABBInBoxAny(const Math::Vec3& pos, const Math::Vec3& size, const Math::Vec3& nodePos, float nodeSize) {
-			auto octreeDiagonal = 3 * nodeSize * nodeSize;
-			auto nodeDiagonal = size.x * size.x + size.y * size.y + size.z * size.z;
-			auto diagonalsDistance = octreeDiagonal + nodeDiagonal;
-			if (diagonalsDistance < SFE::Math::lengthSquared(nodePos - pos)) {
-				return false;
-			}
-
-
-
-			const auto FBL = isPointInBox(pos - size, nodePos, nodeSize); //far bottom left
-			if (FBL) {
-				return true;
-			}
-
-			const auto NTR = isPointInBox(pos + size, nodePos, nodeSize); //near top right
-			if (NTR) {
-				return true;
-			}
-
-			const auto FBR = isPointInBox({ pos.x + size.x, pos.y - size.y, pos.z - size.z }, nodePos, nodeSize);
-			if (FBR) {
-				return true;
-			}
-			const auto FTL = isPointInBox({ pos.x - size.x, pos.y + size.y, pos.z - size.z }, nodePos, nodeSize);
-			if (FTL) {
-				return true;
-			}
-			const auto FTR = isPointInBox({ pos.x + size.x, pos.y + size.y, pos.z - size.z }, nodePos, nodeSize);
-			if (FTR) {
-				return true;
-			}
-
-			const auto NBR = isPointInBox({ pos.x + size.x, pos.y - size.y, pos.z + size.z }, nodePos, nodeSize);
-			if (NBR) {
-				return true;
-			}
-			const auto NTL = isPointInBox({ pos.x - size.x, pos.y + size.y, pos.z + size.z }, nodePos, nodeSize);
-			if (NTL) {
-				return true;
-			}
-			const auto NBL = isPointInBox({ pos.x - size.x, pos.y - size.y, pos.z + size.z }, nodePos, nodeSize);
-			if (NBL) {
-				return true;
-			}
-
-			// LTF - nodePos
-			const auto aLBF = isBoxInBox(nodePos + Math::Vec3{0.f, -nodeSize, 0.f}, pos, size); //far bottom left
-			if (aLBF) {
-				return true;
-			}
-
-			const auto aRTN = isBoxInBox(nodePos + Math::Vec3{nodeSize, 0.f, nodeSize}, pos, size); //near top right
-			if (aRTN) {
-				return true;
-			}
-
-			const auto aRBF = isBoxInBox(nodePos + Math::Vec3{nodeSize, -nodeSize, 0.f}, pos, size);
-			if (aRBF) {
-				return true;
-			}
-			const auto aLTF = isBoxInBox(nodePos + Math::Vec3{0.f, 0.f, 0.f}, pos, size);
-			if (aLTF) {
-				return true;
-			}
-			const auto aRTF = isBoxInBox(nodePos + Math::Vec3{nodeSize, 0.f, 0.f}, pos, size);
-			if (aRTF) {
-				return true;
-			}
-
-			const auto aRBN = isBoxInBox(nodePos + Math::Vec3{nodeSize, -nodeSize, nodeSize}, pos, size);
-			if (aRBN) {
-				return true;
-			}
-			const auto aLTN = isBoxInBox(nodePos + Math::Vec3{0.f, 0.f, nodeSize}, pos, size);
-			if (aLTN) {
-				return true;
-			}
-			const auto aLBN = isBoxInBox(nodePos + Math::Vec3{0.f, 0.f, nodeSize}, pos, size);
-			if (aLBN) {
-				return true;
-			}
 			
-			float left, right, top, btm, near, far;
-			calculateAABBOctrees({ pos, (float)size.x, (float)size.y, (float)size.z }, nodeSize, left, right, top, btm, near, far);
+			// Convert object AABB (center + half-extents) to min/max
+			const Math::Vec3 objMin = pos - size;
+			const Math::Vec3 objMax = pos + size;
 
-			if (nodePos.x <= left && nodePos.x + nodeSize >= right) {
-				if (nodePos.y <= top && nodePos.y - nodeSize >= btm) {
-					if (nodePos.z <= near && nodePos.z + nodeSize >= far) {
-						return true;
-					}
-				}
-			}
+			// Convert node cube (corner + size) to min/max
+			// Note: Y axis is inverted (nodePos.y is top, nodePos.y - nodeSize is bottom)
+			const Math::Vec3 nodeMin(nodePos.x, nodePos.y - nodeSize, nodePos.z);
+			const Math::Vec3 nodeMax(nodePos.x + nodeSize, nodePos.y, nodePos.z + nodeSize);
 
-			return false;
+			// Fast AABB overlap test (separating axis theorem)
+			return (objMin.x <= nodeMax.x && objMax.x >= nodeMin.x)
+				&& (objMin.y <= nodeMax.y && objMax.y >= nodeMin.y)
+				&& (objMin.z <= nodeMax.z && objMax.z >= nodeMin.z);
 		}
 
 		static inline bool isAABBInBox(const Math::Vec3& pos, const Math::Vec3& size, const Math::Vec3& nodePos, float nodeSize) {
-			auto octreeDiagonal = 3 * nodeSize * nodeSize;
-			auto nodeDiagonal = size.x * size.x + size.y * size.y + size.z * size.z;
-			auto diagonalsDistance = octreeDiagonal + nodeDiagonal;
-			if (diagonalsDistance < SFE::Math::lengthSquared(nodePos - pos)) {
-				return false;
-			}
-			return isPointInBox(pos - size, nodePos, nodeSize) && isPointInBox(pos + size, nodePos, nodeSize);
+			const Math::Vec3 objMin = pos - size;
+			const Math::Vec3 objMax = pos + size;
+
+			const Math::Vec3 nodeMin(nodePos.x, nodePos.y - nodeSize, nodePos.z);
+			const Math::Vec3 nodeMax(nodePos.x + nodeSize, nodePos.y, nodePos.z + nodeSize);
+			if (objMin.x < nodeMin.x || objMax.x > nodeMax.x) return false;
+			if (objMin.z < nodeMin.z || objMax.z > nodeMax.z) return false;
+			if (objMin.y < nodeMin.y || objMax.y > nodeMax.y) return false;
+			return true;
 		}
 
-		
-
-		
-
 	public:
-		static inline void drawOctreeHelper(const NodeType& node, float nodeSize, const Math::Vec3& nodePos, bool drawObjAABB) {
+		inline void drawOctree(bool drawObjAABB) {
 			constexpr static Math::Mat4 rotate = {
 				{1.f,0.f,0.f,0.f},
 				{0.f,1.f,0.f,0.f},
@@ -735,80 +434,190 @@ namespace SFE {
 			};
 
 
-			
-				constexpr static auto notEmptyColor = Math::Vec4(0.f, 0.5f, 0.f, 0.02f);
+			constexpr static auto notEmptyColor = Math::Vec4(0.f, 0.5f, 0.f, 0.02f);
 
-				Render::Utils::renderCubeMesh(
-					Math::Vec3(0.f, 0.f, nodeSize),
-					Math::Vec3(nodeSize, -nodeSize, 0.f),
-					rotate, Math::Vec3(nodePos), notEmptyColor
-				);
+			forEachNode([&](const SFE::Math::Vec3& nodePos, float nodeSize, Node& node)
+			{
+				if (node.data.size()) {
+					Render::Utils::renderCubeMesh(
+						Math::Vec3(0.f, 0.f, nodeSize),
+						Math::Vec3(nodeSize, -nodeSize, 0.f),
+						rotate, Math::Vec3(nodePos), notEmptyColor
+					);
 
-			if (node.getData().size()) {
-				if (drawObjAABB) {
-					for (auto& data : node.getData()) {
-						constexpr static auto AABBColor = Math::Vec4(0.f, 1.f, 1.f, 1.f);
+					if (drawObjAABB) {
+						for (auto& data : node.data) {
+							constexpr static auto AABBColor = Math::Vec4(0.f, 1.f, 1.f, 1.f);
 
-						Render::Utils::renderCube(
-							Math::Vec3(-data.size.x, -data.size.y, data.size.z),
-							Math::Vec3(data.size.x, data.size.y, -data.size.z),
-							rotate, Math::Vec3(data.pos), AABBColor
-						);
+							Render::Utils::renderCube(
+								Math::Vec3(-data.size.x, -data.size.y, data.size.z),
+								Math::Vec3(data.size.x, data.size.y, -data.size.z),
+								rotate, Math::Vec3(data.pos), AABBColor
+							);
+						}
+					}
+					constexpr static auto emptyColor = Math::Vec4(1.f, 0.f, 1.f, 1.f);
+
+					Render::Utils::renderCube(
+						Math::Vec3(0.f, 0.f, nodeSize),
+						Math::Vec3(nodeSize, -nodeSize, 0.f),
+						rotate, Math::Vec3(nodePos), emptyColor
+					);
+				}
+			});
+		}
+
+	public:
+		struct StackEntry {
+			SFE::Math::Vec3 pos;
+			float size;
+			size_t index;
+		};
+
+		template<class Func>
+		inline void forEachObjectInsideFrustum(const SFE::FrustumModule::Frustum& frustum, Func&& func) {
+			if (nodes.empty()) {
+				return;
+			}
+
+			std::array<StackEntry, 1 + (8 - 1) * (Deep - 1)> stack;
+			size_t top = 0;
+			stack[top++] = { mPos, mSize, 0u };
+
+			while (top != 0) {
+				const auto entry = stack[--top];
+				auto center = calculateNodeCenter(entry.pos, entry.size);
+				auto halfSize = entry.size * 0.5f;
+				bool entirely = FrustumModule::SquareAABB::isOnFrustumEntirely(frustum, center, halfSize);
+				if (entirely || FrustumModule::SquareAABB::isOnFrustum(frustum, center, halfSize)) {
+					auto& node = nodes[entry.index];
+					for (const auto& object : node.data) {
+						if (entirely || FrustumModule::AABB::isOnFrustum(frustum, object.pos, object.size)) {
+							std::invoke(std::forward<Func>(func), object.data);
+						}
+					}
+
+					auto firstChildId = entry.index * 8 + 1;
+					if (firstChildId + 7 >= NodesCount) {
+						continue;
+					}
+
+					const auto childSize = entry.size * 0.5f;
+					for (auto octant = 0u; octant < 8; octant++) {
+						stack[top].pos = entry.pos + getOctantPos(static_cast<Octant>(octant), childSize);
+						stack[top].size = childSize;
+						stack[top].index = firstChildId + octant;
+						++top;
 					}
 				}
-				constexpr static auto emptyColor = Math::Vec4(1.f, 0.f, 1.f, 1.f);
-
-				Render::Utils::renderCube(
-					Math::Vec3(0.f, 0.f, nodeSize),
-					Math::Vec3(nodeSize, -nodeSize, 0.f),
-					rotate, Math::Vec3(nodePos), emptyColor
-				);
-			}
-
-			int i = 0;
-			for (const auto& child : node.children) {
-				auto tmpPos = nodePos + getOctantPos(static_cast<Octant>(i), nodeSize * 0.5f);
-				drawOctreeHelper(child, nodeSize * 0.5f, tmpPos, drawObjAABB);
-				i++;
 			}
 		}
 
-		inline void drawOctree(bool drawObjAABB) {
-			drawOctreeHelper(root, mSize, mPos, drawObjAABB);
+		template<class Func>
+		inline void forEachNode(Func&& func, CardinalDirection traversalDirection = static_cast<CardinalDirection>(0))
+		{
+			if (nodes.empty()) {
+				return;
+			}
+
+			std::array<StackEntry, 1 + (8 - 1) * (Deep - 1)> stack;
+			size_t top = 0;
+			stack[top++] = { mPos, mSize, 0u };
+
+			while (top != 0) {
+				const auto entry = stack[--top];
+				auto& node = nodes[entry.index];
+
+				std::invoke(func, entry.pos, entry.size, node);
+
+				auto firstChildId = entry.index * 8 + 1;
+				if (firstChildId + 7 >= NodesCount) {
+					continue;
+				}
+
+				const auto childSize = entry.size * 0.5f;
+				for (auto octant : traversal[traversalDirection]) {
+					stack[top].pos = entry.pos + getOctantPos(static_cast<Octant>(octant), childSize);
+					stack[top].size = childSize;
+					stack[top].index = firstChildId + octant;
+					++top;
+				}
+			}
+		}
+
+		template<class Func, class Pred>
+		inline void forEachNode(Func&& func, Pred&& pred, CardinalDirection traversalDirection = static_cast<CardinalDirection>(0)) {
+			if (nodes.empty()) {
+				return;
+			}
+
+			std::array<StackEntry, 1 + (8 - 1) * (Deep - 1)> stack;
+			size_t top = 0;
+			stack[top++] = { mPos, mSize, 0u };
+
+			while (top != 0) {
+				const auto entry = stack[--top];
+				auto& node = nodes[entry.index];
+				if (std::invoke(pred, entry.pos, entry.size, node)) {
+					std::invoke(func, entry.pos, entry.size, node);
+
+					auto firstChildId = entry.index * 8 + 1;
+					if (firstChildId + 7 >= NodesCount) {
+						continue;
+					}
+
+					const auto childSize = entry.size * 0.5f;
+					for (auto octant : traversal[traversalDirection]) {
+						stack[top].pos = entry.pos + getOctantPos(static_cast<Octant>(octant), childSize);
+						stack[top].size = childSize;
+						stack[top].index = firstChildId + octant;
+						++top;
+					}
+				}
+			}
+		}
+
+		template<class Func, class Pred>
+		inline void forEachObject(Func&& func, Pred&& pred) {
+			forEachNode([&](const SFE::Math::Vec3& nodePos, float nodeSize, Node& node)
+			{
+				for (const auto& object : node.data) {
+					std::invoke(std::forward<Func>(func), object);
+				}
+			}, std::forward<Pred>(pred));
+		}
+
+		template<class Func>
+		inline void forEach(Func&& func) {
+			forEachNode([&](const SFE::Math::Vec3& nodePos, float nodeSize, Node& node)
+			{
+				for (auto& object : node.data) {
+					std::invoke(std::forward<Func>(func), object);
+				}
+			});
+		}
+
+		template<class Func>
+		inline void forEach(Func&& func) const {
+			forEachNode([&](const SFE::Math::Vec3& nodePos, float nodeSize, Node& node)
+			{
+				for (const auto& object : node.data) {
+					std::invoke(std::forward<Func>(func), object);
+				}
+			});
 		}
 
 	public:
-		inline void forEachObjectInFrustum(const SFE::FrustumModule::Frustum& frustum, std::function<void(const ObjectType&, bool)> func) {
-			root.forEachNodeInFrustum(mPos, mSize, func, frustum);
-		}
-
-		inline void forEachObject(std::function<void(const ObjectType&)> func, std::function<bool(const SFE::Math::Vec3&, float, NodeType&)> pred) {
-			root.forEachNode(mPos, mSize, func, pred);
-		}
-
-		inline void forEach(const std::function<void(ObjectType&)>& func) {
-			root.forEach(func);
-		}
-
-		inline void forEach(const std::function<void(const ObjectType&)>& func) const {
-			root.forEach(func);
-		}
-
-	public:
-		bool contains(const DataType& data) {
-			return root.contains(data);
-		}
-
-		ObjectType* find(const DataType& data) {
-			return root.find(data);
-		}
-
 		void clear() {
-			root.clear();
+			for (auto& node : nodes) {
+				node.data.clear();
+			}
 		}
 
 		void erase(const DataType& data) {
-			root.erase(data);
+			for (auto& node : nodes) {
+				node.data.erase(std::remove_if(node.data.begin(), node.data.end(), [&](const auto& a) { return a == data; }), node.data.end());
+			}
 		}
 
 		bool insert(const SFE::Math::Vec3& globalPos, const SFE::Math::Vec3& size, const DataType& data) {
@@ -816,100 +625,64 @@ namespace SFE {
 				return false;
 			}
 
-			if (!insertRecursive(root, mPos, globalPos, size, 0, mSize, data)) {
-				std::unique_lock lock(root.mtx);
-				root.getData().emplace_back(globalPos, size, data);
+			size_t index = 0;
+			auto nodePos = mPos;
+			auto nodeSize = mSize;
+
+			for (size_t depth = 0; depth + 1 < Deep; ++depth) {
+				auto childSize = nodeSize * 0.5f;
+				bool descended = false;
+
+				for (auto octant = 0; octant < 8; octant++) 	{
+					auto childPos = nodePos + getOctantPos(static_cast<Octant>(octant), childSize);
+
+					if (isAABBInBox(globalPos, size, childPos, childSize)) {
+						index = index * 8 + 1 + octant;
+						nodePos = childPos;
+						nodeSize = childSize;
+						descended = true;
+						break;
+					}
+				}
+
+				if (!descended) {
+					break;
+				}
 			}
 
+			nodes[index].data.emplace_back(globalPos, size, data);
 			return true;
 		}
 
-		bool insertRecursive(NodeType& node, const SFE::Math::Vec3& nodePos, const SFE::Math::Vec3& localPos, const SFE::Math::Vec3& size, size_t step, float nodeSize, const DataType& data) {
-			if (!isAABBInBox(localPos, size, nodePos, nodeSize)) {
-				return false;
-			}
+	public:
+		std::vector<std::pair<SFE::Math::Vec3, Object>> findCollisions(const SFE::Math::Vec3& src, const Math::Vec3& dir, const std::function<bool(const Object& data)>& pred = nullptr) {
+			const auto octant = getSourceCardinalDirection(mPos, mSize, src);
 
-			nodeSize *= 0.5f;
+			std::vector<std::pair<SFE::Math::Vec3, Object>> collisions;
+			forEachNode([&](const SFE::Math::Vec3& nodePos, float nodeSize, Node& node) {
+				const auto collisionRes = 
+					PhysicsEngine::Physics::checkCollision({ { nodePos.x + nodeSize, nodePos.y - nodeSize, nodePos.z + nodeSize }, {nodeSize} }, src, dir);
 
-			bool inserted = false;
-			for (auto octant : traversal[0]) {
-				auto tmpPos = nodePos + getOctantPos(static_cast<Octant>(octant), nodeSize);
+				if (!collisionRes.second) {
+					return;
+				}
 
-				if (isAABBInBox(localPos, size, tmpPos, nodeSize)) {
-					if (step + 1 < Deep) {
-						node.children.resize(8);
-						inserted |= insertRecursive(node.children[octant], tmpPos, localPos, size, step + 1, nodeSize, data);
+				for (const auto& nodeData : node.data) {
+					auto cube = PhysicsEngine::Cube{ nodeData.pos, nodeData.size };
+					auto collision = PhysicsEngine::Physics::checkCollision(cube, src, dir, true);
+
+					if (collision.second && isPointInBox(collision.first, mPos, mSize) && (pred ? pred(nodeData) : true)) {
+						collisions.emplace_back(collision.first, nodeData);
 					}
 				}
-			}
+			}, octant);
 
-			if (!inserted) {
-				inserted = true;
-				std::unique_lock lock(node.mtx);
-				node.getData().emplace_back(localPos, size, data);
-			}
-			return inserted;
-		}
 
-	public:
-		std::vector<std::pair<SFE::Math::Vec3, ObjectType>> findCollisions(const SFE::Math::Vec3& src, const Math::Vec3& dir, const std::function<bool(const ObjectType& data)>& pred = nullptr) {
-			std::vector<std::pair<SFE::Math::Vec3, ObjectType>> result;
-			findCollisions(root, result, src, dir, mPos, mSize, pred);
-
-			std::sort(result.begin(), result.end(), [src](const std::pair<SFE::Math::Vec3, ObjectType>& a, const std::pair<SFE::Math::Vec3, ObjectType>& b) {
+			std::sort(collisions.begin(), collisions.end(), [src](const std::pair<SFE::Math::Vec3, Object>& a, const std::pair<SFE::Math::Vec3, Object>& b) {
 				return SFE::Math::lengthSquared(src - a.first) < SFE::Math::lengthSquared(src - b.first);
 			});
 
-			return result;
-		}
-
-		bool findCollisions(const NodeType& node, std::vector<std::pair<SFE::Math::Vec3, ObjectType>>& collisions, const SFE::Math::Vec3& src, const SFE::Math::Vec3& dir, SFE::Math::Vec3 nodePos, float nodeSize, const std::function<bool(const ObjectType& data)>& pred) {
-			const auto octant = getSourceCardinalDirection(nodePos, nodeSize, src);
-
-			nodeSize *= 0.5f;
-
-			const auto collisionRes = PhysicsEngine::Physics::checkCollision(
-				{{ nodePos.x + nodeSize, nodePos.y - nodeSize, nodePos.z + nodeSize }, {nodeSize}},
-				src,
-				dir
-			);
-
-			if (!collisionRes.second) {
-				return false;
-			}
-
-			std::shared_lock lock(node.mtx);
-			bool collisionFound = false; 
-			for (const auto& nodeData : node.getData()) {
-				auto cube = PhysicsEngine::Cube{ nodeData.pos, nodeData.size };
-				auto collision = PhysicsEngine::Physics::checkCollision(cube, src, dir, true);
-
-				if (collision.second && isPointInBox(collision.first, mPos, mSize) && (pred ? pred(nodeData) : true)) {//todo why mPos and mSize?!
-					collisions.emplace_back(collision.first, nodeData);
-					collisionFound = true;
-				}
-			}
-
-			if (!node.children.empty()) {
-				for (auto idx : traversal[octant]) {
-					const auto tmpPos = nodePos + getOctantPos(static_cast<Octant>(idx), nodeSize);
-
-					if (findCollisions(node.children[idx], collisions, src, dir, tmpPos, nodeSize, pred)) {
-						return true;
-					}
-				}
-			}
-			
-
-			return collisionFound;
-		}
-
-		inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum) const {
-			return NodeType::isOnFrustum(camFrustum, mPos, mSize);
-		}
-
-		static inline bool isOnFrustum(const FrustumModule::Frustum& camFrustum, const SFE::Math::Vec3& ltf, float size) {
-			return NodeType::isOnFrustum(camFrustum, ltf, size);
+			return collisions;
 		}
 
 	public:
@@ -926,9 +699,27 @@ namespace SFE {
 //    | /           |/
 // LBN*-------------*RBN
 
-		float mSize = static_cast<float>(Size);
-		Math::Vec3 mPos; //LTF left top far point //todo instead LTF use minimum
+		template <size_t D>
+		static consteval size_t OctreeNodeCount() {
+			size_t count = 0;
+			size_t pow = 1;
+			for (size_t i = 0; i < D; ++i) {
+				count += pow;   // 8^i
+				pow *= 8;
+			}
+			return count;
+		}
 
-		NodeType root;
+		static constexpr size_t NodesCount = OctreeNodeCount<Deep>();
+
+		// [0] - root
+		// [1..8] - depth 1
+		// [9..72] - depth 2
+		// [73..584] - depth 3
+		// ...
+		std::array<Node, NodesCount> nodes{};
+
+		Math::Vec3 mPos; //LTF left top far point //todo instead LTF use LBF
+		float mSize = static_cast<float>(Size);
 	};
 }

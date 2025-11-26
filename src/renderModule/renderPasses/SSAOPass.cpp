@@ -19,38 +19,35 @@ float lerp(float a, float b, float f) {
 }
 
 void SSAOPass::init() {
-	
-	mData.mSsaoFbo.bind();
 
 	// SSAO color buffer
-	mData.mSsaoColorBuffer.width = Engine::instance()->getWindow()->getScreenData().renderW;
-	mData.mSsaoColorBuffer.height = Engine::instance()->getWindow()->getScreenData().renderH;
-	mData.mSsaoColorBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.mSsaoColorBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.mSsaoColorBuffer.pixelFormat = GLW::R8;
-	mData.mSsaoColorBuffer.textureFormat = GLW::RED;
-	mData.mSsaoColorBuffer.pixelType = GLW::FLOAT;
-	mData.mSsaoColorBuffer.create();
+	TextureDesc ssaoColorDesc;
+	ssaoColorDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	ssaoColorDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+	ssaoColorDesc.format = TextureFormat::R8;
+	ssaoColorDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+	mData.mSsaoColorBuffer = Engine::instance()->rhi()->createTexture(ssaoColorDesc);
 
-	mData.mSsaoColorBufferBlur.width = Engine::instance()->getWindow()->getScreenData().renderW;
-	mData.mSsaoColorBufferBlur.height = Engine::instance()->getWindow()->getScreenData().renderH;
-	mData.mSsaoColorBufferBlur.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.mSsaoColorBufferBlur.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.mSsaoColorBufferBlur.pixelFormat = GLW::R8;
-	mData.mSsaoColorBufferBlur.textureFormat = GLW::RED;
-	mData.mSsaoColorBufferBlur.pixelType = GLW::FLOAT;
-	mData.mSsaoColorBufferBlur.create();
-	
-	mData.mSsaoFbo.addAttachmentTexture(0, &mData.mSsaoColorBuffer);
-	mData.mSsaoFbo.finalize();
+	TextureDesc ssaoColorBlurDesc;
+	ssaoColorBlurDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	ssaoColorBlurDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+	ssaoColorBlurDesc.format = TextureFormat::R8;
+	ssaoColorBlurDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+	mData.mSsaoColorBufferBlur = Engine::instance()->rhi()->createTexture(ssaoColorBlurDesc);
+
+	FramebufferDesc fbDesc;
+	fbDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	fbDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+	fbDesc.colorAttachments = {{mData.mSsaoColorBuffer}};
+	mData.mSsaoFbo = Engine::instance()->rhi()->createFramebuffer(fbDesc);
 
 	// and blur stage
-	mData.mSsaoBlurFbo.bind();
-	mData.mSsaoBlurFbo.addAttachmentTexture(0, &mData.mSsaoColorBufferBlur);
-	mData.mSsaoBlurFbo.finalize();
+	FramebufferDesc fbBlurDesc;
+	fbBlurDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	fbBlurDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+	fbBlurDesc.colorAttachments = { {mData.mSsaoColorBufferBlur} };
+	mData.mSsaoBlurFbo = Engine::instance()->rhi()->createFramebuffer(fbBlurDesc);
 
-	GLW::Framebuffer::bindDefaultFramebuffer();
-	GLW::Framebuffer::bindDefaultFramebuffer();
 	// generate sample kernel
 	// ----------------------
 
@@ -81,14 +78,19 @@ void SSAOPass::init() {
 		// rotate around z-axis (in tangent space)
 		ssaoNoise.push_back(noise);
 	}
-	mData.mNoiseTexture.width = 4;
-	mData.mNoiseTexture.height = 4;
-	mData.mNoiseTexture.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.mNoiseTexture.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.mNoiseTexture.pixelFormat = GLW::RGB32F;
-	mData.mNoiseTexture.textureFormat = GLW::RGB;
-	mData.mNoiseTexture.pixelType = GLW::FLOAT;
-	mData.mNoiseTexture.create(ssaoNoise.data());
+	TextureDesc noiseDesc;
+	noiseDesc.width = 4;
+	noiseDesc.height = 4;
+	noiseDesc.format = TextureFormat::RGB32F;
+	noiseDesc.usage = TextureUsage::Sampled;
+
+	SamplerDesc samplerDesc;
+	samplerDesc.minFilter = FilterMode::Nearest;
+	samplerDesc.magFilter = FilterMode::Nearest;
+
+	mData.sampler = Engine::instance()->rhi()->createSampler(samplerDesc);
+
+	mData.mNoiseTexture = Engine::instance()->rhi()->createTexture(noiseDesc);
 
 	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
 	shaderSSAO->use();
@@ -99,7 +101,7 @@ void SSAOPass::init() {
 	shaderSSAO->setUniform("kernelSize", mData.mKernelSize);
 	shaderSSAO->setUniform("radius", mData.mRadius);
 	shaderSSAO->setUniform("bias", mData.mBias);
-	shaderSSAO->setUniform("noiseScale", Math::Vec2{static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderW) / 4.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderW) / 4.f});
+	shaderSSAO->setUniform("noiseScale", Math::Vec2{static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderW) / 4.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderH) / 4.f});
 	for (unsigned int i = 0; i < 64; ++i) {
 		shaderSSAO->setUniform(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
 	}
@@ -115,7 +117,6 @@ void SSAOPass::init() {
 	float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
 	shaderSSAOBlur->setUniform("sigmaS", mData.sigmaS);
 	shaderSSAOBlur->setUniform("facS", facS);
-
 }
 
 void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
@@ -182,25 +183,22 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
 		}
 		ImGui::End();
 	}
-	
-	mData.mSsaoFbo.bind();
+
+	Engine::instance()->rhi()->bindFramebuffer(mData.mSsaoFbo);
 	GLW::clear(GLW::ColorBit::COLOR);
 	shaderSSAO->use();
 	shaderSSAO->setUniform("projection", renderDataHandle.current.projection);
-
-	GLW::bindTextureToSlot(0, &renderDataHandle.mGeometryPassData->viewPositionBuffer);
-	GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->normalBuffer);
-	GLW::bindTextureToSlot(2, &mData.mNoiseTexture);
+	Engine::instance()->rhi()->bindTexture(0, renderDataHandle.mGeometryPassData->viewPositionBuffer, renderDataHandle.mGeometryPassData->sampler);
+	Engine::instance()->rhi()->bindTexture(1, renderDataHandle.mGeometryPassData->normalBuffer, renderDataHandle.mGeometryPassData->sampler);
+	Engine::instance()->rhi()->bindTexture(2, mData.mNoiseTexture, mData.sampler);
 	Utils::renderQuad();
 	
-
-	mData.mSsaoBlurFbo.bind();
+	Engine::instance()->rhi()->bindFramebuffer(mData.mSsaoBlurFbo);
 	GLW::clear(GLW::ColorBit::COLOR);
 	shaderSSAOBlur->use();
-	GLW::bindTextureToSlot(0, &mData.mSsaoColorBuffer);
+	Engine::instance()->rhi()->bindTexture(0, mData.mSsaoColorBuffer, mData.sampler);
 	Utils::renderQuad();
+	Engine::instance()->rhi()->bindFramebuffer({});
 
-	mData.mSsaoBlurFbo.bindDefaultFramebuffer();
-	GLW::Framebuffer::bindDefaultFramebuffer();
 	renderDataHandle.mSSAOPassData = &mData;
 }

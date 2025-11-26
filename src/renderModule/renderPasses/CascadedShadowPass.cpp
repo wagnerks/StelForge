@@ -71,10 +71,8 @@ void CascadedShadowPass::prepare() {
 				for (auto& treePos : octreeSys->getAABBOctrees(cascade.frustum.generateAABB())) {
 					if (const auto tree = octreeSys->getOctree(treePos)) {
 						auto lock = tree->readLock();
-						tree->forEachObjectInFrustum(cascade.frustum, [&entities, &cascade](const auto& obj, bool entirely) {
-							if (entirely || FrustumModule::AABB::isOnFrustum(cascade.frustum, obj.pos, obj.size)) {
-								entities.insert(obj.data);
-							}
+						tree->forEachObjectInsideFrustum(cascade.frustum, [&entities](ecss::EntityId id) {
+							entities.insert(id);
 						});
 					}
 				}
@@ -99,9 +97,11 @@ void CascadedShadowPass::prepare() {
 				}*/
 
 				for (const auto& mesh : meshComp->meshGraph) {
-					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
-				}
-				
+					if (mesh.value.vertexCount == 0) {
+						continue;
+					}
+					batcher.addToDrawList(mesh.value, {}, ent);
+				}				
 			}
 
 			batcher.sort({100.f,1300.f, 600.f});//todo
@@ -151,42 +151,93 @@ void CascadedShadowPass::initRender() {
 	auto& cameraProjection = ECSHandler::registry().pinComponent<const CameraComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getProjection();
 
 	cmp->updateCascades(cameraProjection);
-	lightDepthMap.parameters.minFilter = GLW::TextureMinFilter::LINEAR;
-	lightDepthMap.parameters.magFilter = GLW::TextureMagFilter::LINEAR;
-	lightDepthMap.parameters.wrap.S = GLW::TextureWrap::CLAMP_TO_EDGE;
-	lightDepthMap.parameters.wrap.T = GLW::TextureWrap::CLAMP_TO_EDGE;
-	lightDepthMap.parameters.compareMode = GLW::TextureCompareMode::COMPARE_REF_TO_TEXTURE;
-	lightDepthMap.parameters.compareFunc = GLW::CompareFunc::LESS;
-	lightDepthMap.width = static_cast<int>(cmp->resolution.x);
-	lightDepthMap.height = static_cast<int>(cmp->resolution.y);
-	lightDepthMap.depth = static_cast<int>(cmp->cascades.size());
-	lightDepthMap.pixelFormat = GLW::DEPTH_COMPONENT32;
-	lightDepthMap.textureFormat = GLW::DEPTH_COMPONENT;
-	lightDepthMap.pixelType = GLW::FLOAT;
+	TextureDesc depthTex;
+	depthTex.width = static_cast<int>(cmp->resolution.x);
+	depthTex.height = static_cast<int>(cmp->resolution.y);
+	depthTex.depth = static_cast<int>(cmp->cascades.size());
+	depthTex.dimension = TextureDimension::Array;
+	depthTex.format = TextureFormat::DEPTH_COMPONENT32;
+	depthTex.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
 
-	lightDepthMap.create3D();	
+	SamplerDesc shadowSamp;
+	shadowSamp.minFilter = FilterMode::Linear;
+	shadowSamp.magFilter = FilterMode::Linear;
+	shadowSamp.addressU = AddressMode::ClampToEdge;
+	shadowSamp.addressV = AddressMode::ClampToEdge;
+	shadowSamp.addressW = AddressMode::ClampToEdge;
+	shadowSamp.compareOp = CompareOp::LessEqual;
 
-	lightFBO.bind();
-	lightFBO.addAttachmentTexture(GLW::AttachmentType::DEPTH, &lightDepthMap);
-	lightFBO.setDrawBuffer(GLW::NONE);
-	lightFBO.setReadBuffer(GLW::NONE);
-	lightFBO.finalize();
+	lightDepthMa = Engine::instance()->rhi()->createTexture(depthTex);
+	lightSampler = Engine::instance()->rhi()->createSampler(shadowSamp);
 
-	{
-		auto guard = matricesUBO.lock();
-		matricesUBO.allocateData<Math::Mat4>(6, GLW::DYNAMIC_DRAW);
-		matricesUBO.setBufferBinding(0);
+	lightFbos.resize(cmp->cascades.size());
+
+	for (uint32_t c = 0; c < cmp->cascades.size(); ++c) {
+		FramebufferDesc fb{};
+		fb.width = static_cast<uint32_t>(cmp->resolution.x);
+		fb.height = static_cast<uint32_t>(cmp->resolution.y);
+
+		FramebufferAttachmentDesc depthAtt;
+		depthAtt.texture = lightDepthMa;
+		depthAtt.mipLevel = 0;
+		depthAtt.layer = c;
+
+		fb.depthStencilAttachment = depthAtt;
+
+		lightFbos[c] = Engine::instance()->rhi()->createFramebuffer(fb);
 	}
+	
+	BufferDesc desc;
+	desc.size = sizeof(Math::Mat4) * 6; //max 6 cascades
+	desc.usage = BufferUsage::Uniform;
+	desc.cpuAccess = CpuAccess::Write;
+	desc.debugName = "CascadedShadowPass_MatricesUBO";
+	matricesUBO = Engine::instance()->rhi()->createBuffer(desc);
+	Engine::instance()->rhi()->bindUniformBuffer(0, matricesUBO);
 
-	GLW::Framebuffer::bindDefaultFramebuffer();
+	ShaderDesc shaderVDesc;
+	shaderVDesc.stage = ShaderStage::Vertex;
+	shaderVDesc.name = "CascadedShadowPass_Vertex";
+	shaderVDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.vs");
+
+	ShaderDesc shaderFDesc;
+	shaderFDesc.stage = ShaderStage::Fragment;
+	shaderFDesc.name = "CascadedShadowPass_Fragment";
+	shaderFDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.fs");
+
+	PipelineDesc pipelineDesc;
+	pipelineDesc.depthStencilState.depthTest = true;
+	pipelineDesc.depthStencilState.depthWrite = true;
+	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
+	pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShader(shaderVDesc);
+	pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShader(shaderFDesc);
+	
+	Render::VertexLayoutDesc vaoDesc;
+	vaoDesc.bindings.push_back({ 0,sizeof(Vertex3D), Render::VertexInputRate::PerVertex });
+	vaoDesc.attributes.push_back({ 0,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, position)), true });
+	vaoDesc.attributes.push_back({ 1,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, normal)),  true });
+	vaoDesc.attributes.push_back({ 2,0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex3D, texCoords)), true });
+	vaoDesc.attributes.push_back({ 3,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, tangent)), true });
+	vaoDesc.attributes.push_back({ 4,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, biTangent)), true });
+	vaoDesc.attributes.push_back({ 5,0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false }); //todo only for dynamic mesh
+	vaoDesc.attributes.push_back({ 6,0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
+
+	pipelineDesc.layout = vaoDesc;
+
+	pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+
+	RenderPassDesc rpDesc;
+	rpDesc.hasDepthStencil = true;
+	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
+	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+	renderPass = Engine::instance()->rhi()->createRenderPass(rpDesc);
 }
-
 
 void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 	if (!mInited) {
 		return;
 	}
-
+	
 	debug(renderDataHandle);
 
 	FUNCTION_BENCHMARK;
@@ -213,30 +264,38 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	if (!lightMatrices.empty()) {
 		FUNCTION_BENCHMARK_NAMED(_bind_ubo);
-		auto guard = matricesUBO.lock();
-		matricesUBO.setData(lightMatrices.size(), lightMatrices.data());//todo crashes when calculateLightSpaceMatrices called from another thread
+		Engine::instance()->rhi()->updateBuffer(matricesUBO, 0, lightMatrices.size() * sizeof(Math::Mat4), lightMatrices.data());
+		Engine::instance()->rhi()->bindUniformBuffer(0, matricesUBO);
 	}
 
-	GLW::ViewportStack::push({ {static_cast<int>(shadowsComp->resolution.x), static_cast<int>(shadowsComp->resolution.y)} });
-	lightFBO.bind();
-	GLW::clear(GLW::ColorBit::DEPTH);
+	auto rhi = Engine::instance()->rhi();
 
-	const auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/cascadeShadowMap.gs");
-	simpleDepthShader->use();
-	{
-		FUNCTION_BENCHMARK_NAMED(_flush);
+	RenderPassBeginInfo begin;
+	begin.renderPass = renderPass;
+	begin.x = 0;
+	begin.y = 0;
+	begin.width = static_cast<int>(shadowsComp->resolution.x);
+	begin.height = static_cast<int>(shadowsComp->resolution.y);
+
+	for (auto i = 0; i < static_cast<int>(lightFbos.size()); i++){
+		begin.framebuffer = lightFbos[i];
+		rhi->beginRenderPass(begin);
+
+		rhi->bindPipeline(pipeline);
+		rhi->setUniform(pipeline, "uCascadeIndex", i);
+
 		curPassData->getBatcher().flushAll();
-	}
 
-	GLW::Framebuffer::bindDefaultFramebuffer();
-	GLW::ViewportStack::pop();
+		rhi->endRenderPass();
+	}
 }
 
 void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataHandle) {
 	auto shadowsComp = ECSHandler::registry().pinComponent<const CascadeShadowComponent>(mShadowSource);
 	renderDataHandle.mCascadedShadowsPassData = &mData;
 
-	renderDataHandle.mCascadedShadowsPassData->shadowMapTexture = lightDepthMap.mId;
+	renderDataHandle.mCascadedShadowsPassData->shadowMapTexture = lightDepthMa;
+	renderDataHandle.mCascadedShadowsPassData->shadowMapSampler = lightSampler;
 	renderDataHandle.mCascadedShadowsPassData->lightDirection = ECSHandler::registry().pinComponent<const TransformComponent>(mShadowSource)->getForward();
 	renderDataHandle.mCascadedShadowsPassData->lightColor = ECSHandler::registry().pinComponent<const LightSourceComponent>(mShadowSource)->getLightColor();
 	renderDataHandle.mCascadedShadowsPassData->resolution = shadowsComp->resolution;

@@ -4,9 +4,11 @@
 #include <thread>
 #include <vector>
 
+#include "assetsModule/TextureHandler.h"
 #include "glWrapper/Framebuffer.h"
 #include "glWrapper/Renderbuffer.h"
 #include "logsModule/logger.h"
+#include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
 class Batcher;
@@ -18,20 +20,23 @@ namespace SFE::Render::RenderPasses {
 	public:
 		void prepare() override;
 		struct Data {
-			GLW::Framebuffer gFramebuffer;
-			GLW::Texture positionBuffer{GLW::TEXTURE_2D};
-			GLW::Texture viewPositionBuffer{GLW::TEXTURE_2D};
-			GLW::Texture outlinesBuffer{GLW::TEXTURE_2D};
-			GLW::Texture lightsBuffer{GLW::TEXTURE_2D};
-			GLW::Texture normalBuffer{GLW::TEXTURE_2D};
-			GLW::Texture albedoBuffer{GLW::TEXTURE_2D};
+			FramebufferHandle gFramebuffer;
 
-			GLW::Renderbuffer rboDepth;
-			GLW::Framebuffer outlineFramebuffer;
+			TextureHandle positionBuffer;
+			TextureHandle viewPositionBuffer;
+			TextureHandle outlinesBuffer;
+			TextureHandle lightsBuffer;
+			TextureHandle normalBuffer;
+			TextureHandle albedoBuffer;
+
+			SamplerHandle sampler;
+
+			FramebufferHandle outlineFramebuffer;
 		};
 
+		RenderPassHandle geometryPass;
+		PipelineHandle geometryPipeline;
 
-		
 		void init() override;
 		void render(SystemsModule::RenderData& renderDataHandle) override;
 	private:

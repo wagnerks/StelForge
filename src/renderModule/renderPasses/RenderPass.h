@@ -22,11 +22,13 @@ namespace SFE::Render {
 	class RenderPassData {
 	public:
 		virtual ~RenderPassData() = default;
-		Batcher& getBatcher() { return mBatcher; }
+		Batcher& getBatcher() { return mBatchers[0]; }
+		std::vector<Batcher>& getBatchers() { return mBatchers; }
+
 		std::atomic<RenderPreparingStatus> mStatus = RenderPreparingStatus::READY; //default status is ready for passes without render data
 
 	private:
-		Batcher mBatcher;
+		std::vector<Batcher> mBatchers{{}};
 	};
 
 	class RenderPass {

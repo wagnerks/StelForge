@@ -36,8 +36,9 @@ namespace SFE::Render::RenderPasses {
 
 		static inline ecss::Registry<> registry;
 
-		GLW::VertexArray VAO;
-		GLW::Buffer VBO{GLW::ARRAY_BUFFER };
+		BufferHandle VBO;
+
+		PipelineHandle pipeline;
 	};
 }
 

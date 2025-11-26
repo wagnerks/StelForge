@@ -207,17 +207,17 @@ void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMa
 	auto diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE, directory);
 	assert(diffuseMaps.size() < 2);
 	if (!diffuseMaps.empty()) {
-		material[SFE::DIFFUSE] = SFE::MaterialTexture{ &diffuseMaps.front()->texture, SFE::DIFFUSE, SFE::DIFFUSE };
+		material[SFE::DIFFUSE] = SFE::MaterialTexture{ diffuseMaps.front()->texture, SFE::DIFFUSE, SFE::DIFFUSE };
 	}
 
 	auto specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_SPECULAR, directory);
 	if (!specularMaps.empty()) {
-		material[SFE::SPECULAR] = SFE::MaterialTexture{ &specularMaps.front()->texture, SFE::SPECULAR, SFE::SPECULAR };
+		material[SFE::SPECULAR] = SFE::MaterialTexture{ specularMaps.front()->texture, SFE::SPECULAR, SFE::SPECULAR };
 	}
 
 	auto normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMALS, directory);
 	if (!normalMaps.empty()) {
-		material[SFE::NORMALS] = SFE::MaterialTexture{ &normalMaps.front()->texture, SFE::NORMALS, SFE::NORMALS };
+		material[SFE::NORMALS] = SFE::MaterialTexture{ normalMaps.front()->texture, SFE::NORMALS, SFE::NORMALS };
 	}
 }
 

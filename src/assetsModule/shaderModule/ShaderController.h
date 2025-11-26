@@ -2,6 +2,7 @@
 
 #include "Shader.h"
 #include "containersModule/Singleton.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 #define SHADER_CONTROLLER ::SFE::ShaderModule::ShaderController::instance()
 
@@ -12,6 +13,8 @@ namespace SFE::ShaderModule {
 		ShaderController();
 		~ShaderController();
 		void init() override;
+		
+
 		ShaderBase* loadVertexFragmentShader(const std::string& vertexPath, const std::string& fragmentPath);
 		ShaderBase* loadGeometryShader(const std::string& vertexPath, const std::string& fragmentPath, const std::string& geometryPath);
 		void recompileShader(ShaderBase* shader);

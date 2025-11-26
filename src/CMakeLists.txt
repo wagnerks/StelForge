@@ -44,31 +44,49 @@ target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/stb")
 #target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
 
 find_package(OpenGL REQUIRED)
+find_package(Vulkan REQUIRED)
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glfw/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/assimp/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/freetype/include")
 
-if(MSVC)
-	target_link_libraries(${ENGINE_NAME}
-		PUBLIC
+
+if(Vulkan_INCLUDE_DIRS)
+    target_include_directories(${ENGINE_NAME} PUBLIC ${Vulkan_INCLUDE_DIRS})
+elseif(Vulkan_INCLUDE_DIR)
+    target_include_directories(${ENGINE_NAME} PUBLIC ${Vulkan_INCLUDE_DIR})
+endif()
+
+target_link_libraries(${ENGINE_NAME} 
+	PRIVATE 
+		Vulkan::Vulkan
+	PUBLIC
 		glad
 		imgui
-		"${ENGINE_PATH}/lib/glfw/glfw3.lib"
 		OpenGL::GL
+	)
+
+if(MSVC)
+	# Add PDH for SystemLoadHelper + Windows version/UNICODE defines
+	target_compile_definitions(${ENGINE_NAME} PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+
+	target_link_libraries(${ENGINE_NAME}
+	PUBLIC
+		"${ENGINE_PATH}/lib/glfw/glfw3.lib"
+		pdh
 	debug
 		"${ENGINE_PATH}/lib/freetype/lib/win/debug/freetyped.lib"
-	optimized
+		optimized
 		"${ENGINE_PATH}/lib/freetype/lib/win/release/freetype.lib"
-	debug
+		debug
 		"${ENGINE_PATH}/lib/jsoncpp/lib/debug/jsoncpp.lib"
-	optimized
+		optimized
 		"${ENGINE_PATH}/lib/jsoncpp/lib/release/jsoncpp.lib"
-	debug
+		debug
 		"${ENGINE_PATH}/lib/assimp/Debug/assimp-vc143-mtd.lib"
-	optimized
+		optimized
 		"${ENGINE_PATH}/lib/assimp/Release/assimp-vc143-mt.lib"
-	optimized
+		optimized
 		MSVCRT
 	)
 	set(CMAKE_EXE_LINKER_FLAGS "/NODEFAULTLIB:MSVCRT")
@@ -87,21 +105,17 @@ elseif(XCODE)
 	add_definitions(-std=c++20)
 
 	target_link_libraries(${ENGINE_NAME}
-		PUBLIC
-		imgui
-		glad
+	PUBLIC
 		${ENGINE_PATH}/lib/glfw/lib-arm64/libglfw.3.dylib
 		${ENGINE_PATH}/lib/glfw/lib-arm64/libglfw3.a
-		
-		OpenGL::GL
 		pthread
 	debug
 		${ENGINE_PATH}/lib/jsoncpp/lib/macos/debug/libjsoncpp.dylib
-	optimized
+		optimized
 		${ENGINE_PATH}/lib/jsoncpp/lib/macos/release/libjsoncpp.dylib
-	debug
+		debug
 		${ENGINE_PATH}/lib/assimp/macos/debug/libassimpd.dylib
-	optimized
+		optimized
 		${ENGINE_PATH}/lib/assimp/macos/release/libassimp.dylib
 	)
 endif()

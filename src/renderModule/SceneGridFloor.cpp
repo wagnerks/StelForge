@@ -21,19 +21,9 @@ using namespace SFE::Render;
 SceneGridFloor::SceneGridFloor() {
 	init();
 }
-SceneGridFloor::~SceneGridFloor() {	
-	SHADER_CONTROLLER->deleteShader(floorShaderHash);
-}
+SceneGridFloor::~SceneGridFloor() {}
 
 void SceneGridFloor::init() {
-	floorShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/floorGrid.vs", "shaders/floorGrid.fs");
-	if (!floorShader) {
-		return;
-	}
-
-	floorShaderHash = floorShader->getHash();
-
-	floorShader->use();
 	transform = Math::translate(transform, Math::Vec3(0.f));
 
 	Math::Vec3 vertices[] = {
@@ -46,49 +36,44 @@ void SceneGridFloor::init() {
 		{ 1.f, 0.f,  1.f}, //near right
 	};
 
-	VAO.generate();
-	VAO.bind();
+	BufferDesc bd;
+	bd.cpuAccess = CpuAccess::None;
+	bd.size = sizeof(vertices);
+	bd.usage = BufferUsage::Vertex;
+	VBO = Engine::instance()->rhi()->createBuffer(bd, vertices);
 
-	VBO.bind();
-	VBO.allocateData(6, GLW::STATIC_DRAW, &vertices);
+	VertexLayoutDesc layout;
+	layout.bindings.push_back({ 0, sizeof(Math::Vec3), VertexInputRate::PerVertex });
+	layout.attributes.push_back(VertexAttributeDesc{0, 0, VertexFormat::Float3, 0, false });
+	
+	GraphicsPipelineDesc pd;
+	pd.shaders.vertex = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "Floor Grid Vertex Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/floorGrid.vs") });
+	pd.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Fragment, "Floor Grid Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/floorGrid.fs") });
+	pd.layout = layout;
+	pd.cullMode = CullMode::Back;
+	pd.frontFace = FrontFace::CCW;
+	pd.blend = { true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha };
 
-	VAO.addAttribute<Math::Vec3>(0, 3, GLW::AttributeFType::FLOAT, false);
-
-	GLW::Buffer::bindDefaultBuffer(GLW::ARRAY_BUFFER);
-	GLW::VertexArray::bindDefault();
+	floorPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pd);
 }
 
 void SceneGridFloor::draw() {
-	if (VAO.getID() == 0) {
-		return;
-	}
-
-	floorShader->use();
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(camera);
 
-	floorShader->setUniform("PVM", renderData.current.PV * transform);
-    floorShader->setUniform("PV", renderData.current.PV);
-	floorShader->setUniform("model", transform);
-	
-	floorShader->setUniform("cameraPos", Math::Vec3{renderData.mCameraPos});
+	auto rhi = Engine::instance()->rhi();
 
-	floorShader->setUniform("far", cameraComp->getProjection().getFar());
-	floorShader->setUniform("near", cameraComp->getProjection().getNear());
+	rhi->bindPipeline(floorPipeline);
+	VBO.bindVertex(0);
 
+	rhi->setUniform(floorPipeline, "PVM", renderData.current.PV * transform);
+	rhi->setUniform(floorPipeline, "PV", renderData.current.PV);
+	rhi->setUniform(floorPipeline, "model", transform);
 
-	VAO.bind();
+	rhi->setUniform(floorPipeline, "cameraPos", Math::Vec3{ renderData.mCameraPos });
 
-	GLW::CapabilitiesStack<GLW::CULL_FACE>::push(false);
-	GLW::CapabilitiesStack<GLW::BLEND>::push(true);
-	GLW::BlendFuncStack::push({GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
-
-	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 6);
-
-	GLW::CapabilitiesStack<GLW::CULL_FACE>::pop();
-	GLW::CapabilitiesStack<GLW::BLEND>::pop();
-	GLW::BlendFuncStack::pop();
-
-	GLW::VertexArray::bindDefault();
+	rhi->setUniform(floorPipeline, "far", cameraComp->getProjection().getFar());
+	rhi->setUniform(floorPipeline, "near", cameraComp->getProjection().getNear());
+	rhi->draw(6);
 }

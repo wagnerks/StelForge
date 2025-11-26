@@ -4,7 +4,11 @@
 #include <stack>
 #include <string>
 #include <unordered_map>
+
+
 #include <glad/glad.h>
+//#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_raii.hpp>
 #include <GLFW/glfw3.h>
 
 #include "windowsModule/ViewportData.h"
@@ -101,10 +105,10 @@ namespace SFE::Render {
 #endif
 		};
 
-		std::map<glfwHintsInt, int> ints{
+		std::map<glfwHintsInt, int> ints{/*
 			{ SFE::Render::CONTEXT_VERSION_MAJOR, GLFW_CONTEXT_VER_MAJ },
 			{ SFE::Render::CONTEXT_VERSION_MINOR, GLFW_CONTEXT_VER_MIN },
-			{ SFE::Render::OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE },
+			{ SFE::Render::OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE },*/
 		};
 
 		std::map<glfwHintsString, std::string> strings;
@@ -122,7 +126,7 @@ namespace SFE::Render {
 		Window() = default;
 		~Window();
 
-		Window(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints = {});
+		Window(int w, int h, const std::string& title, GLFWwindow* share, const WindowHints& hints = {});
 
 		void create(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints = {});
 		GLFWwindow* getWindow() const { return mWindow; }
@@ -156,7 +160,7 @@ namespace SFE::Render {
 		~WindowSystem() override;
 		void init() override;
 
-		Window* createWindow(const std::string& windowName, GLFWwindow* share, int w, int h, WindowHints hints = {});
+		Window* createWindow(const std::string& windowName, GLFWwindow* share, int w, int h, const WindowHints& hints = {});
 		void deleteWindow(const std::string& windowName);
 
 		static Window* getCurrentContext() { return contextStack.empty() ? nullptr : contextStack.top(); }

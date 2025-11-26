@@ -40,9 +40,7 @@ namespace SFE::Render {
         }
 
         void clear() const {
-            if (mAtlasTex) {
-                delete mAtlasTex;
-            }
+            Engine::instance()->rhi()->destroyTexture(mAtlasTex);
     	}
 
         const GlyphInfo& getGlyphData(char c) const {
@@ -71,8 +69,8 @@ namespace SFE::Render {
             }
 
             if (!mFontPath.empty()) {
-                delete mAtlasTex;
-                mAtlasTex = nullptr;
+				Engine::instance()->rhi()->destroyTexture(mAtlasTex);
+                mAtlasTex = {};
                 mGlyphs.clear();
             }
 
@@ -81,33 +79,34 @@ namespace SFE::Render {
 
             FT_Set_Pixel_Sizes(face, 0, mFontSize);
             mAtlasHeight = calcAtlasHeight(face);
-            mAtlasTex = new GLW::Texture{ GLW::TEXTURE_2D };
-      
-            mAtlasTex->width = atlasSize;
-            mAtlasTex->height = mAtlasHeight;
-            mAtlasTex->parameters.minFilter = GLW::TextureMinFilter::LINEAR;
-            mAtlasTex->parameters.magFilter = GLW::TextureMagFilter::LINEAR;
-            mAtlasTex->parameters.wrap.S = GLW::TextureWrap::CLAMP_TO_EDGE;
-        	mAtlasTex->parameters.wrap.T = GLW::TextureWrap::CLAMP_TO_EDGE;
-            mAtlasTex->pixelFormat = GLW::R8;
-            mAtlasTex->textureFormat = GLW::RED;
-            mAtlasTex->pixelType = GLW::UNSIGNED_BYTE;
-            mAtlasTex->unpackAlignmentMode = GLW::PixelStorageModeValue::BYTE;
-            mAtlasTex->create();
-                        
+            TextureDesc tDesc;
+			tDesc.width = atlasSize;
+			tDesc.height = mAtlasHeight;
+			tDesc.format = TextureFormat::R8;
+            mAtlasTex = Engine::instance()->rhi()->createTexture(tDesc);
+
+			SamplerDesc samplerDesc;
+			samplerDesc.minFilter = FilterMode::Linear;
+			samplerDesc.magFilter = FilterMode::Linear;
+			samplerDesc.addressU = AddressMode::ClampToEdge;
+			samplerDesc.addressV = AddressMode::ClampToEdge;
+			samplerDesc.compareOp = CompareOp::None;
+            mAtlasSampler = Engine::instance()->rhi()->createSampler(samplerDesc);
+
             loadGlyphsToAtlas(face);
 
             FT_Done_Face(face);
             FT_Done_FreeType(ft);
         }
 
-        unsigned int getAtlas() const { return mAtlasTex ? mAtlasTex->mId : 0; }
-        GLW::Texture* getAtlasTex() const { return mAtlasTex; }
+        TextureHandle getAtlasTex() const { return mAtlasTex; }
+        SamplerHandle getAtlasTexSampler() const { return mAtlasSampler; }
 
     private:
         std::string mFontPath;
 
-        GLW::Texture* mAtlasTex = nullptr; //todo leak
+        TextureHandle mAtlasTex;
+        SamplerHandle mAtlasSampler;
         uint16_t mFontSize = 0;
 
         unsigned int mAtlasHeight = 0;
@@ -152,7 +151,8 @@ namespace SFE::Render {
             FT_ULong c = FT_Get_First_Char(face, &index);
 
             unsigned int rows = 0;
-            mAtlasTex->bind();
+            //Engine::instance()->rhi()->bindTexture(0, mAtlasTex, mAtlasSampler);
+            //mAtlasTex->bind();
             while (index) {
                 if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
                     continue;
@@ -168,8 +168,8 @@ namespace SFE::Render {
                 glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
                 glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
 
-                mAtlasTex->setSubImageData2D(x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, face->glyph->bitmap.buffer, GLW::RED);
-
+                Engine::instance()->rhi()->setTextureSubImage2D(mAtlasTex, x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, TextureFormat::R8, face->glyph->bitmap.buffer);
+                
                 if (mGlyphs.size() <= c) {
                     mGlyphs.resize(c + 1);
                 }
@@ -188,7 +188,9 @@ namespace SFE::Render {
 
                 c = FT_Get_Next_Char(face, c, &index);
             }
-            mAtlasTex->unbind();
+
+            //Engine::instance()->rhi()->bindTexture(0, {}, {});
+            //mAtlasTex->unbind();
         }
     };
 
@@ -293,9 +295,6 @@ namespace SFE::Render {
         }
 
         void renderText(std::string text, float x, float y, float scale, Math::Vec3 color, Font* font) const {
-            VBO.bind();
-            VBO.allocateData(sizeof(float) * 6 * 4, text.size(), GLW::DYNAMIC_DRAW, nullptr);
-
             const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
             const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
 
@@ -334,42 +333,50 @@ namespace SFE::Render {
                      endX,      endY,       ch.texCoords.second.x, ch.texCoords.first.y,
                      
                 };
-                VBO.setData(sizeof(vertices), 1, vertices, i);
+
+                Engine::instance()->rhi()->updateBuffer(VBO, i * sizeof(vertices), sizeof(vertices), vertices);
 
                 // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
                 curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 
             }
 
-            VBO.bindDefaultBuffer(VBO.getType());
-           
 
-            GLW::CapabilitiesStack<GLW::BLEND>::push(true);
-            GLW::BlendFuncStack::push({ GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
-            const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/text.vs", "shaders/text.fs");
-            shader->use();
-            shader->setUniform("textColor", color);
-            shader->setUniform("text", 24);
+			Engine::instance()->rhi()->bindTexture(24, font->getAtlasTex(), font->getAtlasTexSampler()); // todo use one sampler for all fonts
+			Engine::instance()->rhi()->bindPipeline(textRenderPipeline);
+			VBO.bindVertex(0);
 
-            GLW::bindTextureToSlot(24, font->getAtlasTex());
-
-            drawVertices(GLW::TRIANGLES, VAO.getID(), static_cast<int>(text.size() + 1) * 6, 0, 0);
-
-            GLW::CapabilitiesStack<GLW::BLEND>::pop();
-            GLW::BlendFuncStack::pop();
+        	Engine::instance()->rhi()->setUniform(textRenderPipeline, "textColor", color);
+			Engine::instance()->rhi()->setUniform(textRenderPipeline, "text", 24);
+			Engine::instance()->rhi()->draw(static_cast<int>(text.size()) * 6);
         }
 
         void init() override {
             const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/text.vs", "shaders/text.fs");
             shader->use();
             shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().width), 0.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().height), -1.f, 1.f));
+			
+			BufferDesc vboDesc;
+			vboDesc.size = sizeof(float) * 6 * 4 * 1000; // max 1000 chars per draw call
+			vboDesc.usage = BufferUsage::Vertex;
+			vboDesc.cpuAccess = CpuAccess::None;
+			vboDesc.debugName = "TextRenderer VBO";
+			VBO = Engine::instance()->rhi()->createBuffer(vboDesc, nullptr);
 
-            VAO.generate();
-            VAO.bind();
-            VBO.bind();
+			VertexLayoutDesc layoutDesc;
+			layoutDesc.bindings.push_back({ 0, 4 * sizeof(float), VertexInputRate::PerVertex });
+			layoutDesc.attributes.push_back({0, 0, VertexFormat::Float4, 0, false }); // pos.xy, tex.xy packed
 
-            VAO.addAttribute(0, 4, GLW::AttributeFType::FLOAT, false, 4 * sizeof(float));
-            VBO.bindDefaultBuffer(VBO.getType());
-            VAO.bindDefault();
+			GraphicsPipelineDesc pipelineDesc;
+			pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "Text Vertex Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.vs") });
+			pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Fragment, "Text Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.fs") });
+			pipelineDesc.layout = layoutDesc;
+			pipelineDesc.topology = PrimitiveTopology::Triangles;
+			pipelineDesc.cullMode = CullMode::None;
+			pipelineDesc.frontFace = FrontFace::CCW;
+			pipelineDesc.fillMode = PolygonFillMode::Fill;
+			pipelineDesc.depthStencilState = { false, false, CompareOp::Less };
+			pipelineDesc.blend = { true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha };
+			textRenderPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
         }
         inline static char msgBuf[2048];
         template <typename... Args>
@@ -382,8 +389,8 @@ namespace SFE::Render {
 
 	private:
 
-        GLW::VertexArray VAO;
+		PipelineHandle textRenderPipeline;
 
-        GLW::Buffer VBO{GLW::ARRAY_BUFFER };
+        BufferHandle VBO;
 	};
 }

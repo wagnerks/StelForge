@@ -77,6 +77,10 @@ namespace SFE::GLW {
 		}
 	}
 
+	void Framebuffer::setAttachmentLayer(unsigned attachment, Texture* texture, int layer, int mip) {
+		glFramebufferTextureLayer(GL_FRAMEBUFFER, attachment, texture->mId, 0, layer);
+	}
+
 	void Framebuffer::addRenderbuffer(unsigned attachment, unsigned renderBuffer) {
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, renderBuffer);
 	}

@@ -229,23 +229,35 @@ namespace SFE::ComponentsModule {
 			return;
 		}
 
-		GLW::CapabilitiesStack<GLW::CULL_FACE>::push(false);
-		GLW::CapabilitiesStack<GLW::BLEND>::push(true);
-		GLW::BlendFuncStack::push({ GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
-		
+		if (!mInited) {
+			mInited = true;
+			Render::GraphicsPipelineDesc pipelineDesc;
+			pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({Render::ShaderStage::Vertex, "CascadeShadowsDebug_VS", ShaderModule::ShaderBase::loadShaderCode("shaders/debugCascadeShader.vs")});
+			pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ Render::ShaderStage::Fragment, "CascadeShadowsDebug_FS", ShaderModule::ShaderBase::loadShaderCode("shaders/debugCascadeShader.fs") });
+			pipelineDesc.depthStencilState.depthTest = true;
+			pipelineDesc.depthStencilState.depthWrite = true;
+			pipelineDesc.depthStencilState.depthCompareOp = Render::CompareOp::Less;
+			pipelineDesc.cullMode = Render::CullMode::Back;
+			pipelineDesc.frontFace = Render::FrontFace::CCW;
+			pipelineDesc.fillMode = Render::PolygonFillMode::Fill;
+			pipelineDesc.topology = Render::PrimitiveTopology::Triangles;
+			pipelineDesc.blend.enabled = true;
+			pipelineDesc.blend.srcColor = Render::BlendFactor::SrcAlpha;
+			pipelineDesc.blend.dstColor = Render::BlendFactor::OneMinusSrcAlpha;
+			pipelineDesc.layout.bindings = {
+				{0, sizeof(Math::Vec4), Render::VertexInputRate::PerVertex}
+			};
+			pipelineDesc.layout.attributes = {
+				{0, 0, Render::VertexFormat::Float3, 0, true}
+			};
+			debugPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
 
-		auto debugCascadeShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugCascadeShader.vs", "shaders/debugCascadeShader.fs");
-		debugCascadeShader->use();
-		debugCascadeShader->setUniform("projection", cameraProjection);
-		debugCascadeShader->setUniform("view", cameraView);
-		drawCascadeVolumeVisualizers(lightSpaceMatrices, debugCascadeShader);
-		GLW::CapabilitiesStack<GLW::CULL_FACE>::pop();
-		GLW::CapabilitiesStack<GLW::BLEND>::pop();
-		GLW::BlendFuncStack::pop();
-	}
-
-	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices, SFE::ShaderModule::ShaderBase* shader) {
-		static const GLuint indices[] = {
+			Render::BufferDesc vertexBufferDesc;
+			vertexBufferDesc.size = sizeof(Math::Vec4) * 8;
+			vertexBufferDesc.usage = Render::BufferUsage::Vertex;
+			vertexBufferDesc.cpuAccess = Render::CpuAccess::Write;
+			debugMatricesUBO = Engine::instance()->rhi()->createBuffer(vertexBufferDesc);
+			const GLuint indices[] = {
 			0, 2, 3,
 			0, 3, 1,
 			4, 6, 2,
@@ -258,36 +270,38 @@ namespace SFE::ComponentsModule {
 			6, 3, 2,
 			1, 5, 4,
 			0, 1, 4
-		};
+			};
 
+			Render::BufferDesc indexBufferDesc;
+			indexBufferDesc.size = sizeof(GLuint) * 36;
+			indexBufferDesc.usage = Render::BufferUsage::Index;
+			indexBufferDesc.cpuAccess = Render::CpuAccess::Write;
+			debugMatricesEBO = Engine::instance()->rhi()->createBuffer(indexBufferDesc, indices);
+		}
+
+		debugPipeline.bind();
+		Engine::instance()->rhi()->setUniform(debugPipeline, "projection", cameraProjection);
+		Engine::instance()->rhi()->setUniform(debugPipeline, "view", cameraView);
+		
+
+		drawCascadeVolumeVisualizers(lightSpaceMatrices);
+	}
+
+	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices) {
 		static const Math::Vec4 colors[] = {
 			{1.0, 0.0, 0.0, 0.5f},
 			{0.0, 1.0, 0.0, 0.5f},
 			{0.0, 0.0, 1.0, 0.5f},
 		};
 
-		GLW::VertexArrays<8> visualizerVAOs;
-		GLW::Buffers<8> visualizerVBOs{GLW::ARRAY_BUFFER};
-		GLW::Buffers<8> visualizerEBOs{GLW::ELEMENT_ARRAY_BUFFER};
-
-		visualizerVAOs.generate();
-
 		for (int i = 0; i < lightMatrices.size(); ++i) {
 			const auto corners = CascadeShadowComponent::getFrustumCornersWorldSpace(lightMatrices[i]);
-			visualizerVAOs.bind(i);
-			visualizerVBOs.bind(i);
-			visualizerVBOs.allocateData(corners.size(), GLW::STATIC_DRAW, corners.data());
+			Engine::instance()->rhi()->updateBuffer(debugMatricesUBO, 0, sizeof(Math::Vec4) * corners.size(), corners.data());
+			Engine::instance()->rhi()->setUniform(debugPipeline, "color", colors[i % 3]);
 
-			visualizerEBOs.bind(i);
-			visualizerEBOs.allocateData(36, GLW::STATIC_DRAW, indices);
-			visualizerVAOs.addAttribute<Math::Vec4>(0, 3, GLW::AttributeFType::FLOAT, false);
-
-			shader->setUniform("color", colors[i % 3]);
-			GLW::drawVertices(GLW::TRIANGLES, visualizerVAOs.getID(i), 36);
+			debugMatricesUBO.bindVertex();
+			debugMatricesEBO.bindIndex(Render::IndexType::Uint32);
+			Engine::instance()->rhi()->drawIndexed(36, 0, 1, Render::IndexType::Uint32, 0);
 		}
-
-		visualizerVAOs.bindDefault();
-		visualizerVBOs.unbind();
-		visualizerEBOs.unbind();
 	}
 }

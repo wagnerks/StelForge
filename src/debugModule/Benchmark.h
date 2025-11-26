@@ -10,7 +10,7 @@
 #include "containersModule/Singleton.h"
 #include "logsModule/logger.h"
 
-#define BENCHMARK_ENABLED 1
+#define BENCHMARK_ENABLED 0
 
 #define CONCATENATE_DETAIL(x, y) x##y
 #define CONCATENATE(x, y) CONCATENATE_DETAIL(x, y)
@@ -18,7 +18,8 @@
 
 #if !BENCHMARK_ENABLED
 #define FUNCTION_BENCHMARK 
-#define FUNCTION_BENCHMARK_NAMED(name) 
+#define FUNCTION_BENCHMARK_NAMED(name)
+#define FUNCTION_BENCHMARK_NAMED_STR(name) 
 #else
 #define FUNCTION_BENCHMARK SFE::Debug::BenchmarkFunc MAKE_UNIQUE(scopeObj) = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__), __LINE__);
 #define FUNCTION_BENCHMARK_NAMED(name) SFE::Debug::BenchmarkFunc MAKE_UNIQUE(scopeObj) = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__), __LINE__, "[" + std::string(#name) + "]");

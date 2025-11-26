@@ -28,18 +28,14 @@ namespace SFE::Render {
 		glfwSetErrorCallback(errorCallback);
 	}
 
-	Window* WindowSystem::createWindow(const std::string& windowName, GLFWwindow* share, int w, int h, WindowHints hints) {
+	Window* WindowSystem::createWindow(const std::string& windowName, GLFWwindow* share, int w, int h, const WindowHints& hints) {
 		const auto it = mWindows.find(windowName);
 		if (it != mWindows.end()) {
 			return it->second;
 		}
 
-		hints.apply();
-		
-		const auto window = new Window(w, h, windowName, share);
+		const auto window = new Window(w, h, windowName, share, hints);
 		mWindows[windowName] = window;
-
-		glfwDefaultWindowHints();
 
 		return window;
 	}
@@ -71,7 +67,7 @@ namespace SFE::Render {
 		windows.erase(mWindow);
 	}
 
-	Window::Window(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints) {
+	Window::Window(int w, int h, const std::string& title, GLFWwindow* share, const WindowHints& hints) {
 		create(w, h, title, share, hints);
 	}
 
@@ -80,6 +76,7 @@ namespace SFE::Render {
 		data.height = h;
 
 		hints.apply();
+		glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 		mWindow = glfwCreateWindow(w, h, title.c_str(), nullptr, share);
 		if (!mWindow) {
 			LogsModule::Logger::LOG_FATAL(false, "Failed to create glfw window \"%s\"", title.c_str());
@@ -94,12 +91,14 @@ namespace SFE::Render {
 		glfwGetFramebufferSize(mWindow, &data.renderW, &data.renderH);
 
 		data.setSize(data.width, data.height);
-
-		if (!share) {
+		bool noApi = hints.ints.contains(CLIENT_API) && hints.ints[CLIENT_API] == GLFW_NO_API;
+		if (!share && !noApi) {
 			glfwMakeContextCurrent(mWindow);
 			LogsModule::Logger::LOG_FATAL(gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)), "Failed to initialize GLAD");
 			glfwMakeContextCurrent(nullptr);
 		}
+
+		glfwDefaultWindowHints();
 
 		glfwSetWindowPosCallback(mWindow, [](GLFWwindow* window, int x, int y) {
 			if (windows.contains(window)) {

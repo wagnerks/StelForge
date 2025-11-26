@@ -20,10 +20,12 @@ SFE::Render::RenderPasses::ShadersPass::ShadersPass() {}
 void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& renderDataHandle) {
 	FUNCTION_BENCHMARK;
 
-	static GLW::VertexArray VAO;
-	if (!VAO) {
-		static GLW::Buffer VBO;
-		static GLW::Buffer EBO;
+	static PipelineHandle pipeline;
+	static BufferHandle VBO;
+	static BufferHandle EBO;
+
+	if (!pipeline) {
+		auto* rhi = Engine::instance()->rhi();
 
 		std::vector<SFE::Vertex3D> vertices = {
 			{{ 1.f, 0.f, -1.f}, {1.f,1.f}, {0.f,1.f,0.f}}, //far right
@@ -37,50 +39,77 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 			3,2,0
 		};
 
-		VAO.generate();
-		VBO.generate(SFE::GLW::ARRAY_BUFFER);
+		BufferDesc vboDesc;
+		vboDesc.size = vertices.size() * sizeof(SFE::Vertex3D);
+		vboDesc.usage = BufferUsage::Vertex;
+		vboDesc.cpuAccess = CpuAccess::None;
+		VBO = rhi->createBuffer(vboDesc, vertices.data());
 
-		VAO.bind();
-		VBO.bind();
-		VBO.allocateData(vertices.size(), SFE::GLW::STATIC_DRAW, vertices.data());
+		BufferDesc eboDesc;
+		eboDesc.size = indices.size() * sizeof(unsigned);
+		eboDesc.usage = BufferUsage::Index;
+		eboDesc.cpuAccess = CpuAccess::None;
+		EBO = rhi->createBuffer(eboDesc, indices.data());
 
-		if (!indices.empty()) {
-			EBO.generate(SFE::GLW::ELEMENT_ARRAY_BUFFER);
-			EBO.bind();
-			EBO.allocateData(indices.size(), SFE::GLW::STATIC_DRAW, indices.data());
-		}
+		VertexLayoutDesc vaoDesc;
 
-		VAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::position);
-		VAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::normal);
-		VAO.addAttribute(2, 2, GLW::AttributeFType::FLOAT, true, &SFE::Vertex3D::texCoords);
+		vaoDesc.bindings.push_back({ 0, sizeof(SFE::Vertex3D), VertexInputRate::PerVertex });
 
-		VAO.bindDefault();
-		VBO.unbind();
-		EBO.unbind();
+		vaoDesc.attributes.push_back({
+			0,                            // location 0
+			0,
+			VertexFormat::Float3,         // vec3 position
+			static_cast<std::uint32_t>(offsetof(Vertex3D, position)),
+			false                         // normalized
+			});
+		vaoDesc.attributes.push_back({
+			1,                            // location 1
+			0,
+			VertexFormat::Float3,         // vec3 normal
+			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, normal)),
+			true                          // normalized = true
+			});
+		vaoDesc.attributes.push_back({
+			2,                            // location 2
+			0,
+			VertexFormat::Float2,         // vec2 texCoords
+			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, texCoords)),
+			true                          // normalized = true
+			});
+
+		GraphicsPipelineDesc pipelineDesc;
+		pipelineDesc.layout = vaoDesc;
+		pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "Shaders Pass Vertex Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.vs") });
+		pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "Shaders Pass Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.fs") });
+		pipelineDesc.topology = PrimitiveTopology::Triangles;
+		pipelineDesc.cullMode = CullMode::Back;
+		pipelineDesc.frontFace = FrontFace::CCW;
+		pipelineDesc.fillMode = PolygonFillMode::Fill;
+		pipelineDesc.depthStencilState = { true, true, CompareOp::LessEqual };
+		pipelineDesc.blend = { false };
+		pipeline = rhi->createGraphicsPipeline(pipelineDesc);
 	}
 
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(camera);
 
-	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
+	Engine::instance()->rhi()->bindFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer);
 
-	const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/testSh.vs", "shaders/testSh.fs");
-	shader->use();
+	Engine::instance()->rhi()->bindPipeline(pipeline);
+	EBO.bindIndex(IndexType::Uint32, 0);
+	VBO.bindVertex(0);
 
-	shader->setUniform("cameraPos", Math::Vec3{renderDataHandle.mCameraPos});
+	Engine::instance()->rhi()->setUniform(pipeline, "cameraPos", renderDataHandle.mCameraPos);
+	Engine::instance()->rhi()->setUniform(pipeline, "far", cameraComp->getProjection().getFar());
+	Engine::instance()->rhi()->setUniform(pipeline, "near", cameraComp->getProjection().getNear());
 
-	shader->setUniform("far", cameraComp->getProjection().getFar());
-	shader->setUniform("near", cameraComp->getProjection().getNear());
-
-	GLW::drawVertices(GLW::TRIANGLES, VAO.getID(), 4, 6);
-	GLW::Framebuffer::bindDefaultFramebuffer();
+	Engine::instance()->rhi()->drawIndexed(6, 0, 1, IndexType::Uint32, 0);
 
 	const auto& drawableEntities = ECSHandler::getSystem<SystemsModule::ShaderSystem>()->drawableEntities;
 	if (drawableEntities.empty()) {
 		return;
 	}
-
-	renderDataHandle.mGeometryPassData->gFramebuffer.bind();
+	Engine::instance()->rhi()->bindFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer);
 
 	auto& cameraPos = ECSHandler::registry().pinComponent<const TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
 	Batcher batcher;
@@ -93,9 +122,9 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 		shader->setUniform("V", renderDataHandle.current.view);
 		shader->setUniform("PV", renderDataHandle.current.PV);
 
-		GLW::bindTextureToSlot(0, &renderDataHandle.mGeometryPassData->positionBuffer);
-		GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->normalBuffer);
-		GLW::bindTextureToSlot(2, &renderDataHandle.mGeometryPassData->albedoBuffer);
+		Engine::instance()->rhi()->bindTexture(0, renderDataHandle.mGeometryPassData->positionBuffer, renderDataHandle.mGeometryPassData->sampler);
+		Engine::instance()->rhi()->bindTexture(1, renderDataHandle.mGeometryPassData->normalBuffer, renderDataHandle.mGeometryPassData->sampler);
+		Engine::instance()->rhi()->bindTexture(2, renderDataHandle.mGeometryPassData->albedoBuffer, renderDataHandle.mGeometryPassData->sampler);
 
 		shader->setUniform("gPosition", 0);
 		shader->setUniform("gNormal", 1);
@@ -126,7 +155,6 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 	}
 
 	flush(curShaderId);
-
-	renderDataHandle.mGeometryPassData->gFramebuffer.bindDefaultFramebuffer();
+	Engine::instance()->rhi()->bindFramebuffer({});
 	
 }

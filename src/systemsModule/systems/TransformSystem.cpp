@@ -16,6 +16,5 @@ void TransformSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToP
 
 		transform->reloadTransform();
 		TasksManager::instance()->notify({ entity, TRAHSFORM_RELOADED, transform });
-		
 	});
 }

@@ -10,8 +10,9 @@ namespace SFE::Render::RenderPasses {
 		void init() override;
 		void render(SystemsModule::RenderData& renderDataHandle) override;
 
-		GLW::Framebuffer occlusionFrameBuffer;
-		GLW::Texture depthTex;
+		TextureHandle depthTex;
+		SamplerHandle depthSampler;
+		FramebufferHandle occlusionFrameBuffer;
 
 		const float w = Engine::instance()->getWindow()->getScreenData().renderW / 16.f;
 		const float h = Engine::instance()->getWindow()->getScreenData().renderH / 16.f;

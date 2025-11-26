@@ -8,8 +8,20 @@ layout(std430, binding = 1) buffer modelMatrices
     mat4 model[];
 };
 
+layout(std430, binding = 3) buffer gpuIndex
+{
+    uint entToGpuIdx[];
+};
+
 const int MAX_BONES = 100;
 const int MAX_BONE_INFLUENCE = 4;
+
+layout (std140, binding = 0) uniform LightSpaceMatrices
+{
+    mat4 lightSpaceMatrices[6];
+};
+
+uniform int uCascadeIndex;
 
 layout(std430, binding = 2) buffer bonesMatrices
 {
@@ -22,16 +34,18 @@ void main()
     bool withBones = false;
     for(int i = 0 ; i < MAX_BONE_INFLUENCE ; i++) {
         int boneIdx = aBoneIds[i];
-        if(boneIdx == -1 || boneIdx >= MAX_BONES){
+        if(boneIdx < 0 || boneIdx >= MAX_BONES){
              continue;
         }
         withBones = true;
-        BoneTransform += bones[gl_InstanceID][boneIdx] * aWeights[i];
+        BoneTransform += bones[entToGpuIdx[gl_InstanceID]][boneIdx] * aWeights[i];
     }
     if (!withBones){
         BoneTransform = mat4(1.f);
     }
     vec4 newPos = BoneTransform * vec4(aPos, 1.0);
     newPos /= newPos.w;
-    gl_Position = model[gl_InstanceID] * newPos;
+
+    mat4 world = model[entToGpuIdx[gl_InstanceID]];
+    gl_Position = lightSpaceMatrices[uCascadeIndex] * world * newPos;
 }

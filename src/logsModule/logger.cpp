@@ -14,6 +14,19 @@
 
 using namespace SFE::LogsModule;
 
+std::wstring to_wstring_utf8(const std::string& str)
+{
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.c_str(),
+		(int)str.size(), NULL, 0);
+
+	std::wstring wstr(size_needed, 0);
+
+	MultiByteToWideChar(CP_UTF8, 0, str.c_str(),
+		(int)str.size(), &wstr[0], size_needed);
+
+	return wstr;
+}
+
 void Logger::logMessage(const eLogLevel level, const char* msg) {
 	auto t = time(nullptr);
 	
@@ -56,7 +69,7 @@ void Logger::logMessage(const eLogLevel level, const char* msg) {
 #ifdef __APPLE__
 	os_log_with_type(OS_LOG_DEFAULT, os_log_type_t(logType), "%s", oss.str().c_str());
 #else
-	OutputDebugString(oss.str().c_str());
+	OutputDebugString(to_wstring_utf8(oss.str()).c_str());
 #endif
 	if (level == eLogLevel::FATAL) {
 		assert(false && msg);

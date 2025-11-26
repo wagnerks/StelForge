@@ -11,6 +11,7 @@
 #include "glWrapper/ViewportStack.h"
 #include "logsModule/logger.h"
 #include "multithreading/ThreadPool.h"
+#include "renderModule/OpenGLRHI.h"
 #include "renderModule/TextRenderer.h"
 
 namespace SFE {
@@ -54,22 +55,9 @@ namespace SFE {
 	}
 
 	void Engine::initRender() {
-		if(!mWindow) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize render without context, forgot to call createWindow?");
-			return;
-		}
+		
 
-		SFE::GLW::ViewportStack::size = { mWindow->getScreenData().renderW, mWindow->getScreenData().renderH };
 		glfwSwapInterval(0);
-
-		SFE::GLW::setClearColor(0.f, 0.f, 0.f);
-
-		GLW::CapabilitiesStack<SFE::GLW::CULL_FACE>::push(true);
-		SFE::GLW::CapabilitiesStack<SFE::GLW::DEPTH_TEST>::push(true);
-		SFE::GLW::DepthFuncStack::push(SFE::GLW::DepthFunc::LESS);
-
-		SFE::GLW::setDepthDistance(mWindow->getScreenData().far);
-
 		SFE::LogsModule::Logger::LOG_INFO("engine render initialized");
 	}
 
@@ -143,6 +131,11 @@ namespace SFE {
 
 	bool Engine::isMainThread() {
 		return mMainThreadID == std::this_thread::get_id();
+	}
+
+	Engine::Engine()
+	{
+		mRHI = new Render::OpenGLRHI();
 	}
 
 	Engine::~Engine() {

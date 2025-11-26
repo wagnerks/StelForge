@@ -33,47 +33,53 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 	shaderLightingPass->setUniform("ssao", 3);
 	shaderLightingPass->setUniform("shadows", 4);
 	shaderLightingPass->setUniform("gOutlines", 5);
-
-	shaderLightingPass->setUniform("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData->shadowEntities.size()));
+	if (renderDataHandle.mPointPassData) {
+		shaderLightingPass->setUniform("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData->shadowEntities.size()));
+	}
 	shaderLightingPass->setUniform("PointLightShadowMapArray", 30);
+	
+	
 
 	shaderLightingPass->setUniform("fogStart", Engine::instance()->getWindow()->getScreenData().far * 0.9f);
 	shaderLightingPass->setUniform("screenDrawData.far", Engine::instance()->getWindow()->getScreenData().far);
 
 	int offsetSum = 0;
-	for (size_t i = 0; i < renderDataHandle.mPointPassData->shadowEntities.size(); i++) {
-		auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
-		auto lightComp = ECSHandler::registry().pinComponent<const LightSourceComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
+	if (renderDataHandle.mPointPassData) {
+		for (size_t i = 0; i < renderDataHandle.mPointPassData->shadowEntities.size(); i++) {
+			auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
+			auto lightComp = ECSHandler::registry().pinComponent<const LightSourceComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
 
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), Math::Vec2{lightComp->getTexelSize().x, lightComp->getTexelSize().y});
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].bias").c_str(), lightComp->getBias());
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].samples").c_str(), lightComp->getSamples());
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].radius").c_str(), lightComp->mRadius);
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].offset").c_str(), offsetSum);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), Math::Vec2{ lightComp->getTexelSize().x, lightComp->getTexelSize().y });
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].bias").c_str(), lightComp->getBias());
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].samples").c_str(), lightComp->getSamples());
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].radius").c_str(), lightComp->mRadius);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].offset").c_str(), offsetSum);
 
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Color").c_str(), lightComp->getLightColor());
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Color").c_str(), lightComp->getLightColor());
 
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Linear").c_str(), lightComp->mLinear);
-		shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Quadratic").c_str(), lightComp->mQuadratic);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Linear").c_str(), lightComp->mLinear);
+			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Quadratic").c_str(), lightComp->mQuadratic);
 
-		if (lightComp->getType() == ComponentsModule::eLightType::POINT) {
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 0);
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 6);
+			if (lightComp->getType() == ComponentsModule::eLightType::POINT) {
+				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 0);
+				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 6);
+			}
+			else {
+				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 1);
+				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 1);
+			}
+
+
+			offsetSum += lightComp->getTypeOffset(lightComp->getType());
 		}
-		else {
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 1);
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 1);
-		}
-
-
-		offsetSum += lightComp->getTypeOffset(lightComp->getType());
 	}
 
-	if (!renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.empty()) {
+	if (renderDataHandle.mCascadedShadowsPassData && !renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.empty()) {
 
 		shaderLightingPass->setUniform("ambientColor", renderDataHandle.mCascadedShadowsPassData->lightColor);//todo 0 for night and 1 for day, some time system
-		GLW::bindTextureToSlot(31, GLW::TEXTURE_2D_ARRAY, renderDataHandle.mCascadedShadowsPassData->shadowMapTexture);
+		Engine::instance()->rhi()->bindTexture(31, renderDataHandle.mCascadedShadowsPassData->shadowMapTexture, renderDataHandle.mCascadedShadowsPassData->shadowMapSampler);
+
 		shaderLightingPass->setUniform("cascadedShadow.shadowMap", 31);
 		shaderLightingPass->setUniform("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData->lightDirection);
 		shaderLightingPass->setUniform("cascadedShadow.color", renderDataHandle.mCascadedShadowsPassData->lightColor);
@@ -93,31 +99,47 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	// set light uniforms
 	shaderLightingPass->setUniform("viewPos", renderDataHandle.mCameraPos);
+	Engine::instance()->rhi()->bindTexture(0, renderDataHandle.mGeometryPassData->positionBuffer, renderDataHandle.mGeometryPassData->sampler);
+	Engine::instance()->rhi()->bindTexture(1, renderDataHandle.mGeometryPassData->normalBuffer, renderDataHandle.mGeometryPassData->sampler);
+	Engine::instance()->rhi()->bindTexture(2, renderDataHandle.mGeometryPassData->albedoBuffer, renderDataHandle.mGeometryPassData->sampler);
+	if (renderDataHandle.mSSAOPassData) {
+		
+		Engine::instance()->rhi()->bindTexture(3, renderDataHandle.mSSAOPassData->mSsaoColorBufferBlur, renderDataHandle.mSSAOPassData->sampler);
+	}
+	else {
+		TextureDesc ssaoColorBlurDesc;
+		ssaoColorBlurDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+		ssaoColorBlurDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+		ssaoColorBlurDesc.format = TextureFormat::R8;
+		ssaoColorBlurDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+		auto blur = Engine::instance()->rhi()->createTexture(ssaoColorBlurDesc);
+		SamplerDesc samplerDesc;
+		samplerDesc.minFilter = FilterMode::Nearest;
+		samplerDesc.magFilter = FilterMode::Nearest;
 
-	GLW::bindTextureToSlot(0, &renderDataHandle.mGeometryPassData->positionBuffer);
-	GLW::bindTextureToSlot(1, &renderDataHandle.mGeometryPassData->normalBuffer);
-	GLW::bindTextureToSlot(2, &renderDataHandle.mGeometryPassData->albedoBuffer);
-	GLW::bindTextureToSlot(3, &renderDataHandle.mSSAOPassData->mSsaoColorBufferBlur);
-	GLW::bindTextureToSlot(5, &renderDataHandle.mGeometryPassData->outlinesBuffer);
+		auto sampler = Engine::instance()->rhi()->createSampler(samplerDesc);
+		Engine::instance()->rhi()->bindTexture(3, blur, sampler);
+	}
+	
+	Engine::instance()->rhi()->bindTexture(5, renderDataHandle.mGeometryPassData->outlinesBuffer, renderDataHandle.mGeometryPassData->sampler);
 
 	Utils::renderQuad();
 
 	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
-	GLW::bindReadFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer.id);
-	if (auto curFBO = GLW::FramebufferStack::top()) {
-		GLW::bindDrawFramebuffer(*curFBO);
-		const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
-		const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
-		GLW::blitFramebuffer(0, 0, w, h, 0, 0, w, h, GLW::ColorBit::DEPTH, GLW::BlitFilter::NEAREST);
-		GLW::bindReadFramebuffer(*curFBO);
-	}
-	else {
-		GLW::bindDrawFramebuffer(); // write to default framebuffer
-		const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
-		const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
-		GLW::blitFramebuffer(0, 0, w, h, 0, 0, w, h, GLW::ColorBit::DEPTH, GLW::BlitFilter::NEAREST);
-		GLW::bindReadFramebuffer();
-	}
+
+	auto* rhi = Engine::instance()->rhi();
+	const auto& screen = Engine::instance()->getWindow()->getScreenData();
+	int w = screen.renderW;
+	int h = screen.renderH;
+
+	rhi->blitFramebuffer(
+		renderDataHandle.mGeometryPassData->gFramebuffer, // src
+		{},                                               // dst = default framebuffer
+		0, 0, w, h,
+		0, 0, w, h,
+		BlitMask::Depth,
+		BlitFilter::Nearest
+	);
 
 
 	static Math::Vec3 sunDir;

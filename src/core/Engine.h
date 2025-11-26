@@ -5,6 +5,7 @@
 #include "Core.h"
 #include "InputHandler.h"
 #include "containersModule/Singleton.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 class Camera;
 
@@ -31,10 +32,12 @@ namespace SFE {
 		Render::Window* getWindow() const;
 		static bool isMainThread();
 
-		int maxFPS = 60;
+		int maxFPS = 600;
+
+		Render::RenderHardwareInterface* rhi() const { return mRHI; }
 
 	protected:
-		Engine() = default;
+		Engine();
 		~Engine() override;
 
 	private:
@@ -55,6 +58,8 @@ namespace SFE {
 		
 		Render::Window* mWindow = nullptr;
 		inline static std::thread::id mMainThreadID;
+
+		Render::RenderHardwareInterface* mRHI = nullptr;
 	};
 }
 

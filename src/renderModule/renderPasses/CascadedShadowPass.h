@@ -6,6 +6,7 @@
 #include "componentsModule/CascadeShadowComponent.h"
 #include "glWrapper/Buffer.h"
 #include "glWrapper/Framebuffer.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 #include "renderModule/renderPasses/RenderPass.h"
 
@@ -18,7 +19,8 @@ namespace SFE::Render::RenderPasses {
 
 
 		struct Data {
-			unsigned shadowMapTexture = 0;
+			TextureHandle shadowMapTexture;
+			SamplerHandle shadowMapSampler;
 			Math::Vec3 lightDirection = {};
 			Math::Vec3 lightColor = {};
 			Math::Vec2 resolution = {};
@@ -39,10 +41,13 @@ namespace SFE::Render::RenderPasses {
 		void updateRenderData(SystemsModule::RenderData& renderDataHandle);
 		void debug(SystemsModule::RenderData& renderDataHandle);
 
-		GLW::Framebuffer lightFBO;
-		GLW::Texture lightDepthMap{GLW::TEXTURE_2D_ARRAY};
+		std::vector<FramebufferHandle> lightFbos;
+		TextureHandle  lightDepthMa;
+		SamplerHandle  lightSampler;
 
-		GLW::Buffer matricesUBO{GLW::UNIFORM_BUFFER };
+		BufferHandle matricesUBO;
+		PipelineHandle pipeline;
+		RenderPassHandle renderPass;
 
 		ecss::EntityId mShadowSource;
 		bool mInited = false;

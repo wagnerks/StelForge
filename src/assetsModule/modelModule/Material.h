@@ -2,6 +2,7 @@
 #include <unordered_map>
 
 #include "glWrapper/Texture.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 namespace SFE {
 	enum MaterialType : uint8_t {
@@ -12,7 +13,7 @@ namespace SFE {
 	};
 
 	struct MaterialTexture {
-		GLW::Texture* texture = nullptr;
+		Render::TextureHandle texture;
 		int uniformSlot = 0;
 		MaterialType type = MaterialType::CUSTOM;
 	};

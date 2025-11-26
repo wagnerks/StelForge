@@ -86,7 +86,7 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
         const vec2 offset = vogel_disk_sample(i, cascadedShadow.samples[layer], temporal_angle) * (cascadedShadow.texelSize[layer]) *  g_shadow_filter_size * penumbra;
         
         const float depth = texture(cascadedShadow.shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z));
-        shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
+        shadow += projCoords.z + bias > depth ? 1.0 : 0.0;
     } 
 
     return shadow * g_shadow_samples_rpc;
@@ -114,33 +114,40 @@ float TechniqueVogelPoint(PointLight light, int layer, float bias, vec3 projCoor
     return shadow * g_shadow_samples_rpc;
 }
 
-float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal) { //return 0.0 - light, 1.0 - dark
-    // select cascade layer
+float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
+{
+    int  layer = 0;
     vec4 fragPosLightSpace;
-    vec3 projCoords;
+    vec3 proj;
 
-    int layer = 0;
     for (; layer < cascadeCount; ++layer) {
         fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
-        projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w; // perform perspective divide
-        projCoords = projCoords * 0.5 + 0.5; // transform to [0,1] range
-        projCoords.z -= cascadedShadow.bias[layer] * cascadedShadow.texelSize[layer].x; //fix light line on corners, fix bias at the end of depth
-        if (projCoords.x > 0.0 && projCoords.x < 1.0 && projCoords.y > 0.0 && projCoords.y < 1.0 && projCoords.z > 0.0 && projCoords.z < 1.0) {
+        proj = fragPosLightSpace.xyz / fragPosLightSpace.w;
+        proj = proj * 0.5 + 0.5;
+
+        const float eps = 2.0 * cascadedShadow.texelSize[layer].x;
+
+        if (proj.x > -eps && proj.x < 1.0 + eps &&
+            proj.y > -eps && proj.y < 1.0 + eps &&
+            proj.z >  0.0 && proj.z < 1.0)
+        {
             break;
         }
     }
-       
-    if (layer > cascadeCount){
-        return 0.0;//light, cause all what is not under sun should be light by default
-    }
 
-    const float illumination = -dot(Normal, cascadedShadow.direction); // -1 = darkest, 1 = lightest
-    const float illuminationKoef = 1.0 - illumination; // 0 - dark, 1 - light
-    
+    if (layer >= cascadeCount)
+        return 0.0;
+
+    const float illumination = -dot(Normal, cascadedShadow.direction);
     float bias = cascadedShadow.bias[layer] * (-illumination);
-   
-    return TechniqueVogelCascaded(layer, bias, projCoords);
+
+    vec3 sampleCoords = proj;
+    sampleCoords.z -= cascadedShadow.bias[layer] * cascadedShadow.texelSize[layer].x;
+
+    return TechniqueVogelCascaded(layer, bias, sampleCoords);
 }
+
+
 
 float PointLightCalculation(PointLight light, vec3 fragPosWorldSpace, vec3 Normal) {//return 0.0 - light, 1.0 - dark
     vec4 fragPosLightSpace;

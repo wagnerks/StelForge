@@ -15,27 +15,29 @@ namespace SFE::Render::RenderPasses {
 	OcclusionPass::~OcclusionPass() {}
 
 	void OcclusionPass::init() {
-		depthTex.generate();
-		depthTex.parameters.minFilter = GLW::TextureMinFilter::LINEAR;
-		depthTex.parameters.magFilter = GLW::TextureMagFilter::LINEAR;
-		depthTex.parameters.wrap.S = GLW::TextureWrap::CLAMP_TO_EDGE;
-		depthTex.parameters.wrap.T = GLW::TextureWrap::CLAMP_TO_EDGE;
-		depthTex.parameters.compareMode = GLW::TextureCompareMode::COMPARE_REF_TO_TEXTURE;
-		depthTex.parameters.compareFunc = GLW::CompareFunc::LESS;
-		depthTex.width = static_cast<int>(w);
-		depthTex.height = static_cast<int>(h);
-		depthTex.pixelFormat = GLW::DEPTH_COMPONENT32;
-		depthTex.textureFormat = GLW::DEPTH_COMPONENT;
-		depthTex.pixelType = GLW::FLOAT;
-		depthTex.create2D();
+		auto rhi = Engine::instance()->rhi();
+		TextureDesc depthDesc;
+		depthDesc.width = static_cast<uint32_t>(w);
+		depthDesc.height = static_cast<uint32_t>(h);
+		depthDesc.format = TextureFormat::DEPTH_COMPONENT32F;
+		depthDesc.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
 
-	
-		occlusionFrameBuffer.bind();
-		occlusionFrameBuffer.addAttachmentTexture(GLW::AttachmentType::DEPTH, &depthTex);
-		occlusionFrameBuffer.setDrawBuffer(GLW::NONE);
-		occlusionFrameBuffer.setReadBuffer(GLW::NONE);
-		occlusionFrameBuffer.finalize();
-		occlusionFrameBuffer.bindDefaultFramebuffer();
+		depthTex = rhi->createTexture(depthDesc);
+
+		SamplerDesc sampler;
+		sampler.minFilter = FilterMode::Linear;
+		sampler.magFilter = FilterMode::Linear;
+		sampler.addressU = AddressMode::ClampToEdge;
+		sampler.addressV = AddressMode::ClampToEdge;
+		sampler.compareOp = CompareOp::Less;
+
+		depthSampler = rhi->createSampler(sampler);
+
+		FramebufferDesc fbDesc;
+		fbDesc.width = static_cast<uint32_t>(w);
+		fbDesc.height = static_cast<uint32_t>(h);
+		fbDesc.depthStencilAttachment = FramebufferAttachmentDesc{ depthTex };
+		occlusionFrameBuffer = rhi->createFramebuffer(fbDesc);
 	}
 
 	void OcclusionPass::render(SystemsModule::RenderData& renderDataHandle) {
@@ -50,11 +52,9 @@ namespace SFE::Render::RenderPasses {
 			ThreadPool::instance()->addBatchTasks(aabbOctrees.size(), 5, [aabbOctrees, octreeSys, &addMtx, &renderDataHandle, &entities](size_t it)mutable {
 				if (auto treeIt = octreeSys->getOctree(aabbOctrees[it])) {
 					auto lock = treeIt->readLock();
-					treeIt->forEachObjectInFrustum(renderDataHandle.mNextCamFrustum, [&entities, &renderDataHandle, &addMtx](const auto& obj, bool entirely) {
-						if (entirely || FrustumModule::AABB::isOnFrustum(renderDataHandle.mNextCamFrustum, obj.pos, obj.size)) {
-							std::unique_lock lock(addMtx);
-							entities.insert(obj.data);
-						}
+					treeIt->forEachObjectInsideFrustum(renderDataHandle.mNextCamFrustum, [&entities, &addMtx](auto id) {
+						std::unique_lock lock(addMtx);
+						entities.insert(id);
 					});
 				}
 
@@ -66,7 +66,7 @@ namespace SFE::Render::RenderPasses {
 		}
 		
 		GLW::ViewportStack::push({ {static_cast<int>(w), static_cast<int>(h)} });
-		occlusionFrameBuffer.bind();
+		Engine::instance()->rhi()->bindFramebuffer(occlusionFrameBuffer);
 		GLW::clear(GLW::ColorBit::DEPTH);
 
 		const auto simpleDepthShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/occlusion.vs", "shaders/occlusion.fs");
@@ -215,7 +215,7 @@ namespace SFE::Render::RenderPasses {
 		}
 		GLW::DepthMaskStack::pop();
 
-		GLW::Framebuffer::bindDefaultFramebuffer();
+		Engine::instance()->rhi()->bindFramebuffer({});
 		GLW::ViewportStack::pop();
 	}
 }

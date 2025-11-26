@@ -85,19 +85,36 @@ void Utils::renderQuad(float x1 = -1.f, float y1 = -1.f, float x2 = 1.f, float y
 		{ {x2, y1, 0.0f}, {1.0f, 0.0f} },
 	}};
 
-	GLW::VertexArray quadVAO;
-	GLW::Buffer quadVBO{GLW::ARRAY_BUFFER};
-	quadVAO.generate();
-	quadVAO.bind();
-	quadVBO.bind();
-	quadVBO.allocateData(mesh.vertices, GLW::STATIC_DRAW);
-	quadVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &Vertex3D::position);
-	quadVAO.addAttribute(1, 2, GLW::AttributeFType::FLOAT, false, &Vertex3D::texCoords);
+	static PipelineHandle pipeline;
+	static BufferHandle vbo;
+	if (!pipeline) {
+		GraphicsPipelineDesc pipelineDesc;
+		pipelineDesc.topology = PrimitiveTopology::Triangles;
+		pipelineDesc.cullMode = CullMode::None;
+		pipelineDesc.fillMode = PolygonFillMode::Fill;
+		
+
+		BufferDesc vboDesc;
+		vboDesc.size = sizeof(Vertex3D) * mesh.vertices.size();
+		vboDesc.usage = BufferUsage::Vertex;
+		vbo = Engine::instance()->rhi()->createBuffer(vboDesc, mesh.vertices.data());
+		pipelineDesc.layout.bindings = {
+			{ 0, sizeof(Vertex3D), VertexInputRate::PerVertex }
+		};
+		pipelineDesc.layout.attributes = {
+			{ 0, 0, VertexFormat::Float3, offsetof(Vertex3D, position), false },
+			{ 1, 0, VertexFormat::Float2, offsetof(Vertex3D, texCoords), false }
+		};
+
+		pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+	}
+
+	Engine::instance()->rhi()->updateBuffer(vbo, 0, sizeof(Vertex3D) * mesh.vertices.size(), mesh.vertices.data());
+
+	pipeline.bind();
+	vbo.bindVertex(0);
 
 	drawMesh(GLW::TRIANGLE_STRIP, mesh);
-
-	quadVAO.bindDefault();
-	quadVBO.unbind();
 }
 
 void Utils::renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, float thickness) {

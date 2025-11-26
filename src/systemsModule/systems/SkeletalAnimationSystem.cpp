@@ -28,10 +28,8 @@ namespace SFE::SystemsModule {
 			for (auto& treePos : octreeSys->getAABBOctrees(camFrustum.generateAABB())) {
 				if (const auto tree = octreeSys->getOctree(treePos)) {
 					auto lock = tree->readLock();
-					tree->forEachObjectInFrustum(camFrustum, [&entities, &camFrustum](const auto& obj, bool entirely) {
-						if (entirely || FrustumModule::AABB::isOnFrustum(camFrustum, obj.pos, obj.size)) {
-							entities.emplace_back(obj.data);
-						}
+					tree->forEachObjectInsideFrustum(camFrustum, [&entities](auto id) {
+						entities.emplace_back(id);
 					});
 				}
 			}

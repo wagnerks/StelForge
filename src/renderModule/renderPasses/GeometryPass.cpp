@@ -48,10 +48,8 @@ void GeometryPass::prepare() {
 			for (auto& treePos : octreeSys->getAABBOctrees(camFrustum.generateAABB())) {
 				if (const auto tree = octreeSys->getOctree(treePos)) {
 					auto lock = tree->readLock();
-					tree->forEachObjectInFrustum(camFrustum, [&entities, &camFrustum](const auto& obj, bool entirely) {
-						if (entirely || FrustumModule::AABB::isOnFrustum(camFrustum, obj.pos, obj.size)) {
-							entities.insert(obj.data);
-						}
+					tree->forEachObjectInsideFrustum(camFrustum, [&entities](auto id) {
+						entities.insert(id);
 					});
 				}
 			}
@@ -72,10 +70,13 @@ void GeometryPass::prepare() {
 				/*if (oclComp && oclComp->occluded) {
 					continue;
 				}*/
-
 				for (const auto& mesh : meshComp->meshGraph) {
-					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, matComp ? matComp->materials : ComponentsModule::Materials{}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
+					batcher.addToDrawList(mesh.value, {}, ent);
 				}
+
+				/*for (const auto& mesh : meshComp->meshGraph) {
+					batcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, matComp ? matComp->materials : ComponentsModule::Materials{}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
+				}*/
 			}
 			batcher.sort(camPos);
 		}
@@ -92,8 +93,12 @@ void GeometryPass::prepare() {
 					continue;
 				}
 
-				for (const auto& mesh : meshComp->meshGraph) {
+				/*for (const auto& mesh : meshComp->meshGraph) {
 					outlineBatcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
+				}*/
+
+				for (const auto& mesh : meshComp->meshGraph) {
+					outlineBatcher.addToDrawList(mesh.value, {}, entity);
 				}
 			}
 
@@ -115,88 +120,121 @@ void GeometryPass::init() {
 	const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
 	const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
 
+	auto rhi = Engine::instance()->rhi();
+	TextureDesc positionBufDesc;
+	positionBufDesc.width = w;
+	positionBufDesc.height = h;
+	positionBufDesc.format = TextureFormat::RGBA32F;
+
+	SamplerDesc positionSamplerDesc;
+	positionSamplerDesc.minFilter = FilterMode::Nearest;
+	positionSamplerDesc.magFilter = FilterMode::Nearest;
+	mData.sampler = rhi->createSampler(positionSamplerDesc);
+
 	// position color buffer
-	mData.positionBuffer.width = w;
-	mData.positionBuffer.height = h;
-	mData.positionBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.positionBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.positionBuffer.pixelFormat = GLW::RGBA32F;
-	mData.positionBuffer.textureFormat = GLW::RGBA;
-	mData.positionBuffer.pixelType = GLW::FLOAT;
-	mData.positionBuffer.create();
-	
-	mData.normalBuffer.width = w;
-	mData.normalBuffer.height = h;
-	mData.normalBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.normalBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.normalBuffer.pixelFormat = GLW::RGBA16F;
-	mData.normalBuffer.textureFormat = GLW::RGBA;
-	mData.normalBuffer.pixelType = GLW::FLOAT;
-	mData.normalBuffer.create();
+	mData.positionBuffer = rhi->createTexture(positionBufDesc);
+
+	// normal color buffer
+	TextureDesc normalBufDesc;
+	normalBufDesc.width = w;
+	normalBufDesc.height = h;
+	normalBufDesc.format = TextureFormat::RGBA16F;
+	mData.normalBuffer = rhi->createTexture(normalBufDesc);
 
 	// color + specular color buffer
-	mData.albedoBuffer.width = w;
-	mData.albedoBuffer.height = h;
-	mData.albedoBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.albedoBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.albedoBuffer.pixelFormat = GLW::RGBA16F;
-	mData.albedoBuffer.textureFormat = GLW::RGBA;
-	mData.albedoBuffer.pixelType = GLW::UNSIGNED_BYTE;
-	mData.albedoBuffer.create();
+	TextureDesc albedoBufDesc;
+	albedoBufDesc.width = w;
+	albedoBufDesc.height = h;
+	albedoBufDesc.format = TextureFormat::RGBA16F;
+	mData.albedoBuffer = rhi->createTexture(albedoBufDesc);
 
 	// viewPos buffer
-	mData.viewPositionBuffer.width = w;
-	mData.viewPositionBuffer.height = h;
-	mData.viewPositionBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.viewPositionBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.viewPositionBuffer.pixelFormat = GLW::RGBA32F;
-	mData.viewPositionBuffer.textureFormat = GLW::RGBA;
-	mData.viewPositionBuffer.pixelType = GLW::UNSIGNED_BYTE;
-	mData.viewPositionBuffer.create();
+	TextureDesc viewPositionBufDesc;
+	viewPositionBufDesc.width = w;
+	viewPositionBufDesc.height = h;
+	viewPositionBufDesc.format = TextureFormat::RGBA32F;
+	mData.viewPositionBuffer = rhi->createTexture(viewPositionBufDesc);
 
 	// outline buffer
-	mData.outlinesBuffer.width = w;
-	mData.outlinesBuffer.height = h;
-	mData.outlinesBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.outlinesBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.outlinesBuffer.pixelFormat = GLW::RGBA8;
-	mData.outlinesBuffer.textureFormat = GLW::RGBA;
-	mData.outlinesBuffer.pixelType = GLW::UNSIGNED_BYTE;
-	mData.outlinesBuffer.create();
+	TextureDesc outlinesBufDesc;
+	outlinesBufDesc.width = w;
+	outlinesBufDesc.height = h;
+	outlinesBufDesc.format = TextureFormat::RGBA8;
+	mData.outlinesBuffer = rhi->createTexture(outlinesBufDesc);
 
 	// light buffer
-	mData.lightsBuffer.width = w;
-	mData.lightsBuffer.height = h;
-	mData.lightsBuffer.parameters.minFilter = GLW::TextureMinFilter::NEAREST;
-	mData.lightsBuffer.parameters.magFilter = GLW::TextureMagFilter::NEAREST;
-	mData.lightsBuffer.pixelFormat = GLW::RGBA8;
-	mData.lightsBuffer.textureFormat = GLW::RGBA;
-	mData.lightsBuffer.pixelType = GLW::UNSIGNED_BYTE;
-	mData.lightsBuffer.create();
+	TextureDesc lightsBufDesc;
+	lightsBufDesc.width = w;
+	lightsBufDesc.height = h;
+	lightsBufDesc.format = TextureFormat::RGBA8;
+	mData.lightsBuffer = rhi->createTexture(lightsBufDesc);
 
-	mData.gFramebuffer.bind();
+	FramebufferDesc mainFboDesc;
+	mainFboDesc.width = w;
+	mainFboDesc.height = h;
+	mainFboDesc.colorAttachments = { {mData.positionBuffer}, {mData.normalBuffer},{mData.albedoBuffer}, {mData.viewPositionBuffer}/*, {mData.outlinesBuffer}, {mData.lightsBuffer}*/ };
 
-	mData.gFramebuffer.addAttachmentTexture(0, &mData.positionBuffer);
-	mData.gFramebuffer.addAttachmentTexture(1, &mData.normalBuffer);
-	mData.gFramebuffer.addAttachmentTexture(2, &mData.albedoBuffer);
-	mData.gFramebuffer.addAttachmentTexture(3, &mData.viewPositionBuffer);
-	//mData.gFramebuffer.addAttachmentTexture(4, &mData.outlinesBuffer);
-	//mData.gFramebuffer.addAttachmentTexture(5, &mData.lightsBuffer);
+	TextureDesc depthTex{};
+	depthTex.width = w;
+	depthTex.height = h;
+	depthTex.depth = 1;
+	depthTex.dimension = TextureDimension::Tex2D;
+	depthTex.format = TextureFormat::DEPTH_COMPONENT24;
+	depthTex.usage = TextureUsage::DepthStencilAttachment;
 
-	// create and attach depth buffer (renderbuffer)
-	mData.rboDepth.generate();
-	mData.rboDepth.bind();
-	mData.rboDepth.storage(GLW::DEPTH_COMPONENT24, w, h);
+	TextureHandle depthHandle = rhi->createTexture(depthTex);
+	mainFboDesc.depthStencilAttachment = {.texture = depthHandle };
 
-	mData.gFramebuffer.addRenderbuffer(GLW::AttachmentType::DEPTH, mData.rboDepth.id);
-	mData.gFramebuffer.finalize();
+	mData.gFramebuffer = rhi->createFramebuffer(mainFboDesc);
 
-	mData.outlineFramebuffer.bind();
-	mData.outlineFramebuffer.addAttachmentTexture(0, &mData.outlinesBuffer);
-	mData.outlineFramebuffer.finalize();
+	FramebufferDesc outlineFboDesc;
+	outlineFboDesc.width = w;
+	outlineFboDesc.height = h;
+	outlineFboDesc.colorAttachments = { {mData.outlinesBuffer} };
+	mData.outlineFramebuffer = rhi->createFramebuffer(outlineFboDesc);
 
-	GLW::Framebuffer::bindDefaultFramebuffer();
-	GLW::Framebuffer::bindDefaultFramebuffer();
+	GraphicsPipelineDesc pipelineDesc;
+
+	Render::VertexLayoutDesc& layout = pipelineDesc.layout;
+	layout.bindings.push_back({ 0,sizeof(Vertex3D), Render::VertexInputRate::PerVertex });
+	layout.attributes.push_back({ 0,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, position)), true });
+	layout.attributes.push_back({ 1,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, normal)),  true });
+	layout.attributes.push_back({ 2,0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex3D, texCoords)), true });
+	layout.attributes.push_back({ 3,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, tangent)), true });
+	layout.attributes.push_back({ 4,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, biTangent)), true });
+	layout.attributes.push_back({ 5,0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false }); //todo only for dynamic mesh
+	layout.attributes.push_back({ 6,0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
+	pipelineDesc.topology = PrimitiveTopology::Triangles;
+	pipelineDesc.cullMode = CullMode::Back;
+	pipelineDesc.frontFace = FrontFace::CCW;
+	pipelineDesc.fillMode = PolygonFillMode::Fill;
+	pipelineDesc.depthStencilState.depthTest = true;
+	pipelineDesc.depthStencilState.depthWrite = true;
+	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
+	pipelineDesc.blend.enabled = false;
+	pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({
+		ShaderStage::Vertex,
+		"g_buffer.vs",
+		ShaderModule::ShaderBase::loadShaderCode("shaders/g_buffer.vs")
+	});
+	pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({
+		ShaderStage::Fragment,
+		"g_buffer.fs",
+		ShaderModule::ShaderBase::loadShaderCode("shaders/g_buffer.fs")
+		});
+
+	geometryPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+
+	RenderPassDesc geometryPassDesc;
+	geometryPassDesc.colorAttachmentCount = 4;
+	geometryPassDesc.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //position
+	geometryPassDesc.colorAttachments[1] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //normal
+	geometryPassDesc.colorAttachments[2] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //albedo
+	geometryPassDesc.colorAttachments[3] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //viewPos
+	geometryPassDesc.hasDepthStencil = true;
+	geometryPassDesc.depthAttachment = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, 1.f, 0, false };
+
+	geometryPass = Engine::instance()->rhi()->createRenderPass(geometryPassDesc);
 }
 
 void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
@@ -215,10 +253,6 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 		const auto curPassData = getContainer().getCurrentPassData();
 		while (curPassData->mStatus != RenderPreparingStatus::READY) {}
 	}
-	/*if (currentLock.valid()) {
-		FUNCTION_BENCHMARK_NAMED(_lock_wait)
-		currentLock.wait();
-	}*/
 
 	const auto curPassData = getContainer().getCurrentPassData();
 	const auto outlineData = mOutlineData.getCurrentPassData();
@@ -226,22 +260,23 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 	mOutlineData.rotate();
 	prepare();
 
-	mData.gFramebuffer.bind();
-	GLW::clear(GLW::ColorBit::DEPTH_COLOR);
-	//if (!curPassData->getBatchers().empty()){
 	if (!curPassData->getBatcher().drawList.empty()) {
-		auto shaderGeometryPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer.vs", "shaders/g_buffer.fs");
-		shaderGeometryPass->use();
-		shaderGeometryPass->setUniform<int>("texture_diffuse1", SFE::DIFFUSE);
-		shaderGeometryPass->setUniform<int>("normalMap", SFE::NORMALS);
-		shaderGeometryPass->setUniform<int>("texture_specular1", SFE::SPECULAR);
-		shaderGeometryPass->setUniform("outline", false);
+		RenderPassBeginInfo geometryPassBegin;
+		geometryPassBegin.renderPass = geometryPass;
+		geometryPassBegin.framebuffer = mData.gFramebuffer;
+		geometryPassBegin.width = Engine::instance()->getWindow()->getScreenData().renderW;
+		geometryPassBegin.height = Engine::instance()->getWindow()->getScreenData().renderH;
+		Engine::instance()->rhi()->beginRenderPass(geometryPassBegin);
+		geometryPipeline.bind();
+		Engine::instance()->rhi()->setUniform(geometryPipeline, "texture_diffuse1", static_cast<int>(SFE::DIFFUSE));
+		Engine::instance()->rhi()->setUniform(geometryPipeline, "normalMap", static_cast<int>(SFE::NORMALS));
+		Engine::instance()->rhi()->setUniform(geometryPipeline, "texture_specular1", static_cast<int>(SFE::SPECULAR));
+
+		Engine::instance()->rhi()->setUniform(geometryPipeline, "outline", false);
 
 		FUNCTION_BENCHMARK_NAMED(_flush)
-		/*for (auto& batcher : curPassData->getBatchers()) {
-			batcher.flushAll();
-		}*/
 		curPassData->getBatcher().flushAll();
+		Engine::instance()->rhi()->endRenderPass();
 	}
 
 	/*if (!batcher.drawList.empty()) {
@@ -252,20 +287,21 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	if (!outlineData->getBatcher().drawList.empty()) {
 		needClearOutlines = true;
-
-		mData.outlineFramebuffer.bind();
-		mData.outlinesBuffer.create();
-		mData.outlineFramebuffer.addAttachmentTexture(0, &mData.outlinesBuffer); //todo hack to clear image
-		mData.outlineFramebuffer.finalize();
+		Engine::instance()->rhi()->bindFramebuffer(mData.outlineFramebuffer);
+		//mData.outlinesBuffer.create();
+		//mData.outlineFramebuffer.addAttachmentTexture(0, &mData.outlinesBuffer); //todo hack to clear image
+		//mData.outlineFramebuffer.finalize();
 
 		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
 		g_buffer_outlines->use();
 		g_buffer_outlines->setUniform("PV", renderDataHandle.current.PV);
 
 		outlineData->getBatcher().flushAll();
-		bindTextureToSlot(26, &mData.normalBuffer);
-		bindTextureToSlot(27, &mData.outlinesBuffer);
-		bindTextureToSlot(25, &mData.lightsBuffer);
+
+		Engine::instance()->rhi()->bindFramebuffer({});
+		Engine::instance()->rhi()->bindTexture(26, mData.normalBuffer, mData.sampler);
+		Engine::instance()->rhi()->bindTexture(27, mData.outlinesBuffer, mData.sampler);
+		Engine::instance()->rhi()->bindTexture(25, mData.lightsBuffer, mData.sampler);
 
 		auto outlineG = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_outline.vs", "shaders/g_outline.fs");
 		outlineG->use();
@@ -274,20 +310,17 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 		outlineG->setUniform("gLightsP", 25);
 
 		Utils::renderQuad();
-		GLW::Framebuffer::bindDefaultFramebuffer();
 	}
 	else {
 		if (needClearOutlines) {
 			needClearOutlines = false;
-
-			mData.outlineFramebuffer.bind();
-			mData.outlinesBuffer.create();
-			GLW::Framebuffer::bindDefaultFramebuffer();
+			Engine::instance()->rhi()->bindFramebuffer(mData.outlineFramebuffer);
+			GLW::clear(GLW::ColorBit::ALL);
+			//mData.outlinesBuffer.create();
 		}
 	}
 
-	
-	GLW::Framebuffer::bindDefaultFramebuffer();
+	//Engine::instance()->rhi()->bindFramebuffer({});
 	
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 		GLW::PolygonMode<GLW::PolygonFace::FRONT_AND_BACK>::pop();

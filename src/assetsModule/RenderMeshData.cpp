@@ -4,27 +4,29 @@
 
 namespace SFE {
 	void RenderMeshData::release() {
-		verticesCount = 0;
-		indicesCount = 0;
+		vertexCount = 0;
+		indexCount = 0;
 
 		if (Engine::isMainThread()) {
-			vao.release();
-			vboBuf.release();
-			eboBuf.release();
+			//Engine::instance()->rhi()->destroyVertexArray(vao);
+			Engine::instance()->rhi()->destroyBuffer(vertexBuffer);
+			Engine::instance()->rhi()->destroyBuffer(indexBuffer);
 		}
 		else {
-			auto vaoPtr = new GLW::VertexArray(std::move(vao));
-			auto vboBufPtr = new GLW::Buffer(std::move(vboBuf));
-			auto eboBufPtr = new GLW::Buffer(std::move(eboBuf));
-			SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([vaoPtr, vboBufPtr, eboBufPtr]()mutable {
-				delete vaoPtr;
-				delete vboBufPtr;
-				delete eboBufPtr;
+			auto vboBufPtr = vertexBuffer;
+			auto eboBufPtr = indexBuffer;
+			vertexBuffer = {};
+			indexBuffer = {};
+
+			SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([/*vaoPtr,*/ vboBufPtr, eboBufPtr]()mutable {
+				//Engine::instance()->rhi()->destroyVertexArray(vaoPtr);
+				Engine::instance()->rhi()->destroyBuffer(vboBufPtr);
+				Engine::instance()->rhi()->destroyBuffer(eboBufPtr);
 			});
 		}
 	}
 
 	RenderMeshData::~RenderMeshData() {
-		release();
+		//release();
 	}
 }

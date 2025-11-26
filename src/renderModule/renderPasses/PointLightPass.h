@@ -6,6 +6,7 @@
 #include "ecss/Types.h"
 #include "glWrapper/Buffer.h"
 #include "glWrapper/Framebuffer.h"
+#include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
@@ -20,10 +21,12 @@ namespace SFE::Render::RenderPasses {
 
 		void render(SystemsModule::RenderData& renderDataHandle) override;
 	private:
-		GLW::Framebuffer lightFramebuffer;
-		GLW::Texture mLightDepthMaps{GLW::TEXTURE_2D_ARRAY};
+		FramebufferHandle lightFramebuffer;
+	
+		TextureHandle mLightDepthMaps;
+		SamplerHandle mLightDepthMapsSampler;
 
-		GLW::Buffer mMatricesUBO{GLW::UNIFORM_BUFFER };
+		BufferHandle mMatricesUBO;
 
 		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
 		SFE::MathModule::PerspectiveProjection lightProjection;

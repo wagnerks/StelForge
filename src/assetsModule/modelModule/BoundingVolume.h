@@ -194,16 +194,10 @@ namespace SFE::FrustumModule {
 		using BoundingVolume::isOnFrustum;
 
 		AABB() = default;
-
-		AABB(const Math::Vec3& min, const Math::Vec3& max) : BoundingVolume{ (max + min) * 0.5f}, extents{ max.x - center.x, max.y - center.y, max.z - center.z } {
-			;
-		}
-
+		AABB(const Math::Vec3& min, const Math::Vec3& max) : BoundingVolume{ (max + min) * 0.5f}, extents{ max.x - center.x, max.y - center.y, max.z - center.z } {}
 		AABB(const Math::Vec3& inCenter, float iI, float iJ, float iK) : BoundingVolume{ inCenter }, extents({ iI, iJ, iK }){}
-				
-		inline bool isOnOrForwardPlan(const Plane& plan) const final {
-			return isOnOrForwardPlan(plan, center, extents);
-		}
+
+		inline bool isOnOrForwardPlan(const Plane& plan) const final { return isOnOrForwardPlan(plan, center, extents); }
 
 		template<typename Vec3>
 		inline static bool isOnOrForwardPlan(const Plane& plan, const Vec3& center, const Vec3& extents) {

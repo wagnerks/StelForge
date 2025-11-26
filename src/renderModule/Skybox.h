@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "RenderHardwareInterface.h"
 #include "assetsModule/shaderModule/Shader.h"
 #include "glWrapper/Buffer.h"
 #include "glWrapper/VertexArray.h"
@@ -12,10 +13,12 @@ namespace SFE::Render {
 		void init();
 		void draw();
 	private:
-		ShaderModule::ShaderBase* skyboxShader = nullptr;
-		GLW::VertexArray VAO;
-		GLW::Buffer VBO;
-		unsigned cubemapTex = -1;
+
+		PipelineHandle skyboxPipeline;
+
+		BufferHandle skyboxVBO;
+
+		TextureHandle cubemapTex;
 		std::string skyboxPath;
 	};
 }

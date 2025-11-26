@@ -360,10 +360,74 @@ namespace SFE::GLW {
 
 		void create(const void* data = nullptr) {
 			if (mType == TEXTURE_2D) {
-				create2D(data);
+				glDeleteTextures(1, &mId);
+				glGenTextures(1, &mId);
+
+				bindTextureToSlot(0, mType, mId);
+
+				glTexImage2D(mType, /*lod-level*/0, pixelFormat, width, height, 0, textureFormat, pixelType, data);
+				setParameter({
+					{DEPTH_STENCIL_TEXTURE_MODE, static_cast<int>(parameters.depthStencilTextureMode)},
+
+					{BASE_LEVEL, parameters.baseLevel},
+
+					{COMPARE_FUNC, static_cast<int>(parameters.compareFunc)},
+					{COMPARE_MODE, static_cast<int>(parameters.compareMode)},
+
+					{MIN_FILTER, static_cast<int>(parameters.minFilter)},
+					{MAG_FILTER, static_cast<int>(parameters.magFilter)},
+
+					{MAX_LEVEL, parameters.maxLevel},
+
+					{SWIZZLE_R, static_cast<int>(parameters.swizzle.R)},
+					{SWIZZLE_G, static_cast<int>(parameters.swizzle.G)},
+					{SWIZZLE_B, static_cast<int>(parameters.swizzle.B)},
+					{SWIZZLE_A, static_cast<int>(parameters.swizzle.A)},
+
+					{WRAP_R, static_cast<int>(parameters.wrap.R)},
+					{WRAP_S, static_cast<int>(parameters.wrap.S)},
+					{WRAP_T, static_cast<int>(parameters.wrap.T)},
+					});
+
+				glPixelStorei(PACK_ALIGNMENT, static_cast<int>(packAlignmentMode));
+				glPixelStorei(UNPACK_ALIGNMENT, static_cast<int>(unpackAlignmentMode));
+
+				bindTexture(mType, 0);
 			}
 			else if (mType == TEXTURE_3D) {
-				create3D(data);
+				glDeleteTextures(1, &mId);
+				glGenTextures(1, &mId);
+
+				bindTextureToSlot(0, mType, mId);
+
+				glTexImage3D(mType, /*lod-level*/0, pixelFormat, width, height, depth, 0, textureFormat, pixelType, data);
+				setParameter({
+					{DEPTH_STENCIL_TEXTURE_MODE, static_cast<int>(parameters.depthStencilTextureMode)},
+
+					{BASE_LEVEL, parameters.baseLevel},
+
+					{COMPARE_FUNC, static_cast<int>(parameters.compareFunc)},
+					{COMPARE_MODE, static_cast<int>(parameters.compareMode)},
+
+					{MIN_FILTER, static_cast<int>(parameters.minFilter)},
+					{MAG_FILTER, static_cast<int>(parameters.magFilter)},
+
+					{MAX_LEVEL, parameters.maxLevel},
+
+					{SWIZZLE_R, static_cast<int>(parameters.swizzle.R)},
+					{SWIZZLE_G, static_cast<int>(parameters.swizzle.G)},
+					{SWIZZLE_B, static_cast<int>(parameters.swizzle.B)},
+					{SWIZZLE_A, static_cast<int>(parameters.swizzle.A)},
+
+					{WRAP_R, static_cast<int>(parameters.wrap.R)},
+					{WRAP_S, static_cast<int>(parameters.wrap.S)},
+					{WRAP_T, static_cast<int>(parameters.wrap.T)},
+					});
+
+				glPixelStorei(PACK_ALIGNMENT, static_cast<int>(packAlignmentMode));
+				glPixelStorei(UNPACK_ALIGNMENT, static_cast<int>(unpackAlignmentMode));
+
+				bindTexture(mType, 0);
 			}
 		}
 

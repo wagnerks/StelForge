@@ -2,15 +2,14 @@
 
 #include <algorithm>
 
-#include "glWrapper/Texture.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 namespace SFE::ComponentsModule {
 	constexpr int MaxMaterialTexturesCount = 10;
 
 	struct MaterialData {
 		int slot = 0;
-		unsigned textureId = 0;
-		GLW::TextureType type = GLW::TEXTURE_2D;
+		Render::TextureHandle texture;
 	};
 
 	struct Materials {

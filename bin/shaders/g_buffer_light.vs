@@ -9,7 +9,10 @@ layout(std430, binding = 1) buffer modelMatrices
 {
     mat4 model[];
 };
-
+layout(std430, binding = 3) buffer gpuIndex
+{
+    uint entToGpuIdx[];
+};
 layout(std140, binding = 5) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
@@ -18,5 +21,5 @@ layout(std140, binding = 5) uniform SharedMatrices {
 
 void main()
 {
-    gl_Position = matrices.PV * model[gl_InstanceID] * vec4(aPos, 1.0);
+    gl_Position = matrices.PV * model[entToGpuIdx[gl_InstanceID]] * vec4(aPos, 1.0);
 }

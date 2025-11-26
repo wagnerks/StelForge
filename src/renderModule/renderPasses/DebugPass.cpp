@@ -21,26 +21,103 @@
 
 namespace SFE::Render::RenderPasses {
 	DebugPass::DebugPass() {
-		linesVAO.generate();
-		linesVAO.bind();
-		linesVBO.bind();
+		auto rhi = Engine::instance()->rhi();
 
-		linesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, 3 * sizeof(float));
+		BufferDesc lineBufDesc;
+		lineBufDesc.size = 1000 * sizeof(float) * 3;
+		lineBufDesc.usage = BufferUsage::Vertex;
+		lineBufDesc.cpuAccess = CpuAccess::Write;
+		linesVBO = rhi->createBuffer(lineBufDesc);
 
-		linesVAO.bindDefault();
-		linesVBO.unbind();
+		VertexLayoutDesc lineLayout;
+		lineLayout.bindings.push_back({ 0, sizeof(float) * 3, VertexInputRate::PerVertex });
+		lineLayout.attributes.push_back({
+			0,                            // location 0
+			0,
+			VertexFormat::Float3,         // vec3 position
+			0,
+			false                         // normalized
+			});
+		
+
+		BufferDesc triBufDesc;
+		triBufDesc.size = 500 * sizeof(SFE::Vertex3D);
+		triBufDesc.usage = BufferUsage::Vertex;
+		triBufDesc.cpuAccess = CpuAccess::Write;
+		trianglesVBO = rhi->createBuffer(triBufDesc);
+
+		VertexLayoutDesc triLayout;
+		triLayout.bindings.push_back({ 0, sizeof(SFE::Vertex3D), VertexInputRate::PerVertex });
+
+		triLayout.attributes.push_back({
+			0,                            // location 0
+			0,
+			VertexFormat::Float3,         // vec3 position
+			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, position)),
+			false                         // normalized
+			});
+
+		triLayout.attributes.push_back({
+			1,                            // location 1
+			0,
+			VertexFormat::Float3,         // vec3 normal
+			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, normal)),
+			true                          // normalized = true
+			});
+
+		triLayout.attributes.push_back({
+			2,                            // location 2
+			0,
+			VertexFormat::Float4,         // vec4 color
+			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, color)),
+			true                          // normalized = true
+			});
+
+		ShaderModuleDesc triangleVS;
+		triangleVS.stage = ShaderStage::Vertex;
+		triangleVS.name = "Debug Triangle VS";
+		triangleVS.source = ShaderModule::ShaderBase::loadShaderCode("shaders/simpleColoredTriangle.vs");
+
+		ShaderModuleDesc triangleFS;
+		triangleFS.stage = ShaderStage::Fragment;
+		triangleFS.name = "Debug Triangle FS";
+		triangleFS.source = ShaderModule::ShaderBase::loadShaderCode("shaders/simpleColoredTriangle.fs");
+
+		GraphicsPipelineDesc debugPipelineDesc{};
+		debugPipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(triangleVS);
+		debugPipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(triangleFS);
+		debugPipelineDesc.topology = PrimitiveTopology::Triangles;
+		debugPipelineDesc.cullMode = CullMode::Back;
+		debugPipelineDesc.frontFace = FrontFace::CCW;
+		debugPipelineDesc.fillMode = PolygonFillMode::Fill;
+		debugPipelineDesc.depthStencilState.depthTest = true;
+		debugPipelineDesc.depthStencilState.depthWrite = true;
+		debugPipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
+		debugPipelineDesc.blend.enabled = false;
+		debugPipelineDesc.layout = triLayout;
+		trianglesPipeline = rhi->createGraphicsPipeline(debugPipelineDesc);
+
+		GraphicsPipelineDesc linePipelineDesc;
+		linePipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(ShaderModuleDesc{
+			ShaderStage::Vertex, "Debug Lines VS", ShaderModule::ShaderBase::loadShaderCode("shaders/xyzLines.vs")});
+
+		linePipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(ShaderModuleDesc{
+			ShaderStage::Fragment, "Debug Lines FS", ShaderModule::ShaderBase::loadShaderCode("shaders/colored_lines.fs")});
+
+		linePipelineDesc.topology = PrimitiveTopology::Lines;
+		linePipelineDesc.cullMode = CullMode::None;
+		linePipelineDesc.frontFace = FrontFace::CCW;
+		linePipelineDesc.fillMode = PolygonFillMode::Line;
+		linePipelineDesc.depthStencilState.depthTest = false;
+		linePipelineDesc.depthStencilState.depthWrite = false;
+		linePipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
+		linePipelineDesc.blend.enabled = true;
+		linePipelineDesc.blend.srcColor = BlendFactor::SrcAlpha;
+		linesPipeline = rhi->createGraphicsPipeline(linePipelineDesc);
 
 
-		trianglesVAO.generate();
-		trianglesVAO.bind();
-		trianglesVBO.bind();
 
-		trianglesVAO.addAttribute(0, 3, GLW::AttributeFType::FLOAT, false, &SFE::Vertex3D::position);
-		trianglesVAO.addAttribute(1, 3, GLW::AttributeFType::FLOAT, true,  &SFE::Vertex3D::normal);
-		trianglesVAO.addAttribute(2, 4, GLW::AttributeFType::FLOAT, true,  &SFE::Vertex3D::color);
 
-		trianglesVAO.bindDefault();
-		trianglesVBO.unbind();
 	}
 
 	DebugPass::~DebugPass() {}
@@ -54,57 +131,53 @@ namespace SFE::Render::RenderPasses {
 		}
 
 		if (!Utils::renderTriangles.empty()) {
-			auto triangleShader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/simpleColoredTriangle.vs", "shaders/simpleColoredTriangle.fs");
-			triangleShader->use();
-			triangleShader->setUniform("PVM", renderDataHandle.current.PV);
-			triangleShader->setUniform("viewPos", renderDataHandle.mCameraPos);
-			trianglesVBO.bind();
-			for (auto& [data, triangles] : Utils::renderTriangles) {
-				trianglesVBO.allocateData(triangles, GLW::STATIC_DRAW);
+			Engine::instance()->rhi()->bindPipeline(trianglesPipeline);
+			trianglesVBO.bindVertex(0);
+			
+			Engine::instance()->rhi()->setUniform(trianglesPipeline, "PVM", renderDataHandle.current.PV);
+			Engine::instance()->rhi()->setUniform(trianglesPipeline, "viewPos", renderDataHandle.mCameraPos);
+			
 
+			for (auto& [data, triangles] : Utils::renderTriangles) {
+				Engine::instance()->rhi()->updateBuffer(trianglesVBO,0, triangles.size() * sizeof(SFE::Vertex3D) * 3, triangles.data());
 
 				GLW::CapabilitiesStack<GLW::BLEND>::push(data.blend);
 				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::push(data.depthTest);
 				GLW::CapabilitiesStack<GLW::CULL_FACE>::push(data.cull);
 				GLW::BlendFuncStack::push({ GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
-				GLW::drawVertices(GLW::TRIANGLES, trianglesVAO.getID(), static_cast<int>(triangles.size()) * 3);
+				GLW::drawVerticesW(GLW::TRIANGLES, static_cast<int>(triangles.size()) * 3);
 				GLW::BlendFuncStack::pop();
 				GLW::CapabilitiesStack<GLW::BLEND>::pop();
 				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::pop();
 				GLW::CapabilitiesStack<GLW::CULL_FACE>::pop();
 			}
-			trianglesVBO.unbind();
 
 			Utils::renderTriangles.clear();
 		}
 		
 
 		if (!Utils::renderVertices.empty()) {
-			auto coloredLines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/xyzLines.vs", "shaders/colored_lines.fs");
-			coloredLines->use();
-			coloredLines->setUniform("PVM", renderDataHandle.current.PV);
+			Engine::instance()->rhi()->bindPipeline(linesPipeline);
+			linesVBO.bindVertex(0);
 
-			linesVBO.bind();
+			Engine::instance()->rhi()->setUniform(linesPipeline, "PVM", renderDataHandle.current.PV);
 			for (auto& [data, vertices] : Utils::renderVertices) {
-				coloredLines->setUniform("color", data.color);
-
-
-				linesVBO.allocateData(vertices, GLW::STATIC_DRAW);
-
+				Engine::instance()->rhi()->setUniform(linesPipeline, "color", data.color);
+				Engine::instance()->rhi()->updateBuffer(trianglesVBO, 0, vertices.size() * sizeof(SFE::Vertex3D) , vertices.data());
 
 				GLW::CapabilitiesStack<GLW::BLEND>::push(true);
 				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::push(false);
 				GLW::BlendFuncStack::push({ GLW::SRC_ALPHA, GLW::ONE_MINUS_SRC_ALPHA });
 
 				GLW::LineWidth::push(data.thickness);
-				GLW::drawVertices(data.renderType, linesVAO.getID(), static_cast<int>(vertices.size()), 0, 0);
+				GLW::drawVerticesW(data.renderType, static_cast<int>(vertices.size()), 0, 0);
 				GLW::LineWidth::pop();
 
 				GLW::BlendFuncStack::pop();
 				GLW::CapabilitiesStack<GLW::BLEND>::pop();
 				GLW::CapabilitiesStack<GLW::DEPTH_TEST>::pop();
 			}
-			linesVBO.unbind();
+
 			Utils::renderVertices.clear();
 		}
 		
