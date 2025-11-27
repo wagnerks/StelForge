@@ -88,7 +88,7 @@ namespace SFE::Render::RenderPasses {
 		debugPipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(triangleFS);
 		debugPipelineDesc.topology = PrimitiveTopology::Triangles;
 		debugPipelineDesc.cullMode = CullMode::Back;
-		debugPipelineDesc.frontFace = FrontFace::CCW;
+		debugPipelineDesc.frontFace = FrontFace::CounterClockWise;
 		debugPipelineDesc.fillMode = PolygonFillMode::Fill;
 		debugPipelineDesc.depthStencilState.depthTest = true;
 		debugPipelineDesc.depthStencilState.depthWrite = true;
@@ -106,7 +106,7 @@ namespace SFE::Render::RenderPasses {
 
 		linePipelineDesc.topology = PrimitiveTopology::Lines;
 		linePipelineDesc.cullMode = CullMode::None;
-		linePipelineDesc.frontFace = FrontFace::CCW;
+		linePipelineDesc.frontFace = FrontFace::CounterClockWise;
 		linePipelineDesc.fillMode = PolygonFillMode::Line;
 		linePipelineDesc.depthStencilState.depthTest = false;
 		linePipelineDesc.depthStencilState.depthWrite = false;
@@ -114,15 +114,11 @@ namespace SFE::Render::RenderPasses {
 		linePipelineDesc.blend.enabled = true;
 		linePipelineDesc.blend.srcColor = BlendFactor::SrcAlpha;
 		linesPipeline = rhi->createGraphicsPipeline(linePipelineDesc);
-
-
-
-
 	}
 
 	DebugPass::~DebugPass() {}
 
-	void DebugPass::render(SystemsModule::RenderData& renderDataHandle) {
+	void DebugPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 		FUNCTION_BENCHMARK;
 
 		for (auto [entId, gizmoComp] : ECSHandler::registry().view<ComponentsModule::GizmoComponent>()) {
@@ -131,7 +127,7 @@ namespace SFE::Render::RenderPasses {
 		}
 
 		if (!Utils::renderTriangles.empty()) {
-			Engine::instance()->rhi()->bindPipeline(trianglesPipeline);
+			Engine::instance()->rhi()->cmdBindPipeline(cmd, trianglesPipeline);
 			trianglesVBO.bindVertex(0);
 			
 			Engine::instance()->rhi()->setUniform(trianglesPipeline, "PVM", renderDataHandle.current.PV);
@@ -157,7 +153,7 @@ namespace SFE::Render::RenderPasses {
 		
 
 		if (!Utils::renderVertices.empty()) {
-			Engine::instance()->rhi()->bindPipeline(linesPipeline);
+			Engine::instance()->rhi()->cmdBindPipeline(cmd, linesPipeline);
 			linesVBO.bindVertex(0);
 
 			Engine::instance()->rhi()->setUniform(linesPipeline, "PVM", renderDataHandle.current.PV);

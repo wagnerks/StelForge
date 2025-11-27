@@ -5,6 +5,6 @@ namespace SFE::Render::RenderPasses {
 	class ShadersPass : public RenderPass {
 	public:
 		ShadersPass();
-		void render(SystemsModule::RenderData& renderDataHandle) override;
+		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	};
 }

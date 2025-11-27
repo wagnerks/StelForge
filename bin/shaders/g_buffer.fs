@@ -1,9 +1,12 @@
-#version 330 core
+#version 430 core
 layout (location = 0) out highp vec4 gPosition;
 layout (location = 1) out vec4 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
 layout (location = 3) out highp vec3 gViewPosition;
 
+layout (binding = 1) uniform sampler2D texture_diffuse1;
+layout (binding = 2) uniform sampler2D normalMap;
+layout (binding = 3) uniform sampler2D texture_specular1;
 
 in vec2 TexCoords;
 in highp vec3 FragPos;
@@ -12,10 +15,6 @@ in vec3 ViewPos;
 
 out vec4 FragColor;
 in mat3 TBN;
-
-uniform sampler2D texture_diffuse1;
-uniform sampler2D texture_specular1;
-uniform sampler2D normalMap;
 
 uniform mat4 PV;
 uniform mat4 P;

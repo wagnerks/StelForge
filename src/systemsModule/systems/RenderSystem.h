@@ -131,6 +131,8 @@ namespace SFE::SystemsModule {
 		bool mShadowsDebugDataDraw = false;
 	private:
 
+		void renderFrame();
+
 		template<typename T>
 		void markDirtyImpl(ecss::EntityId id) {
 			auto lock = std::unique_lock(dirtiesMutex);

@@ -195,22 +195,22 @@ void CascadedShadowPass::initRender() {
 	matricesUBO = Engine::instance()->rhi()->createBuffer(desc);
 	Engine::instance()->rhi()->bindUniformBuffer(0, matricesUBO);
 
-	ShaderDesc shaderVDesc;
+	ShaderModuleDesc shaderVDesc;
 	shaderVDesc.stage = ShaderStage::Vertex;
 	shaderVDesc.name = "CascadedShadowPass_Vertex";
 	shaderVDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.vs");
 
-	ShaderDesc shaderFDesc;
+	ShaderModuleDesc shaderFDesc;
 	shaderFDesc.stage = ShaderStage::Fragment;
 	shaderFDesc.name = "CascadedShadowPass_Fragment";
 	shaderFDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.fs");
 
-	PipelineDesc pipelineDesc;
+	GraphicsPipelineDesc pipelineDesc;
 	pipelineDesc.depthStencilState.depthTest = true;
 	pipelineDesc.depthStencilState.depthWrite = true;
 	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
-	pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShader(shaderVDesc);
-	pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShader(shaderFDesc);
+	pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(shaderVDesc);
+	pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(shaderFDesc);
 	
 	Render::VertexLayoutDesc vaoDesc;
 	vaoDesc.bindings.push_back({ 0,sizeof(Vertex3D), Render::VertexInputRate::PerVertex });
@@ -233,7 +233,7 @@ void CascadedShadowPass::initRender() {
 	renderPass = Engine::instance()->rhi()->createRenderPass(rpDesc);
 }
 
-void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
+void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	if (!mInited) {
 		return;
 	}
@@ -279,14 +279,14 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle) {
 
 	for (auto i = 0; i < static_cast<int>(lightFbos.size()); i++){
 		begin.framebuffer = lightFbos[i];
-		rhi->beginRenderPass(begin);
 
-		rhi->bindPipeline(pipeline);
-		rhi->setUniform(pipeline, "uCascadeIndex", i);
+		rhi->cmdBeginRenderPass(cmd, begin);
+		rhi->cmdBindPipeline(cmd, pipeline);
+		rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Vertex,	&i, sizeof(i));
 
-		curPassData->getBatcher().flushAll();
+		curPassData->getBatcher().flushAll(cmd);
 
-		rhi->endRenderPass();
+		rhi->cmdEndRenderPass(cmd);
 	}
 }
 

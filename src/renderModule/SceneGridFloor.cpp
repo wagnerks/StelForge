@@ -51,7 +51,7 @@ void SceneGridFloor::init() {
 	pd.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Fragment, "Floor Grid Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/floorGrid.fs") });
 	pd.layout = layout;
 	pd.cullMode = CullMode::Back;
-	pd.frontFace = FrontFace::CCW;
+	pd.frontFace = FrontFace::CounterClockWise;
 	pd.blend = { true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha };
 
 	floorPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pd);

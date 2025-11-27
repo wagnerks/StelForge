@@ -8,7 +8,7 @@ namespace SFE::Render::RenderPasses {
 	public:
 		~OcclusionPass() override;
 		void init() override;
-		void render(SystemsModule::RenderData& renderDataHandle) override;
+		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 		TextureHandle depthTex;
 		SamplerHandle depthSampler;

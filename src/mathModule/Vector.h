@@ -133,6 +133,7 @@ namespace SFE::Math {
 				T x, y, z, w;
 			};
 			Vector<T, 3> xyz;
+			Vector<T, 2> xy;
 			T m[4];
 		};
 

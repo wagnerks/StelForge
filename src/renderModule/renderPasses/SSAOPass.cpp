@@ -119,7 +119,7 @@ void SSAOPass::init() {
 	shaderSSAOBlur->setUniform("facS", facS);
 }
 
-void SSAOPass::render(SystemsModule::RenderData& renderDataHandle) {
+void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK
 	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
 	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");

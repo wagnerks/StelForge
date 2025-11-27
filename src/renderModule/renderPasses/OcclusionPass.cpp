@@ -40,7 +40,7 @@ namespace SFE::Render::RenderPasses {
 		occlusionFrameBuffer = rhi->createFramebuffer(fbDesc);
 	}
 
-	void OcclusionPass::render(SystemsModule::RenderData& renderDataHandle) {
+	void OcclusionPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 		FUNCTION_BENCHMARK
 			return;
 		//todo update it only for objects with dirty transforms, or if camera moved (especially for shadows)

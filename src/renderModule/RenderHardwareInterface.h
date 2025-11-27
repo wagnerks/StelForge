@@ -9,24 +9,36 @@ namespace SFE::Render
 #define RHI_INVALID_HANDLE UINT32_MAX
 
 	// Handles
+	struct DescriptorSetLayoutHandle
+	{
+		uint32_t id = RHI_INVALID_HANDLE;
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
+	};
+
+	struct DescriptorSetHandle
+	{
+		uint32_t id = RHI_INVALID_HANDLE;
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
+	};
+
 	struct TextureHandle
 	{
-		uint32_t id = UINT32_MAX;
+		uint32_t id = RHI_INVALID_HANDLE;
 
-		operator bool() const { return id != UINT32_MAX; }
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
 	};
 
 	struct SamplerHandle {
-		uint32_t id = UINT32_MAX;
+		uint32_t id = RHI_INVALID_HANDLE;
 
-		operator bool() const { return id != UINT32_MAX; }
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
 	};
 
-	struct ShaderHandle
+	struct ShaderModuleHandle
 	{
-		uint32_t id = UINT32_MAX;
+		uint32_t id = RHI_INVALID_HANDLE;
 
-		operator bool() const { return id != UINT32_MAX; }
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
 	};
 
 	enum class IndexType
@@ -37,9 +49,9 @@ namespace SFE::Render
 
 	struct BufferHandle
 	{
-		uint32_t id = UINT32_MAX;
+		uint32_t id = RHI_INVALID_HANDLE;
 
-		operator bool() const { return id != UINT32_MAX; }
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
 
 		void bindVertex(uint32_t slot = 0, uint32_t offset = 0) const;
 		void bindIndex(IndexType type, uint32_t offset = 0) const;
@@ -48,30 +60,30 @@ namespace SFE::Render
 	};
 
 	struct RenderPassHandle {
-		uint32_t id = UINT32_MAX;
+		uint32_t id = RHI_INVALID_HANDLE;
 
-		operator bool() const { return id != UINT32_MAX; }
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
 	};
 
 	struct PipelineHandle {
-		uint32_t id = UINT32_MAX;
+		uint32_t id = RHI_INVALID_HANDLE;
 
-		operator bool() const { return id != UINT32_MAX; }
+		operator bool() const { return id != RHI_INVALID_HANDLE; }
 		void bind() const;
 	};
 
 	// Descriptions
 
-	enum class ShaderStage {
-		Vertex,
-		Fragment,
-		Geometry,
-		Compute,
-		TessControl,
-		TessEval
+	enum class ShaderStage : uint32_t {
+		Vertex = 1 << 0,
+		Fragment = 1 << 1,
+		Geometry = 1 << 2,
+		TessControl = 1 << 3,
+		TessEval = 1 << 4,
+		Compute = 1 << 5,
 	};
 
-	struct ShaderDesc
+	struct ShaderModuleDesc
 	{
 		ShaderStage stage;
 		std::string name;     // logic name
@@ -409,15 +421,15 @@ namespace SFE::Render
 
 	struct PipelineShaders
 	{
-		ShaderHandle vertex;
-		ShaderHandle fragment;
-		ShaderHandle geometry;     // optional
-		ShaderHandle tessControl;  // optional
-		ShaderHandle tessEval;     // optional
+		ShaderModuleHandle vertex;
+		ShaderModuleHandle fragment;
+		ShaderModuleHandle geometry;     // optional
+		ShaderModuleHandle tessControl;  // optional
+		ShaderModuleHandle tessEval;     // optional
 		// compute separately in ComputePipelineDesc
 	};
 
-	struct PipelineDesc {
+	struct GraphicsPipelineDesc {
 		PipelineShaders shaders;
 
 		VertexLayoutDesc		layout;
@@ -435,6 +447,74 @@ namespace SFE::Render
 		uint32_t				subpassIndex = 0; // пока всегда 0, т.к. субпассов нет
 	};
 
+	// --- Command lists ---
+
+	enum class CommandListType
+	{
+		Graphics,
+		Compute,
+		Transfer
+	};
+
+	struct CommandListHandle
+	{
+		uint32_t id = UINT32_MAX;
+
+		operator bool() const { return id != UINT32_MAX; }
+	};
+
+
+	inline ShaderStage operator|(ShaderStage a, ShaderStage b) {
+		return ShaderStage(uint32_t(a) | uint32_t(b));
+	}
+
+	inline bool operator&(ShaderStage a, ShaderStage b) {
+		return (uint32_t(a) & uint32_t(b)) != 0;
+	}
+
+	enum class DescriptorType
+	{
+		UniformBuffer,
+		StorageBuffer,
+		CombinedImageSampler, // текстура + сэмплер
+	};
+
+	struct DescriptorBufferInfo
+	{
+		BufferHandle buffer;
+		size_t       offset = 0;
+		size_t       range = 0; // 0 = "до конца буфера"
+	};
+
+	struct DescriptorImageInfo
+	{
+		TextureHandle  texture;
+		SamplerHandle  sampler;
+	};
+
+	struct WriteDescriptor
+	{
+		DescriptorSetHandle set; // в какой set пишем
+		uint32_t            binding = 0; // binding в layout’е / шейдере
+		DescriptorType      type;
+
+		std::vector<DescriptorBufferInfo> buffers;
+		std::vector<DescriptorImageInfo>  images;
+	};
+
+	struct DescriptorSetLayoutBinding
+	{
+		uint32_t      binding = 0;
+		DescriptorType type;
+		uint32_t      count = 1;          // для массивов (texture[4] и т.п.)
+		ShaderStage   stageMask;          // какие шейдер-стадии видят этот binding
+	};
+
+	struct DescriptorSetLayoutDesc
+	{
+		std::vector<DescriptorSetLayoutBinding> bindings;
+	};
+
 	class RenderHardwareInterface
 	{
 	public:
@@ -443,7 +523,7 @@ namespace SFE::Render
 		virtual void init() = 0;
 		virtual void cleanup() = 0;
 
-		virtual PipelineHandle createGraphicsPipeline(const PipelineDesc& desc) = 0;
+		virtual PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) = 0;
 		virtual void bindPipeline(PipelineHandle handle) = 0;
 
 		virtual TextureHandle createTexture(const TextureDesc& desc, const void* data = nullptr) = 0;
@@ -455,8 +535,8 @@ namespace SFE::Render
 		virtual void bindTexture(uint32_t slot, TextureHandle tex, SamplerHandle sampler = {}) = 0;
 		virtual void setTextureSubImage2D(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) = 0;
 		
-		virtual ShaderHandle createShader(const ShaderDesc& desc) = 0;
-		virtual void destroyShader(ShaderHandle handle) = 0;
+		virtual ShaderModuleHandle createShaderModule(const ShaderModuleDesc& desc) = 0;
+		virtual void destroyShaderModule(ShaderModuleHandle handle) = 0;
 
 		virtual FramebufferHandle createFramebuffer(const FramebufferDesc& desc) = 0;
 		virtual void destroyFramebuffer(FramebufferHandle framebuffer) = 0;
@@ -471,6 +551,10 @@ namespace SFE::Render
 
 		virtual BufferHandle createBuffer(const BufferDesc& desc, const void* initialData = nullptr) = 0;
 		virtual void destroyBuffer(BufferHandle handle) = 0;
+		template<typename T>
+		void updateBuffer(BufferHandle handle, const T& data, size_t offset = 0) {
+			updateBuffer(handle, offset, sizeof(T), static_cast<const void*>(&data));
+		}
 
 		virtual void updateBuffer(BufferHandle handle, size_t offset = 0, size_t size = 0, const void* data = nullptr) = 0;
 
@@ -501,5 +585,58 @@ namespace SFE::Render
 		// begin/end — "правильный" путь рисовать: сначала beginRenderPass, потом draw, потом endRenderPass.
 		virtual void beginRenderPass(const RenderPassBeginInfo& beginInfo) = 0;
 		virtual void endRenderPass() = 0;
+
+		// --- Command lists (новое, для постепенного перехода) ---
+
+		virtual CommandListHandle beginCommandList(CommandListType type) = 0;
+		virtual void endCommandList(CommandListHandle cmd) = 0;
+		virtual void submit(const CommandListHandle* lists, uint32_t count) = 0;
+		virtual void present() = 0;
+
+		virtual void cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo) = 0;
+		virtual void cmdEndRenderPass(CommandListHandle cmd) = 0;
+
+		virtual void cmdBindPipeline(CommandListHandle cmd, PipelineHandle pipeline) = 0;
+
+		virtual void cmdBindVertexBuffer(CommandListHandle cmd, uint32_t slot, BufferHandle handle, uint32_t offset = 0) = 0;
+		virtual void cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset = 0) = 0;
+
+		template<typename T>
+		void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, const T& data, ShaderStage stages = ShaderStage::Vertex | ShaderStage::Fragment) {
+			cmdPushConstants(cmd, pipeline, stages, static_cast<const void*>(&data), static_cast<uint32_t>(sizeof(T)));
+		}
+
+		virtual void cmdPushConstants(
+			CommandListHandle cmd,
+			PipelineHandle pipeline,
+			ShaderStage stages = ShaderStage::Vertex | ShaderStage::Fragment,
+			const void* data = nullptr,
+			uint32_t size = 0
+		) = 0;
+
+		virtual void cmdDraw(CommandListHandle cmd,
+			uint32_t vertexCount,
+			uint32_t instanceCount = 1,
+			uint32_t firstVertex = 0,
+			uint32_t firstInstance = 0) = 0;
+
+		virtual void cmdDrawIndexed(CommandListHandle cmd,
+			uint32_t indexCount,
+			uint32_t instanceCount = 1,
+			uint32_t firstIndex = 0,
+			int32_t  vertexOffset = 0,
+			uint32_t firstInstance = 0) = 0;
+
+		// --- Descriptor sets / layouts ---
+		virtual DescriptorSetLayoutHandle createDescriptorSetLayout(const DescriptorSetLayoutDesc& desc) = 0;
+
+		virtual void destroyDescriptorSetLayout(DescriptorSetLayoutHandle layout) = 0;
+
+		virtual DescriptorSetHandle allocateDescriptorSet(DescriptorSetLayoutHandle layout) = 0;
+		virtual void freeDescriptorSet(DescriptorSetHandle set) = 0;
+
+		virtual void updateDescriptorSets(const std::vector<WriteDescriptor>& writes) = 0;
+
+		virtual void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount) = 0;
 	};
 }

@@ -59,7 +59,7 @@ namespace SFE::Render::RenderPasses {
 	void PointLightPass::freeBuffers() const {
 	}
 
-	void PointLightPass::render(SystemsModule::RenderData& renderDataHandle) {
+	void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 		FUNCTION_BENCHMARK
 		lightMatrices.clear();
 		frustums.clear();

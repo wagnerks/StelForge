@@ -21,7 +21,9 @@ layout (std140, binding = 0) uniform LightSpaceMatrices
     mat4 lightSpaceMatrices[6];
 };
 
-uniform int uCascadeIndex;
+layout(std140, binding  = 15) uniform PushConstants {
+    int uCascadeIndex;
+} pc;
 
 layout(std430, binding = 2) buffer bonesMatrices
 {
@@ -47,5 +49,5 @@ void main()
     newPos /= newPos.w;
 
     mat4 world = model[entToGpuIdx[gl_InstanceID]];
-    gl_Position = lightSpaceMatrices[uCascadeIndex] * world * newPos;
+    gl_Position = lightSpaceMatrices[pc.uCascadeIndex] * world * newPos;
 }

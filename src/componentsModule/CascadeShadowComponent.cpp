@@ -238,7 +238,7 @@ namespace SFE::ComponentsModule {
 			pipelineDesc.depthStencilState.depthWrite = true;
 			pipelineDesc.depthStencilState.depthCompareOp = Render::CompareOp::Less;
 			pipelineDesc.cullMode = Render::CullMode::Back;
-			pipelineDesc.frontFace = Render::FrontFace::CCW;
+			pipelineDesc.frontFace = Render::FrontFace::CounterClockWise;
 			pipelineDesc.fillMode = Render::PolygonFillMode::Fill;
 			pipelineDesc.topology = Render::PrimitiveTopology::Triangles;
 			pipelineDesc.blend.enabled = true;

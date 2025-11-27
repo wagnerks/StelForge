@@ -37,8 +37,17 @@ namespace SFE::Render::RenderPasses {
 		RenderPassHandle geometryPass;
 		PipelineHandle geometryPipeline;
 
+		PipelineHandle gBufferOutlinePipeline;
+		RenderPassHandle outlineBufferRenderPass;
+		PipelineHandle outlinePipeline;
+		RenderPassHandle outlineRenderPass;
+
+		Render::DescriptorSetLayoutHandle mTexSetLayoutOutlines{};
+		Render::DescriptorSetHandle       mTexSetOutlines{};
+
+
 		void init() override;
-		void render(SystemsModule::RenderData& renderDataHandle) override;
+		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
 		bool mInited = false;
 		Data mData;

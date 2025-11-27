@@ -372,7 +372,7 @@ namespace SFE::Render {
 			pipelineDesc.layout = layoutDesc;
 			pipelineDesc.topology = PrimitiveTopology::Triangles;
 			pipelineDesc.cullMode = CullMode::None;
-			pipelineDesc.frontFace = FrontFace::CCW;
+			pipelineDesc.frontFace = FrontFace::CounterClockWise;
 			pipelineDesc.fillMode = PolygonFillMode::Fill;
 			pipelineDesc.depthStencilState = { false, false, CompareOp::Less };
 			pipelineDesc.blend = { true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha };

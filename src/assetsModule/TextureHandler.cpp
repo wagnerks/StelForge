@@ -14,14 +14,6 @@ bool Texture::isValid() const {
 	return texture;
 }
 
-void TextureHandler::bindTextureToSlot(unsigned slot, Texture* texture) {
-	if (!texture) {
-		return;
-	}
-
-	SFE::Engine::instance()->rhi()->bindTexture(slot, texture->texture, texture->sampler);
-}
-
 Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Render::TextureFormat format) {
 	auto texture = AssetsManager::instance()->getAsset<Texture>(path);
 	if (texture) {

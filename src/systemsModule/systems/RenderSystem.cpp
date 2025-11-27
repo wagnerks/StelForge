@@ -119,15 +119,6 @@ namespace SFE::SystemsModule {
 	void RenderSystem::update(float_t dt) {
 		FUNCTION_BENCHMARK;
 
-		mCpuFrameStart = std::chrono::high_resolution_clock::now();
-
-		// swap gpu queries (we measure frame N with query A while retrieving result of frame N-1 from query B)
-		int prevQuery = mCurrentGpuQuery;
-		mCurrentGpuQuery = (mCurrentGpuQuery + 1) % 2;
-
-		// begin new GPU timing for this frame
-		//glBeginQuery(GL_TIME_ELAPSED, mGpuTimeQueries[mCurrentGpuQuery]);
-
 		mRenderData.current = mRenderData.next;
 		mRenderData.cameraProjection = mRenderData.nextCameraProjection;
 
@@ -151,80 +142,8 @@ namespace SFE::SystemsModule {
 		mRenderData.mNextCamFrustum = cameraComp->getFrustum();
 
 		mRenderData.rotate();
-		//int i = 0;
-		GLW::clear(GLW::ColorBit::ALL);
 
-		for (const auto renderPass : mRenderPasses) {
-			//FUNCTION_BENCHMARK_NAMED_STR("pass: " + names[i]);
-			renderPass->render(mRenderData);
-			//i++;
-		}
-
-		// end gpu query for current frame
-		//glEndQuery(GL_TIME_ELAPSED);
-
-		//{
-		//	// try retrieve previous frame gpu timing (non-blocking if available)
-		//	GLuint available = 0;
-		//	glGetQueryObjectuiv(mGpuTimeQueries[prevQuery], GL_QUERY_RESULT_AVAILABLE, &available);
-		//	if (available) {
-		//		unsigned long long timeElapsed = 0; // nanoseconds
-		//		glGetQueryObjectui64v(mGpuTimeQueries[prevQuery], GL_QUERY_RESULT, &timeElapsed);
-		//		mLastGpuTimeMs = double(timeElapsed) / 1'000'000.0; // ns -> ms
-		//	}
-
-		//	static Debug::SystemLoadWin sys;
-		//	static bool inited = false;
-		//	if (!inited) { sys.init(); inited = true; }
-
-		//	sys.update(dt);
-
-		//	auto font = Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20);
-		//	auto red = Math::Vec3{ 1.f,0.f,0.f };
-		//	auto green = Math::Vec3{ 0.f,1.f,0.f };
-		//	
-		//	Render::TextRenderer::instance()->renderText(
-		//		"CPU load: " + std::to_string((int)std::round(sys.cpuPercentUI())) + "%", 10.f, 110.f, 1.f, red, font);
-
-		//	Render::TextRenderer::instance()->renderText(
-		//		sys.gpu() >= 0
-		//		? "GPU load: " + std::to_string((int)std::round(sys.gpuPercentUI())) + "%"
-		//		: "GPU load: n/a",
-		//		10.f, 140.f, 1.f, green, font);
-
-		//	// CPU frame end
-		//	auto cpuEnd = std::chrono::high_resolution_clock::now();
-		//	mLastCpuFrameMs = std::chrono::duration<double, std::milli>(cpuEnd - mCpuFrameStart).count();
-
-		//	// compute % load relative to frame time (dt). dt is in seconds.
-		//	double frameMs = max(0.000001, static_cast<double>(Engine::instance()->getDeltaTime()) * 1000.0);
-		//	double cpuLoad = std::clamp(mLastCpuFrameMs / frameMs * 100.0, 0.0, 999.9); // allow >100 if over budget but clamp display
-		//	double gpuLoad = std::clamp(mLastGpuTimeMs / frameMs * 100.0, 0.0, 999.9);
-		//	typedef int (WINAPI* PFNWGLGETSWAPINTERVALEXTPROC) ();
-		//	static PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = nullptr;
-
-		//
-		//	if (!wglGetSwapIntervalEXT) {
-		//		wglGetSwapIntervalEXT = reinterpret_cast<PFNWGLGETSWAPINTERVALEXTPROC>(
-		//			wglGetProcAddress("wglGetSwapIntervalEXT"));
-		//	}
-		//	auto interval = wglGetSwapIntervalEXT ? wglGetSwapIntervalEXT() : -1; // -1 = узнать не удалось
-		//
-		//
-		//	// overlay
-		//	Render::TextRenderer::instance()->renderText("FPS: " + std::to_string(Engine::instance()->getFPS()), 10.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("dt: " + std::to_string(Engine::instance()->getDeltaTime()), 10.f, 80.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("CPU(ms): " + std::to_string(mLastCpuFrameMs), 10.f, 170.f, 1.f, Math::Vec3{1.f, 0.8f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("GPU(ms): " + std::to_string(mLastGpuTimeMs), 10.f, 200.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("VSYNC: " + std::to_string(interval), 10.f, 230.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("objects rendered: " + std::to_string(RenderDebugInfo::instance()->objectsRendered), 10.f, 260.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("vertices rendered: " + std::to_string(RenderDebugInfo::instance()->verticesRendered), 10.f, 290.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("draw calls: " + std::to_string(RenderDebugInfo::instance()->drawCalls), 10.f, 320.f, 1.f, Math::Vec3{0.2f, 1.f, 0.2f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-
-		//	RenderDebugInfo::instance()->objectsRendered = 0;
-		//	RenderDebugInfo::instance()->verticesRendered = 0;
-		//	RenderDebugInfo::instance()->drawCalls = 0;
-		//}
+		renderFrame();
 
 		prepareDataForNextFrame();
 	}
@@ -316,6 +235,96 @@ namespace SFE::SystemsModule {
 		else if (task.type == MESH_UPDATED) {
 			markDirty<ComponentsModule::MeshComponent>(task.entity);
 		}
+	}
+
+	void RenderSystem::renderFrame()
+	{
+		mCpuFrameStart = std::chrono::high_resolution_clock::now();
+
+		// swap gpu queries (we measure frame N with query A while retrieving result of frame N-1 from query B)
+		int prevQuery = mCurrentGpuQuery;
+		mCurrentGpuQuery = (mCurrentGpuQuery + 1) % 2;
+
+		// begin new GPU timing for this frame
+		//glBeginQuery(GL_TIME_ELAPSED, mGpuTimeQueries[mCurrentGpuQuery]);
+
+		GLW::clear(GLW::ColorBit::ALL);
+		auto rhi = Engine::instance()->rhi();
+		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
+		
+		for (const auto renderPass : mRenderPasses) {
+			renderPass->render(mRenderData, cmd);
+		}
+
+		rhi->endCommandList(cmd);
+		rhi->submit(&cmd, 1);
+		rhi->present();
+
+		// end gpu query for current frame
+		//glEndQuery(GL_TIME_ELAPSED);
+
+		//{
+		//	// try retrieve previous frame gpu timing (non-blocking if available)
+		//	GLuint available = 0;
+		//	glGetQueryObjectuiv(mGpuTimeQueries[prevQuery], GL_QUERY_RESULT_AVAILABLE, &available);
+		//	if (available) {
+		//		unsigned long long timeElapsed = 0; // nanoseconds
+		//		glGetQueryObjectui64v(mGpuTimeQueries[prevQuery], GL_QUERY_RESULT, &timeElapsed);
+		//		mLastGpuTimeMs = double(timeElapsed) / 1'000'000.0; // ns -> ms
+		//	}
+
+		//	static Debug::SystemLoadWin sys;
+		//	static bool inited = false;
+		//	if (!inited) { sys.init(); inited = true; }
+
+		//	sys.update(dt);
+
+		//	auto font = Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20);
+		//	auto red = Math::Vec3{ 1.f,0.f,0.f };
+		//	auto green = Math::Vec3{ 0.f,1.f,0.f };
+		//	
+		//	Render::TextRenderer::instance()->renderText(
+		//		"CPU load: " + std::to_string((int)std::round(sys.cpuPercentUI())) + "%", 10.f, 110.f, 1.f, red, font);
+
+		//	Render::TextRenderer::instance()->renderText(
+		//		sys.gpu() >= 0
+		//		? "GPU load: " + std::to_string((int)std::round(sys.gpuPercentUI())) + "%"
+		//		: "GPU load: n/a",
+		//		10.f, 140.f, 1.f, green, font);
+
+		//	// CPU frame end
+		//	auto cpuEnd = std::chrono::high_resolution_clock::now();
+		//	mLastCpuFrameMs = std::chrono::duration<double, std::milli>(cpuEnd - mCpuFrameStart).count();
+
+		//	// compute % load relative to frame time (dt). dt is in seconds.
+		//	double frameMs = max(0.000001, static_cast<double>(Engine::instance()->getDeltaTime()) * 1000.0);
+		//	double cpuLoad = std::clamp(mLastCpuFrameMs / frameMs * 100.0, 0.0, 999.9); // allow >100 if over budget but clamp display
+		//	double gpuLoad = std::clamp(mLastGpuTimeMs / frameMs * 100.0, 0.0, 999.9);
+		//	typedef int (WINAPI* PFNWGLGETSWAPINTERVALEXTPROC) ();
+		//	static PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = nullptr;
+
+		//
+		//	if (!wglGetSwapIntervalEXT) {
+		//		wglGetSwapIntervalEXT = reinterpret_cast<PFNWGLGETSWAPINTERVALEXTPROC>(
+		//			wglGetProcAddress("wglGetSwapIntervalEXT"));
+		//	}
+		//	auto interval = wglGetSwapIntervalEXT ? wglGetSwapIntervalEXT() : -1; // -1 = узнать не удалось
+		//
+		//
+		//	// overlay
+		//	Render::TextRenderer::instance()->renderText("FPS: " + std::to_string(Engine::instance()->getFPS()), 10.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		//	Render::TextRenderer::instance()->renderText("dt: " + std::to_string(Engine::instance()->getDeltaTime()), 10.f, 80.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		//	Render::TextRenderer::instance()->renderText("CPU(ms): " + std::to_string(mLastCpuFrameMs), 10.f, 170.f, 1.f, Math::Vec3{1.f, 0.8f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		//	Render::TextRenderer::instance()->renderText("GPU(ms): " + std::to_string(mLastGpuTimeMs), 10.f, 200.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		//	Render::TextRenderer::instance()->renderText("VSYNC: " + std::to_string(interval), 10.f, 230.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		//	Render::TextRenderer::instance()->renderText("objects rendered: " + std::to_string(RenderDebugInfo::instance()->objectsRendered), 10.f, 260.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		//	Render::TextRenderer::instance()->renderText("vertices rendered: " + std::to_string(RenderDebugInfo::instance()->verticesRendered), 10.f, 290.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+		//	Render::TextRenderer::instance()->renderText("draw calls: " + std::to_string(RenderDebugInfo::instance()->drawCalls), 10.f, 320.f, 1.f, Math::Vec3{0.2f, 1.f, 0.2f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
+
+		//	RenderDebugInfo::instance()->objectsRendered = 0;
+		//	RenderDebugInfo::instance()->verticesRendered = 0;
+		//	RenderDebugInfo::instance()->drawCalls = 0;
+		//}
 	}
 
 	RenderSystem::~RenderSystem() {

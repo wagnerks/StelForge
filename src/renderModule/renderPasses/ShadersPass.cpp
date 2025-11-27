@@ -17,7 +17,7 @@
 
 SFE::Render::RenderPasses::ShadersPass::ShadersPass() {}
 
-void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& renderDataHandle) {
+void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK;
 
 	static PipelineHandle pipeline;
@@ -83,7 +83,7 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 		pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "Shaders Pass Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.fs") });
 		pipelineDesc.topology = PrimitiveTopology::Triangles;
 		pipelineDesc.cullMode = CullMode::Back;
-		pipelineDesc.frontFace = FrontFace::CCW;
+		pipelineDesc.frontFace = FrontFace::CounterClockWise;
 		pipelineDesc.fillMode = PolygonFillMode::Fill;
 		pipelineDesc.depthStencilState = { true, true, CompareOp::LessEqual };
 		pipelineDesc.blend = { false };
@@ -95,7 +95,7 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 
 	Engine::instance()->rhi()->bindFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer);
 
-	Engine::instance()->rhi()->bindPipeline(pipeline);
+	Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
 	EBO.bindIndex(IndexType::Uint32, 0);
 	VBO.bindVertex(0);
 
@@ -130,7 +130,7 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 		shader->setUniform("gNormal", 1);
 		shader->setUniform("gAlbedoSpec", 2);
 		batcher.sort(cameraPos);
-		batcher.flushAll();
+		batcher.flushAll({}); //todo
 		batcher.clear();
 	};
 

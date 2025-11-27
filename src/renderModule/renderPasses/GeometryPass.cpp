@@ -206,7 +206,7 @@ void GeometryPass::init() {
 	layout.attributes.push_back({ 6,0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
 	pipelineDesc.topology = PrimitiveTopology::Triangles;
 	pipelineDesc.cullMode = CullMode::Back;
-	pipelineDesc.frontFace = FrontFace::CCW;
+	pipelineDesc.frontFace = FrontFace::CounterClockWise;
 	pipelineDesc.fillMode = PolygonFillMode::Fill;
 	pipelineDesc.depthStencilState.depthTest = true;
 	pipelineDesc.depthStencilState.depthWrite = true;
@@ -235,21 +235,90 @@ void GeometryPass::init() {
 	geometryPassDesc.depthAttachment = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, 1.f, 0, false };
 
 	geometryPass = Engine::instance()->rhi()->createRenderPass(geometryPassDesc);
+
+
+	GraphicsPipelineDesc gBufferOutlinePDesc;
+	gBufferOutlinePDesc.layout = layout;
+	gBufferOutlinePDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({
+		ShaderStage::Vertex,
+		"g_buffer_outlines.vs",
+		ShaderModule::ShaderBase::loadShaderCode("shaders/g_buffer_outlines.vs")
+		});
+	gBufferOutlinePDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({
+		ShaderStage::Fragment,
+		"g_buffer_outlines.fs",
+		ShaderModule::ShaderBase::loadShaderCode("shaders/g_buffer_outlines.fs")
+		});
+	gBufferOutlinePDesc.topology = PrimitiveTopology::Triangles;
+	gBufferOutlinePDesc.cullMode = CullMode::Back;
+	gBufferOutlinePipeline = Engine::instance()->rhi()->createGraphicsPipeline(gBufferOutlinePDesc);
+
+	RenderPassDesc gbrp;
+	gbrp.colorAttachmentCount = 1;
+	gbrp.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //outlines
+	outlineBufferRenderPass = Engine::instance()->rhi()->createRenderPass(gbrp);
+
+
+	GraphicsPipelineDesc outlinePDesc;
+	outlinePDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({
+		ShaderStage::Vertex,
+		"g_outline.vs",
+		ShaderModule::ShaderBase::loadShaderCode("shaders/g_outline.vs")
+		});
+	outlinePDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({
+		ShaderStage::Fragment,
+		"g_outline.fs",
+		ShaderModule::ShaderBase::loadShaderCode("shaders/g_outline.fs")
+		});
+
+	outlinePDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
+	outlinePDesc.layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
+	outlinePDesc.layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
+
+	outlinePipeline = Engine::instance()->rhi()->createGraphicsPipeline(outlinePDesc);
+
+	RenderPassDesc outlineRPD;
+	outlineRPD.colorAttachmentCount = 1;
+	outlineRPD.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //final outline
+	outlineRenderPass = Engine::instance()->rhi()->createRenderPass(outlineRPD);
+
+	// Описываем набор текстур, которые используются в deferred_shading.fs
+	Render::DescriptorSetLayoutDesc texLayoutDesc;
+	texLayoutDesc.bindings.push_back({
+		.binding = 25,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 26,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 27,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+
+
+	mTexSetLayoutOutlines = rhi->createDescriptorSetLayout(texLayoutDesc);
+	mTexSetOutlines = rhi->allocateDescriptorSet(mTexSetLayoutOutlines);
 }
 
-void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
+void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	if (!mInited) {
 		return;
 	}
-	FUNCTION_BENCHMARK
+
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 		GLW::PolygonMode<GLW::PolygonFace::FRONT_AND_BACK>::push(GLW::PolygonType::LINE);
 	}
 
-
 	renderDataHandle.mGeometryPassData = &mData;
 	{
-		FUNCTION_BENCHMARK_NAMED(_wait_lock);
 		const auto curPassData = getContainer().getCurrentPassData();
 		while (curPassData->mStatus != RenderPreparingStatus::READY) {}
 	}
@@ -259,24 +328,18 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 	getContainer().rotate();
 	mOutlineData.rotate();
 	prepare();
-
+	auto rhi = Engine::instance()->rhi();
 	if (!curPassData->getBatcher().drawList.empty()) {
 		RenderPassBeginInfo geometryPassBegin;
 		geometryPassBegin.renderPass = geometryPass;
 		geometryPassBegin.framebuffer = mData.gFramebuffer;
 		geometryPassBegin.width = Engine::instance()->getWindow()->getScreenData().renderW;
 		geometryPassBegin.height = Engine::instance()->getWindow()->getScreenData().renderH;
-		Engine::instance()->rhi()->beginRenderPass(geometryPassBegin);
-		geometryPipeline.bind();
-		Engine::instance()->rhi()->setUniform(geometryPipeline, "texture_diffuse1", static_cast<int>(SFE::DIFFUSE));
-		Engine::instance()->rhi()->setUniform(geometryPipeline, "normalMap", static_cast<int>(SFE::NORMALS));
-		Engine::instance()->rhi()->setUniform(geometryPipeline, "texture_specular1", static_cast<int>(SFE::SPECULAR));
 
-		Engine::instance()->rhi()->setUniform(geometryPipeline, "outline", false);
-
-		FUNCTION_BENCHMARK_NAMED(_flush)
-		curPassData->getBatcher().flushAll();
-		Engine::instance()->rhi()->endRenderPass();
+		Engine::instance()->rhi()->cmdBeginRenderPass(cmd, geometryPassBegin);
+		Engine::instance()->rhi()->cmdBindPipeline(cmd, geometryPipeline);
+		curPassData->getBatcher().flushAll(cmd);
+		Engine::instance()->rhi()->cmdEndRenderPass(cmd);
 	}
 
 	/*if (!batcher.drawList.empty()) {
@@ -286,42 +349,79 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle) {
 	}*/
 
 	if (!outlineData->getBatcher().drawList.empty()) {
+		RenderPassBeginInfo beginGBuf;
+		beginGBuf.renderPass = outlineBufferRenderPass;
+		beginGBuf.framebuffer = mData.outlineFramebuffer;
+		beginGBuf.width = Engine::instance()->getWindow()->getScreenData().renderW;
+		beginGBuf.height = Engine::instance()->getWindow()->getScreenData().renderH;
+
 		needClearOutlines = true;
-		Engine::instance()->rhi()->bindFramebuffer(mData.outlineFramebuffer);
-		//mData.outlinesBuffer.create();
-		//mData.outlineFramebuffer.addAttachmentTexture(0, &mData.outlinesBuffer); //todo hack to clear image
-		//mData.outlineFramebuffer.finalize();
 
-		auto g_buffer_outlines = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_outlines.vs", "shaders/g_buffer_outlines.fs");
-		g_buffer_outlines->use();
-		g_buffer_outlines->setUniform("PV", renderDataHandle.current.PV);
+		rhi->cmdBeginRenderPass(cmd, beginGBuf);
+		rhi->cmdBindPipeline(cmd, gBufferOutlinePipeline);
+		outlineData->getBatcher().flushAll(cmd);
+		rhi->cmdEndRenderPass(cmd);
 
-		outlineData->getBatcher().flushAll();
+		RenderPassBeginInfo beginOutlines;
+		beginOutlines.renderPass = outlineRenderPass;
+		beginOutlines.width = Engine::instance()->getWindow()->getScreenData().renderW;
+		beginOutlines.height = Engine::instance()->getWindow()->getScreenData().renderH;
+		rhi->cmdBeginRenderPass(cmd, beginOutlines);
+		rhi->cmdBindPipeline(cmd, outlinePipeline);
 
-		Engine::instance()->rhi()->bindFramebuffer({});
-		Engine::instance()->rhi()->bindTexture(26, mData.normalBuffer, mData.sampler);
-		Engine::instance()->rhi()->bindTexture(27, mData.outlinesBuffer, mData.sampler);
-		Engine::instance()->rhi()->bindTexture(25, mData.lightsBuffer, mData.sampler);
 
-		auto outlineG = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_outline.vs", "shaders/g_outline.fs");
-		outlineG->use();
-		outlineG->setUniform("gDepth", 26);
-		outlineG->setUniform("gOutlinesP", 27);
-		outlineG->setUniform("gLightsP", 25);
+		std::vector<Render::WriteDescriptor> writes;
+
+		{
+			Render::WriteDescriptor w{};
+			w.set = mTexSetOutlines;
+			w.binding = 25;
+			w.type = Render::DescriptorType::CombinedImageSampler;
+			w.images.push_back({ mData.lightsBuffer, mData.sampler });
+			writes.push_back(std::move(w));
+		}
+
+		{
+			Render::WriteDescriptor w{};
+			w.set = mTexSetOutlines;
+			w.binding = 26;
+			w.type = Render::DescriptorType::CombinedImageSampler;
+			w.images.push_back({ mData.normalBuffer, mData.sampler });
+			writes.push_back(std::move(w));
+		}
+
+		{
+			Render::WriteDescriptor w{};
+			w.set = mTexSetOutlines;
+			w.binding = 27;
+			w.type = Render::DescriptorType::CombinedImageSampler;
+			w.images.push_back({ mData.outlinesBuffer, mData.sampler });
+
+			writes.push_back(std::move(w));
+		}
+
+		if (!writes.empty()) {
+			rhi->updateDescriptorSets(writes);
+		}
+		rhi->cmdBindDescriptorSets(cmd, outlinePipeline, 0, &mTexSetOutlines, 1);
 
 		Utils::renderQuad();
+		rhi->cmdEndRenderPass(cmd);
 	}
 	else {
 		if (needClearOutlines) {
+			RenderPassBeginInfo beginGBuf;
+			beginGBuf.renderPass = outlineBufferRenderPass;
+			beginGBuf.framebuffer = mData.outlineFramebuffer;
+			beginGBuf.width = Engine::instance()->getWindow()->getScreenData().renderW;
+			beginGBuf.height = Engine::instance()->getWindow()->getScreenData().renderH;
+			rhi->cmdBeginRenderPass(cmd, beginGBuf);
+			rhi->cmdEndRenderPass(cmd);
+
 			needClearOutlines = false;
-			Engine::instance()->rhi()->bindFramebuffer(mData.outlineFramebuffer);
-			GLW::clear(GLW::ColorBit::ALL);
-			//mData.outlinesBuffer.create();
 		}
 	}
-
-	//Engine::instance()->rhi()->bindFramebuffer({});
-	
+		
 	if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 		GLW::PolygonMode<GLW::PolygonFace::FRONT_AND_BACK>::pop();
 	}

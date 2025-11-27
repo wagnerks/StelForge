@@ -36,7 +36,7 @@ namespace SFE::Render::RenderPasses {
 		void init() override;
 		void initRender();
 
-		void render(SystemsModule::RenderData& renderDataHandle) override;
+		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
 		void updateRenderData(SystemsModule::RenderData& renderDataHandle);
 		void debug(SystemsModule::RenderData& renderDataHandle);

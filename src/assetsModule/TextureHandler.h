@@ -29,7 +29,6 @@ namespace AssetsModule {
 	class TextureHandler : public SFE::Singleton<TextureHandler> {
 		friend Singleton;
 	public:
-		static void bindTextureToSlot(unsigned slot, Texture* texture);
 		Texture mDefaultTex;
 
 		static Texture* loadTexture(const std::string& path, bool flip = false, SFE::Render::TextureFormat format = SFE::Render::TextureFormat::RGBA8);

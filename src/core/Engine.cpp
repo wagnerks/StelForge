@@ -84,7 +84,7 @@ namespace SFE {
 	
 		glfwPollEvents();
 
-		getWindow()->swapBuffers();
+		//getWindow()->swapBuffers();
 
 		fpsSync(maxFPS);
 	}

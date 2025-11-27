@@ -34,7 +34,7 @@ namespace SFE::Render::RenderPasses {
 		};
 		
 		void init() override;
-		void render(SystemsModule::RenderData& renderDataHandle) override;
+		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
 
 		bool ssaoDebugWindow = false;

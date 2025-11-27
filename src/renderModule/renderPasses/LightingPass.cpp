@@ -20,114 +20,204 @@ LightingPass::LightingPass() {
 
 }
 
-void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
+void LightingPass::init()
+{
+	RenderPass::init();
+	
+	auto* rhi = Engine::instance()->rhi();
+
+	// Описываем набор текстур, которые используются в deferred_shading.fs
+	Render::DescriptorSetLayoutDesc texLayoutDesc;
+	texLayoutDesc.bindings.push_back({
+		.binding = 0,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 1,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 2,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 3,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 4,
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+
+	// Если будешь тащить сюда shadow map’ы:
+	texLayoutDesc.bindings.push_back({
+		.binding = 30, // PointLightShadowMapArray
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 31, // каскадные тени
+		.type = Render::DescriptorType::CombinedImageSampler,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+		});
+	texLayoutDesc.bindings.push_back({
+		.binding = 10,
+		.type = Render::DescriptorType::UniformBuffer,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+	});
+	texLayoutDesc.bindings.push_back({
+		.binding = 9,
+		.type = Render::DescriptorType::UniformBuffer,
+		.count = 1,
+		.stageMask = Render::ShaderStage::Fragment
+	});
+
+	mTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
+	mTexSet = rhi->allocateDescriptorSet(mTexSetLayout);
+
+	mTexSetInitialized = true;
+
+	GraphicsPipelineDesc pipelineDesc{};
+	Render::VertexLayoutDesc& layout = pipelineDesc.layout;
+	layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
+	layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
+	layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
+
+	pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "deferred shading vs", ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.vs") });
+	pipelineDesc.shaders.fragment = rhi->createShaderModule({ShaderStage::Fragment, "deferred shading fs", ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.fs")});
+	pipelineDesc.topology = PrimitiveTopology::Triangles;
+	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
+
+	RenderPassDesc rpDesc;
+	rpDesc.colorAttachmentCount = 1;
+	rpDesc.colorAttachments[0] = {
+		.loadOp = AttachmentLoadOp::Clear,
+		.storeOp = AttachmentStoreOp::Store,
+		.clearColor = Math::Vec4{0.f, 0.f, 0.f, 1.f}
+	};
+	renderPass = rhi->createRenderPass(rpDesc);
+
+	BufferDesc plubodesc;
+	plubodesc.usage = BufferUsage::Uniform;
+	plubodesc.cpuAccess = CpuAccess::Write;
+	plubodesc.size = sizeof(pointLight); //max 6 lights
+
+	pointLightsUBO = rhi->createBuffer(plubodesc, pointLight);
+
+	BufferDesc shadowsUBODesc;
+	shadowsUBODesc.usage = BufferUsage::Uniform;
+	shadowsUBODesc.cpuAccess = CpuAccess::Write;
+	shadowsUBODesc.size = sizeof(CascadedShadowBlock);
+	cascadedShadowsUBO = rhi->createBuffer(shadowsUBODesc, &cascadedShadowData);
+
+
+	std::vector<Render::WriteDescriptor> writes{ {
+		.set = mTexSet,
+		.binding = 10,
+		.type = Render::DescriptorType::UniformBuffer,
+		.buffers{ {pointLightsUBO} }
+	},
+	{
+		.set = mTexSet,
+		.binding = 9,
+		.type = Render::DescriptorType::UniformBuffer,
+		.buffers{ {cascadedShadowsUBO} }
+	} };
+
+
+	rhi->updateDescriptorSets(writes);
+}
+
+void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
+	assert(mTexSetInitialized);
 	FUNCTION_BENCHMARK;
-	GLW::clear(GLW::ColorBit::DEPTH_COLOR);
 
-	auto shaderLightingPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/deferred_shading.vs", "shaders/deferred_shading.fs");
-
-	shaderLightingPass->use();
-	shaderLightingPass->setUniform("gPosition", 0);
-	shaderLightingPass->setUniform("gNormal", 1);
-	shaderLightingPass->setUniform("gAlbedoSpec", 2);
-	shaderLightingPass->setUniform("ssao", 3);
-	shaderLightingPass->setUniform("shadows", 4);
-	shaderLightingPass->setUniform("gOutlines", 5);
-	if (renderDataHandle.mPointPassData) {
-		shaderLightingPass->setUniform("pointLightsSize", static_cast<int>(renderDataHandle.mPointPassData->shadowEntities.size()));
-	}
-	shaderLightingPass->setUniform("PointLightShadowMapArray", 30);
-	
-	
-
-	shaderLightingPass->setUniform("fogStart", Engine::instance()->getWindow()->getScreenData().far * 0.9f);
-	shaderLightingPass->setUniform("screenDrawData.far", Engine::instance()->getWindow()->getScreenData().far);
-
+	auto* rhi = Engine::instance()->rhi();
 	int offsetSum = 0;
 	if (renderDataHandle.mPointPassData) {
 		for (size_t i = 0; i < renderDataHandle.mPointPassData->shadowEntities.size(); i++) {
 			auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
 			auto lightComp = ECSHandler::registry().pinComponent<const LightSourceComponent>(renderDataHandle.mPointPassData->shadowEntities[i]);
 
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Position").c_str(), tc->getPos(true));
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].texelSize").c_str(), Math::Vec2{ lightComp->getTexelSize().x, lightComp->getTexelSize().y });
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].bias").c_str(), lightComp->getBias());
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].samples").c_str(), lightComp->getSamples());
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].radius").c_str(), lightComp->mRadius);
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].offset").c_str(), offsetSum);
+			auto& light = pointLight[i];
 
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Color").c_str(), lightComp->getLightColor());
+			light.Position = tc->getPos(true);
+			light.texelSize = Math::Vec2{ lightComp->getTexelSize().x, lightComp->getTexelSize().y };
+			light.bias = lightComp->getBias();
+			light.samples = lightComp->getSamples();
+			light.radius = lightComp->mRadius;
+			light.offset = offsetSum;
 
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Linear").c_str(), lightComp->mLinear);
-			shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Quadratic").c_str(), lightComp->mQuadratic);
-
+			light.Color = lightComp->getLightColor();
+			light.Linear = lightComp->mLinear;
+			light.Quadratic = lightComp->mQuadratic;
 			if (lightComp->getType() == ComponentsModule::eLightType::POINT) {
-				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 0);
-				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 6);
+				light.Type = 0;
+				light.Layers = 6;
 			}
 			else {
-				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Type").c_str(), 1);
-				shaderLightingPass->setUniform(("pointLight[" + std::to_string(i) + "].Layers").c_str(), 1);
+				light.Type = 1;
+				light.Layers = 1;
 			}
-
 
 			offsetSum += lightComp->getTypeOffset(lightComp->getType());
 		}
+
+		rhi->updateBuffer(pointLightsUBO, pointLight);
+		drawData.pointLightsSize = renderDataHandle.mPointPassData ? static_cast<int>(renderDataHandle.mPointPassData->shadowEntities.size()) : 0;
 	}
 
 	if (renderDataHandle.mCascadedShadowsPassData && !renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.empty()) {
+		drawData.ambientColor = renderDataHandle.mCascadedShadowsPassData->lightColor; //todo 0 for night and 1 for day, some time system
+		drawData.cascadeCount = static_cast<int>(renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.size());
+		drawData.shadowIntensity = renderDataHandle.mCascadedShadowsPassData->shadowsIntensity;
 
-		shaderLightingPass->setUniform("ambientColor", renderDataHandle.mCascadedShadowsPassData->lightColor);//todo 0 for night and 1 for day, some time system
-		Engine::instance()->rhi()->bindTexture(31, renderDataHandle.mCascadedShadowsPassData->shadowMapTexture, renderDataHandle.mCascadedShadowsPassData->shadowMapSampler);
-
-		shaderLightingPass->setUniform("cascadedShadow.shadowMap", 31);
-		shaderLightingPass->setUniform("cascadedShadow.direction", renderDataHandle.mCascadedShadowsPassData->lightDirection);
-		shaderLightingPass->setUniform("cascadedShadow.color", renderDataHandle.mCascadedShadowsPassData->lightColor);
-		shaderLightingPass->setUniform("cascadeCount", static_cast<int>(renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.size()));
-		shaderLightingPass->setUniform("shadowIntensity", renderDataHandle.mCascadedShadowsPassData->shadowsIntensity);
-
-		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.size(); ++i) {
-			shaderLightingPass->setUniform(("cascadePlaneDistances[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels[i]);
-		}
-
-		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData->shadowCascades.size(); ++i) {
-			shaderLightingPass->setUniform(("cascadedShadow.texelSize[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascades[i].texelSize);
-			shaderLightingPass->setUniform(("cascadedShadow.bias[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascades[i].bias);
-			shaderLightingPass->setUniform(("cascadedShadow.samples[" + std::to_string(i) + "]").c_str(), renderDataHandle.mCascadedShadowsPassData->shadowCascades[i].samples);
-		}
-	}
-
-	// set light uniforms
-	shaderLightingPass->setUniform("viewPos", renderDataHandle.mCameraPos);
-	Engine::instance()->rhi()->bindTexture(0, renderDataHandle.mGeometryPassData->positionBuffer, renderDataHandle.mGeometryPassData->sampler);
-	Engine::instance()->rhi()->bindTexture(1, renderDataHandle.mGeometryPassData->normalBuffer, renderDataHandle.mGeometryPassData->sampler);
-	Engine::instance()->rhi()->bindTexture(2, renderDataHandle.mGeometryPassData->albedoBuffer, renderDataHandle.mGeometryPassData->sampler);
-	if (renderDataHandle.mSSAOPassData) {
-		
-		Engine::instance()->rhi()->bindTexture(3, renderDataHandle.mSSAOPassData->mSsaoColorBufferBlur, renderDataHandle.mSSAOPassData->sampler);
-	}
-	else {
-		TextureDesc ssaoColorBlurDesc;
-		ssaoColorBlurDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
-		ssaoColorBlurDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
-		ssaoColorBlurDesc.format = TextureFormat::R8;
-		ssaoColorBlurDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
-		auto blur = Engine::instance()->rhi()->createTexture(ssaoColorBlurDesc);
-		SamplerDesc samplerDesc;
-		samplerDesc.minFilter = FilterMode::Nearest;
-		samplerDesc.magFilter = FilterMode::Nearest;
-
-		auto sampler = Engine::instance()->rhi()->createSampler(samplerDesc);
-		Engine::instance()->rhi()->bindTexture(3, blur, sampler);
-	}
+		cascadedShadowData.direction_intensity.xyz = renderDataHandle.mCascadedShadowsPassData->lightDirection;
+		cascadedShadowData.direction_intensity.w = 0.6f;
+		cascadedShadowData.color_and_misc.xyz = renderDataHandle.mCascadedShadowsPassData->lightColor;
 	
-	Engine::instance()->rhi()->bindTexture(5, renderDataHandle.mGeometryPassData->outlinesBuffer, renderDataHandle.mGeometryPassData->sampler);
+		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData->shadowCascades.size(); ++i) {
+			auto& cascade = renderDataHandle.mCascadedShadowsPassData->shadowCascades[i];
+			auto& cascadeRenderData = cascadedShadowData.data[i];
 
+			cascadeRenderData.cascade.xy = cascade.texelSize;
+			cascadeRenderData.cascade.z = cascade.bias;
+			cascadeRenderData.cascade.w = static_cast<float>(cascade.samples);
+		}
+
+		rhi->updateBuffer(cascadedShadowsUBO, cascadedShadowData);
+	}
+
+	drawData.fogEnd = Engine::instance()->getWindow()->getScreenData().far;
+	drawData.fogStart = Engine::instance()->getWindow()->getScreenData().far * 0.9f;
+	drawData.viewPos = renderDataHandle.mCameraPos;
+
+	RenderPassBeginInfo beginInfo;
+	beginInfo.renderPass = renderPass;
+	beginInfo.width = Engine::instance()->getWindow()->getScreenData().width;
+	beginInfo.height = Engine::instance()->getWindow()->getScreenData().height;
+
+	rhi->cmdBeginRenderPass(cmd, beginInfo);
+	rhi->cmdBindPipeline(cmd, pipeline);
+	updateTextures(renderDataHandle, cmd);
+
+	rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Fragment, &drawData, sizeof(drawData));
 	Utils::renderQuad();
 
 	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
-
-	auto* rhi = Engine::instance()->rhi();
 	const auto& screen = Engine::instance()->getWindow()->getScreenData();
 	int w = screen.renderW;
 	int h = screen.renderH;
@@ -141,7 +231,122 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 		BlitFilter::Nearest
 	);
 
+	rhi->cmdEndRenderPass(cmd);
 
+	//drawSky(renderDataHandle);
+}
+
+void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd)
+{
+	auto rhi = Engine::instance()->rhi();
+
+	std::vector<Render::WriteDescriptor> writes;
+
+	// gPosition (binding 0)
+	{
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 0;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({
+			renderDataHandle.mGeometryPassData->positionBuffer,
+			renderDataHandle.mGeometryPassData->sampler
+			});
+		writes.push_back(std::move(w));
+	}
+
+	// gNormal (binding 1)
+	{
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 1;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({
+			renderDataHandle.mGeometryPassData->normalBuffer,
+			renderDataHandle.mGeometryPassData->sampler
+			});
+		writes.push_back(std::move(w));
+	}
+
+	// gAlbedoSpec (binding 2)
+	{
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 2;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({
+			renderDataHandle.mGeometryPassData->albedoBuffer,
+			renderDataHandle.mGeometryPassData->sampler
+			});
+		writes.push_back(std::move(w));
+	}
+
+	// ssao (binding 3)
+	{
+		Render::TextureHandle ssaoTex{};
+		Render::SamplerHandle ssaoSampler{};
+
+		if (renderDataHandle.mSSAOPassData) {
+			ssaoTex = renderDataHandle.mSSAOPassData->mSsaoColorBufferBlur;
+			ssaoSampler = renderDataHandle.mSSAOPassData->sampler;
+		}
+
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 3;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({ ssaoTex, ssaoSampler });
+		writes.push_back(std::move(w));
+	}
+
+	// PointLightShadowMapArray (binding 4) - если нужен
+	if (renderDataHandle.mPointPassData) {
+		/*Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 4;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({
+			renderDataHandle.mPointPassData->shadowMapArrayTexture,
+			renderDataHandle.mPointPassData->shadowMapArraySampler
+			});
+		writes.push_back(std::move(w));*/
+	}
+
+	// gOutlines (binding 5)
+	{
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 5;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({
+			renderDataHandle.mGeometryPassData->outlinesBuffer,
+			renderDataHandle.mGeometryPassData->sampler
+			});
+		writes.push_back(std::move(w));
+	}
+
+	// Cascaded shadow map (binding 31) - если нужен отдельной текстурой
+	if (renderDataHandle.mCascadedShadowsPassData) {
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 31;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({
+			renderDataHandle.mCascadedShadowsPassData->shadowMapTexture,
+			renderDataHandle.mCascadedShadowsPassData->shadowMapSampler
+			});
+		writes.push_back(std::move(w));
+	}
+
+	// Обновляем дескрипторы
+	if (!writes.empty()) {
+		rhi->updateDescriptorSets(writes);
+	}
+	rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &mTexSet, 1);
+}
+
+void LightingPass::drawSky(SystemsModule::RenderData& renderDataHandle)
+{
 	static Math::Vec3 sunDir;
 	static float time = 0.f;
 	static float Br = 0.005f;
@@ -180,7 +385,7 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 		}
 		ImGui::End();
 	}
-	
+
 
 	if (enableSky) {
 		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
@@ -200,5 +405,4 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle) {
 		Utils::renderQuad();
 		//Utils::renderQuad2();
 	}
-
 }

@@ -40,12 +40,12 @@ namespace SFE::Render::RenderPasses {
 		pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
 	}
 
-	void GUIPass::render(SystemsModule::RenderData& renderDataHandle) {
+	void GUIPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 		if (registry.getAllEntities().empty()) {
 			return;
 		}
 		
-		Engine::instance()->rhi()->bindPipeline(pipeline);
+		Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
 		VBO.bindVertex(0);
 
 		const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;

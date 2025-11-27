@@ -44,6 +44,20 @@ namespace SFE::Render
 		std::unordered_map<std::string, GLint> uniformLocations;
 	};
 
+	struct GLDescriptorBindingData
+	{
+		DescriptorType type;
+		std::vector<DescriptorBufferInfo> buffers;
+		std::vector<DescriptorImageInfo>  images;
+	};
+
+	struct GLDescriptorSet
+	{
+		DescriptorSetLayoutDesc layout;
+		std::vector<GLDescriptorBindingData> bindings; // индекс = binding
+	};
+
+
 	class OpenGLRHI : public RenderHardwareInterface
 	{
 	public:
@@ -52,8 +66,8 @@ namespace SFE::Render
 
 		void setTextureSubImage2D(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) override;
 
-		ShaderHandle createShaderModule(const ShaderModuleDesc& desc) override;
-		void destroyShaderModule(ShaderHandle handle) override;
+		ShaderModuleHandle createShaderModule(const ShaderModuleDesc& desc) override;
+		void destroyShaderModule(ShaderModuleHandle handle) override;
 
 		FramebufferHandle createFramebuffer(const FramebufferDesc& desc) override;
 		void destroyFramebuffer(FramebufferHandle framebuffer) override;
@@ -68,8 +82,6 @@ namespace SFE::Render
 		                     int dstX0, int dstY0, int dstX1, int dstY1, BlitMask mask, BlitFilter filter) override;
 		void bindTexture(uint32_t slot, TextureHandle tex, SamplerHandle sampler) override;
 		void bindFramebuffer(FramebufferHandle framebuffer) override;
-
-		void setViewport(const ViewportDesc& desc) override;
 
 		BufferHandle createBuffer(const BufferDesc& desc, const void* initialData) override;
 		void destroyBuffer(BufferHandle handle) override;
@@ -103,7 +115,13 @@ namespace SFE::Render
 		PipelineHandle m_currentPipeline;
 		std::vector<GLRenderPass> m_renderPasses;
 
+		std::vector<GLDescriptorSet> m_descriptorSets;
+		std::vector<DescriptorSetLayoutDesc> m_descriptorSetLayouts;
+
+
 		GLuint m_prevFramebuffer = 0; // для сохранения/восстановления FBO в begin/endRenderPass
+		GLuint m_pushConstantUBO = 0; // constant buffer for push constants emulation
+		GLuint m_pushConstantPos = 15; // binding point for push constants emulation
 
 		GLenum toGLBufferTarget(BufferUsage usage) const;
 		GLenum toGLAccessFlags(CpuAccess access) const;
@@ -126,5 +144,27 @@ namespace SFE::Render
 		void destroyRenderPass(RenderPassHandle renderPass) override;
 		void beginRenderPass(const RenderPassBeginInfo& beginInfo) override;
 		void endRenderPass() override;
+
+
+
+		CommandListHandle beginCommandList(CommandListType type) override;
+		void endCommandList(CommandListHandle cmd) override;
+		void submit(const CommandListHandle* lists, uint32_t count) override;
+		void present() override;
+		void cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo) override;
+		void cmdEndRenderPass(CommandListHandle cmd) override;
+		void cmdBindPipeline(CommandListHandle cmd, PipelineHandle pipeline) override;
+		void cmdBindVertexBuffer(CommandListHandle cmd, uint32_t slot, BufferHandle handle, uint32_t offset) override;
+		void cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset) override;
+		void cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
+		void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) override;
+		void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, ShaderStage stages, const void* data,	uint32_t size) override;
+
+		DescriptorSetLayoutHandle createDescriptorSetLayout(const DescriptorSetLayoutDesc& desc) override;
+		void destroyDescriptorSetLayout(DescriptorSetLayoutHandle layout) override;
+		DescriptorSetHandle allocateDescriptorSet(DescriptorSetLayoutHandle layout) override;
+		void freeDescriptorSet(DescriptorSetHandle set) override;
+		void updateDescriptorSets(const std::vector<WriteDescriptor>& writes) override;
+		void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount) override;
 	};
 }

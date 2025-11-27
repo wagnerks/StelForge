@@ -1,13 +1,14 @@
-#version 330 core
+#version 430 core
 layout (location = 0) out vec4 gOutlines;
 
 out vec4 FragColor;
 
 in vec2 TexCoord;
 
-uniform sampler2D gDepth;//this is a normal texture where i store depth in a
-uniform sampler2D gOutlinesP;
-uniform sampler2D gLightsP;
+layout(binding = 25) uniform sampler2D gLightsP;
+layout(binding = 26) uniform sampler2D gDepth;//this is a normal texture where i store depth in a
+layout(binding = 27) uniform sampler2D gOutlinesP;
+
 
 void main()
 {    

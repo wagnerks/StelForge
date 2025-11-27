@@ -32,7 +32,7 @@ namespace SFE::Render::RenderPasses {
 	public:
 		~GUIPass() override;
 		void init() override;
-		void render(SystemsModule::RenderData& renderDataHandle) override;
+		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 		static inline ecss::Registry<> registry;
 

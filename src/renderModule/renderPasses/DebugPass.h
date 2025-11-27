@@ -9,7 +9,7 @@ namespace SFE::Render::RenderPasses {
 	public:
 		DebugPass();
 		~DebugPass();
-		void render(SystemsModule::RenderData& renderDataHandle) override;
+		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 		BufferHandle trianglesVBO;
 		BufferHandle linesVBO;
