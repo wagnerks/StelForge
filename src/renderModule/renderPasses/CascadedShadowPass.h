@@ -4,8 +4,6 @@
 #include <vector>
 
 #include "componentsModule/CascadeShadowComponent.h"
-#include "glWrapper/Buffer.h"
-#include "glWrapper/Framebuffer.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 #include "renderModule/renderPasses/RenderPass.h"
@@ -33,7 +31,7 @@ namespace SFE::Render::RenderPasses {
 
 		CascadedShadowPass();
 		~CascadedShadowPass() override;
-		void init() override;
+		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void initRender();
 
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
@@ -48,6 +46,9 @@ namespace SFE::Render::RenderPasses {
 		BufferHandle matricesUBO;
 		PipelineHandle pipeline;
 		RenderPassHandle renderPass;
+
+		Render::DescriptorSetLayoutHandle shadowsLayoutHandle;
+		Render::DescriptorSetHandle       shadowsSetDescHandle;
 
 		ecss::EntityId mShadowSource;
 		bool mInited = false;

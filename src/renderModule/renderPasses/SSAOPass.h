@@ -2,7 +2,6 @@
 
 #include <vector>
 
-#include "glWrapper/Framebuffer.h"
 #include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
@@ -33,9 +32,38 @@ namespace SFE::Render::RenderPasses {
 			float sigmaL = 1.2f;
 		};
 		
-		void init() override;
+		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
+		struct SSAOParams
+		{
+			float samples = 64.f;
+			float intensity = 1.5f;
+			float scale = 0.5f;
+			float bias = 0.1f;
+			float sample_rad = 1.2f;
+			float max_distance = 0.01f;
+		};
+
+		SSAOParams params;
+		BufferHandle ssaoParamsBuffer;
+
+		struct SSAOBlurParams
+		{
+			float sigmaS = 1.f;
+			float sigmaL = 1.f;
+			float facS = 1.f;
+			float facL = 1.f;
+
+			void updateFac()
+			{
+				facL = -1.f / (2.f * sigmaL * sigmaL);
+				facS = -1.f / (2.f * sigmaS * sigmaS);
+			}
+		};
+
+		SSAOBlurParams blurParams;
+		BufferHandle ssaoBlurParamsBuffer;
 
 		bool ssaoDebugWindow = false;
 		Data mData{};
@@ -45,5 +73,11 @@ namespace SFE::Render::RenderPasses {
 
 		RenderPassHandle main;
 		RenderPassHandle blur;
+
+		Render::DescriptorSetLayoutHandle mainTexSetLayout;
+		Render::DescriptorSetHandle       mainTexSet;
+
+		Render::DescriptorSetLayoutHandle blurTexSetLayout;
+		Render::DescriptorSetHandle       blurTexSet;
 	};
 }

@@ -76,13 +76,15 @@ namespace SFE::Render {
 		data.height = h;
 
 		hints.apply();
-		glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+		//glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 		mWindow = glfwCreateWindow(w, h, title.c_str(), nullptr, share);
 		if (!mWindow) {
 			LogsModule::Logger::LOG_FATAL(false, "Failed to create glfw window \"%s\"", title.c_str());
 			return;
 		}
 		windows[mWindow] = this;
+		
+		glfwMakeContextCurrent(mWindow);
 
 		glfwGetWindowPos(mWindow, &data.posX, &data.posY);
 
@@ -91,13 +93,6 @@ namespace SFE::Render {
 		glfwGetFramebufferSize(mWindow, &data.renderW, &data.renderH);
 
 		data.setSize(data.width, data.height);
-		bool noApi = hints.ints.contains(CLIENT_API) && hints.ints[CLIENT_API] == GLFW_NO_API;
-		if (!share && !noApi) {
-			glfwMakeContextCurrent(mWindow);
-			LogsModule::Logger::LOG_FATAL(gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)), "Failed to initialize GLAD");
-			glfwMakeContextCurrent(nullptr);
-		}
-
 		glfwDefaultWindowHints();
 
 		glfwSetWindowPosCallback(mWindow, [](GLFWwindow* window, int x, int y) {
@@ -178,10 +173,16 @@ namespace SFE::Render {
 	}
 
 	bool Window::isClosing() const {
+		if (!mWindow) {
+			return true;
+		}
 		return glfwWindowShouldClose(mWindow);
 	}
 
 	void Window::swapBuffers() const {
+		if (!mWindow) {
+			return;
+		}
 		glfwSwapBuffers(mWindow);
 	}
 

@@ -55,6 +55,8 @@ namespace SFE::SystemsModule {
 		Render::RenderPasses::GeometryPass::Data* mGeometryPassData = nullptr;
 		Render::RenderPasses::SSAOPass::Data* mSSAOPassData = nullptr;
 
+		Render::TextureHandle finalTexture;
+
 		RenderMode mRenderType = RenderMode::DEFAULT;
 
 		uint8_t currentRegistry = 0;
@@ -174,5 +176,8 @@ namespace SFE::SystemsModule {
 
 		Render::BufferHandle transforms;
 		Render::BufferHandle bones;
+
+		Render::DescriptorSetLayoutHandle frameSetLayout;
+		Render::DescriptorSetHandle frameSet;
 	};
 }

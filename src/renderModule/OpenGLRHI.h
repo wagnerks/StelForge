@@ -2,22 +2,33 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-#include "RenderHardwareInterface.h"
-#include "glad/glad.h"
+#include <RenderModule/RenderHardwareInterface.h>
 
 namespace SFE::Render
 {
-	struct GLTexture { unsigned id; TextureDesc desc; };
-	struct GLSampler { unsigned id;	SamplerDesc desc; };
-	struct GLFramebuffer { unsigned id; FramebufferDesc desc; };
-	struct GLBuffer { unsigned id = 0; GLenum target = GL_ARRAY_BUFFER; BufferDesc desc; };
+	using GLenum = unsigned int;
+	using GLuint = unsigned int;
+	using GLint = int;
+	using GLbitfield = unsigned int;
+
+	struct GLTexture { unsigned id = 0; TextureDesc desc{}; bool live = false; };
+	struct GLSampler { unsigned id = 0; SamplerDesc desc{}; bool live = false; };
+	struct GLFramebuffer { unsigned id = 0; FramebufferDesc desc{}; bool live = false; };
+	struct GLBuffer { unsigned id = 0; GLenum target = 0; BufferDesc desc{}; bool live = false; };
 	struct GLVertexArray { GLuint id = 0; VertexLayoutDesc desc; };
-	struct GLShaderModule { GLuint id = 0; ShaderModuleDesc desc; };
+	struct GLShaderModule { GLuint id = 0; ShaderModuleDesc desc{}; bool live = false; };
 	struct GLRenderPass
 	{
-		RenderPassDesc desc;
+		RenderPassDesc desc{};
+		bool live = false;
+	};
+	struct GLDescriptorSetLayout
+	{
+		DescriptorSetLayoutDesc desc{};
+		bool live = false;
 	};
 
 	struct GLGraphicsPipeline
@@ -26,26 +37,28 @@ namespace SFE::Render
 		GLuint vaoId = 0;
 
 		// кешируем GL-формы состояний
-		GLenum primitiveGL = GL_TRIANGLES;
+		GLenum primitiveGL;
 		GLenum cullModeGL = 0;          // 0 = no cull
-		GLenum frontFaceGL = GL_CCW;
-		GLenum fillModeGL = GL_FILL;
-		GLenum depthFuncGL = GL_LESS;
+		GLenum frontFaceGL;
+		GLenum fillModeGL;
+		GLenum depthFuncGL;
 
 		bool  depthTestEnabled = true;
 		bool  depthWriteEnabled = true;
 
 		bool  blendEnabled = false;
-		GLenum blendSrcGL = GL_ONE;
-		GLenum blendDstGL = GL_ZERO;
+		GLenum blendSrcGL;
+		GLenum blendDstGL;
 
 		GraphicsPipelineDesc desc; // опционально — для дебага / реконфига
 
 		std::unordered_map<std::string, GLint> uniformLocations;
+		bool live = false;
 	};
 
 	struct GLDescriptorBindingData
 	{
+		uint32_t binding = 0;
 		DescriptorType type;
 		std::vector<DescriptorBufferInfo> buffers;
 		std::vector<DescriptorImageInfo>  images;
@@ -53,8 +66,9 @@ namespace SFE::Render
 
 	struct GLDescriptorSet
 	{
-		DescriptorSetLayoutDesc layout;
-		std::vector<GLDescriptorBindingData> bindings; // индекс = binding
+		DescriptorSetLayoutDesc layout{};
+		std::vector<GLDescriptorBindingData> bindings;
+		bool live = false;
 	};
 
 
@@ -64,7 +78,8 @@ namespace SFE::Render
 		void init() override;
 		void cleanup() override;
 
-		void setTextureSubImage2D(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) override;
+		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) override;
+		uint64_t getNativeTextureId(TextureHandle tex) const override;
 
 		ShaderModuleHandle createShaderModule(const ShaderModuleDesc& desc) override;
 		void destroyShaderModule(ShaderModuleHandle handle) override;
@@ -78,28 +93,53 @@ namespace SFE::Render
 		SamplerHandle createSampler(const SamplerDesc& desc) override;
 		void destroySampler(SamplerHandle sampler) override;
 
-		void blitFramebuffer(FramebufferHandle src, FramebufferHandle dst, int srcX0, int srcY0, int srcX1, int srcY1,
-		                     int dstX0, int dstY0, int dstX1, int dstY1, BlitMask mask, BlitFilter filter) override;
-		void bindTexture(uint32_t slot, TextureHandle tex, SamplerHandle sampler) override;
-		void bindFramebuffer(FramebufferHandle framebuffer) override;
-
 		BufferHandle createBuffer(const BufferDesc& desc, const void* initialData) override;
 		void destroyBuffer(BufferHandle handle) override;
 		void updateBuffer(BufferHandle handle, size_t offset, size_t size, const void* data) override;
 		void* mapBuffer(BufferHandle handle, MapMode mode) override;
 		void unmapBuffer(BufferHandle handle) override;
-		void bindVertexBuffer(uint32_t slot, BufferHandle handle, uint32_t offset) override;
-		void bindIndexBuffer(BufferHandle handle, IndexType type, uint32_t offset) override;
-		void bindUniformBuffer(uint32_t binding, BufferHandle handle) override;
-		void bindStorageBuffer(uint32_t binding, BufferHandle handle) override;
-
-		/*VertexArrayHandle createVertexArray(const VertexArrayDesc& desc) override;
-		void destroyVertexArray(VertexArrayHandle handle) override;
-		void bindVertexArray(VertexArrayHandle handle) override;*/
 
 		PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
-		void bindPipeline(PipelineHandle handle) override;
+		void destroyGraphicsPipeline(PipelineHandle pipeline) override;
 	private:
+		template<typename T>
+		static uint32_t storeResource(std::vector<T>& pool, std::vector<uint32_t>& freeList, T value) {
+			if (!freeList.empty()) {
+				const uint32_t id = freeList.back();
+				freeList.pop_back();
+				pool[id] = std::move(value);
+				return id;
+			}
+			pool.push_back(std::move(value));
+			return static_cast<uint32_t>(pool.size() - 1);
+		}
+
+		template<typename T>
+		static T* getLive(std::vector<T>& pool, uint32_t id) {
+			if (id >= pool.size() || !pool[id].live) {
+				return nullptr;
+			}
+			return &pool[id];
+		}
+
+		template<typename T>
+		static const T* getLive(const std::vector<T>& pool, uint32_t id) {
+			if (id >= pool.size() || !pool[id].live) {
+				return nullptr;
+			}
+			return &pool[id];
+		}
+
+		template<typename T>
+		static bool recycleResource(std::vector<T>& pool, std::vector<uint32_t>& freeList, uint32_t id) {
+			if (id >= pool.size() || !pool[id].live) {
+				return false;
+			}
+			pool[id] = T{};
+			freeList.push_back(id);
+			return true;
+		}
+
 		std::vector<GLTexture> textures;
 		std::vector<GLSampler> samplers;
 		std::vector<GLFramebuffer> framebuffers;
@@ -109,14 +149,26 @@ namespace SFE::Render
 		std::vector<GLShaderModule> m_shaders;
 		std::vector<GLGraphicsPipeline> m_pipelines;
 
+		std::vector<uint32_t> m_freeTextures;
+		std::vector<uint32_t> m_freeSamplers;
+		std::vector<uint32_t> m_freeFramebuffers;
+		std::vector<uint32_t> m_freeBuffers;
+		std::vector<uint32_t> m_freeShaders;
+		std::vector<uint32_t> m_freePipelines;
+		std::vector<uint32_t> m_freeRenderPasses;
+		std::vector<uint32_t> m_freeDescriptorSets;
+		std::vector<uint32_t> m_freeDescriptorSetLayouts;
+
 		IndexType m_currentIndexType = IndexType::Uint16;
 		uint32_t m_currentIndexOffset = 0;
-		GLenum m_currentPrimitive = GL_TRIANGLES;
+		GLenum m_currentPrimitive;
 		PipelineHandle m_currentPipeline;
 		std::vector<GLRenderPass> m_renderPasses;
 
 		std::vector<GLDescriptorSet> m_descriptorSets;
-		std::vector<DescriptorSetLayoutDesc> m_descriptorSetLayouts;
+		std::vector<GLDescriptorSetLayout> m_descriptorSetLayouts;
+
+		bool m_inited = false;
 
 
 		GLuint m_prevFramebuffer = 0; // для сохранения/восстановления FBO в begin/endRenderPass
@@ -130,22 +182,8 @@ namespace SFE::Render
 		GLint  toGLSize(VertexFormat f) const;
 
 	public:
-		void setUniform(PipelineHandle handle, const std::string& name, int value) override;
-		void setUniform(PipelineHandle handle, const std::string& name, float value) override;
-		void setUniform(PipelineHandle handle, const std::string& name, const Math::Mat4& value) override;
-		void setUniform(PipelineHandle handle, const std::string& name, const Math::Vec4& value) override;
-		void setUniform(PipelineHandle handle, const std::string& name, const Math::Vec3& value) override;
-		void setUniform(PipelineHandle handle, const std::string& name, const Math::Vec2& value) override;
-		void draw(uint32_t vertexCount, uint32_t firstVertex, uint32_t instanceCount) override;
-		void drawIndexed(uint32_t indexCount, uint32_t firstIndex, uint32_t instanceCount, IndexType indexType, int32_t vertexOffset) override;
-		void setUniform(PipelineHandle handle, const std::string& name, bool value) override;
-
 		RenderPassHandle createRenderPass(const RenderPassDesc& desc) override;
 		void destroyRenderPass(RenderPassHandle renderPass) override;
-		void beginRenderPass(const RenderPassBeginInfo& beginInfo) override;
-		void endRenderPass() override;
-
-
 
 		CommandListHandle beginCommandList(CommandListType type) override;
 		void endCommandList(CommandListHandle cmd) override;
@@ -159,6 +197,7 @@ namespace SFE::Render
 		void cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
 		void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) override;
 		void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, ShaderStage stages, const void* data,	uint32_t size) override;
+		void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter) override;
 
 		DescriptorSetLayoutHandle createDescriptorSetLayout(const DescriptorSetLayoutDesc& desc) override;
 		void destroyDescriptorSetLayout(DescriptorSetLayoutHandle layout) override;
@@ -166,5 +205,6 @@ namespace SFE::Render
 		void freeDescriptorSet(DescriptorSetHandle set) override;
 		void updateDescriptorSets(const std::vector<WriteDescriptor>& writes) override;
 		void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount) override;
+		FramebufferHandle getBackbufferFramebuffer() override;
 	};
 }

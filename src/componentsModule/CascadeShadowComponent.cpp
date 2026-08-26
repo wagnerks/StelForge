@@ -2,13 +2,7 @@
 
 #include "CameraComponent.h"
 #include "TransformComponent.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "core/ECSHandler.h"
-#include "glWrapper/BlendStack.h"
-#include "glWrapper/Buffer.h"
-#include "glWrapper/CapabilitiesStack.h"
-#include "glWrapper/Draw.h"
-#include "glWrapper/VertexArray.h"
 #include "systemsModule/systems/CameraSystem.h"
 
 
@@ -225,7 +219,7 @@ namespace SFE::ComponentsModule {
 	}
 
 	void CascadeShadowComponent::debugDraw(const std::vector<SFE::Math::Mat4>& lightSpaceMatrices, const Math::Mat4& cameraProjection, const Math::Mat4& cameraView) {
-		if (lightSpaceMatrices.empty()) {
+		/*if (lightSpaceMatrices.empty()) {
 			return;
 		}
 
@@ -279,16 +273,17 @@ namespace SFE::ComponentsModule {
 			debugMatricesEBO = Engine::instance()->rhi()->createBuffer(indexBufferDesc, indices);
 		}
 
-		debugPipeline.bind();
+		Engine::instance()->rhi()->bindPipeline(debugPipeline);
 		Engine::instance()->rhi()->setUniform(debugPipeline, "projection", cameraProjection);
 		Engine::instance()->rhi()->setUniform(debugPipeline, "view", cameraView);
 		
 
-		drawCascadeVolumeVisualizers(lightSpaceMatrices);
+		drawCascadeVolumeVisualizers(lightSpaceMatrices);*/
 	}
 
 	void CascadeShadowComponent::drawCascadeVolumeVisualizers(const std::vector<SFE::Math::Mat4>& lightMatrices) {
-		static const Math::Vec4 colors[] = {
+		// todo this code should not exist, move to debug renderer later
+		/*static const Math::Vec4 colors[] = {
 			{1.0, 0.0, 0.0, 0.5f},
 			{0.0, 1.0, 0.0, 0.5f},
 			{0.0, 0.0, 1.0, 0.5f},
@@ -298,10 +293,9 @@ namespace SFE::ComponentsModule {
 			const auto corners = CascadeShadowComponent::getFrustumCornersWorldSpace(lightMatrices[i]);
 			Engine::instance()->rhi()->updateBuffer(debugMatricesUBO, 0, sizeof(Math::Vec4) * corners.size(), corners.data());
 			Engine::instance()->rhi()->setUniform(debugPipeline, "color", colors[i % 3]);
-
-			debugMatricesUBO.bindVertex();
-			debugMatricesEBO.bindIndex(Render::IndexType::Uint32);
+			Engine::instance()->rhi()->bindVertexBuffer(0, debugMatricesUBO);
+			Engine::instance()->rhi()->bindIndexBuffer(debugMatricesEBO, Render::IndexType::Uint32);
 			Engine::instance()->rhi()->drawIndexed(36, 0, 1, Render::IndexType::Uint32, 0);
-		}
+		}*/
 	}
 }

@@ -1,15 +1,13 @@
-﻿#include "OpenGLRHI.h"
+﻿#include <renderModule/openGLRHI.h>
 
-#include "core/Engine.h"
+#include <glad/glad.h> // should be included before GLFW
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 
-#include "glWrapper/CapabilitiesStack.h"
-#include "glWrapper/Depth.h"
-#include "glWrapper/Draw.h"
-#include "glWrapper/Texture.h"
-#include "glWrapper/ViewportStack.h"
+#include <core/Engine.h>
 
-#include "logsModule/logger.h"
-#include "windowsModule/Window.h"
+#include <logsModule/logger.h>
+#include <windowsModule/Window.h>
 
 namespace SFE::Render
 {
@@ -335,7 +333,9 @@ namespace SFE::Render
 	{
 		switch (t) {
 		case PrimitiveTopology::Lines:    return GL_LINES;
+		case PrimitiveTopology::LineLoop:    return GL_LINE_LOOP;
 		case PrimitiveTopology::Points:   return GL_POINTS;
+		case PrimitiveTopology::TriangleStrip:   return GL_TRIANGLE_STRIP;
 		case PrimitiveTopology::Triangles:
 		default:                          return GL_TRIANGLES;
 		}
@@ -524,85 +524,106 @@ namespace SFE::Render
 		}
 	}
 
-	void OpenGLRHI::setUniform(PipelineHandle handle, const std::string& name, int value)
+
+	void OpenGLRHI::cmdEndRenderPass(CommandListHandle cmd)
 	{
-		if (handle.id >= m_pipelines.size()) {
+		glBindFramebuffer(GL_FRAMEBUFFER, m_prevFramebuffer);
+		m_prevFramebuffer = 0;
+	}
+
+	void OpenGLRHI::cmdBindPipeline(CommandListHandle cmd, PipelineHandle pipeline)
+	{
+		const GLGraphicsPipeline* gpPtr = getLive(m_pipelines, pipeline.id);
+		if (!gpPtr) {
 			return;
 		}
 
-		GLGraphicsPipeline& gp = m_pipelines[handle.id];
-		if (!gp.uniformLocations.contains(name)) {
-			gp.uniformLocations[name] = glGetUniformLocation(gp.programId, name.c_str());
+		const GLGraphicsPipeline& gp = *gpPtr;
+
+		// шейдерная программа
+		glUseProgram(gp.programId);
+		glBindVertexArray(gp.vaoId);
+
+		// topology
+		m_currentPrimitive = gp.primitiveGL;
+
+		// polygon mode
+		glPolygonMode(GL_FRONT_AND_BACK, gp.fillModeGL);
+
+		// cull
+		if (gp.cullModeGL == 0) {
+			glDisable(GL_CULL_FACE);
+		}
+		else {
+			glEnable(GL_CULL_FACE);
+			glCullFace(gp.cullModeGL);
+		}
+		glFrontFace(gp.frontFaceGL);
+
+		// depth
+		if (gp.depthTestEnabled) {
+			glEnable(GL_DEPTH_TEST);
+		}
+		else {
+			glDisable(GL_DEPTH_TEST);
+		}
+		glDepthFunc(gp.depthFuncGL);
+		glDepthMask(gp.depthWriteEnabled ? GL_TRUE : GL_FALSE);
+
+		// blend
+		if (gp.blendEnabled) {
+			glEnable(GL_BLEND);
+			glBlendFunc(gp.blendSrcGL, gp.blendDstGL);
+		}
+		else {
+			glDisable(GL_BLEND);
 		}
 
-		glUniform1i(gp.uniformLocations[name], value);
+		m_currentPipeline = pipeline;
 	}
 
-	void OpenGLRHI::setUniform(PipelineHandle handle, const std::string& name, float value)
+	void OpenGLRHI::cmdBindVertexBuffer(CommandListHandle cmd, uint32_t slot, BufferHandle handle, uint32_t offset)
 	{
-		if (handle.id >= m_pipelines.size()) {
+		const auto* gp = getLive(m_pipelines, m_currentPipeline.id);
+		const auto* buf = getLive(m_buffers, handle.id);
+		if (!gp || !buf)
+			return;
+
+		// защитимся от кривого slot
+		if (slot >= gp->desc.layout.bindings.size())
+			return;
+
+		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage == BufferUsage::Vertex, "WRONG BUFFER TYPE BINDING");
+		const auto& bindingDesc = gp->desc.layout.bindings[slot];
+		const GLsizei stride = static_cast<GLsizei>(bindingDesc.stride);
+		glVertexArrayVertexBuffer(
+			gp->vaoId,
+			bindingDesc.binding,                          // vertex binding
+			buf->id,                        // VBO
+			static_cast<GLintptr>(offset), // byte offset
+			stride
+		);
+		glBindBuffer(buf->target, buf->id);
+	}
+
+	void OpenGLRHI::cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset)
+	{
+		const auto* gp = getLive(m_pipelines, m_currentPipeline.id);
+		const auto* buf = getLive(m_buffers, handle.id);
+		if (!gp || !buf) {
+			m_currentIndexType = type;
+			m_currentIndexOffset = 0;
 			return;
 		}
-		GLGraphicsPipeline& gp = m_pipelines[handle.id];
-		if (!gp.uniformLocations.contains(name)) {
-			gp.uniformLocations[name] = glGetUniformLocation(gp.programId, name.c_str());
-		}
-		glUniform1f(gp.uniformLocations[name], value);
+
+		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage == BufferUsage::Index, "WRONG BUFFER TYPE BINDING");
+		glVertexArrayElementBuffer(gp->vaoId, buf->id);
+		glBindBuffer(buf->target, buf->id);
+		m_currentIndexType = type;
+		m_currentIndexOffset = offset;
 	}
 
-	void OpenGLRHI::setUniform(PipelineHandle handle, const std::string& name, const Math::Mat4& value)
-	{
-		if (handle.id >= m_pipelines.size()) {
-			return;
-		}
-
-		GLGraphicsPipeline& gp = m_pipelines[handle.id];
-		if (!gp.uniformLocations.contains(name)) {
-			gp.uniformLocations[name] = glGetUniformLocation(gp.programId, name.c_str());
-		}
-
-		glUniformMatrix4fv(gp.uniformLocations[name], 1, false, value.data());
-	}
-
-	void OpenGLRHI::setUniform(PipelineHandle handle, const std::string& name, const Math::Vec4& value)
-	{
-		if (handle.id >= m_pipelines.size()) {
-			return;
-		}
-		GLGraphicsPipeline& gp = m_pipelines[handle.id];
-		if (!gp.uniformLocations.contains(name)) {
-			gp.uniformLocations[name] = glGetUniformLocation(gp.programId, name.c_str());
-		}
-		glUniform4fv(gp.uniformLocations[name], 1, value.data());
-	}
-
-	void OpenGLRHI::setUniform(PipelineHandle handle, const std::string& name, const Math::Vec3& value)
-	{
-		if (handle.id >= m_pipelines.size()) {
-			return;
-		}
-
-		GLGraphicsPipeline& gp = m_pipelines[handle.id];
-		if (!gp.uniformLocations.contains(name)) {
-			gp.uniformLocations[name] = glGetUniformLocation(gp.programId, name.c_str());
-		}
-
-		glUniform3fv(gp.uniformLocations[name], 1, value.data());
-	}
-
-	void OpenGLRHI::setUniform(PipelineHandle handle, const std::string& name, const Math::Vec2& value)
-	{
-		if (handle.id >= m_pipelines.size()) {
-			return;
-		}
-		GLGraphicsPipeline& gp = m_pipelines[handle.id];
-		if (!gp.uniformLocations.contains(name)) {
-			gp.uniformLocations[name] = glGetUniformLocation(gp.programId, name.c_str());
-		}
-		glUniform2fv(gp.uniformLocations[name], 1, value.data());
-	}
-
-	void OpenGLRHI::draw(uint32_t vertexCount, uint32_t firstVertex, uint32_t instanceCount)
+	void OpenGLRHI::cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
 	{
 		if (vertexCount == 0 || instanceCount == 0) {
 			return;
@@ -621,14 +642,14 @@ namespace SFE::Render
 		}
 	}
 
-	void OpenGLRHI::drawIndexed(uint32_t indexCount, uint32_t firstIndex, uint32_t instanceCount, IndexType indexType, int32_t vertexOffset)
+	void OpenGLRHI::cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
 	{
 		if (indexCount == 0 || instanceCount == 0) {
 			return;
 		}
-		
-		const GLenum glIndexType = ToGLIndexType(indexType);
-		const GLsizei indexSize = (indexType == IndexType::Uint16) ? sizeof(uint16_t) : sizeof(uint32_t);
+
+		const GLenum glIndexType = ToGLIndexType(m_currentIndexType);
+		const GLsizei indexSize = (m_currentIndexType == IndexType::Uint16) ? sizeof(uint16_t) : sizeof(uint32_t);
 
 		uintptr_t baseOffsetBytes = static_cast<uintptr_t>(m_currentIndexOffset);
 		uintptr_t firstIndexBytes = static_cast<uintptr_t>(firstIndex) * indexSize;
@@ -676,139 +697,26 @@ namespace SFE::Render
 		}
 	}
 
-	void OpenGLRHI::setUniform(PipelineHandle handle, const std::string& name, bool value)
-	{
-		if (handle.id >= m_pipelines.size()) {
-			return;
-		}
-		GLGraphicsPipeline& gp = m_pipelines[handle.id];
-		if (!gp.uniformLocations.contains(name)) {
-			gp.uniformLocations[name] = glGetUniformLocation(gp.programId, name.c_str());
-		}
-		glUniform1i(gp.uniformLocations[name], value ? 1 : 0);
-	}
-
 	RenderPassHandle OpenGLRHI::createRenderPass(const RenderPassDesc& desc)
 	{
 		// В OpenGL рендер-пасс — чисто описание: LoadOp/StoreOp/clear-значения.
 		// Никаких GL-объектов создавать не нужно.
 		GLRenderPass rp{};
 		rp.desc = desc;
+		rp.live = true;
 
 		RenderPassHandle handle;
-		handle.id = static_cast<uint32_t>(m_renderPasses.size());
-		m_renderPasses.push_back(rp);
-
+		handle.id = storeResource(m_renderPasses, m_freeRenderPasses, std::move(rp));
 		return handle;
 	}
 
 	void OpenGLRHI::destroyRenderPass(RenderPassHandle renderPass)
 	{
-		if (renderPass.id >= m_renderPasses.size())
-			return;
-
-		m_renderPasses[renderPass.id].desc.colorAttachmentCount = 0;
-	}
-
-	void OpenGLRHI::beginRenderPass(const RenderPassBeginInfo& beginInfo)
-	{
-		if (beginInfo.renderPass.id >= m_renderPasses.size()) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::beginRenderPass: invalid RenderPass handle");
-			return;
-		}
-
-		if (beginInfo.framebuffer.id >= framebuffers.size()) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::beginRenderPass: invalid Framebuffer handle");
-			return;
-		}
-
-		const GLRenderPass& rp = m_renderPasses[beginInfo.renderPass.id];
-		const GLFramebuffer& fb = framebuffers[beginInfo.framebuffer.id];
-
-		// Сохраняем предыдущий FBO, чтобы вернуть в endRenderPass
-		GLint prevFbo = 0;
-		glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
-		m_prevFramebuffer = static_cast<GLuint>(prevFbo);
-
-		// Биндим целевой FBO
-		glBindFramebuffer(GL_FRAMEBUFFER, fb.id);
-
-		// Вычисляем область
-		int x = beginInfo.x;
-		int y = beginInfo.y;
-		int w = beginInfo.width > 0 ? beginInfo.width : static_cast<int>(fb.desc.width);
-		int h = beginInfo.height > 0 ? beginInfo.height : static_cast<int>(fb.desc.height);
-
-		// Через твой setViewport, чтобы всё шло через один путь
-		ViewportDesc vp{};
-		vp.x = x;
-		vp.y = y;
-		vp.width = w;
-		vp.height = h;
-		vp.minDepth = 0.0f;
-		vp.maxDepth = 1.0f;
-
-		glViewport(vp.x, vp.y, vp.width, vp.height);
-		glDepthRange(vp.minDepth, vp.maxDepth);
-
-		// --- Clear color attachments (если loadOp == Clear) ---
-		for (uint32_t i = 0; i < rp.desc.colorAttachmentCount; ++i)
-		{
-			const auto& att = rp.desc.colorAttachments[i];
-			if (att.loadOp != AttachmentLoadOp::Clear)
-				continue;
-
-			Math::Vec4 color = att.clearColor;
-			if (beginInfo.overrideClearColors) {
-				// предполагаем, что вызывающий гарантирует нужный размер массива
-				color = beginInfo.overrideClearColors[i];
-			}
-
-			float c[4] = { color.x, color.y, color.z, color.w };
-			glClearBufferfv(GL_COLOR, static_cast<GLint>(i), c);
-		}
-
-		// --- Clear depth/stencil (если есть и loadOp == Clear) ---
-		if (rp.desc.hasDepthStencil && rp.desc.depthAttachment.loadOp == AttachmentLoadOp::Clear)
-		{
-			float depth = rp.desc.depthAttachment.clearDepth;
-			uint8_t stencil = rp.desc.depthAttachment.clearStencil;
-
-			if (beginInfo.overrideClearDepth) {
-				depth = *beginInfo.overrideClearDepth;
-			}
-			if (rp.desc.depthAttachment.hasStencil && beginInfo.overrideClearStencil) {
-				stencil = *beginInfo.overrideClearStencil;
-			}
-
-			// На время clear depth буфера логично обеспечить включённую запись по глубине
-			GLboolean oldDepthMask;
-			glGetBooleanv(GL_DEPTH_WRITEMASK, &oldDepthMask);
-			glDepthMask(GL_TRUE);
-
-			if (rp.desc.depthAttachment.hasStencil) {
-				glClearBufferfi(GL_DEPTH_STENCIL, 0, depth, static_cast<GLint>(stencil));
-			}
-			else {
-				glClearBufferfv(GL_DEPTH, 0, &depth);
-			}
-
-			glDepthMask(oldDepthMask);
-		}
-	}
-
-	void OpenGLRHI::endRenderPass()
-	{
-		// В Vulkan тут было бы vkCmdEndRenderPass.
-		// В OpenGL достаточно восстановить предыдущий framebuffer.
-
-		glBindFramebuffer(GL_FRAMEBUFFER, m_prevFramebuffer);
-		m_prevFramebuffer = 0;
+		recycleResource(m_renderPasses, m_freeRenderPasses, renderPass.id);
 	}
 
 	CommandListHandle OpenGLRHI::beginCommandList(CommandListType type)
 	{
-		// В OpenGL нет командных листов, возвращаем пустой хэндл
 		return CommandListHandle{};
 	}
 
@@ -831,13 +739,14 @@ namespace SFE::Render
 
 	void OpenGLRHI::cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo)
 	{
-		if (beginInfo.renderPass.id >= m_renderPasses.size()) {
+		const GLRenderPass* rpPtr = getLive(m_renderPasses, beginInfo.renderPass.id);
+		if (!rpPtr) {
 			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::beginRenderPass: invalid RenderPass handle");
 			return;
 		}
 
-		const GLRenderPass& rp = m_renderPasses[beginInfo.renderPass.id];
-		
+		const GLRenderPass& rp = *rpPtr;
+
 
 		// Сохраняем предыдущий FBO, чтобы вернуть в endRenderPass
 		GLint prevFbo = 0;
@@ -845,17 +754,20 @@ namespace SFE::Render
 		m_prevFramebuffer = static_cast<GLuint>(prevFbo);
 		int w = 0;
 		int h = 0;
-		if (beginInfo.framebuffer.id >= framebuffers.size()) {
+		if (!beginInfo.framebuffer) {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			auto& screen = Engine::instance()->getWindow()->getScreenData();
 			w = beginInfo.width > 0 ? beginInfo.width : static_cast<int>(screen.width);
 			h = beginInfo.height > 0 ? beginInfo.height : static_cast<int>(screen.height);
 		}
+		else if (const GLFramebuffer* fb = getLive(framebuffers, beginInfo.framebuffer.id)) {
+			glBindFramebuffer(GL_FRAMEBUFFER, fb->id);
+			w = beginInfo.width > 0 ? beginInfo.width : static_cast<int>(fb->desc.width);
+			h = beginInfo.height > 0 ? beginInfo.height : static_cast<int>(fb->desc.height);
+		}
 		else {
-			const GLFramebuffer& fb = framebuffers[beginInfo.framebuffer.id];
-			glBindFramebuffer(GL_FRAMEBUFFER, fb.id);
-			w = beginInfo.width > 0 ? beginInfo.width : static_cast<int>(fb.desc.width);
-			h = beginInfo.height > 0 ? beginInfo.height : static_cast<int>(fb.desc.height);
+			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::beginRenderPass: invalid Framebuffer handle");
+			return;
 		}
 
 
@@ -865,17 +777,8 @@ namespace SFE::Render
 		//int w = beginInfo.width > 0 ? beginInfo.width : static_cast<int>(fb.desc.width);
 		//int h = beginInfo.height > 0 ? beginInfo.height : static_cast<int>(fb.desc.height);
 
-		// Через твой setViewport, чтобы всё шло через один путь
-		ViewportDesc vp{};
-		vp.x = x;
-		vp.y = y;
-		vp.width = w;
-		vp.height = h;
-		vp.minDepth = 0.0f;
-		vp.maxDepth = 1.0f;
-
-		glViewport(vp.x, vp.y, vp.width, vp.height);
-		glDepthRange(vp.minDepth, vp.maxDepth);
+		glViewport(x, y, w, h);
+		glDepthRange(0.f, 1.f);
 
 		// --- Clear color attachments (если loadOp == Clear) ---
 		for (uint32_t i = 0; i < rp.desc.colorAttachmentCount; ++i)
@@ -923,120 +826,6 @@ namespace SFE::Render
 		}
 	}
 
-	void OpenGLRHI::cmdEndRenderPass(CommandListHandle cmd)
-	{
-		glBindFramebuffer(GL_FRAMEBUFFER, m_prevFramebuffer);
-		m_prevFramebuffer = 0;
-	}
-
-	void OpenGLRHI::cmdBindPipeline(CommandListHandle cmd, PipelineHandle pipeline)
-	{
-		if (pipeline.id >= m_pipelines.size()) {
-			return;
-		}
-
-		const GLGraphicsPipeline& gp = m_pipelines[pipeline.id];
-
-		// шейдерная программа
-		glUseProgram(gp.programId);
-		glBindVertexArray(gp.vaoId);
-
-		// topology
-		m_currentPrimitive = gp.primitiveGL;
-
-		// polygon mode
-		glPolygonMode(GL_FRONT_AND_BACK, gp.fillModeGL);
-
-		// cull
-		if (gp.cullModeGL == 0) {
-			glDisable(GL_CULL_FACE);
-		}
-		else {
-			glEnable(GL_CULL_FACE);
-			glCullFace(gp.cullModeGL);
-		}
-		glFrontFace(gp.frontFaceGL);
-
-		// depth
-		if (gp.depthTestEnabled) {
-			glEnable(GL_DEPTH_TEST);
-		}
-		else {
-			glDisable(GL_DEPTH_TEST);
-		}
-		glDepthFunc(gp.depthFuncGL);
-		glDepthMask(gp.depthWriteEnabled ? GL_TRUE : GL_FALSE);
-
-		// blend
-		if (gp.blendEnabled) {
-			glEnable(GL_BLEND);
-			glBlendFunc(gp.blendSrcGL, gp.blendDstGL);
-		}
-		else {
-			glDisable(GL_BLEND);
-		}
-
-		m_currentPipeline = pipeline;
-	}
-
-	void OpenGLRHI::cmdBindVertexBuffer(CommandListHandle cmd, uint32_t slot, BufferHandle handle, uint32_t offset)
-	{
-		if (m_currentPipeline.id >= m_pipelines.size())
-			return;
-		if (handle.id >= m_buffers.size())
-			return;
-
-		const auto& gp = m_pipelines[m_currentPipeline.id];
-		const auto& buf = m_buffers[handle.id];
-
-		// защитимся от кривого slot
-		if (slot >= gp.desc.layout.bindings.size())
-			return;
-
-		SFE::LogsModule::Logger::LOG_FATAL(buf.desc.usage == BufferUsage::Vertex, "WRONG BUFFER TYPE BINDING");
-		const auto& bindingDesc = gp.desc.layout.bindings[slot];
-		const GLsizei stride = static_cast<GLsizei>(bindingDesc.stride);
-		glVertexArrayVertexBuffer(
-			gp.vaoId,
-			bindingDesc.binding,                          // vertex binding
-			buf.id,                        // VBO
-			static_cast<GLintptr>(offset), // byte offset
-			stride
-		);
-		glBindBuffer(buf.target, buf.id);
-	}
-
-	void OpenGLRHI::cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset)
-	{
-		if (m_currentPipeline.id >= m_pipelines.size() || handle.id >= m_buffers.size()) {
-			m_currentIndexType = type;
-			m_currentIndexOffset = 0;
-			return;
-		}
-
-		const auto& gp = m_pipelines[m_currentPipeline.id];
-		const auto& buf = m_buffers[handle.id];
-		SFE::LogsModule::Logger::LOG_FATAL(buf.desc.usage == BufferUsage::Index, "WRONG BUFFER TYPE BINDING");
-		glVertexArrayElementBuffer(gp.vaoId, buf.id);
-		glBindBuffer(buf.target, buf.id);
-		m_currentIndexType = type;
-		m_currentIndexOffset = offset;
-	}
-
-	void OpenGLRHI::cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
-	{
-		// В OpenGL игнорируем cmd и firstInstance — у нас нет baseInstance.
-		// Просто вызываем уже существующий путь.
-		draw(vertexCount, firstVertex, instanceCount);
-	}
-
-	void OpenGLRHI::cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
-	{
-		// Аналогично: cmd и firstInstance игнорируем.
-		// Тип индекса берём из m_currentIndexType (он выставляется в cmdBindIndexBuffer).
-		drawIndexed(indexCount, firstIndex, instanceCount, m_currentIndexType, vertexOffset);
-	}
-
 	void OpenGLRHI::cmdPushConstants(CommandListHandle, PipelineHandle pipeline, ShaderStage, const void* data, uint32_t size)
 	{
 		// emulation push constant in GL via UBO
@@ -1055,70 +844,78 @@ namespace SFE::Render
 	DescriptorSetLayoutHandle OpenGLRHI::createDescriptorSetLayout(
 		const DescriptorSetLayoutDesc& desc)
 	{
+		GLDescriptorSetLayout layout{};
+		layout.desc = desc;
+		layout.live = true;
+
 		DescriptorSetLayoutHandle h;
-		h.id = static_cast<uint32_t>(m_descriptorSetLayouts.size());
-		m_descriptorSetLayouts.push_back(desc);
+		h.id = storeResource(m_descriptorSetLayouts, m_freeDescriptorSetLayouts, std::move(layout));
 		return h;
 	}
 
 
 	void OpenGLRHI::destroyDescriptorSetLayout(DescriptorSetLayoutHandle layout)
 	{
-
+		recycleResource(m_descriptorSetLayouts, m_freeDescriptorSetLayouts, layout.id);
 	}
 
 	DescriptorSetHandle OpenGLRHI::allocateDescriptorSet(DescriptorSetLayoutHandle layout)
 	{
-		if (layout.id >= m_descriptorSetLayouts.size())
+		const GLDescriptorSetLayout* layoutObj = getLive(m_descriptorSetLayouts, layout.id);
+		if (!layoutObj)
 			return {};
 
 		GLDescriptorSet set{};
-		set.layout = m_descriptorSetLayouts[layout.id];
-
-		// подготовим слоты под биндинги
-		uint32_t maxBinding = 0;
-		for (auto& b : set.layout.bindings)
-			maxBinding = std::max(maxBinding, b.binding);
-
-		set.bindings.resize(maxBinding + 1);
-		for (auto& b : set.layout.bindings)
-			set.bindings[b.binding].type = b.type;
+		set.layout = layoutObj->desc;
+		set.live = true;
+		set.bindings.reserve(set.layout.bindings.size());
+		for (const auto& b : set.layout.bindings) {
+			GLDescriptorBindingData data;
+			data.binding = b.binding;
+			data.type = b.type;
+			set.bindings.push_back(std::move(data));
+		}
 
 		DescriptorSetHandle h;
-		h.id = static_cast<uint32_t>(m_descriptorSets.size());
-		m_descriptorSets.push_back(std::move(set));
+		h.id = storeResource(m_descriptorSets, m_freeDescriptorSets, std::move(set));
 		return h;
 	}
 
 
 	void OpenGLRHI::freeDescriptorSet(DescriptorSetHandle set)
 	{
-
+		recycleResource(m_descriptorSets, m_freeDescriptorSets, set.id);
 	}
 
 	void OpenGLRHI::updateDescriptorSets(const std::vector<WriteDescriptor>& writes)
 	{
 		for (const auto& w : writes)
 		{
-			if (w.set.id >= m_descriptorSets.size())
+			GLDescriptorSet* set = getLive(m_descriptorSets, w.set.id);
+			if (!set)
 				continue;
 
-			GLDescriptorSet& set = m_descriptorSets[w.set.id];
-			if (w.binding >= set.bindings.size())
-				continue;
-
-			auto& b = set.bindings[w.binding];
-			b.type = w.type;
+			GLDescriptorBindingData* slot = nullptr;
+			for (auto& b : set->bindings) {
+				if (b.binding == w.binding && b.type == w.type) {
+					slot = &b;
+					break;
+				}
+			}
+			if (!slot) {
+				set->bindings.push_back({ w.binding, w.type, {}, {} });
+				slot = &set->bindings.back();
+			}
 
 			switch (w.type)
 			{
 			case DescriptorType::UniformBuffer:
 			case DescriptorType::StorageBuffer:
-				b.buffers = w.buffers;
+				slot->buffers = w.buffers;
 				break;
 
 			case DescriptorType::CombinedImageSampler:
-				b.images = w.images;
+				slot->images = w.images;
 				break;
 			}
 		}
@@ -1134,34 +931,31 @@ namespace SFE::Render
 		for (uint32_t i = 0; i < setCount; ++i)
 		{
 			const DescriptorSetHandle h = sets[i];
-			if (h.id >= m_descriptorSets.size())
+			const GLDescriptorSet* set = getLive(m_descriptorSets, h.id);
+			if (!set)
 				continue;
 
-			const GLDescriptorSet& set = m_descriptorSets[h.id];
-
-			for (uint32_t binding = 0; binding < set.bindings.size(); ++binding)
+			for (const auto& b : set->bindings)
 			{
-				const auto& b = set.bindings[binding];
-
 				switch (b.type)
 				{
 				case DescriptorType::UniformBuffer:
 					for (const auto& bufInfo : b.buffers)
 					{
-						if (bufInfo.buffer.id >= m_buffers.size())
+						const auto* glb = getLive(m_buffers, bufInfo.buffer.id);
+						if (!glb)
 							continue;
-						const auto& glb = m_buffers[bufInfo.buffer.id];
-						glBindBufferBase(GL_UNIFORM_BUFFER, binding, glb.id);
+						glBindBufferBase(GL_UNIFORM_BUFFER, b.binding, glb->id);
 					}
 					break;
 
 				case DescriptorType::StorageBuffer:
 					for (const auto& bufInfo : b.buffers)
 					{
-						if (bufInfo.buffer.id >= m_buffers.size())
+						const auto* glb = getLive(m_buffers, bufInfo.buffer.id);
+						if (!glb)
 							continue;
-						const auto& glb = m_buffers[bufInfo.buffer.id];
-						glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, glb.id);
+						glBindBufferBase(GL_SHADER_STORAGE_BUFFER, b.binding, glb->id);
 					}
 					break;
 
@@ -1169,21 +963,24 @@ namespace SFE::Render
 					if (!b.images.empty())
 					{
 						const auto& img = b.images[0];
-						if (img.texture.id < textures.size())
+						if (const auto* t = getLive(textures, img.texture.id))
 						{
-							const auto& t = textures[img.texture.id];
+							glActiveTexture(GL_TEXTURE0 + b.binding);
+							glBindTexture(ToOpenglTargetType(t->desc.dimension), t->id);
 
-							glActiveTexture(GL_TEXTURE0 + binding);
-							glBindTexture(ToOpenglTargetType(t.desc.dimension), t.id);
-
-							if (img.sampler.id < samplers.size())
-								glBindSampler(binding, samplers[img.sampler.id].id);
+							if (const auto* samp = getLive(samplers, img.sampler.id))
+								glBindSampler(b.binding, samp->id);
 						}
 					}
 					break;
 				}
 			}
 		}
+	}
+
+	FramebufferHandle OpenGLRHI::getBackbufferFramebuffer()
+	{
+		return {};
 	}
 
 
@@ -1204,12 +1001,10 @@ namespace SFE::Render
 
 		auto attachIfValid = [&](ShaderModuleHandle h)
 		{
-			if (h.id == UINT32_MAX || h.id >= m_shaders.size())
+			const GLShaderModule* mod = getLive(m_shaders, h.id);
+			if (!mod || mod->id == 0)
 				return;
-			const GLShaderModule& mod = m_shaders[h.id];
-			if (mod.id != 0) {
-				glAttachShader(program, mod.id);
-			}
+			glAttachShader(program, mod->id);
 		};
 
 		attachIfValid(desc.shaders.vertex);
@@ -1240,12 +1035,10 @@ namespace SFE::Render
 		// можно сразу отвязать шейдеры
 		auto detachIfValid = [&](ShaderModuleHandle h)
 		{
-			if (h.id == UINT32_MAX || h.id >= m_shaders.size())
+			const GLShaderModule* mod = getLive(m_shaders, h.id);
+			if (!mod || mod->id == 0)
 				return;
-			const GLShaderModule& mod = m_shaders[h.id];
-			if (mod.id != 0) {
-				glDetachShader(program, mod.id);
-			}
+			glDetachShader(program, mod->id);
 		};
 
 		detachIfValid(desc.shaders.vertex);
@@ -1326,60 +1119,32 @@ namespace SFE::Render
 		// -----------------------------------------------------------------
 
 		PipelineHandle handle;
-		handle.id = static_cast<uint32_t>(m_pipelines.size());
-		m_pipelines.push_back(gp);
+		gp.live = true;
+		handle.id = storeResource(m_pipelines, m_freePipelines, std::move(gp));
 
 		return handle;
 	}
 
-	void OpenGLRHI::bindPipeline(PipelineHandle handle)
+	void OpenGLRHI::destroyGraphicsPipeline(PipelineHandle pipeline)
 	{
-		if (handle.id >= m_pipelines.size()) {
+		GLGraphicsPipeline* gp = getLive(m_pipelines, pipeline.id);
+		if (!gp) {
 			return;
 		}
 
-		const GLGraphicsPipeline& gp = m_pipelines[handle.id];
-
-		// шейдерная программа
-		glUseProgram(gp.programId);
-		glBindVertexArray(gp.vaoId);
-
-		// topology
-		m_currentPrimitive = gp.primitiveGL;
-
-		// polygon mode
-		glPolygonMode(GL_FRONT_AND_BACK, gp.fillModeGL);
-
-		// cull
-		if (gp.cullModeGL == 0) {
-			glDisable(GL_CULL_FACE);
-		}
-		else {
-			glEnable(GL_CULL_FACE);
-			glCullFace(gp.cullModeGL);
-		}
-		glFrontFace(gp.frontFaceGL);
-
-		// depth
-		if (gp.depthTestEnabled) {
-			glEnable(GL_DEPTH_TEST);
-		}
-		else {
-			glDisable(GL_DEPTH_TEST);
-		}
-		glDepthFunc(gp.depthFuncGL);
-		glDepthMask(gp.depthWriteEnabled ? GL_TRUE : GL_FALSE);
-
-		// blend
-		if (gp.blendEnabled) {
-			glEnable(GL_BLEND);
-			glBlendFunc(gp.blendSrcGL, gp.blendDstGL);
-		}
-		else {
-			glDisable(GL_BLEND);
+		if (m_currentPipeline.id == pipeline.id) {
+			m_currentPipeline = {};
+			glUseProgram(0);
+			glBindVertexArray(0);
 		}
 
-		m_currentPipeline = handle;
+		if (gp->programId != 0) {
+			glDeleteProgram(gp->programId);
+		}
+		if (gp->vaoId != 0) {
+			glDeleteVertexArrays(1, &gp->vaoId);
+		}
+		recycleResource(m_pipelines, m_freePipelines, pipeline.id);
 	}
 
 	void GLAPIENTRY glDebugCallback(GLenum source, GLenum type, GLuint id,
@@ -1400,27 +1165,100 @@ namespace SFE::Render
 	}
 
 	void OpenGLRHI::init() {
+		if (m_inited) {
+			return;
+		}
+
 		auto window = Engine::instance()->getWindow();
 		if (!window) {
 			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize render without context, forgot to call createWindow?");
 			return;
 		}
-		InitGLDebug();
+		//InitGLDebug();
 
-		SFE::GLW::ViewportStack::size = { window->getScreenData().renderW, window->getScreenData().renderH };
-		
+		glfwMakeContextCurrent(window->getWindow());
+		LogsModule::Logger::LOG_FATAL(gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)), "Failed to initialize GLAD");
+		m_inited = true;
 
-		SFE::GLW::setClearColor(0.f, 0.f, 0.f);
-		
-		GLW::CapabilitiesStack<SFE::GLW::CULL_FACE>::push(true);
-		SFE::GLW::CapabilitiesStack<SFE::GLW::DEPTH_TEST>::push(true);
-		SFE::GLW::DepthFuncStack::push(SFE::GLW::DepthFunc::LESS);
 
-		SFE::GLW::setDepthDistance(window->getScreenData().far);
-		
+		glViewport(0, 0, window->getScreenData().renderW, window->getScreenData().renderH);
+		glClearColor(0,0,0,0);
+		glEnable(GL_CULL_FACE);
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LESS);
+		glClearDepth(1.f);
 	}
 
-	void OpenGLRHI::cleanup() {}
+	void OpenGLRHI::cleanup()
+	{
+		if (m_inited) {
+			for (auto& gp : m_pipelines) {
+				if (!gp.live) {
+					continue;
+				}
+				if (gp.programId != 0) {
+					glDeleteProgram(gp.programId);
+				}
+				if (gp.vaoId != 0) {
+					glDeleteVertexArrays(1, &gp.vaoId);
+				}
+			}
+			for (auto& fb : framebuffers) {
+				if (fb.live && fb.id != 0) {
+					glDeleteFramebuffers(1, &fb.id);
+				}
+			}
+			for (auto& tex : textures) {
+				if (tex.live && tex.id != 0) {
+					glDeleteTextures(1, &tex.id);
+				}
+			}
+			for (auto& samp : samplers) {
+				if (samp.live && samp.id != 0) {
+					glDeleteSamplers(1, &samp.id);
+				}
+			}
+			for (auto& buf : m_buffers) {
+				if (buf.live && buf.id != 0) {
+					glDeleteBuffers(1, &buf.id);
+				}
+			}
+			for (auto& sh : m_shaders) {
+				if (sh.live && sh.id != 0) {
+					glDeleteShader(sh.id);
+				}
+			}
+			if (m_pushConstantUBO != 0) {
+				glDeleteBuffers(1, &m_pushConstantUBO);
+				m_pushConstantUBO = 0;
+			}
+		}
+
+		textures.clear();
+		samplers.clear();
+		framebuffers.clear();
+		m_buffers.clear();
+		m_vertexArrays.clear();
+		m_shaders.clear();
+		m_pipelines.clear();
+		m_renderPasses.clear();
+		m_descriptorSets.clear();
+		m_descriptorSetLayouts.clear();
+
+		m_freeTextures.clear();
+		m_freeSamplers.clear();
+		m_freeFramebuffers.clear();
+		m_freeBuffers.clear();
+		m_freeShaders.clear();
+		m_freePipelines.clear();
+		m_freeRenderPasses.clear();
+		m_freeDescriptorSets.clear();
+		m_freeDescriptorSetLayouts.clear();
+
+		m_currentPipeline = {};
+		m_prevFramebuffer = 0;
+		m_inited = false;
+	}
 
 	FramebufferHandle OpenGLRHI::createFramebuffer(const FramebufferDesc& desc)
 	{
@@ -1436,14 +1274,20 @@ namespace SFE::Render
 
 		for (uint32_t i = 0; i < desc.colorAttachments.size(); ++i) {
 			const auto& att = desc.colorAttachments[i];
-			const auto& tex = textures[att.texture.id];
+			const GLTexture* tex = getLive(textures, att.texture.id);
+			if (!tex) {
+				SFE::LogsModule::Logger::LOG_FATAL(false, "Failed to create framebuffer object!");
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glDeleteFramebuffers(1, &fbo);
+				return {};
+			}
 
 			GLenum attachment = GL_COLOR_ATTACHMENT0 + i;
 			drawBuffers.push_back(attachment);
 
-			switch (tex.desc.dimension) {
+			switch (tex->desc.dimension) {
 				case TextureDimension::Tex2D:
-					glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex.id, static_cast<GLint>(att.mipLevel));
+					glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex->id, static_cast<GLint>(att.mipLevel));
 					break;
 				case TextureDimension::Tex3D:
 					SFE::LogsModule::Logger::LOG_FATAL(false, "Failed to create framebuffer object!");
@@ -1462,17 +1306,23 @@ namespace SFE::Render
 
 		if (desc.depthStencilAttachment.has_value()) {
 			const auto& att = *desc.depthStencilAttachment;
-			const auto& tex = textures[att.texture.id];
+			const GLTexture* tex = getLive(textures, att.texture.id);
+			if (!tex) {
+				SFE::LogsModule::Logger::LOG_FATAL(false, "Failed to create framebuffer object!");
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glDeleteFramebuffers(1, &fbo);
+				return {};
+			}
 
-			switch (tex.desc.dimension) {
+			switch (tex->desc.dimension) {
 			case TextureDimension::Tex2D:
-				glFramebufferTexture2D(GL_FRAMEBUFFER, ToGLAttachmentFormat(tex.desc.format), GL_TEXTURE_2D, tex.id, static_cast<GLint>(att.mipLevel));
+				glFramebufferTexture2D(GL_FRAMEBUFFER, ToGLAttachmentFormat(tex->desc.format), GL_TEXTURE_2D, tex->id, static_cast<GLint>(att.mipLevel));
 				break;
 			case TextureDimension::Array:
 			case TextureDimension::Tex3D:
 				glFramebufferTextureLayer(GL_FRAMEBUFFER,
-					ToGLAttachmentFormat(tex.desc.format),
-					tex.id,
+					ToGLAttachmentFormat(tex->desc.format),
+					tex->id,
 					static_cast<GLint>(att.mipLevel),
 					static_cast<GLint>(att.layer));
 				break;
@@ -1490,32 +1340,52 @@ namespace SFE::Render
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		FramebufferHandle handle;
-		handle.id = static_cast<uint32_t>(framebuffers.size());
-		framebuffers.push_back(GLFramebuffer{ fbo, desc });
+		GLFramebuffer glfb{};
+		glfb.id = fbo;
+		glfb.desc = desc;
+		glfb.live = true;
 
+		FramebufferHandle handle;
+		handle.id = storeResource(framebuffers, m_freeFramebuffers, std::move(glfb));
 		return handle;
 	}
 
 	void OpenGLRHI::destroyFramebuffer(FramebufferHandle framebuffer)
 	{
+		GLFramebuffer* fb = getLive(framebuffers, framebuffer.id);
+		if (!fb) {
+			return;
+		}
+		if (m_prevFramebuffer == fb->id) {
+			m_prevFramebuffer = 0;
+		}
+		if (fb->id != 0) {
+			glDeleteFramebuffers(1, &fb->id);
+		}
+		recycleResource(framebuffers, m_freeFramebuffers, framebuffer.id);
 	}
 
-	void OpenGLRHI::setTextureSubImage2D(
+	uint64_t OpenGLRHI::getNativeTextureId(TextureHandle tex) const
+	{
+		const GLTexture* t = getLive(textures, tex.id);
+		return t ? t->id : 0;
+	}
+
+	void OpenGLRHI::updateTexture(
 		TextureHandle tex,
 		uint32_t x, uint32_t y,
 		uint32_t w, uint32_t h,
 		TextureFormat fmt,
 		const void* data)
 	{
-		if (!data || tex.id >= textures.size()) {
+		const GLTexture* t = getLive(textures, tex.id);
+		if (!data || !t) {
 			return;
 		}
-		const auto& t = textures[tex.id];
 		
-		GLenum target = ToOpenglTargetType(t.desc.dimension);
+		GLenum target = ToOpenglTargetType(t->desc.dimension);
 
-		glBindTexture(target, t.id);
+		glBindTexture(target, t->id);
 
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
@@ -1571,29 +1441,27 @@ namespace SFE::Render
 		}
 
 		// Создаем handle
+		GLShaderModule mod{};
+		mod.id = shader;
+		mod.desc = desc;
+		mod.live = true;
+
 		ShaderModuleHandle handle;
-		handle.id = static_cast<uint32_t>(m_shaders.size());
-
-		// Сохраняем модуль
-		m_shaders.push_back(GLShaderModule{
-			shader,
-			desc
-			});
-
+		handle.id = storeResource(m_shaders, m_freeShaders, std::move(mod));
 		return handle;
 	}
 
 	void OpenGLRHI::destroyShaderModule(ShaderModuleHandle handle)
 	{
-		if (handle.id >= m_shaders.size())
+		GLShaderModule* mod = getLive(m_shaders, handle.id);
+		if (!mod) {
 			return;
-
-		GLShaderModule& mod = m_shaders[handle.id];
-
-		if (mod.id != 0) {
-			glDeleteShader(mod.id);
-			mod.id = 0;
 		}
+
+		if (mod->id != 0) {
+			glDeleteShader(mod->id);
+		}
+		recycleResource(m_shaders, m_freeShaders, handle.id);
 	}
 
 	TextureHandle OpenGLRHI::createTexture(const TextureDesc& desc, const void* data)
@@ -1652,17 +1520,37 @@ namespace SFE::Render
 			glTextureParameteri(tex, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
 		}
 
+		const GLint maxLevel = desc.mipLevels > 0 ? static_cast<GLint>(desc.mipLevels - 1) : 0;
+		glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
+		glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
+		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, maxLevel > 0 ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST);
+		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
 		glBindTexture(target, 0);
 
-		TextureHandle handle;
-		handle.id = static_cast<uint32_t>(textures.size());
-		textures.push_back(GLTexture{ tex, desc });
+		GLTexture glt{};
+		glt.id = tex;
+		glt.desc = desc;
+		glt.live = true;
 
+		TextureHandle handle;
+		handle.id = storeResource(textures, m_freeTextures, std::move(glt));
 		return handle;
 	}
 
 	void OpenGLRHI::destroyTexture(TextureHandle texture)
 	{
+		GLTexture* t = getLive(textures, texture.id);
+		if (!t) {
+			return;
+		}
+		if (t->id != 0) {
+			glDeleteTextures(1, &t->id);
+		}
+		recycleResource(textures, m_freeTextures, texture.id);
 	}
 
 	SamplerHandle OpenGLRHI::createSampler(const SamplerDesc& desc)
@@ -1742,14 +1630,24 @@ namespace SFE::Render
 		// }
 
 		SamplerHandle handle;
-		handle.id = static_cast<uint32_t>(samplers.size());
-		samplers.push_back(GLSampler{ samplerId, desc });
-
+		GLSampler gls{};
+		gls.id = samplerId;
+		gls.desc = desc;
+		gls.live = true;
+		handle.id = storeResource(samplers, m_freeSamplers, std::move(gls));
 		return handle;
 	}
 
 	void OpenGLRHI::destroySampler(SamplerHandle sampler)
 	{
+		GLSampler* s = getLive(samplers, sampler.id);
+		if (!s) {
+			return;
+		}
+		if (s->id != 0) {
+			glDeleteSamplers(1, &s->id);
+		}
+		recycleResource(samplers, m_freeSamplers, sampler.id);
 	}
 	static GLbitfield ToGLMask(BlitMask mask)
 	{
@@ -1772,66 +1670,38 @@ namespace SFE::Render
 		}
 	}
 
-	void OpenGLRHI::blitFramebuffer(
-		FramebufferHandle src,
-		FramebufferHandle dst,
-		int srcX0, int srcY0, int srcX1, int srcY1,
-		int dstX0, int dstY0, int dstX1, int dstY1,
-		BlitMask mask,
-		BlitFilter filter)
+	void OpenGLRHI::cmdBlit(CommandListHandle, FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter)
 	{
-		GLuint srcId = 0;
-		if (src.id != UINT32_MAX)
-			srcId = framebuffers[src.id].id;
+		auto resolveFb = [this](FramebufferHandle handle, int& w, int& h) -> GLuint {
+			if (!handle) {
+				auto* window = Engine::instance()->getWindow();
+				w = window ? window->getScreenData().renderW : 0;
+				h = window ? window->getScreenData().renderH : 0;
+				return 0;
+			}
+			const auto* fb = getLive(framebuffers, handle.id);
+			if (!fb) {
+				w = 0;
+				h = 0;
+				return 0;
+			}
+			w = static_cast<int>(fb->desc.width);
+			h = static_cast<int>(fb->desc.height);
+			return fb->id;
+		};
 
-		GLuint dstId = 0;
-		if (dst.id != UINT32_MAX)
-			dstId = framebuffers[dst.id].id;
-
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, srcId);
-		//glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstId);
-
-		glBlitFramebuffer(
-			srcX0, srcY0, srcX1, srcY1,
-			dstX0, dstY0, dstX1, dstY1,
-			ToGLMask(mask),
-			ToGLFilter(filter)
-		);
-
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, dstId);
-	}
-	void OpenGLRHI::bindTexture(uint32_t slot, TextureHandle tex, SamplerHandle sampler)
-	{
-		GLuint glTex = 0;
-		GLenum target = GL_TEXTURE_2D;
-
-		if (tex.id < textures.size()) {
-			auto& t = textures[tex.id];
-			glTex = t.id;
-			target = ToOpenglTargetType(t.desc.dimension);
-		}
-
-		glActiveTexture(GL_TEXTURE0 + slot);
-		glBindTexture(target, glTex); 
-
-		GLuint glSampler = 0;
-		if (sampler.id < samplers.size()) {
-			glSampler = samplers[sampler.id].id;
-		}
-
-		glBindSampler(slot, glSampler);
-	}
-
-	void OpenGLRHI::bindFramebuffer(FramebufferHandle framebuffer)
-	{
-		if (framebuffer.id >= framebuffers.size()) {
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		int srcW = 0, srcH = 0, dstW = 0, dstH = 0;
+		const GLuint srcId = resolveFb(src, srcW, srcH);
+		const GLuint dstId = resolveFb(dst, dstW, dstH);
+		if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) {
 			return;
 		}
-		const auto& fbo = framebuffers[framebuffer.id];
-		glBindFramebuffer(GL_FRAMEBUFFER, fbo.id);
-	}
 
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, srcId);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstId);
+		glBlitFramebuffer(0, 0, srcW, srcH, 0, 0, dstW, dstH, ToGLMask(mask), ToGLFilter(filter));
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
 
 	BufferHandle OpenGLRHI::createBuffer(const BufferDesc& desc, const void* initialData)
 	{
@@ -1851,161 +1721,75 @@ namespace SFE::Render
 		glBufferData(glb.target, static_cast<GLsizeiptr>(desc.size), initialData, usage);
 		glBindBuffer(glb.target, 0);
 
+		glb.live = true;
+
 		BufferHandle handle;
-		handle.id = static_cast<uint32_t>(m_buffers.size());
-		m_buffers.push_back(glb);
-
-		// при желании можешь повесить debug label через KHR_debug
-
+		handle.id = storeResource(m_buffers, m_freeBuffers, std::move(glb));
 		return handle;
 	}
 
 	void OpenGLRHI::destroyBuffer(BufferHandle handle)
 	{
-		if (handle.id >= m_buffers.size()) {
+		GLBuffer* glb = getLive(m_buffers, handle.id);
+		if (!glb) {
 			return;
 		}
 
-		GLBuffer& glb = m_buffers[handle.id];
-		if (glb.id != 0)
+		if (glb->id != 0)
 		{
-			glDeleteBuffers(1, &glb.id);
-			glb.id = 0;
+			glDeleteBuffers(1, &glb->id);
 		}
+		recycleResource(m_buffers, m_freeBuffers, handle.id);
 	}
 
 	void OpenGLRHI::updateBuffer(BufferHandle handle, size_t offset, size_t size, const void* data)
 	{
-		if (handle.id >= m_buffers.size()) {
+		GLBuffer* glb = getLive(m_buffers, handle.id);
+		if (!glb || glb->id == 0 || data == nullptr || size == 0) {
 			return;
 		}
 
-		GLBuffer& glb = m_buffers[handle.id];
-		if (glb.id == 0 || data == nullptr || size == 0) {
-			return;
-		}
-
-		glBindBuffer(glb.target, glb.id);
-		glBufferSubData(glb.target,
+		glBindBuffer(glb->target, glb->id);
+		glBufferSubData(glb->target,
 			static_cast<GLintptr>(offset),
 			static_cast<GLsizeiptr>(size),
 			data);
-		glBindBuffer(glb.target, 0);
+		glBindBuffer(glb->target, 0);
 	}
 
 	void* OpenGLRHI::mapBuffer(BufferHandle handle, MapMode mode)
 	{
-		if (handle.id >= m_buffers.size()) {
+		GLBuffer* glb = getLive(m_buffers, handle.id);
+		if (!glb || glb->id == 0) {
 			return nullptr;
 		}
 
-		GLBuffer& glb = m_buffers[handle.id];
-		if (glb.id == 0) {
-			return nullptr;
-		}
+		glBindBuffer(glb->target, glb->id);
 
-		glBindBuffer(glb.target, glb.id);
-
-		GLbitfield flags = toGLMapFlags(mode, glb.desc.cpuAccess);
+		GLbitfield flags = toGLMapFlags(mode, glb->desc.cpuAccess);
 
 		void* ptr = glMapBufferRange(
-			glb.target,
+			glb->target,
 			0,
-			static_cast<GLsizeiptr>(glb.desc.size),
+			static_cast<GLsizeiptr>(glb->desc.size),
 			flags
 		);
 
 		// Можно оставить привязанным или отвязать — в зависимости от стиля
-		glBindBuffer(glb.target, 0);
+		glBindBuffer(glb->target, 0);
 
 		return ptr;
 	}
 
 	void OpenGLRHI::unmapBuffer(BufferHandle handle)
 	{
-		if (handle.id >= m_buffers.size()) {
+		GLBuffer* glb = getLive(m_buffers, handle.id);
+		if (!glb || glb->id == 0) {
 			return;
 		}
 
-		GLBuffer& glb = m_buffers[handle.id];
-		if (glb.id == 0) {
-			return;
-		}
-
-		glBindBuffer(glb.target, glb.id);
-		glUnmapBuffer(glb.target);
-		glBindBuffer(glb.target, 0);
-	}
-
-	void OpenGLRHI::bindVertexBuffer(uint32_t slot, BufferHandle handle, uint32_t offset)
-	{
-		if (m_currentPipeline.id >= m_pipelines.size())
-			return;
-		if (handle.id >= m_buffers.size())
-			return;
-
-		const auto& gp = m_pipelines[m_currentPipeline.id];
-		const auto& buf = m_buffers[handle.id];
-
-		// защитимся от кривого slot
-		if (slot >= gp.desc.layout.bindings.size())
-			return;
-
-		SFE::LogsModule::Logger::LOG_FATAL(buf.desc.usage == BufferUsage::Vertex, "WRONG BUFFER TYPE BINDING");
-		const auto& bindingDesc = gp.desc.layout.bindings[slot];
-		const GLsizei stride = static_cast<GLsizei>(bindingDesc.stride);
-		glVertexArrayVertexBuffer(
-			gp.vaoId,
-			bindingDesc.binding,                          // vertex binding
-			buf.id,                        // VBO
-			static_cast<GLintptr>(offset), // byte offset
-			stride
-		);
-		glBindBuffer(buf.target, buf.id);
-	}
-
-	void OpenGLRHI::bindIndexBuffer(BufferHandle handle, IndexType type, uint32_t offset)
-	{
-		if (m_currentPipeline.id >= m_pipelines.size() || handle.id >= m_buffers.size()) {
-			m_currentIndexType = type;
-			m_currentIndexOffset = 0;
-			return;
-		}
-
-		const auto& gp = m_pipelines[m_currentPipeline.id];
-		const auto& buf = m_buffers[handle.id];
-		SFE::LogsModule::Logger::LOG_FATAL(buf.desc.usage == BufferUsage::Index, "WRONG BUFFER TYPE BINDING");
-		glVertexArrayElementBuffer(gp.vaoId, buf.id);
-		glBindBuffer(buf.target, buf.id);
-		m_currentIndexType = type;
-		m_currentIndexOffset = offset;
-	}
-
-	void OpenGLRHI::bindUniformBuffer(uint32_t binding, BufferHandle handle)
-	{
-		if (handle.id >= m_buffers.size()) {
-			return;
-		}
-
-		const GLBuffer& glb = m_buffers[handle.id];
-		if (glb.id == 0) {
-			return;
-		}
-		SFE::LogsModule::Logger::LOG_FATAL(glb.desc.usage == BufferUsage::Uniform, "WRONG BUFFER TYPE BINDING");
-		glBindBufferBase(GL_UNIFORM_BUFFER, binding, glb.id);
-	}
-
-	void OpenGLRHI::bindStorageBuffer(uint32_t binding, BufferHandle handle)
-	{
-		if (handle.id >= m_buffers.size()) {
-			return;
-		}
-
-		const GLBuffer& glb = m_buffers[handle.id];
-		if (glb.id == 0) {
-			return;
-		}
-		SFE::LogsModule::Logger::LOG_FATAL(glb.desc.usage == BufferUsage::Storage, "WRONG BUFFER TYPE BINDING");
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, glb.id);
+		glBindBuffer(glb->target, glb->id);
+		glUnmapBuffer(glb->target);
+		glBindBuffer(glb->target, 0);
 	}
 }

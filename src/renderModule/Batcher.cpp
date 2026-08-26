@@ -8,8 +8,6 @@
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "debugModule/Benchmark.h"
-#include "glWrapper/Buffer.h"
-#include "glWrapper/Draw.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 
@@ -79,11 +77,8 @@ void Batcher::sort(const SFE::Math::Vec3& viewPos) {
 	});*/
 }
 
-void Batcher::flushAll(SFE::Render::CommandListHandle cmd) {
+void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle) {
 	auto rhi = SFE::Engine::instance()->rhi();
-
-	rhi->bindStorageBuffer(3, batcherBuffer);
-
 	auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
 	auto defaultNormal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png");
 	int i = 0;
@@ -92,19 +87,51 @@ void Batcher::flushAll(SFE::Render::CommandListHandle cmd) {
 		SFE::Debug::BenchmarkFunc scopeObj = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__) + std::string(" flush all") + std::to_string(i++));
 
 		rhi->updateBuffer(batcherBuffer, 0, sizeof(ecss::EntityId) * objs.entities.size(), objs.entities.data());
-
-		rhi->bindTexture(SFE::DIFFUSE, defaultTex->texture, defaultTex->sampler);
-		rhi->bindTexture(SFE::NORMALS, defaultNormal->texture, defaultNormal->sampler);
-		rhi->bindTexture(SFE::SPECULAR, defaultTex->texture, defaultTex->sampler);
+		std::vector<SFE::Render::WriteDescriptor> writes {
+		{
+			{
+				.set = setHandle,
+				.binding = SFE::DIFFUSE,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {defaultTex->texture, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::NORMALS,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {defaultNormal->texture, defaultNormal->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::SPECULAR,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {defaultTex->texture, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = 3,
+				.type = SFE::Render::DescriptorType::StorageBuffer,
+				.buffers{ {batcherBuffer} }
+			}
+		}
+		};
 
 		for (auto i = 0; i < objs.materialData.materialsCount; i++) {
 			const auto& mat = objs.materialData.material[i];
-			rhi->bindTexture(mat.slot, mat.texture);
+			writes.push_back(SFE::Render::WriteDescriptor{
+				.set = setHandle,
+				.binding = static_cast<uint32_t>(mat.slot),
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {mat.texture, defaultTex->sampler} }
+				});
 		}
+		SFE::Engine::instance()->rhi()->updateDescriptorSets(writes);
+
+		rhi->cmdBindDescriptorSets(cmd, {}, 0, &setHandle, 1);
 
 		rhi->cmdBindVertexBuffer(cmd, 0, objs.meshData.vertexBuffer, objs.meshData.vertexOffsetBytes);
 		rhi->cmdBindIndexBuffer(cmd, objs.meshData.indexBuffer, objs.meshData.indexType, objs.meshData.indexOffsetBytes);
-
+		//todo bind
 		if (objs.meshData.indexCount) {
 			rhi->cmdDrawIndexed(cmd, objs.meshData.indexCount, objs.entities.size(), 0, 0, 0);
 		}
@@ -117,12 +144,12 @@ void Batcher::flushAll(SFE::Render::CommandListHandle cmd) {
 		SFE::SystemsModule::RenderDebugInfo::instance()->drawCalls++;
 	}
 
-	//todo do not forget about bones updating
+	//todo do not forget about bones updating, one time allocate, then just update
 	//	if (objs.bonesCount) {
 	//		FUNCTION_BENCHMARK_NAMED(bones_binding)
 	//		batcherBuffer.bind(1);
 	//		batcherBuffer.setBufferBinding(2, 1);
-	//		batcherBuffer.allocateData(sizeof(SFE::Math::Mat4) * 100, objs.matrices.size(), SFE::GLW::DYNAMIC_DRAW);
+	//		batcherBuffer.allocateData(sizeof(SFE::Math::Mat4) * 100, objs.matrices.size());
 	//		auto size = sizeof(SFE::Math::Mat4) * 100;
 	//		for (auto j = 0; j < objs.matrices.size(); j++) {
 	//			if (objs.matrices[j].bones) {

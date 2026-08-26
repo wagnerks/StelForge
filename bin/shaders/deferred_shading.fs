@@ -93,8 +93,8 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
     for (uint i = 0; i < int(cascadedShadow.data[layer].cascade.w); i++) {
         const vec2 offset = vogel_disk_sample(i, int(cascadedShadow.data[layer].cascade.w), temporal_angle) * (cascadedShadow.data[layer].cascade.xy) *  g_shadow_filter_size * penumbra;
         
-        const float depth = texture(shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z));
-        shadow += projCoords.z + bias > depth ? 1.0 : 0.0;
+        const float lit = texture(shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z + bias));
+        shadow += 1.0 - lit;
     } 
 
     return shadow * g_shadow_samples_rpc;
@@ -115,8 +115,8 @@ float TechniqueVogelPoint(PointLight light, int layer, float bias, vec3 projCoor
     for (uint i = 0; i < light.samples; i++) {
         const vec2 offset = vogel_disk_sample(i, light.samples, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
         
-        const float depth = texture(PointLightShadowMapArray, vec4(projCoords.xy + offset, layer + light.offset, projCoords.z));
-        shadow += projCoords.z + bias > depth ? 1.0 : 0.0;   
+        const float lit = texture(PointLightShadowMapArray, vec4(projCoords.xy + offset, layer + light.offset, projCoords.z + bias));
+        shadow += 1.0 - lit;   
     } 
 
     return shadow * g_shadow_samples_rpc;
@@ -269,10 +269,6 @@ void main() {
     vec4 outlineColor = vec4(0.0, 0.78, 0.86, 0.8) * outlines;
     // exposure tone mapping
     vec3 mapped = vec3(1.0) - exp(-lighting * exposure);
-    
-    vec3 bluredLight = vec3(texture(gOutlines, TexCoords).a);
-    mapped.rgb = mapped.rgb+ bluredLight.rgb;
-   
     
     // gamma correction 
     mapped = pow(mapped, vec3(1.0 / gamma));

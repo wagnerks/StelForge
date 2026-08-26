@@ -14,13 +14,17 @@ layout(std140, binding = 5) uniform SharedMatrices {
     mat4 PV;
 } matrices;
 
-uniform float far;
-uniform vec3 cameraPos;
+layout(std140, binding = 15) uniform PushConstants {
+    vec4 cameraPos;
+    float far;
+    float near;
+} pc;
+
 
 mat4 scaleMatrix = mat4(
-    far*2.0, 0.0,   0.0,   0.0,
-    0.0,   far*2.0, 0.0,   0.0,
-    0.0,   0.0,   far*2.0, 0.0,
+    pc.far*2.0, 0.0,   0.0,   0.0,
+    0.0,   pc.far*2.0, 0.0,   0.0,
+    0.0,   0.0,   pc.far*2.0, 0.0,
     0.0,   0.0,   0.0,   1.0
 );
 
@@ -28,7 +32,7 @@ mat4 transformMatrix = mat4(
     1.0, 0.0,   0.0,   0.0,
     0.0,   1.0, 0.0,   0.0,
     0.0,   0.0,   1.0, 0.0,
-    cameraPos.x,   0.0,   cameraPos.z,   1.0
+    pc.cameraPos.x,   0.0,   pc.cameraPos.z,   1.0
 );
 
 void main() {

@@ -2,7 +2,6 @@
 #include "componentsModule/ModelComponent.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
@@ -82,79 +81,50 @@ void SFE::Render::RenderPasses::ShadersPass::render(SystemsModule::RenderData& r
 		pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "Shaders Pass Vertex Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.vs") });
 		pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "Shaders Pass Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.fs") });
 		pipelineDesc.topology = PrimitiveTopology::Triangles;
-		pipelineDesc.cullMode = CullMode::Back;
+		pipelineDesc.cullMode = CullMode::None;
 		pipelineDesc.frontFace = FrontFace::CounterClockWise;
 		pipelineDesc.fillMode = PolygonFillMode::Fill;
 		pipelineDesc.depthStencilState = { true, true, CompareOp::LessEqual };
 		pipelineDesc.blend = { false };
 		pipeline = rhi->createGraphicsPipeline(pipelineDesc);
+
+		RenderPassDesc renderPassDesc;
+		renderPassDesc.colorAttachmentCount = 4;
+		renderPassDesc.colorAttachments[0] = { AttachmentLoadOp::Load, AttachmentStoreOp::Store };
+		renderPassDesc.colorAttachments[1] = { AttachmentLoadOp::Load, AttachmentStoreOp::Store };
+		renderPassDesc.colorAttachments[2] = { AttachmentLoadOp::Load, AttachmentStoreOp::Store };
+		renderPassDesc.colorAttachments[3] = { AttachmentLoadOp::Load, AttachmentStoreOp::Store };
+		renderPassDesc.hasDepthStencil = true;
+		renderPassDesc.depthAttachment = { AttachmentLoadOp::Load, AttachmentStoreOp::Store, 1.f, 0, false };
+		renderPass = rhi->createRenderPass(renderPassDesc);
+		pipelineDesc.renderPass = renderPass;
 	}
 
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(camera);
-
-	Engine::instance()->rhi()->bindFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer);
-
+	auto w = Engine::instance()->getWindow()->getScreenData().renderW;
+	auto h = Engine::instance()->getWindow()->getScreenData().renderH;
+	
+	Engine::instance()->rhi()->cmdBeginRenderPass(cmd, {
+		.renderPass = renderPass,
+		.framebuffer = renderDataHandle.mGeometryPassData->gFramebuffer,
+		.width = w,
+		.height = h,
+	});
 	Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
-	EBO.bindIndex(IndexType::Uint32, 0);
-	VBO.bindVertex(0);
+	Engine::instance()->rhi()->cmdBindIndexBuffer(cmd, EBO, IndexType::Uint32);
+	Engine::instance()->rhi()->cmdBindVertexBuffer(cmd, 0, VBO);
+	drawData.viewPos.xyz = renderDataHandle.mCameraPos;
+	drawData.far = cameraComp->getProjection().getFar();
+	drawData.near = cameraComp->getProjection().getNear();
+	Engine::instance()->rhi()->cmdPushConstants(cmd, pipeline, drawData);
 
-	Engine::instance()->rhi()->setUniform(pipeline, "cameraPos", renderDataHandle.mCameraPos);
-	Engine::instance()->rhi()->setUniform(pipeline, "far", cameraComp->getProjection().getFar());
-	Engine::instance()->rhi()->setUniform(pipeline, "near", cameraComp->getProjection().getNear());
-
-	Engine::instance()->rhi()->drawIndexed(6, 0, 1, IndexType::Uint32, 0);
+	Engine::instance()->rhi()->cmdDrawIndexed(cmd, 6);
+	Engine::instance()->rhi()->cmdEndRenderPass(cmd);
 
 	const auto& drawableEntities = ECSHandler::getSystem<SystemsModule::ShaderSystem>()->drawableEntities;
 	if (drawableEntities.empty()) {
 		return;
 	}
-	Engine::instance()->rhi()->bindFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer);
-
-	auto& cameraPos = ECSHandler::registry().pinComponent<const TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos();
-	Batcher batcher;
-	auto flush = [this, &renderDataHandle, &batcher, &cameraPos](size_t shaderId) {
-		const auto shader = SHADER_CONTROLLER->getShader(shaderId);
-
-		shader->use();
-
-		shader->setUniform("P", renderDataHandle.current.projection);
-		shader->setUniform("V", renderDataHandle.current.view);
-		shader->setUniform("PV", renderDataHandle.current.PV);
-
-		Engine::instance()->rhi()->bindTexture(0, renderDataHandle.mGeometryPassData->positionBuffer, renderDataHandle.mGeometryPassData->sampler);
-		Engine::instance()->rhi()->bindTexture(1, renderDataHandle.mGeometryPassData->normalBuffer, renderDataHandle.mGeometryPassData->sampler);
-		Engine::instance()->rhi()->bindTexture(2, renderDataHandle.mGeometryPassData->albedoBuffer, renderDataHandle.mGeometryPassData->sampler);
-
-		shader->setUniform("gPosition", 0);
-		shader->setUniform("gNormal", 1);
-		shader->setUniform("gAlbedoSpec", 2);
-		batcher.sort(cameraPos);
-		batcher.flushAll({}); //todo
-		batcher.clear();
-	};
-
-	size_t curShaderId = drawableEntities.front().first;
-	for (auto& [shaderId, entityId] : drawableEntities) {
-		if (shaderId != curShaderId) {
-			flush(shaderId);
-
-			curShaderId = shaderId;
-		}
-
-		/*if (auto modelComp = ECSHandler::registry().getComponent<ModelComponent>(entityId)) {
-			auto& transform = ECSHandler::registry().getComponent<TransformComponent>(entityId)->getTransform();
-			auto& model = modelComp->getModel();
-			for (auto& mesh : model.meshes) {
-				if (mesh.mBounds->isOnFrustum(renderDataHandle.mCamFrustum, transform)) {
-					batcher.addToDrawList(mesh.vertices->mVao, mesh.vertices->vertices.size(), mesh.vertices->indices.size(), *mesh.mMaterial, transform);
-
-				}
-			}
-		}*/
-	}
-
-	flush(curShaderId);
-	Engine::instance()->rhi()->bindFramebuffer({});
-	
+	//Engine::instance()->rhi()->bindFramebuffer(renderDataHandle.mGeometryPassData->gFramebuffer);
 }

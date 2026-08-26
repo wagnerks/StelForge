@@ -7,7 +7,6 @@
 
 #include "Asset.h"
 #include "containersModule/Singleton.h"
-#include "glWrapper/Texture.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 namespace AssetsModule {

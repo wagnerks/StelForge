@@ -6,7 +6,6 @@
 #include "imgui.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "debugModule/Benchmark.h"
 #include "logsModule/logger.h"
 #include "systemsModule/systems/RenderSystem.h"
@@ -18,7 +17,9 @@ float lerp(float a, float b, float f) {
 	return a + f * (b - a);
 }
 
-void SSAOPass::init() {
+void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
+
+	renderDataHandle.mSSAOPassData = &mData;
 
 	// SSAO color buffer
 	TextureDesc ssaoColorDesc;
@@ -92,113 +93,148 @@ void SSAOPass::init() {
 
 	mData.mNoiseTexture = Engine::instance()->rhi()->createTexture(noiseDesc);
 
-	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
-	shaderSSAO->use();
-	shaderSSAO->setUniform("gPosition", 0);
-	shaderSSAO->setUniform("gNormal", 1);
-	shaderSSAO->setUniform("texNoise", 2);
+	GraphicsPipelineDesc mainPipelineDesc;
+	Render::VertexLayoutDesc& layout = mainPipelineDesc.layout;
+	layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
+	layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
+	layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
+	mainPipelineDesc.topology = PrimitiveTopology::Triangles;
+	mainPipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "ssao_first_stage_vs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao.vs") });
+	mainPipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Fragment, "ssao_first_stage_fs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao.fs")});
+	mainPipeline = Engine::instance()->rhi()->createGraphicsPipeline(mainPipelineDesc);
 
-	shaderSSAO->setUniform("kernelSize", mData.mKernelSize);
-	shaderSSAO->setUniform("radius", mData.mRadius);
-	shaderSSAO->setUniform("bias", mData.mBias);
-	shaderSSAO->setUniform("noiseScale", Math::Vec2{static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderW) / 4.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().renderH) / 4.f});
-	for (unsigned int i = 0; i < 64; ++i) {
-		shaderSSAO->setUniform(("samples[" + std::to_string(i) + "]").c_str(), mData.mSsaoKernel[i]);
+	RenderPassDesc mainRPD;
+	mainRPD.colorAttachmentCount = 1;
+	mainRPD.colorAttachments[0].loadOp = AttachmentLoadOp::Clear;
+	mainRPD.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
+	main = Engine::instance()->rhi()->createRenderPass(mainRPD);
+
+	GraphicsPipelineDesc blurPipelineDesc;
+	blurPipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
+	blurPipelineDesc.layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
+	blurPipelineDesc.layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
+	blurPipelineDesc.topology = PrimitiveTopology::Triangles;
+	blurPipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "ssao_blur_stage_vs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao.vs") });
+	blurPipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Fragment, "ssao_blur_stage_fs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao_blur.fs") });
+	blurPipeline = Engine::instance()->rhi()->createGraphicsPipeline(blurPipelineDesc);
+
+	BufferDesc ssaoBufferDesc;
+	ssaoBufferDesc.usage = BufferUsage::Uniform;
+	ssaoBufferDesc.size = sizeof(SSAOParams);
+	ssaoBufferDesc.cpuAccess = CpuAccess::Write;
+	ssaoParamsBuffer = Engine::instance()->rhi()->createBuffer(ssaoBufferDesc, &params);
+
+	BufferDesc ssaoBlurBufferDesc;
+	ssaoBlurBufferDesc.usage = BufferUsage::Uniform;
+	ssaoBlurBufferDesc.size = sizeof(SSAOBlurParams);
+	ssaoBlurBufferDesc.cpuAccess = CpuAccess::Write;
+
+	blurParams.sigmaS = mData.sigmaS;
+	blurParams.sigmaL = mData.sigmaL;
+	blurParams.updateFac();
+
+	ssaoBlurParamsBuffer = Engine::instance()->rhi()->createBuffer(ssaoBlurBufferDesc, &blurParams);
+
+	Render::DescriptorSetLayoutDesc texLayoutDesc;
+	texLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+
+	mainTexSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(texLayoutDesc);
+	mainTexSet = Engine::instance()->rhi()->allocateDescriptorSet(mainTexSetLayout);
+
+	Render::DescriptorSetLayoutDesc texLayoutBlurDesc;
+	texLayoutBlurDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutBlurDesc.bindings.emplace_back(1, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+
+	blurTexSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(texLayoutBlurDesc);
+	blurTexSet = Engine::instance()->rhi()->allocateDescriptorSet(blurTexSetLayout);
+
+	std::vector<Render::WriteDescriptor> writes;
+
+	{
+		Render::WriteDescriptor w{};
+		w.set = mainTexSet;
+		w.binding = 0;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({ renderDataHandle.mGeometryPassData->viewPositionBuffer, renderDataHandle.mGeometryPassData->sampler });
+
+		writes.push_back(std::move(w));
+	}
+	{
+		Render::WriteDescriptor w{};
+		w.set = mainTexSet;
+		w.binding = 1;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({ renderDataHandle.mGeometryPassData->normalBuffer, renderDataHandle.mGeometryPassData->sampler});
+
+		writes.push_back(std::move(w));
+	}
+	{
+		Render::WriteDescriptor w{};
+		w.set = mainTexSet;
+		w.binding = 2;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({ mData.mNoiseTexture, mData.sampler});
+
+		writes.push_back(std::move(w));
+	}
+	{
+		Render::WriteDescriptor w{};
+		w.set = mainTexSet;
+		w.binding = 3;
+		w.type = Render::DescriptorType::UniformBuffer;
+		w.buffers.push_back({ ssaoParamsBuffer });
+
+		writes.push_back(std::move(w));
+	}
+	{
+		Render::WriteDescriptor w{};
+		w.set = blurTexSet;
+		w.binding = 0;
+		w.type = Render::DescriptorType::CombinedImageSampler;
+		w.images.push_back({mData.mSsaoColorBuffer, mData.sampler});
+
+		writes.push_back(std::move(w));
+	}
+	{
+		Render::WriteDescriptor w{};
+		w.set = blurTexSet;
+		w.binding = 1;
+		w.type = Render::DescriptorType::UniformBuffer;
+		w.buffers.push_back({ ssaoBlurParamsBuffer });
+
+		writes.push_back(std::move(w));
 	}
 
-	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
-	shaderSSAOBlur->use();
-	shaderSSAOBlur->setUniform("ssaoInput", 0);
-
-	float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
-	shaderSSAOBlur->setUniform("sigmaL", mData.sigmaL);
-	shaderSSAOBlur->setUniform("facL", facL);
-
-	float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
-	shaderSSAOBlur->setUniform("sigmaS", mData.sigmaS);
-	shaderSSAOBlur->setUniform("facS", facS);
+	Engine::instance()->rhi()->updateDescriptorSets(writes);
 }
 
 void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK
-	auto shaderSSAO = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao.fs");
-	auto shaderSSAOBlur = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/ssao.vs", "shaders/ssao_blur.fs");
-	{
-		/*if (ImGui::BeginMainMenuBar()) {
-			if (ImGui::BeginMenu("Debug")) {
-				if (ImGui::BeginMenu("Systems debug")) {
-					ImGui::Checkbox("SSAO", &ssaoDebugWindow);
-					ImGui::EndMenu();
-				}
-				ImGui::EndMenu();
-			}
-		}
-		ImGui::EndMainMenuBar();*/
-	}
 
-	if (ssaoDebugWindow) {
-		if (ImGui::Begin("SSAO", &ssaoDebugWindow)) {
-			shaderSSAO->use();
-			if (ImGui::DragInt("kernelSize", &mData.mKernelSize)) {
-				shaderSSAO->setUniform("kernelSize", mData.mKernelSize);
-			}
-			if (ImGui::DragFloat("radius", &mData.mRadius, 0.01f)) {
-				shaderSSAO->setUniform("radius", mData.mRadius);
-			}
-			if (ImGui::DragFloat("bias", &mData.mBias, 0.001f)) {
-				shaderSSAO->setUniform("BIAS", mData.mBias);
-			}
-			if (ImGui::DragFloat("intencity", &mData.intencity, 0.1f)) {
-				shaderSSAO->setUniform("INTENSITY", mData.intencity);
-			}
+	Engine::instance()->rhi()->updateBuffer(ssaoParamsBuffer, params);
+	Engine::instance()->rhi()->updateBuffer(ssaoBlurParamsBuffer, blurParams);
 
-			if (ImGui::DragFloat("scale", &mData.scale, 0.1f)) {
-				shaderSSAO->setUniform("SCALE", mData.scale);
-			}
 
-			if (ImGui::DragFloat("sample_rad", &mData.sample_rad, 0.1f)) {
-				shaderSSAO->setUniform("SAMPLE_RAD", mData.sample_rad);
-			}
+	RenderPassBeginInfo beginInfo;
+	beginInfo.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	beginInfo.height = Engine::instance()->getWindow()->getScreenData().renderH;
 
-			if (ImGui::DragFloat("max_distance", &mData.max_distance, 0.1f)) {
-				shaderSSAO->setUniform("MAX_DISTANCE", mData.max_distance);
-			}
-			if (ImGui::DragInt("samples", &mData.samples)) {
-				shaderSSAO->setUniform("SAMPLES", mData.samples);
-			}
+	beginInfo.framebuffer = mData.mSsaoFbo;
+	beginInfo.renderPass = main;
+	Engine::instance()->rhi()->cmdBeginRenderPass(cmd, beginInfo);
+	Engine::instance()->rhi()->cmdBindPipeline(cmd, mainPipeline);
+	Engine::instance()->rhi()->cmdBindDescriptorSets(cmd, mainPipeline, 0, &mainTexSet, 1);
+	Utils::renderQuad(cmd);
+	Engine::instance()->rhi()->cmdEndRenderPass(cmd);
 
-			if (ImGui::DragFloat("sigmaS", &mData.sigmaS, 0.01f, 0.000001f)) {
-				shaderSSAOBlur->use();
-				float facS = -1.f / (2.f * mData.sigmaS * mData.sigmaS);
-
-				shaderSSAOBlur->setUniform("sigmaS", mData.sigmaS);
-				shaderSSAOBlur->setUniform("facS", facS);
-			}
-			if (ImGui::DragFloat("sigmaL", &mData.sigmaL, 0.01f, 0.000001f)) {
-				shaderSSAOBlur->use();
-				float facL = -1.f / (2.f * mData.sigmaL * mData.sigmaL);
-				shaderSSAOBlur->setUniform("sigmaL", mData.sigmaL);
-				shaderSSAOBlur->setUniform("facL", facL);
-			}
-		}
-		ImGui::End();
-	}
-
-	Engine::instance()->rhi()->bindFramebuffer(mData.mSsaoFbo);
-	GLW::clear(GLW::ColorBit::COLOR);
-	shaderSSAO->use();
-	shaderSSAO->setUniform("projection", renderDataHandle.current.projection);
-	Engine::instance()->rhi()->bindTexture(0, renderDataHandle.mGeometryPassData->viewPositionBuffer, renderDataHandle.mGeometryPassData->sampler);
-	Engine::instance()->rhi()->bindTexture(1, renderDataHandle.mGeometryPassData->normalBuffer, renderDataHandle.mGeometryPassData->sampler);
-	Engine::instance()->rhi()->bindTexture(2, mData.mNoiseTexture, mData.sampler);
-	Utils::renderQuad();
-	
-	Engine::instance()->rhi()->bindFramebuffer(mData.mSsaoBlurFbo);
-	GLW::clear(GLW::ColorBit::COLOR);
-	shaderSSAOBlur->use();
-	Engine::instance()->rhi()->bindTexture(0, mData.mSsaoColorBuffer, mData.sampler);
-	Utils::renderQuad();
-	Engine::instance()->rhi()->bindFramebuffer({});
-
-	renderDataHandle.mSSAOPassData = &mData;
+	beginInfo.framebuffer = mData.mSsaoBlurFbo;
+	beginInfo.renderPass = main;
+	Engine::instance()->rhi()->cmdBeginRenderPass(cmd, beginInfo);
+	Engine::instance()->rhi()->cmdBindPipeline(cmd, blurPipeline);
+	Engine::instance()->rhi()->cmdBindDescriptorSets(cmd, blurPipeline, 0, &blurTexSet, 1);
+	Utils::renderQuad(cmd);
+	Engine::instance()->rhi()->cmdEndRenderPass(cmd);
 }

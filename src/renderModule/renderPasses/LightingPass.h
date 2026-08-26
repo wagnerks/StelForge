@@ -5,14 +5,12 @@ namespace SFE::Render::RenderPasses {
 	class LightingPass : public RenderPass {
 	public:
 		LightingPass();
-		void init() override;
+		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 	private:
 		void updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
-		void drawSky(SystemsModule::RenderData& renderDataHandle);
 
-		bool skyParams = false;
 		struct DrawData
 		{
 			// блок 0..15
@@ -72,6 +70,11 @@ namespace SFE::Render::RenderPasses {
 
 		BufferHandle pointLightsUBO;
 		BufferHandle cascadedShadowsUBO;
-		
+
+		TextureHandle mLitTexture;
+		TextureHandle mPresentTex[2];
+		FramebufferHandle lightingFBO;
+		FramebufferHandle mPresentFbo[2];
+		int mPresentShow = 0;
 	};
 }

@@ -15,7 +15,6 @@
 
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
@@ -30,7 +29,6 @@
 #include "multithreading/ThreadPool.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
-#include "glWrapper/ViewportStack.h"
 #include "logsModule/logger.h"
 #include "mathModule/Forward.h"
 #include "propertiesModule/PropertiesSystem.h"
@@ -118,7 +116,7 @@ CascadedShadowPass::~CascadedShadowPass() {
 
 }
 
-void CascadedShadowPass::init() {
+void CascadedShadowPass::init(SystemsModule::RenderData& renderDataHandle) {
 	if (mInited) {
 		return;
 	}
@@ -193,7 +191,6 @@ void CascadedShadowPass::initRender() {
 	desc.cpuAccess = CpuAccess::Write;
 	desc.debugName = "CascadedShadowPass_MatricesUBO";
 	matricesUBO = Engine::instance()->rhi()->createBuffer(desc);
-	Engine::instance()->rhi()->bindUniformBuffer(0, matricesUBO);
 
 	ShaderModuleDesc shaderVDesc;
 	shaderVDesc.stage = ShaderStage::Vertex;
@@ -231,6 +228,27 @@ void CascadedShadowPass::initRender() {
 	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
 	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
 	renderPass = Engine::instance()->rhi()->createRenderPass(rpDesc);
+
+	Render::DescriptorSetLayoutDesc shadowsLayoutDesc;
+	shadowsLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+
+	shadowsLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	shadowsLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	shadowsLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+
+	shadowsLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
+
+	shadowsLayoutHandle = Engine::instance()->rhi()->createDescriptorSetLayout(shadowsLayoutDesc);
+	shadowsSetDescHandle = Engine::instance()->rhi()->allocateDescriptorSet(shadowsLayoutHandle);
+
+	Engine::instance()->rhi()->updateDescriptorSets({
+		{
+	.set = shadowsSetDescHandle,
+	.binding = 0,
+	.type = Render::DescriptorType::UniformBuffer,
+	.buffers{ {matricesUBO} }
+		}
+	});
 }
 
 void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -265,7 +283,6 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 	if (!lightMatrices.empty()) {
 		FUNCTION_BENCHMARK_NAMED(_bind_ubo);
 		Engine::instance()->rhi()->updateBuffer(matricesUBO, 0, lightMatrices.size() * sizeof(Math::Mat4), lightMatrices.data());
-		Engine::instance()->rhi()->bindUniformBuffer(0, matricesUBO);
 	}
 
 	auto rhi = Engine::instance()->rhi();
@@ -283,8 +300,8 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		rhi->cmdBeginRenderPass(cmd, begin);
 		rhi->cmdBindPipeline(cmd, pipeline);
 		rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Vertex,	&i, sizeof(i));
-
-		curPassData->getBatcher().flushAll(cmd);
+		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &shadowsSetDescHandle, 1);
+		curPassData->getBatcher().flushAll(cmd, shadowsSetDescHandle);
 
 		rhi->cmdEndRenderPass(cmd);
 	}

@@ -4,8 +4,6 @@
 #include <string>
 
 #include "windowsModule/Window.h"
-#include "assetsModule/shaderModule/Shader.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "core/FileSystem.h"
 #include "logsModule/logger.h"
 #include "mathModule/Forward.h"
@@ -14,12 +12,8 @@
 #include <ft2build.h>
 
 #include "assetsModule/TextureHandler.h"
+#include "assetsModule/shaderModule/ShaderBase.h"
 #include "core/Engine.h"
-#include "glWrapper/BlendStack.h"
-#include "glWrapper/Buffer.h"
-#include "glWrapper/CapabilitiesStack.h"
-#include "glWrapper/Draw.h"
-#include "glWrapper/VertexArray.h"
 
 #include FT_FREETYPE_H
 
@@ -151,8 +145,6 @@ namespace SFE::Render {
             FT_ULong c = FT_Get_First_Char(face, &index);
 
             unsigned int rows = 0;
-            //Engine::instance()->rhi()->bindTexture(0, mAtlasTex, mAtlasSampler);
-            //mAtlasTex->bind();
             while (index) {
                 if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
                     continue;
@@ -168,7 +160,7 @@ namespace SFE::Render {
                 glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
                 glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
 
-                Engine::instance()->rhi()->setTextureSubImage2D(mAtlasTex, x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, TextureFormat::R8, face->glyph->bitmap.buffer);
+                Engine::instance()->rhi()->updateTexture(mAtlasTex, x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, TextureFormat::R8, face->glyph->bitmap.buffer);
                 
                 if (mGlyphs.size() <= c) {
                     mGlyphs.resize(c + 1);
@@ -188,9 +180,6 @@ namespace SFE::Render {
 
                 c = FT_Get_Next_Char(face, c, &index);
             }
-
-            //Engine::instance()->rhi()->bindTexture(0, {}, {});
-            //mAtlasTex->unbind();
         }
     };
 
@@ -250,14 +239,14 @@ namespace SFE::Render {
 	class TextRenderer : public Singleton<TextRenderer> {
 	public:
         template <typename... Args>
-        void renderText(const Math::Vec2& pos, const Math::Vec2& pivot, float scale, Math::Vec3 color, Font* font, const char* msg, const Args&... args) {
+        void renderText(CommandListHandle cmd, const Math::Vec2& pos, const Math::Vec2& pivot, float scale, Math::Vec3 color, Font* font, const char* msg, const Args&... args) {
             constexpr size_t count = sizeof...(args);
             if (count > 0) {
                 msg = formatInternal(msg, args...);
             }
             auto size = calcTextSize(font, scale, msg);
 
-            renderText(std::string(msg), pos.x + -pivot.x * size.x, pos.y + (1.f-pivot.y) * size.y, scale, color, font);
+            renderText(cmd, std::string(msg), pos.x + -pivot.x * size.x, pos.y + (1.f-pivot.y) * size.y, scale, color, font);
         }
         template <typename... Args>
         Math::Vec2 calcTextSize(Font* font, float scale, const char* msg, const Args&... args) {
@@ -294,7 +283,7 @@ namespace SFE::Render {
             return res;
         }
 
-        void renderText(std::string text, float x, float y, float scale, Math::Vec3 color, Font* font) const {
+        void renderText(CommandListHandle cmd, std::string text, float x, float y, float scale, Math::Vec3 color, Font* font) const {
             const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
             const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
 
@@ -340,35 +329,37 @@ namespace SFE::Render {
                 curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 
             }
 
-
-			Engine::instance()->rhi()->bindTexture(24, font->getAtlasTex(), font->getAtlasTexSampler()); // todo use one sampler for all fonts
-			Engine::instance()->rhi()->bindPipeline(textRenderPipeline);
-			VBO.bindVertex(0);
-
-        	Engine::instance()->rhi()->setUniform(textRenderPipeline, "textColor", color);
-			Engine::instance()->rhi()->setUniform(textRenderPipeline, "text", 24);
-			Engine::instance()->rhi()->draw(static_cast<int>(text.size()) * 6);
+			auto* rhi = Engine::instance()->rhi();
+			rhi->updateDescriptorSets({ {
+				.set = texSet,
+				.binding = 24,
+				.type = DescriptorType::CombinedImageSampler,
+				.images = { { font->getAtlasTex(), font->getAtlasTexSampler() } }
+			} });
+			rhi->cmdBindPipeline(cmd, textRenderPipeline);
+			rhi->cmdBindDescriptorSets(cmd, textRenderPipeline, 0, &texSet, 1);
+			rhi->cmdBindVertexBuffer(cmd, 0, VBO, 0);
+			rhi->cmdPushConstants(cmd, textRenderPipeline, ShaderStage::Fragment, &color, sizeof(Math::Vec3));
+			rhi->cmdDraw(cmd, static_cast<int>(text.size()) * 6);
         }
 
         void init() override {
-            const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/text.vs", "shaders/text.fs");
-            shader->use();
-            shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().width), 0.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().height), -1.f, 1.f));
-			
+			auto* rhi = Engine::instance()->rhi();
+
 			BufferDesc vboDesc;
 			vboDesc.size = sizeof(float) * 6 * 4 * 1000; // max 1000 chars per draw call
 			vboDesc.usage = BufferUsage::Vertex;
-			vboDesc.cpuAccess = CpuAccess::None;
+			vboDesc.cpuAccess = CpuAccess::Write;
 			vboDesc.debugName = "TextRenderer VBO";
-			VBO = Engine::instance()->rhi()->createBuffer(vboDesc, nullptr);
+			VBO = rhi->createBuffer(vboDesc, nullptr);
 
 			VertexLayoutDesc layoutDesc;
 			layoutDesc.bindings.push_back({ 0, 4 * sizeof(float), VertexInputRate::PerVertex });
 			layoutDesc.attributes.push_back({0, 0, VertexFormat::Float4, 0, false }); // pos.xy, tex.xy packed
 
 			GraphicsPipelineDesc pipelineDesc;
-			pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "Text Vertex Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.vs") });
-			pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Fragment, "Text Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.fs") });
+			pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "Text Vertex Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.vs") });
+			pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "Text Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.fs") });
 			pipelineDesc.layout = layoutDesc;
 			pipelineDesc.topology = PrimitiveTopology::Triangles;
 			pipelineDesc.cullMode = CullMode::None;
@@ -376,7 +367,12 @@ namespace SFE::Render {
 			pipelineDesc.fillMode = PolygonFillMode::Fill;
 			pipelineDesc.depthStencilState = { false, false, CompareOp::Less };
 			pipelineDesc.blend = { true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha };
-			textRenderPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+			textRenderPipeline = rhi->createGraphicsPipeline(pipelineDesc);
+
+			DescriptorSetLayoutDesc texLayoutDesc;
+			texLayoutDesc.bindings.emplace_back(24, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+			texSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
+			texSet = rhi->allocateDescriptorSet(texSetLayout);
         }
         inline static char msgBuf[2048];
         template <typename... Args>
@@ -390,7 +386,9 @@ namespace SFE::Render {
 	private:
 
 		PipelineHandle textRenderPipeline;
-
         BufferHandle VBO;
+		DescriptorSetLayoutHandle texSetLayout;
+		mutable DescriptorSetHandle texSet;
 	};
 }
+

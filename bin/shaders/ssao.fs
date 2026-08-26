@@ -1,17 +1,22 @@
-#version 330 core
+#version 430 core
+
 out float FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D gPosition;
-uniform sampler2D gNormal;
+layout(binding = 0) uniform sampler2D gPosition;
+layout(binding = 1) uniform sampler2D gNormal;
+//layout(binding = 2) uniform sampler2D noiseTexture;
 
-uniform int SAMPLES = 64;
-uniform float INTENSITY = 1.0;
-uniform float SCALE = 2.5;
-uniform float BIAS = 0.1;
-uniform float SAMPLE_RAD = 0.2;
-uniform float MAX_DISTANCE = 0.15;
+layout(std140, binding = 3) uniform SSAOParams {
+    float samples;
+    float intensity;
+    float scale;
+    float bias;
+    float sample_rad;
+    float max_distance;
+} params;
+
 
 #define MOD3 vec3(.1031,.11369,.13787)
 
@@ -56,25 +61,24 @@ float doAmbientOcclusion(in vec2 tcoord,in vec2 uv, in vec3 p, in vec3 cnorm)
     vec3 diff = getPosition(tcoord + uv) - p;
     float l = length(diff);
     vec3 v = diff/l;
-    float d = l*SCALE;
-    float ao = max(0.0,dot(cnorm,v)-BIAS)*(1.0/(1.0+d));
-    ao *= smoothstep(MAX_DISTANCE,MAX_DISTANCE * 0.5, l);
+    float d = l*params.scale;
+    float ao = max(0.0,dot(cnorm,v)-params.bias)*(1.0/(1.0+d));
+    ao *= smoothstep(params.max_distance,params.max_distance * 0.5, l);
     return ao;
-
 }
 
 float spiralAO(vec2 uv, vec3 p, vec3 n, float rad)
 {
     float goldenAngle = 2.4;
     float ao = 0.;
-    float inv = 1. / float(SAMPLES);
+    float inv = 1. / params.samples;
     float radius = 0.;
 
     float rotatePhase = hash12( uv*100. ) * 6.28;
     float rStep = inv * rad;
     vec2 spiralUV;
 
-    for (int i = 0; i < SAMPLES; i++) {
+    for (int i = 0; i < int(params.samples); i++) {
         spiralUV.x = sin(rotatePhase);
         spiralUV.y = cos(rotatePhase);
         radius += rStep;
@@ -89,10 +93,10 @@ void main() {
     vec3 p = getPosition(TexCoords);
     vec3 n = getNormal(TexCoords);
 
-    float rad = SAMPLE_RAD/p.z;
+    float rad = params.sample_rad/p.z;
     float ao = spiralAO(TexCoords, p, n, rad);
 
-    ao = 1. - ao * INTENSITY;
+    ao = 1. - ao * params.intensity;
     
 	FragColor = ao;
 }

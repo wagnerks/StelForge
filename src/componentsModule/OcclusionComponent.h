@@ -1,12 +1,14 @@
 ﻿#pragma once
-#include "glWrapper/Query.h"
+
+#include <vector>
+#include <assetsModule/modelModule/BoundingVolume.h>
 
 namespace SFE::ComponentsModule {
 	struct OcclusionComponent {
 		OcclusionComponent() {}
 
 		~OcclusionComponent() {}
-		GLW::Query<GLW::QueryType::SAMPLES_PASSED>* query = nullptr;
+		//GLW::Query<GLW::QueryType::SAMPLES_PASSED>* query = nullptr;
 
 		bool occluded = false;
 

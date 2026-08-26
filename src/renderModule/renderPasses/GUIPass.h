@@ -1,7 +1,5 @@
 ﻿#pragma once
 #include "ecss/Registry.h"
-#include "glWrapper/Buffer.h"
-#include "glWrapper/VertexArray.h"
 #include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/TextRenderer.h"
 
@@ -31,7 +29,7 @@ namespace SFE::Render::RenderPasses {
 	class GUIPass : public RenderPass {
 	public:
 		~GUIPass() override;
-		void init() override;
+		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 		static inline ecss::Registry<> registry;
@@ -39,6 +37,11 @@ namespace SFE::Render::RenderPasses {
 		BufferHandle VBO;
 
 		PipelineHandle pipeline;
+
+		Render::DescriptorSetLayoutHandle mTexSetLayout{};
+		Render::DescriptorSetHandle       mTexSet{};
+
+		BufferHandle drawDataUBO;
 	};
 }
 

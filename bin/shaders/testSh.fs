@@ -18,9 +18,11 @@ layout(std140, binding = 5) uniform SharedMatrices {
     mat4 PV;
 } matrices;
 
-uniform vec3 cameraPos;
-uniform float far;
-uniform float near;
+layout(std140, binding = 15) uniform PushConstants {
+    vec4 cameraPos;
+    float far;
+    float near;
+} pc;
 
 vec4 grid(vec3 fragPos3D, float scale) {
     vec2 coord = fragPos3D.xz * scale; // use the scale variable to set the distance between the lines
@@ -49,8 +51,8 @@ vec4 grid(vec3 fragPos3D, float scale) {
 float computeLinearDepth(vec3 pos) {
     vec4 clip_space_pos = matrices.PV * vec4(pos.xyz, 1.0);
     float clip_space_depth = (clip_space_pos.z / clip_space_pos.w) * 2.0 - 1.0; // put back between -1 and 1
-    float linearDepth = (2.0 * near * far) / (far + near - clip_space_depth * (far - near)); // get linear value between 0.01 and 100
-    return linearDepth / far; // normalize
+    float linearDepth = (2.0 * pc.near * pc.far) / (pc.far + pc.near - clip_space_depth * (pc.far - pc.near)); // get linear value between 0.01 and 100
+    return linearDepth / pc.far; // normalize
 }
 
 void main()
@@ -67,7 +69,7 @@ void main()
     gViewPosition = ViewPos;
     gAlbedoSpec.a = 0.0;
     
-    float distanceKoef = min(abs(cameraPos.y), far) / far; //0 is near, 1 is far
+    float distanceKoef = min(abs(pc.cameraPos.y), pc.far) / pc.far; //0 is near, 1 is far
     
     vec4 color1 = grid(FragPos.xyz, 1.0);
     color1.a *= 1.0 - (distanceKoef) * 40.0;

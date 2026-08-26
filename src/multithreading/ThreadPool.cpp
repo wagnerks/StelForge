@@ -41,7 +41,7 @@ namespace SFE {
 		return mLoadingWorkers.addTask([this, task]() {
 			glfwMakeContextCurrent(mLoadingWindow);
 			task();
-			glfwMakeContextCurrent(nullptr);
+			//glfwMakeContextCurrent(nullptr);
 		});
 	}
 }

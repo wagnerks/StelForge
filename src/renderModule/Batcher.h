@@ -46,7 +46,7 @@ public:
 	void addToDrawList(SFE::RenderMeshData VAO, const SFE::ComponentsModule::Materials& material, const SFE::Math::Mat4& transform, SFE::Math::Mat4* bonesTransforms);
 	void addToDrawList(SFE::RenderMeshData VAO, const SFE::ComponentsModule::Materials& material, ecss::EntityId id);
 	void sort(const SFE::Math::Vec3& viewPos = {});
-	void flushAll(SFE::Render::CommandListHandle cmd);
+	void flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle);
 	void clear();
 	//map VAO - drawObj
 	std::unordered_map<uint32_t, DrawObject> drawList;

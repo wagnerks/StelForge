@@ -1,7 +1,6 @@
 ﻿#include "LightingPass.h"
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/Utils.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "imgui.h"
 #include "componentsModule/LightSourceComponent.h"
@@ -10,7 +9,6 @@
 #include "core/ECSHandler.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
-#include "renderModule/SceneGridFloor.h"
 #include "systemsModule/SystemsPriority.h"
 
 using namespace SFE::Render::RenderPasses;
@@ -20,70 +18,27 @@ LightingPass::LightingPass() {
 
 }
 
-void LightingPass::init()
+void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 {
-	RenderPass::init();
+	RenderPass::init(renderDataHandle);
 	
 	auto* rhi = Engine::instance()->rhi();
 
 	// Описываем набор текстур, которые используются в deferred_shading.fs
 	Render::DescriptorSetLayoutDesc texLayoutDesc;
-	texLayoutDesc.bindings.push_back({
-		.binding = 0,
-		.type = Render::DescriptorType::CombinedImageSampler,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-		});
-	texLayoutDesc.bindings.push_back({
-		.binding = 1,
-		.type = Render::DescriptorType::CombinedImageSampler,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-		});
-	texLayoutDesc.bindings.push_back({
-		.binding = 2,
-		.type = Render::DescriptorType::CombinedImageSampler,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-		});
-	texLayoutDesc.bindings.push_back({
-		.binding = 3,
-		.type = Render::DescriptorType::CombinedImageSampler,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-		});
-	texLayoutDesc.bindings.push_back({
-		.binding = 4,
-		.type = Render::DescriptorType::CombinedImageSampler,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-		});
+	texLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
-	// Если будешь тащить сюда shadow map’ы:
-	texLayoutDesc.bindings.push_back({
-		.binding = 30, // PointLightShadowMapArray
-		.type = Render::DescriptorType::CombinedImageSampler,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-		});
-	texLayoutDesc.bindings.push_back({
-		.binding = 31, // каскадные тени
-		.type = Render::DescriptorType::CombinedImageSampler,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-		});
-	texLayoutDesc.bindings.push_back({
-		.binding = 10,
-		.type = Render::DescriptorType::UniformBuffer,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-	});
-	texLayoutDesc.bindings.push_back({
-		.binding = 9,
-		.type = Render::DescriptorType::UniformBuffer,
-		.count = 1,
-		.stageMask = Render::ShaderStage::Fragment
-	});
+	texLayoutDesc.bindings.emplace_back(30, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(31, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+
+	texLayoutDesc.bindings.emplace_back(9, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(10, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+
 
 	mTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
 	mTexSet = rhi->allocateDescriptorSet(mTexSetLayout);
@@ -99,7 +54,33 @@ void LightingPass::init()
 	pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "deferred shading vs", ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.vs") });
 	pipelineDesc.shaders.fragment = rhi->createShaderModule({ShaderStage::Fragment, "deferred shading fs", ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.fs")});
 	pipelineDesc.topology = PrimitiveTopology::Triangles;
+	pipelineDesc.cullMode = CullMode::None;
+	pipelineDesc.depthStencilState.depthTest = false;
+	pipelineDesc.depthStencilState.depthWrite = false;
 	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
+
+	FramebufferDesc fbDesc;
+	fbDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	fbDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+
+	TextureDesc litDesc;
+	litDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	litDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+	mLitTexture = rhi->createTexture(litDesc);
+	mPresentTex[0] = rhi->createTexture(litDesc);
+	mPresentTex[1] = rhi->createTexture(litDesc);
+
+	fbDesc.colorAttachments.push_back({ mLitTexture });
+	fbDesc.depthStencilAttachment = {.texture = renderDataHandle.mGeometryPassData->depthsBuffer };
+	lightingFBO = rhi->createFramebuffer(fbDesc);
+
+	for (int i = 0; i < 2; ++i) {
+		FramebufferDesc presentFb = fbDesc;
+		presentFb.depthStencilAttachment.reset();
+		presentFb.colorAttachments = { { mPresentTex[i] } };
+		mPresentFbo[i] = rhi->createFramebuffer(presentFb);
+	}
+	renderDataHandle.finalTexture = mPresentTex[0];
 
 	RenderPassDesc rpDesc;
 	rpDesc.colorAttachmentCount = 1;
@@ -108,6 +89,13 @@ void LightingPass::init()
 		.storeOp = AttachmentStoreOp::Store,
 		.clearColor = Math::Vec4{0.f, 0.f, 0.f, 1.f}
 	};
+	rpDesc.depthAttachment =  {
+		.loadOp = AttachmentLoadOp::Load,
+		.storeOp = AttachmentStoreOp::Store,
+		.clearDepth = 1.f,
+		.clearStencil = 0,
+	};
+
 	renderPass = rhi->createRenderPass(rpDesc);
 
 	BufferDesc plubodesc;
@@ -182,7 +170,7 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 
 	if (renderDataHandle.mCascadedShadowsPassData && !renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.empty()) {
 		drawData.ambientColor = renderDataHandle.mCascadedShadowsPassData->lightColor; //todo 0 for night and 1 for day, some time system
-		drawData.cascadeCount = static_cast<int>(renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.size());
+		drawData.cascadeCount = static_cast<int>(renderDataHandle.mCascadedShadowsPassData->shadowCascades.size());
 		drawData.shadowIntensity = renderDataHandle.mCascadedShadowsPassData->shadowsIntensity;
 
 		cascadedShadowData.direction_intensity.xyz = renderDataHandle.mCascadedShadowsPassData->lightDirection;
@@ -206,34 +194,23 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	drawData.viewPos = renderDataHandle.mCameraPos;
 
 	RenderPassBeginInfo beginInfo;
+	beginInfo.framebuffer = lightingFBO;
 	beginInfo.renderPass = renderPass;
-	beginInfo.width = Engine::instance()->getWindow()->getScreenData().width;
-	beginInfo.height = Engine::instance()->getWindow()->getScreenData().height;
+	beginInfo.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	beginInfo.height = Engine::instance()->getWindow()->getScreenData().renderH;
 
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, pipeline);
 	updateTextures(renderDataHandle, cmd);
 
 	rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Fragment, &drawData, sizeof(drawData));
-	Utils::renderQuad();
-
-	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
-	const auto& screen = Engine::instance()->getWindow()->getScreenData();
-	int w = screen.renderW;
-	int h = screen.renderH;
-
-	rhi->blitFramebuffer(
-		renderDataHandle.mGeometryPassData->gFramebuffer, // src
-		{},                                               // dst = default framebuffer
-		0, 0, w, h,
-		0, 0, w, h,
-		BlitMask::Depth,
-		BlitFilter::Nearest
-	);
-
+	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 
-	//drawSky(renderDataHandle);
+	const int write = 1 - mPresentShow;
+	rhi->cmdBlit(cmd, lightingFBO, mPresentFbo[write], BlitMask::Color, BlitFilter::Nearest);
+	mPresentShow = write;
+	renderDataHandle.finalTexture = mPresentTex[1 - write];
 }
 
 void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd)
@@ -343,66 +320,4 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		rhi->updateDescriptorSets(writes);
 	}
 	rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &mTexSet, 1);
-}
-
-void LightingPass::drawSky(SystemsModule::RenderData& renderDataHandle)
-{
-	static Math::Vec3 sunDir;
-	static float time = 0.f;
-	static float Br = 0.005f;
-	static float Bm = 0.001f;
-	static float g = 0.9900f;
-	static float cirrus = 0.0f;
-	static float cumulus = 0.0f;
-	static bool enableSky = 0.0f;
-	time += 0.01f;
-
-	{
-		/*if (ImGui::BeginMainMenuBar()) {
-			if (ImGui::BeginMenu("Debug")) {
-				ImGui::Checkbox("skyParams", &skyParams);
-				ImGui::EndMenu();
-			}
-		}
-		ImGui::EndMainMenuBar();*/
-	}
-	if (skyParams) {
-		if (ImGui::Begin("sky params", &skyParams)) {
-			float sunDirCont[3] = { sunDir.x, sunDir.y, sunDir.z };
-			if (ImGui::DragFloat3("sun_Dir", sunDirCont, 0.01f, 0.f, 1.f)) {
-				sunDir.x = sunDirCont[0];
-				sunDir.y = sunDirCont[1];
-				sunDir.z = sunDirCont[2];
-			}
-			ImGui::Checkbox("skyEnabled", &enableSky);
-			ImGui::DragFloat("time", &time, 0.01f);
-			ImGui::DragFloat("Br", &Br, 0.0001f);
-			ImGui::DragFloat("Bm", &Bm, 0.0001f);
-			ImGui::DragFloat("g", &g, 0.01f);
-			ImGui::DragFloat("cirrus", &cirrus, 0.01f);
-			ImGui::DragFloat("cumulus", &cumulus, 0.01f);
-
-		}
-		ImGui::End();
-	}
-
-
-	if (enableSky) {
-		auto sky = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/sky.vs", "shaders/sky.fs");
-		sky->use();
-		sky->setUniform("view", renderDataHandle.current.view);
-		sky->setUniform("projection", renderDataHandle.current.projection);
-		sky->setUniform("sun_direction", -renderDataHandle.mCascadedShadowsPassData->lightDirection);
-		sky->setUniform("time", time);
-
-		sky->setUniform("Br", Br);
-		sky->setUniform("Bm", Bm);
-		sky->setUniform("g", g);
-
-		sky->setUniform("cirrus", cirrus);
-		sky->setUniform("cumulus", cumulus);
-
-		Utils::renderQuad();
-		//Utils::renderQuad2();
-	}
 }

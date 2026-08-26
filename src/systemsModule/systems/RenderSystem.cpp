@@ -8,7 +8,6 @@
 #include "OcTreeSystem.h"
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
@@ -26,17 +25,16 @@
 #include "renderModule/renderPasses/SSAOPass.h"
 #include "renderModule/renderPasses/DebugPass.h"
 #include "renderModule/renderPasses/PointLightPass.h"
-#include "renderModule/renderPasses/ShadersPass.h"
 
 #include "componentsModule/TransformComponent.h"
 #include "renderModule/TextRenderer.h"
 #include "renderModule/renderPasses/GUIPass.h"
-#include "renderModule/renderPasses/OcclusionPass.h"
 #include <debugModule/SystemLoadHelper.h>
 
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "containersModule/Vector.h"
+#include "renderModule/renderPasses/FinalPass.h"
 
 namespace SFE::SystemsModule {
 
@@ -55,7 +53,7 @@ namespace SFE::SystemsModule {
 		}
 
 		auto pass = new PassType();
-		pass->init();
+		pass->init(mRenderData);
 		pass->setPriority(i);
 
 		mRenderPasses.emplace_back(pass);
@@ -77,6 +75,7 @@ namespace SFE::SystemsModule {
 		addRenderPass<Render::RenderPasses::SSAOPass>();
 		//addRenderPass<Render::RenderPasses::DebugPass>();
 		//addRenderPass<Render::RenderPasses::GUIPass>();
+		addRenderPass<Render::RenderPasses::FinalPass>();
 	
 		{
 			Render::BufferDesc uboDesc;
@@ -85,7 +84,6 @@ namespace SFE::SystemsModule {
 			uboDesc.cpuAccess = Render::CpuAccess::Write;
 			uboDesc.debugName = "CameraMatricesUBO";
 			cameraMatricesUBO = Engine::instance()->rhi()->createBuffer(uboDesc);
-			Engine::instance()->rhi()->bindUniformBuffer(5, cameraMatricesUBO);
 		}
 
 		constexpr size_t maxDrawSize = 100;
@@ -96,7 +94,6 @@ namespace SFE::SystemsModule {
 			ssbDesc.cpuAccess = Render::CpuAccess::Write;
 			ssbDesc.debugName = "TransformsSSBO";
 			transforms = Engine::instance()->rhi()->createBuffer(ssbDesc);
-			Engine::instance()->rhi()->bindStorageBuffer(1, transforms);
 		}
 
 		{
@@ -106,14 +103,29 @@ namespace SFE::SystemsModule {
 			ssbDesc.cpuAccess = Render::CpuAccess::Write;
 			ssbDesc.debugName = "BonesSSBO";
 			bones = Engine::instance()->rhi()->createBuffer(ssbDesc);
-			Engine::instance()->rhi()->bindStorageBuffer(2, bones);
+		}
+
+		{
+			Render::DescriptorSetLayoutDesc frameLayout;
+			frameLayout.bindings = {
+				{ 5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment | Render::ShaderStage::Geometry },
+				{ 1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
+				{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
+			};
+			frameSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(frameLayout);
+			frameSet = Engine::instance()->rhi()->allocateDescriptorSet(frameSetLayout);
+			Engine::instance()->rhi()->updateDescriptorSets({
+				{ frameSet, 5, Render::DescriptorType::UniformBuffer, {{ cameraMatricesUBO }} },
+				{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
+				{ frameSet, 2, Render::DescriptorType::StorageBuffer, {{ bones }} },
+			});
 		}
 
 		ECSHandler::drawRegistry(0).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
 		ECSHandler::drawRegistry(1).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
 
 		// init gpu timer queries
-		glGenQueries(2, mGpuTimeQueries);
+		//glGenQueries(2, mGpuTimeQueries);
 	}
 
 	void RenderSystem::update(float_t dt) {
@@ -165,19 +177,6 @@ namespace SFE::SystemsModule {
 			}
 			dirtiesMutex.unlock();
 		}
-
-		//std::unordered_map<ecss::ECSType, ecss::EntitiesRanges> dir;
-		//{
-		//	FUNCTION_BENCHMARK_NAMED(dirties_copy);
-		//	dirtiesMutex.lock();
-		//	dir = dirtiesRanges;
-		//	/*for (auto& [id, entities] : dirties) {
-		//		std::erase_if(entities, [](std::pair<ecss::EntityId, uint8_t>& val) {
-		//			return val.second-- <= 1;
-		//		});
-		//	}*/
-		//	dirtiesMutex.unlock();
-		//}
 
 		//prepare data for next frame
 		{
@@ -248,15 +247,14 @@ namespace SFE::SystemsModule {
 		// begin new GPU timing for this frame
 		//glBeginQuery(GL_TIME_ELAPSED, mGpuTimeQueries[mCurrentGpuQuery]);
 
-		GLW::clear(GLW::ColorBit::ALL);
 		auto rhi = Engine::instance()->rhi();
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
-		
+		rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
 		for (const auto renderPass : mRenderPasses) {
 			renderPass->render(mRenderData, cmd);
 		}
-
 		rhi->endCommandList(cmd);
+
 		rhi->submit(&cmd, 1);
 		rhi->present();
 
@@ -332,7 +330,7 @@ namespace SFE::SystemsModule {
 			delete renderPass;
 		}
 		if (mGpuTimeQueries[0]) {
-			glDeleteQueries(2, mGpuTimeQueries);
+			//glDeleteQueries(2, mGpuTimeQueries);
 		}
 	}
 }

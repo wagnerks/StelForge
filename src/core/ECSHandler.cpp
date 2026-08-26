@@ -1009,9 +1009,9 @@ void ECSHandler::initSystems() {
             return std::move(SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)));
         });
 
-		for (auto i = 0u; i < 5; i++) {
-			for (auto j = 0u; j < 5; j++) {
-				for (auto k = 1u; k < 5; k++) {
+		for (auto i = 0u; i < 1; i++) {
+			for (auto j = 0u; j < 1; j++) {
+				for (auto k = 1u; k < 2; k++) {
 					if (!SFE::Engine::instance()->isAlive()) {
 						return;
 					}

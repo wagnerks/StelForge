@@ -6,7 +6,6 @@
 #include "InputHandler.h"
 #include "multithreading/ThreadPool.h"
 #include "assetsModule/modelModule/ModelLoader.h"
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "debugModule/imguiDecorator.h"
 #include "systemsModule/SystemManager.h"
 #include "assetsModule/AssetsManager.h"
@@ -29,7 +28,6 @@ namespace SFE::CoreModule {
 	}
 
 	Core::~Core() {
-		SFE::ShaderModule::ShaderController::terminate();
 		AssetsModule::TextureHandler::terminate();
 		AssetsModule::ModelLoader::terminate();
 

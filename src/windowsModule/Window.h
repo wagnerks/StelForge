@@ -6,8 +6,6 @@
 #include <unordered_map>
 
 
-#include <glad/glad.h>
-//#include <vulkan/vulkan.h>
 #include <vulkan/vulkan_raii.hpp>
 #include <GLFW/glfw3.h>
 

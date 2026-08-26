@@ -1,7 +1,5 @@
 ﻿#pragma once
 #include <unordered_map>
-
-#include "glWrapper/Texture.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 namespace SFE {

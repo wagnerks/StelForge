@@ -1,11 +1,8 @@
 ﻿#pragma once
-#include <limits>
 
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "mathModule/Projection.h"
 #include "ecss/Types.h"
-#include "glWrapper/Buffer.h"
-#include "glWrapper/Framebuffer.h"
 #include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
@@ -16,7 +13,7 @@ namespace SFE::Render::RenderPasses {
 			std::vector<ecss::SectorId> shadowEntities;
 		};
 
-		void init() override;
+		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void freeBuffers() const;
 
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
@@ -28,6 +25,12 @@ namespace SFE::Render::RenderPasses {
 
 		BufferHandle mMatricesUBO;
 
+		RenderPassHandle renderPass;
+		PipelineHandle pipeline;
+
+		Render::DescriptorSetLayoutHandle mTexSetLayout{};
+		Render::DescriptorSetHandle       mTexSet{};
+
 		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
 		SFE::MathModule::PerspectiveProjection lightProjection;
 		std::vector<Math::Mat4> lightMatrices;
@@ -36,7 +39,6 @@ namespace SFE::Render::RenderPasses {
 
 		const int shadowResolution = 1024;
 		const int maxShadowFaces = 36;
-		const int lightMatricesBinding = 3;
 
 		Data data{};
 	};

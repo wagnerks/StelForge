@@ -2,9 +2,11 @@
 out vec4 FragColor;
 
 in vec3 texPos;
+layout(std140, binding = 15) uniform PushConstants {
+    vec4 color;
+} pc;
 
-uniform vec4 color = vec4(1.f, 0.f, 0.f, 1.0);
 void main()
 { 
-    FragColor = color;
+    FragColor = pc.color;
 }

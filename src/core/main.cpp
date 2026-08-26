@@ -12,7 +12,6 @@ int main() {
 	const auto engine = SFE::Engine::instance();
 
 	engine->createWindow(1920, 1080);
-	engine->rhi()->init();
 	engine->initThread();
 	engine->initRender();
 

@@ -506,7 +506,7 @@ namespace SFE::Render {
 		};
 
 		auto drawQuad = [this](const Math::Vec3& pos, Axis axis, float start, float end, const Math::Vec4& color) {
-			Utils::renderQuad(Math::Vec3{start, start, 0.f}, Math::Vec3{end, end, 0.f}, PLANE_ROTATIONS[axis].toMat4(), pos, color);
+			Utils::renderQuad(Render::CommandListHandle{}, Math::Vec3{start, start, 0.f}, Math::Vec3{end, end, 0.f}, PLANE_ROTATIONS[axis].toMat4(), pos, color);
 		};
 
 		const float start = mPlaneQaudOffset * mScaleCoef;

@@ -118,7 +118,7 @@ Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) 
 			continue;
 		}
 		
-		//texture->texture.image2D(static_cast<int>(SFE::GLW::CubeMapFaces::POSITIVE_X) + i, width, height, SFE::GLW::RGB8, SFE::GLW::RGB, SFE::GLW::UNSIGNED_BYTE, data); //todo
+		//texture->texture.image2D(static_cast<int>(CubeMapFaces::POSITIVE_X) + i, width, height,RGB8, data); //todo
 		stbi_image_free(data);
 	}
 

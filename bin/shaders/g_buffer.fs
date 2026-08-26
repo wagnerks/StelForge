@@ -16,10 +16,6 @@ in vec3 ViewPos;
 out vec4 FragColor;
 in mat3 TBN;
 
-uniform mat4 PV;
-uniform mat4 P;
-uniform mat4 V;
-
 void main()
 { 
     // store the fragment position vector in the first gbuffer texture

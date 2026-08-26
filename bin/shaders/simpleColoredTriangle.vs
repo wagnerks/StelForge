@@ -3,8 +3,12 @@ layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec4 aColor;
 
-uniform vec3 viewPos;
-uniform mat4 PVM;
+layout(std140, binding = 15) uniform PushConstants {
+    vec4 viewPos;
+    mat4 PVM;
+} pc;
+
+
 out vec3 fragPos;
 out vec3 normal;
 out vec4 fragColor;

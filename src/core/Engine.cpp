@@ -3,12 +3,10 @@
 #include <chrono>
 #include <thread>
 
+#include <GLFW/glfw3.h>
+
 #include "Core.h"
 #include "InputHandler.h"
-#include "glWrapper/CapabilitiesStack.h"
-#include "glWrapper/Depth.h"
-#include "glWrapper/Draw.h"
-#include "glWrapper/ViewportStack.h"
 #include "logsModule/logger.h"
 #include "multithreading/ThreadPool.h"
 #include "renderModule/OpenGLRHI.h"
@@ -23,7 +21,7 @@ namespace SFE {
 		if (mWindow) {
 			mWindow->onFramebufferResize = [](int width, int height) {
 				SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([width, height]() {
-					SFE::GLW::ViewportStack::size = { width, height };
+					//ViewportStack::size = { width, height };
 				});
 			};
 
@@ -32,13 +30,16 @@ namespace SFE {
 	}
 
 	void Engine::initThread() {
-		if (!mWindow) {
+		if (!mWindow || !mWindow->getWindow()) {
 			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize thread without context, forgot to call createWindow?");
 			return;
 		}
 
 		mMainThreadID = std::this_thread::get_id();
 		glfwMakeContextCurrent(mWindow->getWindow());
+		if (mRHI) {
+			mRHI->init();
+		}
 		mCore.init();
 
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
@@ -139,6 +140,14 @@ namespace SFE {
 	}
 
 	Engine::~Engine() {
+		if (mRHI) {
+			if (mWindow && mWindow->getWindow()) {
+				glfwMakeContextCurrent(mWindow->getWindow());
+			}
+			mRHI->cleanup();
+			delete mRHI;
+			mRHI = nullptr;
+		}
 		destroyWindow();
 	}
 

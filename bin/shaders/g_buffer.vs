@@ -13,20 +13,10 @@ out vec3 Normal;
 out vec3 ViewPos;
 out mat3 TBN;
 
-layout(std140, binding = 5) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
-} matrices;
 
 layout(std430, binding = 1) buffer modelMatrices
 {
     mat4 model[];
-};
-
-layout(std430, binding = 3) buffer gpuIndex
-{
-    uint entToGpuIdx[];
 };
 
 const int MAX_BONES = 100;
@@ -36,6 +26,17 @@ layout(std430, binding = 2) buffer bonesMatrices
 {
     mat4 bones[][MAX_BONES];
 };
+
+layout(std430, binding = 3) buffer gpuIndex
+{
+    uint entToGpuIdx[];
+};
+
+layout(std140, binding = 5) uniform SharedMatrices {
+    mat4 projection;
+    mat4 view;
+    mat4 PV;
+} matrices;
 
 void main() {
     uint index = entToGpuIdx[gl_InstanceID];

@@ -1,19 +1,13 @@
 ﻿#include "GUIPass.h"
 
-#include "assetsModule/shaderModule/ShaderController.h"
-#include "glWrapper/Buffer.h"
-#include "glWrapper/CapabilitiesStack.h"
 #include "mathModule/Utils.h"
 
 namespace SFE::Render::RenderPasses {
 	GUIPass::~GUIPass() {}
 
-	void GUIPass::init() {
-		const auto shader = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/2dshader.vs", "shaders/2dshader.fs");
-
-		shader->use();
-		shader->setUniform("projection", Math::orthoRH_NO(0.0f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().width), 0.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().height), -1.f, 1.f));
-
+	void GUIPass::init(SystemsModule::RenderData& renderDataHandle) {
+	
+		
 		BufferDesc vboDesc;
 		vboDesc.size = sizeof(float) * 2 * 3 * 1000; // max 1000 quads
 		vboDesc.usage = BufferUsage::Vertex;
@@ -38,6 +32,28 @@ namespace SFE::Render::RenderPasses {
 			});
 
 		pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+
+		Render::DescriptorSetLayoutDesc texLayoutDesc;
+		texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+
+		mTexSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(texLayoutDesc);
+		mTexSet = Engine::instance()->rhi()->allocateDescriptorSet(mTexSetLayout);
+
+		BufferDesc drawDataUBODesc;
+		drawDataUBODesc.size = sizeof(Math::Mat4);
+		drawDataUBODesc.usage = BufferUsage::Uniform;
+		drawDataUBODesc.cpuAccess = CpuAccess::Write;
+		auto proj = Math::orthoRH_NO(0.0f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().width), 0.f, static_cast<float>(Engine::instance()->getWindow()->getScreenData().height), -1.f, 1.f);
+		drawDataUBO = Engine::instance()->rhi()->createBuffer(drawDataUBODesc, &proj);
+
+		Engine::instance()->rhi()->updateDescriptorSets({
+			{
+				.set = mTexSet,
+				.binding = 1,
+				.type = Render::DescriptorType::UniformBuffer,
+				.buffers = {{drawDataUBO}}
+			}
+			});
 	}
 
 	void GUIPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -46,7 +62,8 @@ namespace SFE::Render::RenderPasses {
 		}
 		
 		Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
-		VBO.bindVertex(0);
+		Engine::instance()->rhi()->cmdBindVertexBuffer(cmd, 0, VBO);
+		Engine::instance()->rhi()->cmdBindDescriptorSets(cmd, pipeline, 0, &mTexSet, 1);
 
 		const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
 		const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
@@ -55,8 +72,7 @@ namespace SFE::Render::RenderPasses {
 			if (textComp) {
 				continue;
 			}
-
-			Engine::instance()->rhi()->setUniform(pipeline, "drawColor", color->color);
+			Engine::instance()->rhi()->cmdPushConstants(cmd, pipeline, color->color);
 			
 			auto pos = position->pos;
 			pos.x += -position->pivot.x * position->size.x;
@@ -84,11 +100,11 @@ namespace SFE::Render::RenderPasses {
 			i++;
 		}
 
-		Engine::instance()->rhi()->draw(i * 6);
+		Engine::instance()->rhi()->cmdDraw(cmd, i * 6);
 
 
 		for (auto [entId, textComp, fontComp, position, color] : registry.view<TextComponent, FontComponent, PosComponent, ColorComponent>()) {
-			TextRenderer::instance()->renderText(textComp->text, position->pos.x + -position->pivot.x * position->size.x, position->pos.y + (1.f - position->pivot.y) * position->size.y, textComp->scale, color->color, fontComp->font);
+			TextRenderer::instance()->renderText(cmd, textComp->text, position->pos.x + -position->pivot.x * position->size.x, position->pos.y + (1.f - position->pivot.y) * position->size.y, textComp->scale, color->color, fontComp->font);
 		}
 	}
 }

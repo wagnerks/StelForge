@@ -2,7 +2,6 @@
 
 #include <shared_mutex>
 
-#include "assetsModule/shaderModule/ShaderController.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
@@ -12,7 +11,6 @@
 #include "core/ECSHandler.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
-#include "glWrapper/ViewportStack.h"
 
 #include "logsModule/logger.h"
 #include "systemsModule/systems/CameraSystem.h"
@@ -22,7 +20,7 @@
 #include "systemsModule/SystemsPriority.h"
 
 namespace SFE::Render::RenderPasses {
-	void PointLightPass::init() {
+	void PointLightPass::init(SystemsModule::RenderData& renderDataHandle) {
 		lightProjection = SFE::MathModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
 		freeBuffers();
 		TextureDesc texDesc;
@@ -32,18 +30,20 @@ namespace SFE::Render::RenderPasses {
 		texDesc.dimension = TextureDimension::Array;
 		texDesc.format = TextureFormat::DEPTH_COMPONENT32F;
 		texDesc.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
-		
+		mLightDepthMaps = Engine::instance()->rhi()->createTexture(texDesc);
+
 		SamplerDesc samplerDesc;
 		samplerDesc.minFilter = FilterMode::Linear;
 		samplerDesc.magFilter = FilterMode::Linear;
 		samplerDesc.addressU = AddressMode::ClampToEdge;
 		samplerDesc.addressV = AddressMode::ClampToEdge;
 		samplerDesc.compareOp = CompareOp::Less;
+		mLightDepthMapsSampler = Engine::instance()->rhi()->createSampler(samplerDesc);
 
 		FramebufferDesc fbDesc;
 		fbDesc.width = shadowResolution;
 		fbDesc.height = shadowResolution;
-		fbDesc.depthStencilAttachment = FramebufferAttachmentDesc{ Engine::instance()->rhi()->createTexture(texDesc) };
+		fbDesc.depthStencilAttachment = FramebufferAttachmentDesc{ mLightDepthMaps };
 
 		lightFramebuffer = Engine::instance()->rhi()->createFramebuffer(fbDesc);
 
@@ -53,7 +53,30 @@ namespace SFE::Render::RenderPasses {
 		bufDesc.cpuAccess = CpuAccess::Write;
 		bufDesc.debugName = "PointLightPass_MatricesUBO";
 		mMatricesUBO = Engine::instance()->rhi()->createBuffer(bufDesc);
-		Engine::instance()->rhi()->bindUniformBuffer(lightMatricesBinding, mMatricesUBO);
+		
+
+		RenderPassDesc rpDesc;
+		rpDesc.hasDepthStencil = true;
+		rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
+		rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+		renderPass = Engine::instance()->rhi()->createRenderPass(rpDesc);
+
+		GraphicsPipelineDesc pipelineDesc;
+		pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "point light vs", ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.vs") });
+		pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "point light fs", ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.fs") });
+		pipelineDesc.shaders.geometry = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "point light gs", ShaderModule::ShaderBase::loadShaderCode("shaders/pointLightMap.gs")});
+		pipelineDesc.depthStencilState.depthTest = true;
+		pipelineDesc.depthStencilState.depthWrite = true;
+		pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
+		pipelineDesc.renderPass = renderPass;
+		pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+
+		Render::DescriptorSetLayoutDesc texLayoutDesc;
+		texLayoutDesc.bindings.emplace_back(30, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Geometry);
+		texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
+
+		mTexSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(texLayoutDesc);
+		mTexSet = Engine::instance()->rhi()->allocateDescriptorSet(mTexSetLayout);
 	}
 
 	void PointLightPass::freeBuffers() const {
@@ -109,28 +132,46 @@ namespace SFE::Render::RenderPasses {
 		if (!lightMatrices.empty()) {
 			Engine::instance()->rhi()->updateBuffer(mMatricesUBO, 0, lightMatrices.size() * sizeof(Math::Mat4), lightMatrices.data());
 		}
-		Engine::instance()->rhi()->bindTexture(30, mLightDepthMaps, mLightDepthMapsSampler);
-		Engine::instance()->rhi()->bindFramebuffer(lightFramebuffer);
-		GLW::ViewportStack::push({ {shadowResolution, shadowResolution} });
-		GLW::clear(GLW::ColorBit::DEPTH);
 
+		Engine::instance()->rhi()->updateDescriptorSets({
+			{
+				.set = mTexSet,
+				.binding = 30,
+				.type = Render::DescriptorType::CombinedImageSampler,
+				.images {{mLightDepthMaps, mLightDepthMapsSampler} }
+			},
+			{
+			.set = mTexSet,
+			.binding = 3,
+			.type = DescriptorType::UniformBuffer,
+			.buffers= {{mMatricesUBO}}
+			}
+		});
+
+		RenderPassBeginInfo rpBeginInfo;
+		rpBeginInfo.renderPass = renderPass;
+		rpBeginInfo.framebuffer = lightFramebuffer;
+		rpBeginInfo.width = shadowResolution;
+		rpBeginInfo.height = shadowResolution;
+		Engine::instance()->rhi()->cmdBeginRenderPass(cmd, rpBeginInfo);
+		Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
+		Engine::instance()->rhi()->cmdBindDescriptorSets(cmd, pipeline, 0, &mTexSet, 1);
+		
 		int offsetSum = 0;
 		for (auto& offset : offsets) {
-			auto simpleDepthShader = SHADER_CONTROLLER->loadGeometryShader("shaders/cascadeShadowMap.vs", "shaders/cascadeShadowMap.fs", "shaders/pointLightMap.gs");
-			simpleDepthShader->use();
-			simpleDepthShader->setUniform("offset", offsetSum);
+			Engine::instance()->rhi()->cmdPushConstants(cmd, pipeline, offsetSum,  ShaderStage::Geometry);
 
 			auto ocTreeSystem = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
 			ocTreeSystem->readLock();
 
-			std::vector<ecss::SectorId> entities;
- 
+	
+			ecss::Ranges<ecss::EntityId> ranges; 
 			for (auto& [coords, tree] : ocTreeSystem->mOctrees) {
 				//auto lock = tree.readLock();
-				tree.forEachObject([this, &entities, offsetSum, &offset](const auto& obj) {
+				tree.forEachObject([this, &ranges, offsetSum, &offset](const auto& obj) {
 					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
 						if (FrustumModule::AABB::isOnFrustum(frustums[i], obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size)){
-							entities.emplace_back(obj.data);
+							ranges.insert(obj.data);
 							break;
 						}
 					}
@@ -147,26 +188,23 @@ namespace SFE::Render::RenderPasses {
 				});
 			}
 
-			/*std::sort(entities.begin(), entities.end());
-			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().view<const ModelComponent, const IsDrawableComponent, const TransformComponent>(entities)) {
+			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().view<const ModelComponent, const IsDrawableComponent, const TransformComponent>(ranges)) {
 				if (!trans || !mod || !draw) {
 					continue;
 				}
 
 				const auto& transformMatrix = trans->getTransform();
 				for (auto& mesh : mod->getModelLowestDetails().meshes) {
-					batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transformMatrix, {});
+					//batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transformMatrix, {});
 				}
 			}
-			batcher.sort(ECSHandler::registry().getComponent<TransformComponent>(offset.first)->getPos(true));
-
+			
 			offsetSum += offset.second;
 			
-			batcher.flushAll(true);*/
+			//batcher.flushAll(true);
 		}
 
-		Engine::instance()->rhi()->bindFramebuffer({});
-		GLW::ViewportStack::pop();
+		Engine::instance()->rhi()->cmdEndRenderPass(cmd);
 	}
 
 	void PointLightPass::fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius) {

@@ -5,8 +5,6 @@
 #include <vector>
 
 #include "assetsModule/TextureHandler.h"
-#include "glWrapper/Framebuffer.h"
-#include "glWrapper/Renderbuffer.h"
 #include "logsModule/logger.h"
 #include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
@@ -28,6 +26,7 @@ namespace SFE::Render::RenderPasses {
 			TextureHandle lightsBuffer;
 			TextureHandle normalBuffer;
 			TextureHandle albedoBuffer;
+			TextureHandle depthsBuffer;
 
 			SamplerHandle sampler;
 
@@ -45,13 +44,15 @@ namespace SFE::Render::RenderPasses {
 		Render::DescriptorSetLayoutHandle mTexSetLayoutOutlines{};
 		Render::DescriptorSetHandle       mTexSetOutlines{};
 
+		Render::DescriptorSetLayoutHandle gBuffetLayout{};
+		Render::DescriptorSetHandle       gBuffetLayoutSet{};
 
-		void init() override;
+		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
 		bool mInited = false;
 		Data mData;
-		bool needClearOutlines = false;
+		bool needClearOutlines = true;
 
 		RenderPassDataContainer mOutlineData;
 	};
