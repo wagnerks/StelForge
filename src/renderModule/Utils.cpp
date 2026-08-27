@@ -95,7 +95,7 @@ void Utils::renderQuad(CommandListHandle cmd, float x1 = -1.f, float y1 = -1.f, 
 		pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
 	}
 
-	Engine::instance()->rhi()->updateBuffer(vbo, 0, sizeof(Vertex3D) * mesh.vertices.size(), mesh.vertices.data());
+	Engine::instance()->rhi()->cmdUpdateBuffer(cmd, vbo, 0, sizeof(Vertex3D) * mesh.vertices.size(), mesh.vertices.data());
 	Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
 	Engine::instance()->rhi()->cmdBindVertexBuffer(cmd,0, vbo);
 	Engine::instance()->rhi()->cmdDraw(cmd, mesh.vertices.size());

@@ -16,14 +16,10 @@ layout(std430, binding = 3) buffer gpuIndex
 const int MAX_BONES = 100;
 const int MAX_BONE_INFLUENCE = 4;
 
-layout (std140, binding = 0) uniform LightSpaceMatrices
+layout (std140, binding = 4) uniform CurrentCascade
 {
-    mat4 lightSpaceMatrices[6];
+    mat4 lightMatrix;
 };
-
-layout(std140, binding  = 15) uniform PushConstants {
-    int uCascadeIndex;
-} pc;
 
 layout(std430, binding = 2) buffer bonesMatrices
 {
@@ -49,5 +45,5 @@ void main()
     newPos /= newPos.w;
 
     mat4 world = model[entToGpuIdx[gl_InstanceID]];
-    gl_Position = lightSpaceMatrices[pc.uCascadeIndex] * world * newPos;
+    gl_Position = lightMatrix * world * newPos;
 }

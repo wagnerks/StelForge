@@ -27,6 +27,8 @@ namespace SFE::Render::RenderPasses {
 			ecss::EntityId shadows;
 			std::vector<ComponentsModule::ShadowCascade> shadowCascades;
 			float shadowsIntensity = 0.f;
+			BufferHandle lightSpaceMatricesUBO;
+			std::vector<Math::Mat4> lightSpaceMatrices;
 		};
 
 		CascadedShadowPass();
@@ -44,6 +46,7 @@ namespace SFE::Render::RenderPasses {
 		SamplerHandle  lightSampler;
 
 		BufferHandle matricesUBO;
+		std::vector<BufferHandle> cascadeMatrixUBOs;
 		PipelineHandle pipeline;
 		RenderPassHandle renderPass;
 

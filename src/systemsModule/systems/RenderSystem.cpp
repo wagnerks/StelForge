@@ -86,7 +86,7 @@ namespace SFE::SystemsModule {
 			cameraMatricesUBO = Engine::instance()->rhi()->createBuffer(uboDesc);
 		}
 
-		constexpr size_t maxDrawSize = 100;
+		constexpr size_t maxDrawSize = 4096;
 		{
 			Render::BufferDesc ssbDesc;
 			ssbDesc.size = sizeof(Math::Mat4) * maxDrawSize;
@@ -119,6 +119,9 @@ namespace SFE::SystemsModule {
 				{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
 				{ frameSet, 2, Render::DescriptorType::StorageBuffer, {{ bones }} },
 			});
+			mRenderData.transformsSSBO = transforms;
+			mRenderData.bonesSSBO = bones;
+			mRenderData.cameraMatricesUBO = cameraMatricesUBO;
 		}
 
 		ECSHandler::drawRegistry(0).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);

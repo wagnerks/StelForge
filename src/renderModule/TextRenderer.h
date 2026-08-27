@@ -323,7 +323,7 @@ namespace SFE::Render {
                      
                 };
 
-                Engine::instance()->rhi()->updateBuffer(VBO, i * sizeof(vertices), sizeof(vertices), vertices);
+                Engine::instance()->rhi()->cmdUpdateBuffer(cmd, VBO, i * sizeof(vertices), sizeof(vertices), vertices);
 
                 // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
                 curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 

@@ -141,7 +141,7 @@ namespace SFE::Render::RenderPasses {
 			Engine::instance()->rhi()->cmdPushConstants(cmd, trianglesPipeline, drawDataTriangles);
 
 			for (auto& [data, triangles] : Utils::renderTriangles) {
-				Engine::instance()->rhi()->updateBuffer(trianglesVBO,0, triangles.size() * sizeof(SFE::Vertex3D) * 3, triangles.data());
+				Engine::instance()->rhi()->cmdUpdateBuffer(cmd, trianglesVBO,0, triangles.size() * sizeof(SFE::Vertex3D) * 3, triangles.data());
 				Engine::instance()->rhi()->cmdBindPipeline(cmd, getTrianglePipeline(data.blend, data.depthTest, data.cull, { BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha }));
 				Engine::instance()->rhi()->cmdDraw(cmd, static_cast<int>(triangles.size()) * 3);
 			}
@@ -158,7 +158,7 @@ namespace SFE::Render::RenderPasses {
 				drawDataLines.color = data.color;
 				Engine::instance()->rhi()->cmdPushConstants(cmd, linesPipeline, drawDataLines);
 
-				Engine::instance()->rhi()->updateBuffer(linesVBO, 0, vertices.size() * sizeof(SFE::Vertex3D) , vertices.data());
+				Engine::instance()->rhi()->cmdUpdateBuffer(cmd, linesVBO, 0, vertices.size() * sizeof(SFE::Vertex3D) , vertices.data());
 				Engine::instance()->rhi()->cmdDraw(cmd, static_cast<int>(vertices.size()));
 			}
 

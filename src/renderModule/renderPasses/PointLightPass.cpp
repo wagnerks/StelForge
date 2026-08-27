@@ -88,6 +88,7 @@ namespace SFE::Render::RenderPasses {
 		frustums.clear();
 		renderDataHandle.mPointPassData = &data;
 		data.shadowEntities.clear();
+		data.matricesUBO = mMatricesUBO;
 
 		offsets.clear();
 		
@@ -136,7 +137,7 @@ namespace SFE::Render::RenderPasses {
 		Engine::instance()->rhi()->updateDescriptorSets({
 			{
 				.set = mTexSet,
-				.binding = 30,
+				.binding = 7,
 				.type = Render::DescriptorType::CombinedImageSampler,
 				.images {{mLightDepthMaps, mLightDepthMapsSampler} }
 			},

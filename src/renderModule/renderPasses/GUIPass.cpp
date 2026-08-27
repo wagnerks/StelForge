@@ -96,7 +96,7 @@ namespace SFE::Render::RenderPasses {
 				 {endX,		startY},
 				 {endX,		endY},
 			};
-			Engine::instance()->rhi()->updateBuffer(VBO, i * sizeof(vertices), sizeof(vertices), vertices);
+			Engine::instance()->rhi()->cmdUpdateBuffer(cmd, VBO, i * sizeof(vertices), sizeof(vertices), vertices);
 			i++;
 		}
 

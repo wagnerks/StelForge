@@ -13,19 +13,14 @@ namespace SFE::Render::RenderPasses {
 
 		struct DrawData
 		{
-			// блок 0..15
-			alignas(16) Math::Vec3 viewPos;
-			float shadowIntensity = 1.f; // в тот же 16-байтный блок
-
-			// блок 16..31
-			float fogStart;
-			float fogEnd;
+			float viewPosX = 0.f, viewPosY = 0.f, viewPosZ = 0.f;
+			float shadowIntensity = 1.f;
+			float fogStart = 0.f;
+			float fogEnd = 0.f;
 			int   pointLightsSize = 0;
 			int   cascadeCount = 0;
-
-			// блок 48..63 (но структура должна быть кратна 16, так что добавим паддинг)
-			alignas(16) Math::Vec3 ambientColor;
-			float _pad0; // паддинг, чтобы ambientColor занимала 16 байт
+			float ambientX = 0.f, ambientY = 0.f, ambientZ = 0.f;
+			float _pad0 = 0.f;
 		};
 
 		struct CascadData {
@@ -36,6 +31,8 @@ namespace SFE::Render::RenderPasses {
 			Math::Vec4 direction_intensity; // xyz direction, w intensity
 			Math::Vec4 color_and_misc;
 			CascadData data[6];
+			Math::Vec4 cascadeSplits;
+			Math::Vec4 cascadeSplits2;
 		};
 
 		CascadedShadowBlock cascadedShadowData;
@@ -70,6 +67,8 @@ namespace SFE::Render::RenderPasses {
 
 		BufferHandle pointLightsUBO;
 		BufferHandle cascadedShadowsUBO;
+		BufferHandle pushConstantsUBO;
+		BufferHandle lightMatricesUBO;
 
 		TextureHandle mLitTexture;
 		TextureHandle mPresentTex[2];

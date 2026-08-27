@@ -11,6 +11,7 @@ namespace SFE::Render::RenderPasses {
 	public:
 		struct Data {
 			std::vector<ecss::SectorId> shadowEntities;
+			BufferHandle matricesUBO;
 		};
 
 		void init(SystemsModule::RenderData& renderDataHandle) override;

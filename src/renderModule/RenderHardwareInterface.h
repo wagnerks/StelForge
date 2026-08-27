@@ -180,6 +180,59 @@ namespace SFE::Render
 	
 	enum class CommandListType : uint8_t { Graphics, Compute, Transfer };
 
+	enum class PipelineStage : uint32_t {
+		None = 0,
+		DrawIndirect = 1u << 0,
+		VertexInput = 1u << 1,
+		VertexShader = 1u << 2,
+		FragmentShader = 1u << 3,
+		ColorAttachmentOutput = 1u << 4,
+		LateFragmentTests = 1u << 5,
+		Transfer = 1u << 6,
+		Host = 1u << 7,
+		AllGraphics = 1u << 8,
+		AllCommands = 1u << 9,
+	};
+
+	inline PipelineStage operator|(PipelineStage a, PipelineStage b) {
+		return static_cast<PipelineStage>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+	}
+	inline bool operator&(PipelineStage a, PipelineStage b) {
+		return (static_cast<uint32_t>(a) & static_cast<uint32_t>(b)) != 0;
+	}
+
+	enum class AccessMask : uint32_t {
+		None = 0,
+		IndirectCommandRead = 1u << 0,
+		IndexRead = 1u << 1,
+		VertexAttributeRead = 1u << 2,
+		UniformRead = 1u << 3,
+		ShaderRead = 1u << 4,
+		ShaderWrite = 1u << 5,
+		ColorAttachmentRead = 1u << 6,
+		ColorAttachmentWrite = 1u << 7,
+		DepthStencilAttachmentRead = 1u << 8,
+		DepthStencilAttachmentWrite = 1u << 9,
+		TransferRead = 1u << 10,
+		TransferWrite = 1u << 11,
+		HostRead = 1u << 12,
+		HostWrite = 1u << 13,
+	};
+
+	inline AccessMask operator|(AccessMask a, AccessMask b) {
+		return static_cast<AccessMask>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+	}
+	inline bool operator&(AccessMask a, AccessMask b) {
+		return (static_cast<uint32_t>(a) & static_cast<uint32_t>(b)) != 0;
+	}
+
+	struct PipelineBarrier {
+		PipelineStage srcStage = PipelineStage::AllCommands;
+		PipelineStage dstStage = PipelineStage::AllCommands;
+		AccessMask srcAccess = AccessMask::None;
+		AccessMask dstAccess = AccessMask::None;
+	};
+
 	enum class DescriptorType : uint8_t { UniformBuffer, StorageBuffer,	CombinedImageSampler, };
 
 	// Descriptions
@@ -213,7 +266,7 @@ namespace SFE::Render
 	struct FramebufferAttachmentDesc {
 		TextureHandle		texture;
 		uint32_t            mipLevel = 0;
-		uint32_t            layer = 0;   // for 2D-array / 3D / cubemap
+		uint32_t            layer = 0;   // for 2D-array / 3D / cubemap; UINT32_MAX = all layers (gl_Layer)
 	};
 
 	struct FramebufferDesc {
@@ -416,6 +469,8 @@ namespace SFE::Render
 		virtual void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t  vertexOffset = 0, uint32_t firstInstance = 0) = 0;
 
 		virtual void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask = BlitMask::Color, BlitFilter filter = BlitFilter::Nearest) = 0;
+		virtual void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) = 0;
+		virtual void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) = 0;
 
 		virtual void submit(const CommandListHandle* lists, uint32_t count) = 0;
 		virtual void present() = 0;
@@ -434,6 +489,12 @@ namespace SFE::Render
 		void updateBuffer(BufferHandle handle, const T& data, size_t offset = 0) {
 			static_assert(std::is_trivially_copyable_v<T>);
 			updateBuffer(handle, offset, sizeof(T), static_cast<const void*>(&data));
+		}
+
+		template<typename T>
+		void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, const T& data, size_t offset = 0) {
+			static_assert(std::is_trivially_copyable_v<T>);
+			cmdUpdateBuffer(cmd, handle, offset, sizeof(T), static_cast<const void*>(&data));
 		}
 	};
 }

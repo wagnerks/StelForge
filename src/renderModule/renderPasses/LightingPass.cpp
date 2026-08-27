@@ -33,11 +33,16 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	texLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
-	texLayoutDesc.bindings.emplace_back(30, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(31, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-
+	texLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(9, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(10, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(15, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+
+	texLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(8, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
 
 	mTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
@@ -111,6 +116,18 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	shadowsUBODesc.size = sizeof(CascadedShadowBlock);
 	cascadedShadowsUBO = rhi->createBuffer(shadowsUBODesc, &cascadedShadowData);
 
+	BufferDesc pcDesc;
+	pcDesc.usage = BufferUsage::Uniform;
+	pcDesc.cpuAccess = CpuAccess::Write;
+	pcDesc.size = sizeof(DrawData);
+	pushConstantsUBO = rhi->createBuffer(pcDesc);
+
+	BufferDesc lmDesc;
+	lmDesc.usage = BufferUsage::Uniform;
+	lmDesc.cpuAccess = CpuAccess::Write;
+	lmDesc.size = sizeof(Math::Mat4) * 6;
+	lmDesc.debugName = "LightingPass_LightSpaceMatrices";
+	lightMatricesUBO = rhi->createBuffer(lmDesc);
 
 	std::vector<Render::WriteDescriptor> writes{ {
 		.set = mTexSet,
@@ -123,8 +140,19 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 		.binding = 9,
 		.type = Render::DescriptorType::UniformBuffer,
 		.buffers{ {cascadedShadowsUBO} }
+	},
+	{
+		.set = mTexSet,
+		.binding = 15,
+		.type = Render::DescriptorType::UniformBuffer,
+		.buffers{ {pushConstantsUBO} }
+	},
+	{
+		.set = mTexSet,
+		.binding = 11,
+		.type = Render::DescriptorType::UniformBuffer,
+		.buffers{ {lightMatricesUBO} }
 	} };
-
 
 	rhi->updateDescriptorSets(writes);
 }
@@ -169,13 +197,17 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	}
 
 	if (renderDataHandle.mCascadedShadowsPassData && !renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels.empty()) {
-		drawData.ambientColor = renderDataHandle.mCascadedShadowsPassData->lightColor; //todo 0 for night and 1 for day, some time system
+		const auto& lightColor = renderDataHandle.mCascadedShadowsPassData->lightColor;
+		drawData.ambientX = lightColor.x;
+		drawData.ambientY = lightColor.y;
+		drawData.ambientZ = lightColor.z;
 		drawData.cascadeCount = static_cast<int>(renderDataHandle.mCascadedShadowsPassData->shadowCascades.size());
 		drawData.shadowIntensity = renderDataHandle.mCascadedShadowsPassData->shadowsIntensity;
 
 		cascadedShadowData.direction_intensity.xyz = renderDataHandle.mCascadedShadowsPassData->lightDirection;
-		cascadedShadowData.direction_intensity.w = 0.6f;
+		cascadedShadowData.direction_intensity.w = renderDataHandle.mCascadedShadowsPassData->shadowsIntensity;
 		cascadedShadowData.color_and_misc.xyz = renderDataHandle.mCascadedShadowsPassData->lightColor;
+		cascadedShadowData.color_and_misc.w = static_cast<float>(drawData.cascadeCount);
 	
 		for (size_t i = 0; i < renderDataHandle.mCascadedShadowsPassData->shadowCascades.size(); ++i) {
 			auto& cascade = renderDataHandle.mCascadedShadowsPassData->shadowCascades[i];
@@ -186,12 +218,31 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 			cascadeRenderData.cascade.w = static_cast<float>(cascade.samples);
 		}
 
+		const auto& levels = renderDataHandle.mCascadedShadowsPassData->shadowCascadeLevels;
+		auto splitAt = [&levels](size_t i) {
+			return (i < levels.size()) ? levels[i] : 1.0e6f;
+		};
+		cascadedShadowData.cascadeSplits = {
+			splitAt(1), splitAt(2), splitAt(3), splitAt(4)
+		};
+		cascadedShadowData.cascadeSplits2 = {
+			splitAt(5), splitAt(6), 1.0e6f, 1.0e6f
+		};
+
 		rhi->updateBuffer(cascadedShadowsUBO, cascadedShadowData);
+
+		const auto& mats = renderDataHandle.mCascadedShadowsPassData->lightSpaceMatrices;
+		if (!mats.empty()) {
+			rhi->updateBuffer(lightMatricesUBO, 0, mats.size() * sizeof(Math::Mat4), mats.data());
+		}
 	}
 
 	drawData.fogEnd = Engine::instance()->getWindow()->getScreenData().far;
 	drawData.fogStart = Engine::instance()->getWindow()->getScreenData().far * 0.9f;
-	drawData.viewPos = renderDataHandle.mCameraPos;
+	drawData.viewPosX = renderDataHandle.mCameraPos.x;
+	drawData.viewPosY = renderDataHandle.mCameraPos.y;
+	drawData.viewPosZ = renderDataHandle.mCameraPos.z;
+	rhi->updateBuffer(pushConstantsUBO, drawData);
 
 	RenderPassBeginInfo beginInfo;
 	beginInfo.framebuffer = lightingFBO;
@@ -202,7 +253,6 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, pipeline);
 	updateTextures(renderDataHandle, cmd);
-
 	rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Fragment, &drawData, sizeof(drawData));
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
@@ -229,6 +279,15 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 			renderDataHandle.mGeometryPassData->positionBuffer,
 			renderDataHandle.mGeometryPassData->sampler
 			});
+		writes.push_back(std::move(w));
+	}
+
+	if (lightMatricesUBO) {
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 11;
+		w.type = Render::DescriptorType::UniformBuffer;
+		w.buffers.push_back({ lightMatricesUBO });
 		writes.push_back(std::move(w));
 	}
 
@@ -276,6 +335,15 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		writes.push_back(std::move(w));
 	}
 
+	if (renderDataHandle.mPointPassData && renderDataHandle.mPointPassData->matricesUBO) {
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 3;
+		w.type = Render::DescriptorType::UniformBuffer;
+		w.buffers.push_back({ renderDataHandle.mPointPassData->matricesUBO });
+		writes.push_back(std::move(w));
+	}
+
 	// PointLightShadowMapArray (binding 4) - если нужен
 	if (renderDataHandle.mPointPassData) {
 		/*Render::WriteDescriptor w{};
@@ -302,16 +370,34 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		writes.push_back(std::move(w));
 	}
 
-	// Cascaded shadow map (binding 31) - если нужен отдельной текстурой
+	// Cascaded shadow map
 	if (renderDataHandle.mCascadedShadowsPassData) {
 		Render::WriteDescriptor w{};
 		w.set = mTexSet;
-		w.binding = 31;
+		w.binding = 8;
 		w.type = Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({
 			renderDataHandle.mCascadedShadowsPassData->shadowMapTexture,
 			renderDataHandle.mCascadedShadowsPassData->shadowMapSampler
 			});
+		writes.push_back(std::move(w));
+	}
+
+	{
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 15;
+		w.type = Render::DescriptorType::UniformBuffer;
+		w.buffers.push_back({ pushConstantsUBO });
+		writes.push_back(std::move(w));
+	}
+
+	if (renderDataHandle.cameraMatricesUBO) {
+		Render::WriteDescriptor w{};
+		w.set = mTexSet;
+		w.binding = 5;
+		w.type = Render::DescriptorType::UniformBuffer;
+		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		writes.push_back(std::move(w));
 	}
 

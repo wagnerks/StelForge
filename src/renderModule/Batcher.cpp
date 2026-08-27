@@ -86,7 +86,7 @@ void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::Descript
 		auto objs = drawObjects.second;
 		SFE::Debug::BenchmarkFunc scopeObj = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__) + std::string(" flush all") + std::to_string(i++));
 
-		rhi->updateBuffer(batcherBuffer, 0, sizeof(ecss::EntityId) * objs.entities.size(), objs.entities.data());
+		rhi->cmdUpdateBuffer(cmd, batcherBuffer, 0, sizeof(ecss::EntityId) * objs.entities.size(), objs.entities.data());
 		std::vector<SFE::Render::WriteDescriptor> writes {
 		{
 			{

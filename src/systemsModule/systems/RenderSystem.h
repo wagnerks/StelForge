@@ -56,6 +56,9 @@ namespace SFE::SystemsModule {
 		Render::RenderPasses::SSAOPass::Data* mSSAOPassData = nullptr;
 
 		Render::TextureHandle finalTexture;
+		Render::BufferHandle transformsSSBO;
+		Render::BufferHandle bonesSSBO;
+		Render::BufferHandle cameraMatricesUBO;
 
 		RenderMode mRenderType = RenderMode::DEFAULT;
 
@@ -73,6 +76,11 @@ namespace SFE::SystemsModule {
 		size_t objectsRendered = 0;
 		size_t verticesRendered = 0;
 		size_t drawCalls = 0;
+		size_t shadowMeshes = 0;
+		size_t shadowFbos = 0;
+		size_t shadowFbosTotal = 0;
+		uint32_t shadowPipeline = 0;
+		float shadowIntensity = 0.f;
 	};
 
 	class RenderSystem : public ecss::System {

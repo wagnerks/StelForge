@@ -10,8 +10,8 @@ layout(binding = 3) uniform sampler2D ssao;
 layout(binding = 4) uniform sampler2D shadows;
 layout(binding = 5) uniform sampler2D gOutlines;
 
-layout(binding = 30) uniform sampler2DArrayShadow PointLightShadowMapArray;
-layout(binding = 31) uniform sampler2DArrayShadow shadowMap;
+layout(binding = 7) uniform sampler2DArrayShadow PointLightShadowMapArray;
+layout(binding = 8) uniform sampler2DArrayShadow shadowMap;
 
 layout (std140, binding = 15) uniform PushConstants {
     vec3 viewPos;
@@ -56,10 +56,11 @@ layout (std140, binding = 9) uniform cascadedShadowBlock {
     vec4 direction_intensity; // xyz direction, w intensity
     vec4 color_and_misc; 
     CascadData data[6];
+    vec4 cascadeSplits;
+    vec4 cascadeSplits2;
 } cascadedShadow;
 
-
-layout (std140, binding = 0) uniform LightSpaceMatrices {
+layout (std140, binding = 11) uniform LightSpaceMatrices {
     mat4 lightSpaceMatrices[6];
 };
 
@@ -79,23 +80,23 @@ vec2 vogel_disk_sample(uint sample_index, int sample_count, float angle) {
 }
 
 float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
-    float shadow = 0.f; 
+    float shadow = 0.f;
 
     const float penumbra        = 1.0f;
-    
     const float temporal_offset = 0.0;
     const float temporal_angle  = temporal_offset * 3.14 * 2;
     const float g_shadow_filter_size = 1.0;
-    const float g_shadow_samples_rpc = 1.0 / cascadedShadow.data[layer].cascade.w;
+    int sampleCount = int(cascadedShadow.data[layer].cascade.w);
+    if (sampleCount < 1) {
+        sampleCount = 1;
+    }
+    const float g_shadow_samples_rpc = 1.0 / float(sampleCount);
 
-    
-
-    for (uint i = 0; i < int(cascadedShadow.data[layer].cascade.w); i++) {
-        const vec2 offset = vogel_disk_sample(i, int(cascadedShadow.data[layer].cascade.w), temporal_angle) * (cascadedShadow.data[layer].cascade.xy) *  g_shadow_filter_size * penumbra;
-        
-        const float lit = texture(shadowMap, vec4(projCoords.xy + offset, layer, projCoords.z + bias));
+    for (uint i = 0; i < sampleCount; i++) {
+        const vec2 offset = vogel_disk_sample(i, sampleCount, temporal_angle) * (cascadedShadow.data[layer].cascade.xy) * g_shadow_filter_size * penumbra;
+        const float lit = texture(shadowMap, vec4(projCoords.xy + offset, float(layer), projCoords.z));
         shadow += 1.0 - lit;
-    } 
+    }
 
     return shadow * g_shadow_samples_rpc;
 }
@@ -127,8 +128,15 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
     int  layer = 0;
     vec4 fragPosLightSpace;
     vec3 proj;
+    int cc = pc.cascadeCount;
+    if (cc < 1) {
+        cc = int(cascadedShadow.color_and_misc.w + 0.5);
+    }
+    if (cc < 1) {
+        cc = 4;
+    }
 
-    for (; layer < pc.cascadeCount; ++layer) {
+    for (; layer < cc; ++layer) {
         fragPosLightSpace = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
         proj = fragPosLightSpace.xyz / fragPosLightSpace.w;
         proj = proj * 0.5 + 0.5;
@@ -143,7 +151,7 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
         }
     }
 
-    if (layer >= pc.cascadeCount)
+    if (layer >= cc)
         return 0.0;
 
     const float illumination = -dot(Normal, cascadedShadow.direction_intensity.xyz);

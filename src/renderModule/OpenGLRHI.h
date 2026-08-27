@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <RenderModule/RenderHardwareInterface.h>
@@ -71,6 +72,49 @@ namespace SFE::Render
 		bool live = false;
 	};
 
+	struct CmdBeginRenderPass {
+		RenderPassBeginInfo info{};
+		Math::Vec4 clearColors[8]{};
+		float clearDepth = 1.f;
+		uint8_t clearStencil = 0;
+		bool hasOverrideColors = false;
+		bool hasOverrideDepth = false;
+		bool hasOverrideStencil = false;
+	};
+	struct CmdEndRenderPass {};
+	struct CmdBindPipeline { PipelineHandle pipeline; };
+	struct CmdBindVertexBuffer { uint32_t slot = 0; BufferHandle handle; uint32_t offset = 0; };
+	struct CmdBindIndexBuffer { BufferHandle handle; IndexType type = IndexType::Uint16; uint32_t offset = 0; };
+	struct CmdBindDescriptorSets { std::vector<GLDescriptorBindingData> bindings; };
+	struct CmdPushConstants { std::vector<uint8_t> data; };
+	struct CmdDraw { uint32_t vertexCount = 0, instanceCount = 1, firstVertex = 0, firstInstance = 0; };
+	struct CmdDrawIndexed { uint32_t indexCount = 0, instanceCount = 1, firstIndex = 0; int32_t vertexOffset = 0; uint32_t firstInstance = 0; };
+	struct CmdBlit { FramebufferHandle src; FramebufferHandle dst; BlitMask mask = BlitMask::Color; BlitFilter filter = BlitFilter::Nearest; };
+	struct CmdUpdateBuffer { BufferHandle handle; size_t offset = 0; std::vector<uint8_t> data; };
+	struct CmdPipelineBarrier { PipelineBarrier barrier; };
+
+	using GLCommand = std::variant<
+		CmdBeginRenderPass,
+		CmdEndRenderPass,
+		CmdBindPipeline,
+		CmdBindVertexBuffer,
+		CmdBindIndexBuffer,
+		CmdBindDescriptorSets,
+		CmdPushConstants,
+		CmdDraw,
+		CmdDrawIndexed,
+		CmdBlit,
+		CmdUpdateBuffer,
+		CmdPipelineBarrier
+	>;
+
+	struct GLCommandList
+	{
+		CommandListType type{};
+		bool recording = false;
+		bool live = false;
+		std::vector<GLCommand> commands;
+	};
 
 	class OpenGLRHI : public RenderHardwareInterface
 	{
@@ -167,6 +211,8 @@ namespace SFE::Render
 
 		std::vector<GLDescriptorSet> m_descriptorSets;
 		std::vector<GLDescriptorSetLayout> m_descriptorSetLayouts;
+		std::vector<GLCommandList> m_commandLists;
+		std::vector<uint32_t> m_freeCommandLists;
 
 		bool m_inited = false;
 
@@ -180,6 +226,21 @@ namespace SFE::Render
 		GLbitfield toGLMapFlags(MapMode mode, CpuAccess access) const;
 		GLenum toGLType(VertexFormat f) const;
 		GLint  toGLSize(VertexFormat f) const;
+
+		GLCommandList* recordingList(CommandListHandle cmd);
+		void executeCommand(const GLCommand& command);
+		void execBeginRenderPass(const CmdBeginRenderPass& cmd);
+		void execEndRenderPass();
+		void execBindPipeline(PipelineHandle pipeline);
+		void execBindVertexBuffer(uint32_t slot, BufferHandle handle, uint32_t offset);
+		void execBindIndexBuffer(BufferHandle handle, IndexType type, uint32_t offset);
+		void execDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
+		void execDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
+		void execPushConstants(const void* data, uint32_t size);
+		void execBlit(FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter);
+		void execBindDescriptorSets(const std::vector<GLDescriptorBindingData>& bindings);
+		void execUpdateBuffer(BufferHandle handle, size_t offset, size_t size, const void* data);
+		void execPipelineBarrier(const PipelineBarrier& barrier);
 
 	public:
 		RenderPassHandle createRenderPass(const RenderPassDesc& desc) override;
@@ -198,6 +259,8 @@ namespace SFE::Render
 		void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) override;
 		void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, ShaderStage stages, const void* data,	uint32_t size) override;
 		void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter) override;
+		void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) override;
+		void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) override;
 
 		DescriptorSetLayoutHandle createDescriptorSetLayout(const DescriptorSetLayoutDesc& desc) override;
 		void destroyDescriptorSetLayout(DescriptorSetLayoutHandle layout) override;
