@@ -1,5 +1,8 @@
 #include "CascadeShadowComponent.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "CameraComponent.h"
 #include "TransformComponent.h"
 #include "core/ECSHandler.h"
@@ -168,7 +171,7 @@ namespace SFE::ComponentsModule {
 			lightView[3][1] = -Math::dot(u, eye);
 			lightView[3][2] = Math::dot(f, eye);
 			
-			auto projViewMatrix = getLightSpaceMatrix(corners, lightView, shadowCascade.zMult.x, shadowCascade.zMult.y);
+			auto projViewMatrix = getLightSpaceMatrix(corners, lightView, shadowCascade.zMult.x, shadowCascade.zMult.y, resolution.x);
 
 			mLightSpaceMatrices.push_back(projViewMatrix);
 
@@ -176,7 +179,7 @@ namespace SFE::ComponentsModule {
 		}
 	}
 
-	SFE::Math::Mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier, float farMultiplier) {
+	SFE::Math::Mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier, float farMultiplier, float mapSize) {
 		Math::Vec4 transform = lightView * corners[0];
 		auto minX = transform.x;
 		auto maxX = transform.x;
@@ -190,17 +193,53 @@ namespace SFE::ComponentsModule {
 		for (auto i = 1u; i < corners.size(); i++) {
 			transform = lightView * corners[i];
 
-			minX = std::min(minX, transform.x);
-			maxX = std::max(maxX, transform.x);
+			minX = (std::min)(minX, transform.x);
+			maxX = (std::max)(maxX, transform.x);
 
-			minY = std::min(minY, transform.y);
-			maxY = std::max(maxY, transform.y);
+			minY = (std::min)(minY, transform.y);
+			maxY = (std::max)(maxY, transform.y);
 
-			minZ = std::min(minZ, transform.z);
-			maxZ = std::max(maxZ, transform.z);
+			minZ = (std::min)(minZ, transform.z);
+			maxZ = (std::max)(maxZ, transform.z);
 		}
 
-		auto ortho = SFE::MathModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ * nearMultiplier, maxZ * farMultiplier);
+		const float cx = (minX + maxX) * 0.5f;
+		const float cy = (minY + maxY) * 0.5f;
+		float radius = 0.f;
+		for (const auto& corner : corners) {
+			transform = lightView * corner;
+			const float dx = transform.x - cx;
+			const float dy = transform.y - cy;
+			radius = (std::max)(radius, std::sqrt(dx * dx + dy * dy));
+		}
+
+		const float res = mapSize > 1.f ? mapSize : 1024.f;
+		float worldPerTexel = (radius * 2.f) / res;
+		if (worldPerTexel < 1e-6f) {
+			worldPerTexel = 1e-6f;
+		}
+		radius = std::ceil(radius / worldPerTexel) * worldPerTexel;
+
+		minX = cx - radius;
+		maxX = cx + radius;
+		minY = cy - radius;
+		maxY = cy + radius;
+
+		minX = std::floor(minX / worldPerTexel) * worldPerTexel;
+		minY = std::floor(minY / worldPerTexel) * worldPerTexel;
+		maxX = minX + worldPerTexel * res;
+		maxY = minY + worldPerTexel * res;
+
+		if (minZ > maxZ) {
+			std::swap(minZ, maxZ);
+		}
+		const float zRange = (std::max)(maxZ - minZ, 1.f);
+		const float zNearPad = zRange * (std::clamp)(nearMultiplier, 0.5f, 3.f);
+		const float zFarPad = zRange * (std::clamp)(farMultiplier, 0.5f, 3.f) * 0.25f;
+		minZ -= zNearPad;
+		maxZ += zFarPad;
+
+		auto ortho = SFE::MathModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ, maxZ);
 
 		return ortho.getProjectionsMatrix() * lightView;
 	}

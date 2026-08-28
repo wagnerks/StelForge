@@ -1,195 +1,329 @@
 ﻿#include "ChunksSystem.h"
 
-#include <random>
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <string>
 
 #include "CameraSystem.h"
 #include "imgui.h"
-#include "OcTreeSystem.h"
-#include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/CameraComponent.h"
-#include "componentsModule/IsDrawableComponent.h"
+#include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/TransformComponent.h"
+#include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
+#include "core/FileSystem.h"
 #include "debugModule/Benchmark.h"
+#include "propertiesModule/PropertiesSystem.h"
+#include "renderModule/Utils.h"
+#include "systemsModule/systems/OcTreeSystem.h"
+
+namespace {
+	constexpr const char* kSceneVersionPath = "world/scene_version";
+	constexpr int kDefaultSceneVersion = 1;
+
+	int readSceneVersion() {
+		std::string text;
+		if (!SFE::FileSystem::isFileExists(kSceneVersionPath) || !SFE::FileSystem::readFile(kSceneVersionPath, text)) {
+			return 0;
+		}
+		try {
+			return std::stoi(text);
+		}
+		catch (...) {
+			return 0;
+		}
+	}
+
+	void writeSceneVersion(int version) {
+		SFE::FileSystem::createDirectories("world");
+		std::string text = std::to_string(version);
+		SFE::FileSystem::writeFile(kSceneVersionPath, text);
+	}
+
+	bool hasSavedChunks() {
+		namespace fs = std::filesystem;
+		std::error_code ec;
+		if (!fs::exists("world/chunks", ec)) {
+			return false;
+		}
+		for (const auto& entry : fs::directory_iterator("world/chunks", ec)) {
+			if (entry.path().extension() == ".json") {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void clearSavedChunks() {
+		namespace fs = std::filesystem;
+		std::error_code ec;
+		const fs::path dir = "world/chunks";
+		if (!fs::exists(dir, ec)) {
+			return;
+		}
+		for (const auto& entry : fs::directory_iterator(dir, ec)) {
+			if (entry.path().extension() == ".json") {
+				fs::remove(entry.path(), ec);
+			}
+		}
+	}
+}
 
 namespace SFE::SystemsModule {
 	ChunksSystem::ChunksSystem() : System({ SFE::SystemsModule::TaskType::CAMERA_UPDATED }) {
-		//ChunksSystem::updateAsync({ ECSHandler::getSystem<CameraSystem>()->getCurrentCamera() });
-	}
-
-	void ChunksSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {
-		auto curCam = entitiesToProcess.front();
-		auto curChunkCoords = ECSHandler::registry().pinComponent<const TransformComponent>(curCam)->getPos(true);
-
-		auto calcMinus = [size = static_cast<int>(CHUNK_SIZE)](float val) {
-			auto remainder = [size](float val) {
-				return static_cast<int>(std::fabs(val)) % size;
-			};
-			val = std::round(val);
-			if (val < 0.f) {
-				return val + remainder(val) - size;
-			}
-			else if (val > 0.f) {
-				return val - remainder(val);
-			}
-
-			return 0.f;
-		};
-
-		curChunkCoords.x = calcMinus(curChunkCoords.x);
-		curChunkCoords.y = calcMinus(curChunkCoords.y);
-		curChunkCoords.z = calcMinus(curChunkCoords.z);
-
-		if (mCurrentChunk == curChunkCoords) {
-			return;
-		}
-
-		mCurrentChunk = curChunkCoords;
-		mDeleted = 0;
-		mCreated = 0;
-
-		std::vector<Chunk> chunkClearTasksQueue = mChunks;
-		std::vector<Chunk> chunkLoadTasksQueue;
-
-		mChunks.clear();
-		for (float x = -CHUNK_DEEP; x <= CHUNK_DEEP; x++) {
-			for (float y = -CHUNK_DEEP; y <= CHUNK_DEEP; y++) {
-				for (float z = -CHUNK_DEEP; z <= CHUNK_DEEP; z++) {
-					mChunks.emplace_back(mCurrentChunk + Math::Vec3{ x, y, z } * CHUNK_SIZE);
-					auto it = std::find(chunkClearTasksQueue.begin(), chunkClearTasksQueue.end(), mChunks.back());
-					if (it == chunkClearTasksQueue.end()) {
-						chunkLoadTasksQueue.emplace_back(mChunks.back());
-					}
-					else {
-						chunkClearTasksQueue.erase(it);
-					}
-				}
-			}
-		}
-
-		if (!mUpdateQueue.empty()) {
-			mUpdateQueue.push({ std::move(chunkLoadTasksQueue), std::move(chunkClearTasksQueue) });
-			return;
-		}
-
-		mUpdateQueue.push({ std::move(chunkLoadTasksQueue), std::move(chunkClearTasksQueue) });
+		FileSystem::createDirectories("world/chunks");
 		ThreadPool::instance()->addTask([this] {
-			while (!mUpdateQueue.empty()) {
-				auto taskContainers = mUpdateQueue.front();
-				if (debugData.mClear) {
-					std::vector<ecss::SectorId> entitiesToDelete;
-					for (auto& chunk : taskContainers.second) {
-						clearChunk(chunk);
-						ECSHandler::getSystem<OcTreeSystem>()->forEachOctreeInAABB(FrustumModule::AABB{{chunk + CHUNK_SIZE * 0.5f}, CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f, CHUNK_SIZE * 0.5f}, [&entitiesToDelete](OcTreeSystem::SysOcTree& octree) mutable {
-							auto lock = octree.readLock();
-							octree.forEach([octree, &entitiesToDelete](auto& obj) mutable {
-								auto octreeComp = ECSHandler::registry().pinComponent<OcTreeComponent>(obj.data);
-								assert(octreeComp);
-								if (!octreeComp->mParentOcTrees.empty()) {
-									auto it = std::find(octreeComp->mParentOcTrees.begin(), octreeComp->mParentOcTrees.end(), octree.mPos);
-									if (it != octreeComp->mParentOcTrees.end()) {
-										octreeComp->mParentOcTrees.erase(it);
-									}
-									
-								}
-								
-								if (octreeComp->mParentOcTrees.empty()) {
-									entitiesToDelete.push_back(obj.data);
-								}
-							});
-							lock.unlock();
-							octree.clear();
-							/*auto wLock = octree.writeLock();
-							ECSHandler::getSystem<OcTreeSystem>()->deleteOctree(octree.mPos);
-							wLock.unlock();*/
-						});
-					}
-
-					mDeleted += entitiesToDelete.size();
-					ECSHandler::registry().destroyEntities(entitiesToDelete);
-				}
-
-				for (auto& chunk : taskContainers.first) {
-					loadChunk(chunk);
-				}
-				mFutures.waitAll();
-				mUpdateQueue.pop();
+			if (!debugData.proceduralSpheres) {
+				seedIfEmpty();
+			}
+			if (auto camSys = ECSHandler::getSystem<CameraSystem>()) {
+				updateAsync({ camSys->getCurrentCamera() });
 			}
 		});
-
 	}
 
-	void ChunksSystem::debugUpdate(float dt) {		
-		if (debugData.mChunksDraw) {
-			constexpr static Math::Mat4 rotate = {
-					{1.f,0.f,0.f,0.f},
-					{0.f,1.f,0.f,0.f},
-					{0.f,0.f,1.f,0.f},
-					{0.f,0.f,0.f,1.f}
-			};
+	ChunksSystem::~ChunksSystem() {
+		saveLoaded();
+	}
 
-			for (auto& chunkPos : mChunks) {
+	ChunksSystem::Chunk ChunksSystem::chunkOf(const Math::Vec3& pos) {
+		return {
+			static_cast<int>(std::floor(pos.x / CHUNK_SIZE)),
+			static_cast<int>(std::floor(pos.z / CHUNK_SIZE))
+		};
+	}
 
-				constexpr static auto notEmptyColor = Math::Vec4(0.5f, 0.5f, 0.5f, 0.08f);
+	std::string ChunksSystem::chunkPath(const Chunk& chunk) {
+		return "world/chunks/" + std::to_string(chunk.x) + "_" + std::to_string(chunk.z) + ".json";
+	}
 
-				Render::Utils::renderCubeMesh(
-					Math::Vec3(0.f, 0.f, 0.f),
-					Math::Vec3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE),
-					rotate, Math::Vec3(chunkPos), notEmptyColor
-				);
+	std::vector<ChunksSystem::Chunk> ChunksSystem::wantedChunks(const Chunk& center) {
+		std::vector<Chunk> wanted;
+		wanted.reserve(static_cast<size_t>((CHUNK_DEEP * 2 + 1) * (CHUNK_DEEP * 2 + 1)));
+		for (int x = -CHUNK_DEEP; x <= CHUNK_DEEP; ++x) {
+			for (int z = -CHUNK_DEEP; z <= CHUNK_DEEP; ++z) {
+				wanted.push_back({ center.x + x, center.z + z });
 			}
 		}
+		return wanted;
 	}
 
-	void ChunksSystem::clearChunk(const Chunk& chunk) {
-		if (!debugData.mClear) {
+	bool ChunksSystem::isWorldEntity(ecss::EntityId id) const {
+		if (!ECSHandler::registry().pinComponent<const ModelComponent>(id)) {
+			return false;
+		}
+		if (ECSHandler::registry().pinComponent<const CameraComponent>(id)) {
+			return false;
+		}
+		if (ECSHandler::registry().pinComponent<const CascadeShadowComponent>(id)) {
+			return false;
+		}
+		if (auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(id)) {
+			if (tree->getParent() != ecss::INVALID_ID) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	std::vector<ecss::EntityId> ChunksSystem::entitiesInChunk(const Chunk& chunk) const {
+		std::vector<ecss::EntityId> ids;
+		for (const auto& [id, model, transform] : ECSHandler::registry().view<const ModelComponent, const TransformComponent>()) {
+			if (!isWorldEntity(id)) {
+				continue;
+			}
+			if (chunkOf(transform->getPos(true)) == chunk) {
+				ids.push_back(id);
+			}
+		}
+		return ids;
+	}
+
+	void ChunksSystem::seedIfEmpty() {
+		const int savedVersion = readSceneVersion();
+		const bool hasChunkFile = hasSavedChunks();
+		if (hasChunkFile && savedVersion == kDefaultSceneVersion) {
 			return;
-		}		
+		}
+
+		clearSavedChunks();
+		{
+			std::lock_guard lock(mMutex);
+			mChunks.clear();
+			mHasCurrent = false;
+		}
+
+		PropertiesModule::PropertiesSystem::spawnDefaultScene();
+		writeSceneVersion(kDefaultSceneVersion);
+		std::vector<Chunk> spawned;
+		for (const auto& [id, model, transform] : ECSHandler::registry().view<const ModelComponent, const TransformComponent>()) {
+			if (!isWorldEntity(id)) {
+				continue;
+			}
+			const auto c = chunkOf(transform->getPos(true));
+			if (std::find(spawned.begin(), spawned.end(), c) == spawned.end()) {
+				spawned.push_back(c);
+			}
+		}
+		FileSystem::createDirectories("world/chunks");
+		for (const auto& c : spawned) {
+			FileSystem::writeJson(chunkPath(c), PropertiesModule::PropertiesSystem::serializeEntities(entitiesInChunk(c)));
+		}
+		std::lock_guard lock(mMutex);
+		for (const auto& c : spawned) {
+			if (std::find(mChunks.begin(), mChunks.end(), c) == mChunks.end()) {
+				mChunks.push_back(c);
+			}
+		}
+		debugData.loaded = static_cast<int>(mChunks.size());
 	}
 
 	void ChunksSystem::loadChunk(const Chunk& chunk) {
 		if (!debugData.mCreate) {
 			return;
 		}
-		return;
-		mFutures.add(ThreadPool::instance()->addTask([this, chunk]() {
-			auto cubeModel = AssetsModule::ModelLoader::instance()->load("models/cube.fbx");
-			float step = 250.f;
+		if (debugData.proceduralSpheres) {
+			PropertiesModule::PropertiesSystem::spawnSphereGrid(
+				chunk.x, chunk.z, CHUNK_SIZE, debugData.sphereSpacing);
+			return;
+		}
+		const auto path = chunkPath(chunk);
+		if (!FileSystem::isFileExists(path)) {
+			return;
+		}
+		PropertiesModule::PropertiesSystem::loadEntities(FileSystem::readJson(path));
+	}
 
-			std::random_device rd;
-			std::mt19937 generator(rd());
+	void ChunksSystem::unloadChunk(const Chunk& chunk) {
+		if (!debugData.mClear) {
+			return;
+		}
+		auto ids = entitiesInChunk(chunk);
+		if (!debugData.proceduralSpheres) {
+			FileSystem::createDirectories("world/chunks");
+			FileSystem::writeJson(chunkPath(chunk), PropertiesModule::PropertiesSystem::serializeEntities(ids));
+		}
 
-			// Define the distribution for the range -5.0f to 15.0f
-			std::uniform_real_distribution<float> distribution(-5.0f, 15.0f);
-			std::uniform_real_distribution<float> distribution1(1.f, 3.0f);
-			std::uniform_int_distribution<int> distribution2(0, 1);
-
-			//ECSHandler::registry().reserve<SFE::ComponentsModule::AABBComponent, OcTreeComponent, ModelComponent, TransformComponent>(24*24*24);
-
-			for (auto i = 1; i < 33; i+=1) {
-				for (auto y = 1; y < 33; y+=1) {
-					for (auto z = 1; z < 33 ; z+=1) {
-						if (distribution2(generator)) {
-							continue;
-						}
-						auto cube = ECSHandler::registry().takeEntity();
-						++mCreated;
-
-						float randomValue = distribution(generator);
-						float randomValue2 = distribution1(generator);
-						ECSHandler::registry().addComponent<SFE::ComponentsModule::AABBComponent>(cube);
-						ECSHandler::registry().addComponent<OcTreeComponent>(cube);
-						/*ECSHandler::registry().addComponentWithInit<ModelComponent>(cube, [cubeModel](ModelComponent* comp) { comp->init(cubeModel); }, cube);
-						ECSHandler::registry().addComponentWithInit<TransformComponent>(cube, [chunk, i ,step,y,z, randomValue, randomValue2](TransformComponent* comp) {
-							comp->setPos(chunk + Math::Vec3{ i* step, y* step + randomValue, z* step });
-							comp->setScale({ randomValue2 * 0.1f, randomValue2 * 0.1f, randomValue2 * 0.1f });
-						}, cube);*/
+		auto octreeSys = ECSHandler::getSystem<OcTreeSystem>();
+		for (auto id : ids) {
+			if (auto octreeComp = ECSHandler::registry().pinComponent<OcTreeComponent>(id)) {
+				for (const auto& parent : octreeComp->parents) {
+					if (auto* tree = octreeSys ? octreeSys->getOctree(parent.pos) : nullptr) {
+						auto lock = tree->writeLock();
+						tree->erase(id, parent.node);
 					}
 				}
 			}
-		}));
+		}
+		ECSHandler::registry().destroyEntities(ids);
+	}
+
+	void ChunksSystem::saveLoaded() {
+		if (debugData.proceduralSpheres) {
+			return;
+		}
+		std::vector<Chunk> loaded;
+		{
+			std::lock_guard lock(mMutex);
+			loaded = mChunks;
+		}
+		FileSystem::createDirectories("world/chunks");
+		for (const auto& chunk : loaded) {
+			FileSystem::writeJson(chunkPath(chunk), PropertiesModule::PropertiesSystem::serializeEntities(entitiesInChunk(chunk)));
+		}
+	}
+
+	void ChunksSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {
+		if (entitiesToProcess.empty()) {
+			return;
+		}
+		if (mBusy.exchange(true)) {
+			return;
+		}
+
+		auto curCam = entitiesToProcess.front();
+		auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(curCam);
+		if (!transform) {
+			mBusy = false;
+			return;
+		}
+
+		const auto camChunk = chunkOf(transform->getPos(true));
+		std::vector<Chunk> loaded;
+		{
+			std::lock_guard lock(mMutex);
+			if (mHasCurrent && camChunk == mCurrentChunk) {
+				mBusy = false;
+				return;
+			}
+			mCurrentChunk = camChunk;
+			mHasCurrent = true;
+			debugData.currentX = camChunk.x;
+			debugData.currentZ = camChunk.z;
+			loaded = mChunks;
+		}
+
+		auto wanted = wantedChunks(camChunk);
+		std::vector<Chunk> toLoad;
+		std::vector<Chunk> toUnload;
+		for (const auto& c : wanted) {
+			if (std::find(loaded.begin(), loaded.end(), c) == loaded.end()) {
+				toLoad.push_back(c);
+			}
+		}
+		for (const auto& c : loaded) {
+			if (std::find(wanted.begin(), wanted.end(), c) == wanted.end()) {
+				toUnload.push_back(c);
+			}
+		}
+
+		for (const auto& c : toUnload) {
+			unloadChunk(c);
+		}
+		for (const auto& c : toLoad) {
+			loadChunk(c);
+		}
+
+		{
+			std::lock_guard lock(mMutex);
+			mChunks = std::move(wanted);
+			debugData.loaded = static_cast<int>(mChunks.size());
+		}
+		mBusy = false;
+	}
+
+	void ChunksSystem::debugUpdate(float dt) {
+		if (!debugData.mChunksDraw) {
+			return;
+		}
+
+		std::vector<Chunk> loaded;
+		{
+			std::lock_guard lock(mMutex);
+			loaded = mChunks;
+		}
+
+		constexpr static Math::Mat4 rotate = {
+			{1.f, 0.f, 0.f, 0.f},
+			{0.f, 1.f, 0.f, 0.f},
+			{0.f, 0.f, 1.f, 0.f},
+			{0.f, 0.f, 0.f, 1.f}
+		};
+		constexpr static auto color = Math::Vec4(0.5f, 0.5f, 0.5f, 0.08f);
+		for (const auto& chunk : loaded) {
+			const Math::Vec3 pos{
+				static_cast<float>(chunk.x) * CHUNK_SIZE,
+				0.f,
+				static_cast<float>(chunk.z) * CHUNK_SIZE
+			};
+			Render::Utils::renderCubeMesh(
+				Math::Vec3(0.f, 0.f, 0.f),
+				Math::Vec3(CHUNK_SIZE, 2.f, CHUNK_SIZE),
+				rotate, pos, color
+			);
+		}
 	}
 }
-

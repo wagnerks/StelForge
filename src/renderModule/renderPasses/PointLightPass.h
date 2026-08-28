@@ -1,46 +1,38 @@
 ﻿#pragma once
-
 #include "assetsModule/modelModule/BoundingVolume.h"
-#include "mathModule/Projection.h"
-#include "ecss/Types.h"
+#include "renderModule/FrameBlackboard.h"
 #include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
-	class PointLightPass : public RenderPass {
+	class PointLightPass : public RenderPassWithData {
 	public:
-		struct Data {
-			std::vector<ecss::SectorId> shadowEntities;
-			BufferHandle matricesUBO;
-		};
+		using Data = Render::PointShadowFrame;
 
+		PointLightPass();
+		void prepare() override;
 		void init(SystemsModule::RenderData& renderDataHandle) override;
-		void freeBuffers() const;
-
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
+
 	private:
+		void publish(SystemsModule::RenderData& renderDataHandle);
+		void collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<ecss::SectorId>* entities);
+
 		FramebufferHandle lightFramebuffer;
-	
 		TextureHandle mLightDepthMaps;
 		SamplerHandle mLightDepthMapsSampler;
-
 		BufferHandle mMatricesUBO;
-
 		RenderPassHandle renderPass;
 		PipelineHandle pipeline;
+		Render::DescriptorSetLayoutHandle mSetLayout{};
+		Render::DescriptorSetHandle mSet{};
 
-		Render::DescriptorSetLayoutHandle mTexSetLayout{};
-		Render::DescriptorSetHandle       mTexSet{};
-
-		void fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius);
-		SFE::MathModule::PerspectiveProjection lightProjection;
-		std::vector<Math::Mat4> lightMatrices;
-		std::vector<FrustumModule::Frustum> frustums;
-		std::vector<std::pair<ecss::SectorId, int>> offsets;
-
-		const int shadowResolution = 1024;
-		const int maxShadowFaces = 36;
-
+		bool mInited = false;
 		Data data{};
+
+		static constexpr int shadowResolution = 1024;
+		static constexpr int maxLights = 12;
+		static constexpr int facesPerLight = 6;
+		static constexpr int maxShadowFaces = maxLights * facesPerLight;
 	};
 }

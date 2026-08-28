@@ -10,6 +10,7 @@
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/PhysicsComponent.h"
 #include "componentsModule/OcclusionComponent.h"
+#include "componentsModule/MaterialComponent.h"
 
 namespace SFE::PropertiesModule {
 #define TYPE_NAME(type)									\
@@ -40,4 +41,5 @@ namespace SFE::PropertiesModule {
 	TYPE_NAME(AABBComponent);
 	TYPE_NAME(PhysicsComponent);
 	TYPE_NAME(OcclusionComponent);
+	TYPE_NAME(MaterialComponent);
 }

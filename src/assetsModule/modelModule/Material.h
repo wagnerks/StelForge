@@ -7,7 +7,9 @@ namespace SFE {
 		CUSTOM = 0,
 		DIFFUSE = 1,
 		NORMALS,
-		SPECULAR
+		SPECULAR,
+		ROUGHNESS,
+		METALLIC
 	};
 
 	struct MaterialTexture {
@@ -28,7 +30,9 @@ namespace SFE {
 			return nullptr;
 		}
 
-
 		std::unordered_map<MaterialType, MaterialTexture> materialTextures;
+		bool transparent = false;
+		float opacity = 1.f;
+		float ior = 1.5f;
 	};
 }

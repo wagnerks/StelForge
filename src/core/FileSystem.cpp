@@ -14,6 +14,12 @@ namespace SFE {
 		return std::filesystem::exists(path);
 	}
 
+	bool FileSystem::createDirectories(std::string_view path) {
+		std::error_code ec;
+		std::filesystem::create_directories(path, ec);
+		return !ec;
+	}
+
 	bool FileSystem::readFile(std::string_view path, std::string& file) {
 		std::ifstream inputFile;
 

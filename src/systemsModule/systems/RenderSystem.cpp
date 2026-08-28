@@ -2,6 +2,9 @@
 #include "renderModule/Utils.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <iterator>
 
 #include "CameraSystem.h"
 #include "imgui.h"
@@ -25,6 +28,7 @@
 #include "renderModule/renderPasses/SSAOPass.h"
 #include "renderModule/renderPasses/DebugPass.h"
 #include "renderModule/renderPasses/PointLightPass.h"
+#include "runtimeBridge/RuntimeBridge.h"
 
 #include "componentsModule/TransformComponent.h"
 #include "renderModule/TextRenderer.h"
@@ -38,44 +42,19 @@
 
 namespace SFE::SystemsModule {
 
-	template <typename PassType>
-	void RenderSystem::addRenderPass() {
-		size_t i = 0;
-		for (; i < RENDER_PASSES_PRIORITY.size(); i++) {
-			if (RENDER_PASSES_PRIORITY[i] == typeid(PassType).hash_code()) {
-				break;
-			}
-		}
-
-		assert(i != RENDER_PASSES_PRIORITY.size());
-		if (i == RENDER_PASSES_PRIORITY.size()) {
-			return;
-		}
-
-		auto pass = new PassType();
-		pass->init(mRenderData);
-		pass->setPriority(i);
-
-		mRenderPasses.emplace_back(pass);
-
-		std::sort(mRenderPasses.begin(), mRenderPasses.end(), [](Render::RenderPass* a, Render::RenderPass* b) {
-			return a->getPriority() < b->getPriority();
-		});
-	}
-
 	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, MATERIAL_UPDATED, MESH_UPDATED }) {
-		mRenderPasses.reserve(RENDER_PASSES_PRIORITY.size());
-
-		//addRenderPass<Render::RenderPasses::OcclusionPass>();
-		addRenderPass<Render::RenderPasses::CascadedShadowPass>();//todo passes shoudle be created according to settings
-		//addRenderPass<Render::RenderPasses::PointLightPass>();
-		addRenderPass<Render::RenderPasses::GeometryPass>();
-		addRenderPass<Render::RenderPasses::ShadersPass>();
-		addRenderPass<Render::RenderPasses::LightingPass>();
-		addRenderPass<Render::RenderPasses::SSAOPass>();
-		//addRenderPass<Render::RenderPasses::DebugPass>();
-		//addRenderPass<Render::RenderPasses::GUIPass>();
-		addRenderPass<Render::RenderPasses::FinalPass>();
+		mRenderPasses.reserve(std::size(RENDER_PASSES));
+		for (size_t i = 0; i < std::size(RENDER_PASSES); ++i) {
+			const auto& entry = RENDER_PASSES[i];
+			if (!entry.enabled || !entry.create) {
+				continue;
+			}
+			auto* pass = entry.create();
+			pass->init(mRenderData);
+			pass->setPriority(i);
+			mRenderPasses.emplace_back(pass);
+			mPassNames.emplace_back(entry.name);
+		}
 	
 		{
 			Render::BufferDesc uboDesc;
@@ -87,6 +66,7 @@ namespace SFE::SystemsModule {
 		}
 
 		constexpr size_t maxDrawSize = 4096;
+		mGpuCapacity = maxDrawSize;
 		{
 			Render::BufferDesc ssbDesc;
 			ssbDesc.size = sizeof(Math::Mat4) * maxDrawSize;
@@ -110,7 +90,7 @@ namespace SFE::SystemsModule {
 			frameLayout.bindings = {
 				{ 5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment | Render::ShaderStage::Geometry },
 				{ 1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
-				{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
+				{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
 			};
 			frameSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(frameLayout);
 			frameSet = Engine::instance()->rhi()->allocateDescriptorSet(frameSetLayout);
@@ -134,12 +114,36 @@ namespace SFE::SystemsModule {
 	void RenderSystem::update(float_t dt) {
 		FUNCTION_BENCHMARK;
 
+		mRenderData.prevPV = mRenderData.current.PV;
 		mRenderData.current = mRenderData.next;
 		mRenderData.cameraProjection = mRenderData.nextCameraProjection;
 
 		mRenderData.mCameraPos = mRenderData.mNextCameraPos;
 		mRenderData.mViewDir = mRenderData.mNextViewDir;
 		mRenderData.mCamFrustum = mRenderData.mNextCamFrustum;
+
+		++mRenderData.taaFrame;
+		if (mRenderData.graphics.taa) {
+			const auto& screen = Engine::instance()->getWindow()->getScreenData();
+			auto halton = [](uint32_t index, uint32_t base) {
+				float f = 1.f;
+				float r = 0.f;
+				while (index > 0) {
+					f /= static_cast<float>(base);
+					r += f * static_cast<float>(index % base);
+					index /= base;
+				}
+				return r;
+			};
+			const uint32_t idx = static_cast<uint32_t>(mRenderData.taaFrame % 16) + 1u;
+			const float rw = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
+			const float rh = screen.renderH > 0 ? static_cast<float>(screen.renderH) : 1.f;
+			const float jx = (halton(idx, 2u) - 0.5f) * 2.f / rw;
+			const float jy = (halton(idx, 3u) - 0.5f) * 2.f / rh;
+			mRenderData.current.projection[2][0] += jx;
+			mRenderData.current.projection[2][1] += jy;
+			mRenderData.current.PV = mRenderData.current.projection * mRenderData.current.view;
+		}
 
 		Engine::instance()->rhi()->updateBuffer(cameraMatricesUBO, 0, sizeof(RenderMatrices), &mRenderData.current);
 
@@ -154,7 +158,7 @@ namespace SFE::SystemsModule {
 
 		mRenderData.mNextCameraPos = transformComp->getPos(true);
 		mRenderData.mNextViewDir = normalize(transformComp->getForward());
-		mRenderData.mNextCamFrustum = cameraComp->getFrustum();
+		mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
 
 		mRenderData.rotate();
 
@@ -165,6 +169,39 @@ namespace SFE::SystemsModule {
 
 	void RenderSystem::debugUpdate(float dt) {
 		return;
+	}
+
+	void RenderSystem::ensureGpuCapacity(ecss::EntityId id) {
+		const size_t needed = static_cast<size_t>(id) + 1;
+		if (needed <= mGpuCapacity) {
+			return;
+		}
+
+		size_t newCap = mGpuCapacity < 4096 ? 4096 : mGpuCapacity;
+		while (newCap < needed) {
+			newCap *= 2;
+		}
+
+		auto* rhi = Engine::instance()->rhi();
+		Render::BufferDesc ssbDesc;
+		ssbDesc.size = sizeof(Math::Mat4) * newCap;
+		ssbDesc.usage = Render::BufferUsage::Storage;
+		ssbDesc.cpuAccess = Render::CpuAccess::Write;
+		ssbDesc.debugName = "TransformsSSBO";
+		auto newTransforms = rhi->createBuffer(ssbDesc);
+
+		for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::TransformMatComp>()) {
+			if (static_cast<size_t>(entId) < newCap && comp) {
+				rhi->updateBuffer(newTransforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &comp->mTransform);
+			}
+		}
+
+		transforms = newTransforms;
+		mGpuCapacity = newCap;
+		mRenderData.transformsSSBO = transforms;
+		rhi->updateDescriptorSets({
+			{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
+		});
 	}
 
 	void RenderSystem::prepareDataForNextFrame() {
@@ -187,15 +224,25 @@ namespace SFE::SystemsModule {
 
 
 			for (auto& [id, entities] : dir) {
-				ecss::Ranges<ecss::EntityId> range;
+				std::vector<ecss::EntityId> ids;
+				ids.reserve(entities.size());
 				for (auto [entId, _] : entities) {
-					range.insert(entId);
+					ids.push_back(entId);
 				}
+				std::sort(ids.begin(), ids.end());
+				ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+				if (id == getDirtyId<ComponentsModule::TransformMatComp>() && !ids.empty()) {
+					ensureGpuCapacity(ids.back());
+				}
+				auto range = OcTreeSystem::makeEntityRanges(std::move(ids));
 
 				if (id == getDirtyId<ComponentsModule::TransformMatComp>()) {//todo support deleting
 					for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::TransformMatComp>(range)) {
+						if (!comp) {
+							continue;
+						}
 						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<ComponentsModule::TransformMatComp>(entId, *comp);
-						Engine::instance()->rhi()->updateBuffer(transforms, entId * sizeof(Math::Mat4), sizeof(Math::Mat4), &comp->mTransform);
+						Engine::instance()->rhi()->updateBuffer(transforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &comp->mTransform);
 					}
 				}
 				else if (id == getDirtyId<ComponentsModule::ArmatureBonesComponent>()) {
@@ -239,93 +286,83 @@ namespace SFE::SystemsModule {
 		}
 	}
 
+	bool RenderSystem::shouldRunPass(size_t passIndex) const
+	{
+		if (passIndex >= mPassNames.size()) {
+			return true;
+		}
+
+		const char* name = mPassNames[passIndex];
+		const auto& gfx = mRenderData.graphics;
+		if (std::strcmp(name, "SSAO") == 0) {
+			return gfx.ssao;
+		}
+		if (std::strcmp(name, "SSR") == 0) {
+			return gfx.ssr;
+		}
+		if (std::strcmp(name, "Volumetric") == 0) {
+			return gfx.volumetric;
+		}
+		if (std::strcmp(name, "TAA") == 0) {
+			return gfx.taa;
+		}
+		if (std::strcmp(name, "DoF") == 0) {
+			return gfx.dof;
+		}
+
+		auto* engine = Engine::instance();
+		if (engine->publishEditorDisplay() && !engine->presentToScreen()) {
+			if (std::strcmp(name, "Debug") == 0 || std::strcmp(name, "TextOverlay") == 0) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	void RenderSystem::renderFrame()
 	{
-		mCpuFrameStart = std::chrono::high_resolution_clock::now();
+		auto* info = RenderDebugInfo::instance();
+		info->objectsRendered = 0;
+		info->verticesRendered = 0;
+		info->drawCalls = 0;
+		info->passCount = 0;
 
-		// swap gpu queries (we measure frame N with query A while retrieving result of frame N-1 from query B)
-		int prevQuery = mCurrentGpuQuery;
-		mCurrentGpuQuery = (mCurrentGpuQuery + 1) % 2;
-
-		// begin new GPU timing for this frame
-		//glBeginQuery(GL_TIME_ELAPSED, mGpuTimeQueries[mCurrentGpuQuery]);
+		const auto tFrame = std::chrono::high_resolution_clock::now();
 
 		auto rhi = Engine::instance()->rhi();
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
 		rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
-		for (const auto renderPass : mRenderPasses) {
-			renderPass->render(mRenderData, cmd);
+		for (size_t i = 0; i < mRenderPasses.size(); ++i) {
+			if (!shouldRunPass(i)) {
+				continue;
+			}
+			const auto tPass = std::chrono::high_resolution_clock::now();
+			mRenderPasses[i]->render(mRenderData, cmd);
+			if (info->passCount < 16) {
+				info->passTimes[info->passCount] = {
+					i < mPassNames.size() ? mPassNames[i] : "pass",
+					std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPass).count()
+				};
+				++info->passCount;
+			}
 		}
 		rhi->endCommandList(cmd);
 
+		const auto tSubmit = std::chrono::high_resolution_clock::now();
 		rhi->submit(&cmd, 1);
+		info->submitMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tSubmit).count();
+		info->gpuMs = static_cast<float>(rhi->lastGpuMs());
+		if (Engine::instance()->publishEditorDisplay()) {
+			rhi->publishDisplay(mRenderData.frame.framebuffer(Render::FrameId::Final));
+			if (RuntimeBridge::RuntimeBridge::isAlive()) {
+				RuntimeBridge::RuntimeBridge::instance()->streamPresentedFrame();
+			}
+		}
+
+		const auto tPresent = std::chrono::high_resolution_clock::now();
 		rhi->present();
-
-		// end gpu query for current frame
-		//glEndQuery(GL_TIME_ELAPSED);
-
-		//{
-		//	// try retrieve previous frame gpu timing (non-blocking if available)
-		//	GLuint available = 0;
-		//	glGetQueryObjectuiv(mGpuTimeQueries[prevQuery], GL_QUERY_RESULT_AVAILABLE, &available);
-		//	if (available) {
-		//		unsigned long long timeElapsed = 0; // nanoseconds
-		//		glGetQueryObjectui64v(mGpuTimeQueries[prevQuery], GL_QUERY_RESULT, &timeElapsed);
-		//		mLastGpuTimeMs = double(timeElapsed) / 1'000'000.0; // ns -> ms
-		//	}
-
-		//	static Debug::SystemLoadWin sys;
-		//	static bool inited = false;
-		//	if (!inited) { sys.init(); inited = true; }
-
-		//	sys.update(dt);
-
-		//	auto font = Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20);
-		//	auto red = Math::Vec3{ 1.f,0.f,0.f };
-		//	auto green = Math::Vec3{ 0.f,1.f,0.f };
-		//	
-		//	Render::TextRenderer::instance()->renderText(
-		//		"CPU load: " + std::to_string((int)std::round(sys.cpuPercentUI())) + "%", 10.f, 110.f, 1.f, red, font);
-
-		//	Render::TextRenderer::instance()->renderText(
-		//		sys.gpu() >= 0
-		//		? "GPU load: " + std::to_string((int)std::round(sys.gpuPercentUI())) + "%"
-		//		: "GPU load: n/a",
-		//		10.f, 140.f, 1.f, green, font);
-
-		//	// CPU frame end
-		//	auto cpuEnd = std::chrono::high_resolution_clock::now();
-		//	mLastCpuFrameMs = std::chrono::duration<double, std::milli>(cpuEnd - mCpuFrameStart).count();
-
-		//	// compute % load relative to frame time (dt). dt is in seconds.
-		//	double frameMs = max(0.000001, static_cast<double>(Engine::instance()->getDeltaTime()) * 1000.0);
-		//	double cpuLoad = std::clamp(mLastCpuFrameMs / frameMs * 100.0, 0.0, 999.9); // allow >100 if over budget but clamp display
-		//	double gpuLoad = std::clamp(mLastGpuTimeMs / frameMs * 100.0, 0.0, 999.9);
-		//	typedef int (WINAPI* PFNWGLGETSWAPINTERVALEXTPROC) ();
-		//	static PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = nullptr;
-
-		//
-		//	if (!wglGetSwapIntervalEXT) {
-		//		wglGetSwapIntervalEXT = reinterpret_cast<PFNWGLGETSWAPINTERVALEXTPROC>(
-		//			wglGetProcAddress("wglGetSwapIntervalEXT"));
-		//	}
-		//	auto interval = wglGetSwapIntervalEXT ? wglGetSwapIntervalEXT() : -1; // -1 = узнать не удалось
-		//
-		//
-		//	// overlay
-		//	Render::TextRenderer::instance()->renderText("FPS: " + std::to_string(Engine::instance()->getFPS()), 10.f, 50.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("dt: " + std::to_string(Engine::instance()->getDeltaTime()), 10.f, 80.f, 1.f, Math::Vec3{1.f, 0.f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("CPU(ms): " + std::to_string(mLastCpuFrameMs), 10.f, 170.f, 1.f, Math::Vec3{1.f, 0.8f, 0.f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("GPU(ms): " + std::to_string(mLastGpuTimeMs), 10.f, 200.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("VSYNC: " + std::to_string(interval), 10.f, 230.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("objects rendered: " + std::to_string(RenderDebugInfo::instance()->objectsRendered), 10.f, 260.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("vertices rendered: " + std::to_string(RenderDebugInfo::instance()->verticesRendered), 10.f, 290.f, 1.f, Math::Vec3{ 0.2f, 1.f, 0.2f }, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-		//	Render::TextRenderer::instance()->renderText("draw calls: " + std::to_string(RenderDebugInfo::instance()->drawCalls), 10.f, 320.f, 1.f, Math::Vec3{0.2f, 1.f, 0.2f}, Render::FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 20));
-
-		//	RenderDebugInfo::instance()->objectsRendered = 0;
-		//	RenderDebugInfo::instance()->verticesRendered = 0;
-		//	RenderDebugInfo::instance()->drawCalls = 0;
-		//}
+		info->presentMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPresent).count();
+		info->cpuMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tFrame).count();
 	}
 
 	RenderSystem::~RenderSystem() {

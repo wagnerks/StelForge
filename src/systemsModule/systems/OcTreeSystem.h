@@ -1,13 +1,8 @@
 ﻿#pragma once
 #include "systemsModule/SystemBase.h"
-#include "containersModule//OcTree.h"
-
-namespace SFE {
-	namespace FrustumModule {
-		struct Frustum;
-		struct Plane;
-	}
-}
+#include "assetsModule/modelModule/BoundingVolume.h"
+#include "containersModule/OcTree.h"
+#include <ecss/Ranges.h>
 
 namespace SFE::SystemsModule {
 	class OcTreeSystem : public ecss::System, public ThreadSynchronizer {
@@ -33,6 +28,21 @@ namespace SFE::SystemsModule {
 
 			return nullptr;
 		}
+
+		bool empty() const { return mOctrees.empty(); }
+
+		template<class Func>
+		void forEachObjectInFrustum(const FrustumModule::Frustum& frustum, Func&& func) {
+			for (auto& [treePos, tree] : mOctrees) {
+				(void)treePos;
+				auto lock = tree.readLock();
+				tree.forEachObjectInsideFrustum(frustum, func);
+			}
+		}
+
+		void collectVisible(const FrustumModule::Frustum& frustum, std::vector<ecss::EntityId>& out);
+		ecss::Ranges<ecss::EntityId> collectVisibleRanges(const FrustumModule::Frustum& frustum);
+		static ecss::Ranges<ecss::EntityId> makeEntityRanges(std::vector<ecss::EntityId> ids);
 
 		float curMinX, curMinY, curMinZ;
 		float curMaxX, curMaxY, curMaxZ;

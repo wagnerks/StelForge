@@ -1,228 +1,337 @@
 ﻿#include "PointLightPass.h"
 
-#include <shared_mutex>
+#include <algorithm>
 
-#include "componentsModule/CameraComponent.h"
-#include "componentsModule/CascadeShadowComponent.h"
-#include "componentsModule/IsDrawableComponent.h"
+#include "assetsModule/modelModule/Vertex.h"
+#include "mathModule/Projection.h"
+#include "mathModule/Utils.h"
+#include "assetsModule/shaderModule/ShaderBase.h"
 #include "componentsModule/LightSourceComponent.h"
-#include "componentsModule/ModelComponent.h"
+#include "componentsModule/MaterialComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
+#include "core/Engine.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
-
-#include "logsModule/logger.h"
-#include "systemsModule/systems/CameraSystem.h"
+#include "multithreading/ThreadPool.h"
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemManager.h"
-#include "systemsModule/SystemsPriority.h"
+
+namespace {
+	void appendFaceMatrices(std::vector<SFE::Math::Mat4>& out, SFE::Math::Vec3 pos, float nearP, float radius) {
+		SFE::MathModule::PerspectiveProjection proj(90.f, 1.f, nearP, radius);
+		const auto transform = SFE::Math::translate(SFE::Math::Mat4(1.0f), pos);
+		for (auto angle : { 0.f, 90.f, -90.f, 180.f }) {
+			out.push_back(proj.getProjectionsMatrix() * SFE::Math::inverse(SFE::Math::rotate(transform, SFE::Math::radians(angle), { 0.f, 1.f, 0.f })));
+		}
+		for (auto angle : { 90.f, -90.f }) {
+			const auto rotated = SFE::Math::rotate(transform, SFE::Math::radians(angle), { 1.f, 0.f, 0.f });
+			out.push_back(proj.getProjectionsMatrix() * SFE::Math::inverse(rotated));
+		}
+	}
+
+	struct PointShadowPush {
+		int lightCount = 0;
+		float casterOpacity = 1.f;
+		float pad1 = 0.f;
+		float pad2 = 0.f;
+	};
+}
 
 namespace SFE::Render::RenderPasses {
-	void PointLightPass::init(SystemsModule::RenderData& renderDataHandle) {
-		lightProjection = SFE::MathModule::PerspectiveProjection(90.f, 1.f, 0.01f, 100);
-		freeBuffers();
-		TextureDesc texDesc;
-		texDesc.width = shadowResolution;
-		texDesc.height = shadowResolution;
-		texDesc.depth = maxShadowFaces;
-		texDesc.dimension = TextureDimension::Array;
-		texDesc.format = TextureFormat::DEPTH_COMPONENT32F;
-		texDesc.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
-		mLightDepthMaps = Engine::instance()->rhi()->createTexture(texDesc);
 
-		SamplerDesc samplerDesc;
-		samplerDesc.minFilter = FilterMode::Linear;
-		samplerDesc.magFilter = FilterMode::Linear;
-		samplerDesc.addressU = AddressMode::ClampToEdge;
-		samplerDesc.addressV = AddressMode::ClampToEdge;
-		samplerDesc.compareOp = CompareOp::Less;
-		mLightDepthMapsSampler = Engine::instance()->rhi()->createSampler(samplerDesc);
+PointLightPass::PointLightPass() {
+	getContainer().init(2);
+}
 
-		FramebufferDesc fbDesc;
-		fbDesc.width = shadowResolution;
-		fbDesc.height = shadowResolution;
-		fbDesc.depthStencilAttachment = FramebufferAttachmentDesc{ mLightDepthMaps };
-
-		lightFramebuffer = Engine::instance()->rhi()->createFramebuffer(fbDesc);
-
-		BufferDesc bufDesc;
-		bufDesc.size = sizeof(Math::Mat4) * maxShadowFaces;
-		bufDesc.usage = BufferUsage::Uniform;
-		bufDesc.cpuAccess = CpuAccess::Write;
-		bufDesc.debugName = "PointLightPass_MatricesUBO";
-		mMatricesUBO = Engine::instance()->rhi()->createBuffer(bufDesc);
-		
-
-		RenderPassDesc rpDesc;
-		rpDesc.hasDepthStencil = true;
-		rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
-		rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
-		renderPass = Engine::instance()->rhi()->createRenderPass(rpDesc);
-
-		GraphicsPipelineDesc pipelineDesc;
-		pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "point light vs", ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.vs") });
-		pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "point light fs", ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.fs") });
-		pipelineDesc.shaders.geometry = Engine::instance()->rhi()->createShaderModule({ ShaderStage::Vertex, "point light gs", ShaderModule::ShaderBase::loadShaderCode("shaders/pointLightMap.gs")});
-		pipelineDesc.depthStencilState.depthTest = true;
-		pipelineDesc.depthStencilState.depthWrite = true;
-		pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
-		pipelineDesc.renderPass = renderPass;
-		pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
-
-		Render::DescriptorSetLayoutDesc texLayoutDesc;
-		texLayoutDesc.bindings.emplace_back(30, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Geometry);
-		texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
-
-		mTexSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(texLayoutDesc);
-		mTexSet = Engine::instance()->rhi()->allocateDescriptorSet(mTexSetLayout);
+void PointLightPass::collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<ecss::SectorId>* entities) {
+	matrices.clear();
+	if (entities) {
+		entities->clear();
 	}
 
-	void PointLightPass::freeBuffers() const {
-	}
+	struct Candidate {
+		ecss::SectorId id;
+		Math::Vec3 pos;
+		float nearP = 0.1f;
+		float radius = 1.f;
+		float dist2 = 0.f;
+	};
+	std::vector<Candidate> candidates;
+	candidates.reserve(32);
 
-	void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
-		FUNCTION_BENCHMARK
-		lightMatrices.clear();
-		frustums.clear();
-		renderDataHandle.mPointPassData = &data;
-		data.shadowEntities.clear();
-		data.matricesUBO = mMatricesUBO;
-
-		offsets.clear();
-		
-		for (const auto& [entity,lightSource, transform] : ECSHandler::registry().view<LightSourceComponent, TransformComponent>()) {
-			//todo check is light side frustum in camera frustum, and filter it to ignore light sources which is not on your screen
-			if (!FrustumModule::SquareAABB::isOnFrustum(renderDataHandle.mCamFrustum, transform->getPos(true), lightSource->mRadius)) {
-				continue;
-			}
-
-			//todo some dirty logic
-			switch (lightSource->getType()) {
-			case ComponentsModule::eLightType::DIRECTIONAL: {
-				/*float shadowHeight = 100.f;
-				float shadowWidth = 100.f;
-				SFE::MathModule::OrthoProjection proj = SFE::MathModule::OrthoProjection({ -shadowWidth * 0.5f, -shadowHeight * 0.5f }, { shadowWidth * 0.5f, shadowHeight * 0.5f }, 0.01f, lightSource.mRadius);
-
-				lightMatrices.push_back(proj.getProjectionsMatrix() * owner->getComponent<TransformComponent>()->getViewMatrix());
-				frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));*/
-				break;
-			}
-			case ComponentsModule::eLightType::POINT: {
-				data.shadowEntities.push_back(entity);
-				offsets.emplace_back(entity, lightSource->getTypeOffset(lightSource->getType()));
-				
-				fillMatrix(transform->getPos(true), lightSource->mNear, lightSource->mRadius);
-				break;
-			}
-			case ComponentsModule::eLightType::PERSPECTIVE: {
-				//lightProjection.setFar(lightSource.mRadius);//here possible some fov settings
-				//lightMatrices.push_back(lightProjection.getProjectionsMatrix() * owner->getComponent<TransformComponent>()->getViewMatrix());
-				//frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));
-				break;
-			}
-			default:;
-			}
+	for (const auto& [entity, lightSource, transform] : ECSHandler::registry().view<LightSourceComponent, TransformComponent>()) {
+		if (!lightSource || !transform || lightSource->getType() != ComponentsModule::eLightType::POINT) {
+			continue;
 		}
+		const auto pos = transform->getPos(true);
+		if (!FrustumModule::SquareAABB::isOnFrustum(camFrustum, pos, lightSource->mRadius)) {
+			continue;
+		}
+		const auto d = pos - cameraPos;
+		candidates.push_back({ entity, pos, lightSource->mNear, lightSource->mRadius, Math::dot(d, d) });
+	}
 
-		if (offsets.empty()) {
+	std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+		return a.dist2 < b.dist2;
+	});
+	if (candidates.size() > static_cast<size_t>(maxLights)) {
+		candidates.resize(static_cast<size_t>(maxLights));
+	}
+
+	for (const auto& c : candidates) {
+		if (entities) {
+			entities->push_back(c.id);
+		}
+		appendFaceMatrices(matrices, c.pos, c.nearP, c.radius);
+	}
+}
+
+void PointLightPass::prepare() {
+	auto curPassData = getContainer().getCurrentPassData();
+	curPassData->markPreparing();
+	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
+	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mNextCameraPos]() mutable {
+		FUNCTION_BENCHMARK;
+
+		curPassData->getBatcher().clear();
+
+		std::vector<Math::Mat4> matrices;
+		collectLights(camFrustum, camPos, matrices, nullptr);
+		if (matrices.empty()) {
+			curPassData->markReady();
 			return;
 		}
 
-		if (!lightMatrices.empty()) {
-			Engine::instance()->rhi()->updateBuffer(mMatricesUBO, 0, lightMatrices.size() * sizeof(Math::Mat4), lightMatrices.data());
+		std::vector<ecss::EntityId> ids;
+		ids.reserve(2048);
+		auto* octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+		if (octreeSys) {
+			for (const auto& mat : matrices) {
+				octreeSys->collectVisible(FrustumModule::createFrustum(mat), ids);
+			}
+			std::sort(ids.begin(), ids.end());
+			ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
 		}
+		auto entities = SystemsModule::OcTreeSystem::makeEntityRanges(std::move(ids));
 
-		Engine::instance()->rhi()->updateDescriptorSets({
-			{
-				.set = mTexSet,
-				.binding = 7,
-				.type = Render::DescriptorType::CombinedImageSampler,
-				.images {{mLightDepthMaps, mLightDepthMapsSampler} }
-			},
-			{
-			.set = mTexSet,
-			.binding = 3,
-			.type = DescriptorType::UniformBuffer,
-			.buffers= {{mMatricesUBO}}
-			}
-		});
-
-		RenderPassBeginInfo rpBeginInfo;
-		rpBeginInfo.renderPass = renderPass;
-		rpBeginInfo.framebuffer = lightFramebuffer;
-		rpBeginInfo.width = shadowResolution;
-		rpBeginInfo.height = shadowResolution;
-		Engine::instance()->rhi()->cmdBeginRenderPass(cmd, rpBeginInfo);
-		Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
-		Engine::instance()->rhi()->cmdBindDescriptorSets(cmd, pipeline, 0, &mTexSet, 1);
-		
-		int offsetSum = 0;
-		for (auto& offset : offsets) {
-			Engine::instance()->rhi()->cmdPushConstants(cmd, pipeline, offsetSum,  ShaderStage::Geometry);
-
-			auto ocTreeSystem = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			ocTreeSystem->readLock();
-
-	
-			ecss::Ranges<ecss::EntityId> ranges; 
-			for (auto& [coords, tree] : ocTreeSystem->mOctrees) {
-				//auto lock = tree.readLock();
-				tree.forEachObject([this, &ranges, offsetSum, &offset](const auto& obj) {
-					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
-						if (FrustumModule::AABB::isOnFrustum(frustums[i], obj.pos + SFE::Math::Vec3(obj.size.x, -obj.size.y, obj.size.z) * 0.5f, obj.size)){
-							ranges.insert(obj.data);
-							break;
-						}
-					}
-						
-					
-					
-				}, [this, offsetSum, &offset](const SFE::Math::Vec3& pos, float size, auto&) {
-					for (auto i = offsetSum; i < offset.second + offsetSum; i++) {
-						if (FrustumModule::SquareAABB::isOnFrustum(frustums[i], pos, size)) {
-							return true;
-						}
-					}
-					return false;
-				});
-			}
-
-			for (const auto& [entity, mod, draw, trans  ] : ECSHandler::registry().view<const ModelComponent, const IsDrawableComponent, const TransformComponent>(ranges)) {
-				if (!trans || !mod || !draw) {
+		auto addMeshes = [&](auto&& viewObjs) {
+			auto& batcher = curPassData->getBatcher();
+			for (auto [ent, transform, meshComp, matComp] : viewObjs) {
+				if (!meshComp || (matComp && matComp->transparent)) {
 					continue;
 				}
-
-				const auto& transformMatrix = trans->getTransform();
-				for (auto& mesh : mod->getModelLowestDetails().meshes) {
-					//batcher.addToDrawList(mesh->getVAO(), mesh->mData.vertices.size(), mesh->mData.indices.size(), mesh->mMaterial, transformMatrix, {});
+				for (const auto& mesh : meshComp->meshGraph) {
+					if (!mesh.value.vertexBuffer) {
+						continue;
+					}
+					batcher.addToDrawList(mesh.value, matComp, ent);
 				}
 			}
-			
-			offsetSum += offset.second;
-			
-			//batcher.flushAll(true);
+		};
+
+		auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
+		if (entities.empty() && (!octreeSys || octreeSys->empty())) {
+			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
+		}
+		else {
+			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
 		}
 
-		Engine::instance()->rhi()->cmdEndRenderPass(cmd);
+		curPassData->markReady();
+	});
+}
+
+void PointLightPass::init(SystemsModule::RenderData& renderDataHandle) {
+	if (mInited) {
+		return;
+	}
+	mInited = true;
+
+	auto* rhi = Engine::instance()->rhi();
+
+	TextureDesc texDesc;
+	texDesc.width = shadowResolution;
+	texDesc.height = shadowResolution;
+	texDesc.depth = maxShadowFaces;
+	texDesc.dimension = TextureDimension::Array;
+	texDesc.format = TextureFormat::DEPTH_COMPONENT32;
+	texDesc.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
+	mLightDepthMaps = rhi->createTexture(texDesc);
+
+	SamplerDesc samplerDesc;
+	samplerDesc.minFilter = FilterMode::Linear;
+	samplerDesc.magFilter = FilterMode::Linear;
+	samplerDesc.addressU = AddressMode::ClampToEdge;
+	samplerDesc.addressV = AddressMode::ClampToEdge;
+	samplerDesc.addressW = AddressMode::ClampToEdge;
+	samplerDesc.compareOp = CompareOp::LessEqual;
+	mLightDepthMapsSampler = rhi->createSampler(samplerDesc);
+
+	FramebufferDesc fbDesc;
+	fbDesc.width = shadowResolution;
+	fbDesc.height = shadowResolution;
+	FramebufferAttachmentDesc depthAtt;
+	depthAtt.texture = mLightDepthMaps;
+	depthAtt.mipLevel = 0;
+	depthAtt.layer = UINT32_MAX;
+	fbDesc.depthStencilAttachment = depthAtt;
+	lightFramebuffer = rhi->createFramebuffer(fbDesc);
+
+	BufferDesc bufDesc;
+	bufDesc.size = sizeof(Math::Mat4) * maxShadowFaces;
+	bufDesc.usage = BufferUsage::Uniform;
+	bufDesc.cpuAccess = CpuAccess::Write;
+	bufDesc.debugName = "PointLightPass_MatricesUBO";
+	mMatricesUBO = rhi->createBuffer(bufDesc);
+
+	ShaderModuleDesc shaderVDesc;
+	shaderVDesc.stage = ShaderStage::Vertex;
+	shaderVDesc.name = "PointLightPass_Vertex";
+	shaderVDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.vs");
+
+	ShaderModuleDesc shaderGDesc;
+	shaderGDesc.stage = ShaderStage::Geometry;
+	shaderGDesc.name = "PointLightPass_Geometry";
+	shaderGDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/pointLightMap.gs");
+
+	ShaderModuleDesc shaderFDesc;
+	shaderFDesc.stage = ShaderStage::Fragment;
+	shaderFDesc.name = "PointLightPass_Fragment";
+	shaderFDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/pointLightMap.fs");
+
+	GraphicsPipelineDesc pipelineDesc;
+	pipelineDesc.depthStencilState.depthTest = true;
+	pipelineDesc.depthStencilState.depthWrite = true;
+	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
+	pipelineDesc.cullMode = CullMode::Front;
+	pipelineDesc.frontFace = FrontFace::CounterClockWise;
+	pipelineDesc.shaders.vertex = rhi->createShaderModule(shaderVDesc);
+	pipelineDesc.shaders.geometry = rhi->createShaderModule(shaderGDesc);
+	pipelineDesc.shaders.fragment = rhi->createShaderModule(shaderFDesc);
+
+	Render::VertexLayoutDesc vaoDesc;
+	vaoDesc.bindings.push_back({ 0, sizeof(SFE::Vertex3D), Render::VertexInputRate::PerVertex });
+	vaoDesc.attributes.push_back({ 0, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, position)), true });
+	vaoDesc.attributes.push_back({ 1, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, normal)), true });
+	vaoDesc.attributes.push_back({ 2, 0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, texCoords)), true });
+	vaoDesc.attributes.push_back({ 3, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, tangent)), true });
+	vaoDesc.attributes.push_back({ 4, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, biTangent)), true });
+	vaoDesc.attributes.push_back({ 5, 0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, boneIDs)), false });
+	vaoDesc.attributes.push_back({ 6, 0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, weights)), false });
+	pipelineDesc.layout = vaoDesc;
+	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
+
+	RenderPassDesc rpDesc;
+	rpDesc.hasDepthStencil = true;
+	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
+	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+	rpDesc.depthAttachment.clearDepth = 1.f;
+	renderPass = rhi->createRenderPass(rpDesc);
+
+	Render::DescriptorSetLayoutDesc layoutDesc;
+	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
+	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	mSetLayout = rhi->createDescriptorSetLayout(layoutDesc);
+	mSet = rhi->allocateDescriptorSet(mSetLayout);
+
+	rhi->updateDescriptorSets({
+		{
+			.set = mSet,
+			.binding = 3,
+			.type = Render::DescriptorType::UniformBuffer,
+			.buffers{ {mMatricesUBO} }
+		}
+	});
+
+	data.matricesUBO = mMatricesUBO;
+	publish(renderDataHandle);
+}
+
+void PointLightPass::publish(SystemsModule::RenderData& renderDataHandle) {
+	data.matricesUBO = mMatricesUBO;
+	renderDataHandle.frame.setData(FrameId::PointShadow, &data);
+	renderDataHandle.frame.set(FrameId::ShadowPoint, { .texture = mLightDepthMaps, .sampler = mLightDepthMapsSampler });
+}
+
+void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
+	if (!mInited) {
+		return;
 	}
 
-	void PointLightPass::fillMatrix(Math::Vec3 globalLightPos, float lightNear, float lightRadius) {
-		lightProjection.setNearFar(lightNear, lightRadius);
+	FUNCTION_BENCHMARK;
 
-		const auto transform = Math::translate(Math::Mat4(1.0f), globalLightPos);
-
-		for (auto angle : { 0.f, 90.f, -90.f, 180.f }) {
-			//todo rotate matrix instead creating rotated copy
-			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * Math::inverse(Math::rotate(transform, Math::radians(angle), { 0.f,1.f,0.f })));
-			frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));
-		}
-
-		for (auto angle : { 90.f, -90.f }) {
-			auto res = Math::rotate(transform, Math::radians(angle), { 1.f,0.f,0.f });
-			lightMatrices.push_back(lightProjection.getProjectionsMatrix() * Math::inverse(res));
-			frustums.push_back(SFE::FrustumModule::createFrustum(lightMatrices.back()));
-		}
+	{
+		FUNCTION_BENCHMARK_NAMED(_wait_lock);
+		getContainer().getCurrentPassData()->waitReady();
 	}
+
+	const auto curPassData = getContainer().getCurrentPassData();
+	getContainer().rotate();
+	prepare();
+
+	std::vector<Math::Mat4> matrices;
+	collectLights(renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, matrices, &data.shadowEntities);
+
+	publish(renderDataHandle);
+
+	if (matrices.empty()) {
+		return;
+	}
+
+	auto* rhi = Engine::instance()->rhi();
+	rhi->updateBuffer(mMatricesUBO, 0, matrices.size() * sizeof(Math::Mat4), matrices.data());
+
+	if (renderDataHandle.transformsSSBO) {
+		rhi->updateDescriptorSets({
+			{
+				.set = mSet,
+				.binding = 1,
+				.type = Render::DescriptorType::StorageBuffer,
+				.buffers{ {renderDataHandle.transformsSSBO} }
+			},
+			{
+				.set = mSet,
+				.binding = 2,
+				.type = Render::DescriptorType::StorageBuffer,
+				.buffers{ {renderDataHandle.bonesSSBO} }
+			}
+		});
+	}
+
+	RenderPassBeginInfo begin;
+	begin.renderPass = renderPass;
+	begin.framebuffer = lightFramebuffer;
+	begin.x = 0;
+	begin.y = 0;
+	begin.width = shadowResolution;
+	begin.height = shadowResolution;
+
+	rhi->cmdBeginRenderPass(cmd, begin);
+	rhi->cmdBindPipeline(cmd, pipeline);
+	const int lightCount = static_cast<int>(data.shadowEntities.size());
+	curPassData->getBatcher().flushAll(cmd, mSet, {},
+		[this, lightCount](SFE::Render::CommandListHandle drawCmd, const DrawObject& obj) {
+			PointShadowPush pc;
+			pc.lightCount = lightCount;
+			pc.casterOpacity = (obj.opacity > 0.f && obj.opacity < 0.999f) ? obj.opacity : 1.f;
+			Engine::instance()->rhi()->cmdPushConstants(drawCmd, pipeline, SFE::Render::ShaderStage::Geometry | SFE::Render::ShaderStage::Fragment, &pc, sizeof(pc));
+		});
+	rhi->cmdEndRenderPass(cmd);
+
+	rhi->cmdPipelineBarrier(cmd, {
+		.srcStage = PipelineStage::LateFragmentTests,
+		.dstStage = PipelineStage::FragmentShader,
+		.srcAccess = AccessMask::DepthStencilAttachmentWrite,
+		.dstAccess = AccessMask::ShaderRead
+	});
+}
+
 }

@@ -1,5 +1,7 @@
 ﻿#include "MeshVaoRegistry.h"
 
+#include <chrono>
+
 #include "core/Engine.h"
 #include "assetsModule/RenderMeshData.h"
 #include "multithreading/ThreadPool.h"
@@ -19,6 +21,10 @@ namespace SFE {
 		assert(mesh);
 
 		auto& data = mMeshVAO[mesh];
+
+		if (mesh->vertices.empty() && mesh->indices.empty()) {
+			return data;
+		}
 
 		if (SFE::Engine::isMainThread()) {
 			data.release();
@@ -43,10 +49,17 @@ namespace SFE {
 			data.indexCount = static_cast<uint32_t>(mesh->indices.size());
 		}
 		else {
-			auto futur = ThreadPool::instance()->addTask<WorkerType::SYNC>([mesh]()mutable { //easy crash 
+			auto futur = ThreadPool::instance()->addTask<WorkerType::SYNC>([mesh]()mutable {
 				MeshVaoRegistry::instance()->initMesh(mesh);
 			});
-			futur.get();
+			if (!futur.valid()) {
+				return data;
+			}
+			while (futur.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+				if (!ThreadPool::isAlive() || ThreadPool::instance()->isShuttingDown()) {
+					return data;
+				}
+			}
 		}
 
 		return data;

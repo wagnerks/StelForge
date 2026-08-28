@@ -1,13 +1,14 @@
 ﻿#pragma once
 #include <vector>
-#include <mathModule/Forward.h>
-
-#include "core/ECSHandler.h"
-#include "systemsModule/systems/OcTreeSystem.h"
+#include "mathModule/Forward.h"
 
 class OcTreeComponent {
 public:
+	struct ParentTree {
+		SFE::Math::Vec3 pos{};
+		size_t node = 0;
+	};
 
 	bool inOctree = false;
-	std::vector<SFE::Math::Vec3> mParentOcTrees; //vector because it is possible that object is VERY big, or on the border
+	std::vector<ParentTree> parents;
 };

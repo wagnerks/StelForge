@@ -28,7 +28,7 @@ namespace SFE::ComponentsModule {
 		void updateCascades(const MathModule::PerspectiveProjection& cameraProjection);
 		void updateLightSpaceMatrices(const Math::Mat4& cameraView);
 
-		static SFE::Math::Mat4 getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier = 1.f, float farMultiplier = 1.f);
+		static SFE::Math::Mat4 getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier = 1.f, float farMultiplier = 1.f, float mapSize = 1024.f);
 		static std::vector<Math::Vec4> getFrustumCornersWorldSpace(const Math::Mat4& proj, const Math::Mat4& view);
 		static std::vector<Math::Vec4> getFrustumCornersWorldSpace(const Math::Mat4& projView);
 

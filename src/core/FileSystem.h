@@ -6,6 +6,7 @@ namespace SFE {
 	class FileSystem {
 	public:
 		static bool isFileExists(std::string_view path);
+		static bool createDirectories(std::string_view path);
 		static bool readFile(std::string_view path, std::string& file);
 		static bool writeFile(std::string_view path, std::string& file);
 

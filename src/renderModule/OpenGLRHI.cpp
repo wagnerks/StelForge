@@ -1,5 +1,6 @@
 ﻿#include <renderModule/openGLRHI.h>
 
+#include <algorithm>
 #include <cstring>
 #include <type_traits>
 
@@ -566,8 +567,14 @@ namespace SFE::Render
 
 		const GLGraphicsPipeline& gp = *gpPtr;
 
-		// шейдерная программа
 		glUseProgram(gp.programId);
+		m_currentPipeline = pipeline;
+
+		if (gp.isCompute) {
+			glBindVertexArray(0);
+			return;
+		}
+
 		glBindVertexArray(gp.vaoId);
 
 		// topology
@@ -730,6 +737,21 @@ namespace SFE::Render
 		}
 	}
 
+	void OpenGLRHI::cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
+	{
+		if (GLCommandList* list = recordingList(cmd)) {
+			list->commands.emplace_back(CmdDispatch{ groupCountX, groupCountY, groupCountZ });
+		}
+	}
+
+	void OpenGLRHI::execDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
+	{
+		if (groupCountX == 0 || groupCountY == 0 || groupCountZ == 0) {
+			return;
+		}
+		glDispatchCompute(groupCountX, groupCountY, groupCountZ);
+	}
+
 	RenderPassHandle OpenGLRHI::createRenderPass(const RenderPassDesc& desc)
 	{
 		// В OpenGL рендер-пасс — чисто описание: LoadOp/StoreOp/clear-значения.
@@ -798,6 +820,9 @@ namespace SFE::Render
 			else if constexpr (std::is_same_v<T, CmdDrawIndexed>) {
 				execDrawIndexed(recorded.indexCount, recorded.instanceCount, recorded.firstIndex, recorded.vertexOffset, recorded.firstInstance);
 			}
+			else if constexpr (std::is_same_v<T, CmdDispatch>) {
+				execDispatch(recorded.groupCountX, recorded.groupCountY, recorded.groupCountZ);
+			}
 			else if constexpr (std::is_same_v<T, CmdBlit>) {
 				execBlit(recorded.src, recorded.dst, recorded.mask, recorded.filter);
 			}
@@ -816,6 +841,10 @@ namespace SFE::Render
 			return;
 		}
 
+		if (mGpuTimeQueries[0]) {
+			glBeginQuery(GL_TIME_ELAPSED, mGpuTimeQueries[mGpuQueryWrite]);
+		}
+
 		for (uint32_t i = 0; i < count; ++i) {
 			GLCommandList* list = getLive(m_commandLists, lists[i].id);
 			if (!list) {
@@ -827,13 +856,285 @@ namespace SFE::Render
 			}
 			recycleResource(m_commandLists, m_freeCommandLists, lists[i].id);
 		}
+
+		if (mGpuTimeQueries[0]) {
+			glEndQuery(GL_TIME_ELAPSED);
+			const int prev = 1 - mGpuQueryWrite;
+			if (mGpuQueriesReady) {
+				GLuint available = 0;
+				glGetQueryObjectuiv(mGpuTimeQueries[prev], GL_QUERY_RESULT_AVAILABLE, &available);
+				if (available) {
+					GLuint64 ns = 0;
+					glGetQueryObjectui64v(mGpuTimeQueries[prev], GL_QUERY_RESULT, &ns);
+					mLastGpuMs = static_cast<double>(ns) / 1'000'000.0;
+				}
+			}
+			else {
+				mGpuQueriesReady = true;
+			}
+			mGpuQueryWrite = prev;
+		}
 	}
 
 	void OpenGLRHI::present()
 	{
-		if (auto window = Engine::instance()->getWindow()) {
+		auto* window = Engine::instance()->getWindow();
+		if (!window) {
+			return;
+		}
+		glFlush();
+		if (Engine::instance()->presentToScreen() && window->isVisible()) {
 			window->swapBuffers();
 		}
+	}
+
+	static void deleteSync(void*& sync)
+	{
+		if (sync) {
+			glDeleteSync(static_cast<GLsync>(sync));
+			sync = nullptr;
+		}
+	}
+
+	void OpenGLRHI::publishDisplay(FramebufferHandle src)
+	{
+		const GLFramebuffer* srcFb = getLive(framebuffers, src.id);
+		if (!srcFb) {
+			return;
+		}
+		const int w = srcFb->desc.width;
+		const int h = srcFb->desc.height;
+		if (w <= 0 || h <= 0) {
+			return;
+		}
+
+		if (!mDisplayTex[0] || mDisplayW != w || mDisplayH != h) {
+			for (int i = 0; i < 2; ++i) {
+				if (mDisplayFbo[i]) {
+					destroyFramebuffer(mDisplayFbo[i]);
+					mDisplayFbo[i] = {};
+				}
+				if (mDisplayTex[i]) {
+					destroyTexture(mDisplayTex[i]);
+					mDisplayTex[i] = {};
+				}
+				deleteSync(mDisplayGpuFence[i]);
+				deleteSync(mDisplayEditorFence[i]);
+			}
+
+			TextureDesc colorDesc;
+			colorDesc.width = w;
+			colorDesc.height = h;
+			colorDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+			for (int i = 0; i < 2; ++i) {
+				mDisplayTex[i] = createTexture(colorDesc, nullptr);
+				FramebufferDesc fbDesc;
+				fbDesc.width = w;
+				fbDesc.height = h;
+				fbDesc.colorAttachments = { { mDisplayTex[i] } };
+				mDisplayFbo[i] = createFramebuffer(fbDesc);
+			}
+			mDisplayW = w;
+			mDisplayH = h;
+			mDisplayWrite = 0;
+			mDisplayPublished.store(-1, std::memory_order_release);
+		}
+
+		const int slot = mDisplayWrite;
+		if (mDisplayEditorFence[slot]) {
+			const GLenum wait = glClientWaitSync(static_cast<GLsync>(mDisplayEditorFence[slot]), 0, 0);
+			if (wait != GL_ALREADY_SIGNALED && wait != GL_CONDITION_SATISFIED) {
+				return;
+			}
+			deleteSync(mDisplayEditorFence[slot]);
+		}
+
+		execBlit(src, mDisplayFbo[slot], BlitMask::Color, BlitFilter::Nearest);
+		deleteSync(mDisplayGpuFence[slot]);
+		mDisplayGpuFence[slot] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		glFlush();
+		mDisplayPublished.store(slot, std::memory_order_release);
+		mDisplayWrite = 1 - slot;
+	}
+
+	uint64_t OpenGLRHI::editorViewNativeId()
+	{
+		const int slot = mDisplayPublished.load(std::memory_order_acquire);
+		if (slot < 0 || slot > 1 || !mDisplayTex[slot]) {
+			return 0;
+		}
+
+		if (mDisplayGpuFence[slot]) {
+			glWaitSync(static_cast<GLsync>(mDisplayGpuFence[slot]), 0, GL_TIMEOUT_IGNORED);
+		}
+
+		const GLTexture* dst = mEditorViewTex ? getLive(textures, mEditorViewTex.id) : nullptr;
+		if (!dst || dst->desc.width != static_cast<uint32_t>(mDisplayW) || dst->desc.height != static_cast<uint32_t>(mDisplayH)) {
+			if (mEditorViewTex) {
+				destroyTexture(mEditorViewTex);
+				mEditorViewTex = {};
+			}
+			TextureDesc colorDesc;
+			colorDesc.width = mDisplayW;
+			colorDesc.height = mDisplayH;
+			colorDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+			mEditorViewTex = createTexture(colorDesc, nullptr);
+			dst = getLive(textures, mEditorViewTex.id);
+		}
+		const GLTexture* src = getLive(textures, mDisplayTex[slot].id);
+		if (!src || !dst) {
+			return 0;
+		}
+		glCopyImageSubData(src->id, GL_TEXTURE_2D, 0, 0, 0, 0, dst->id, GL_TEXTURE_2D, 0, 0, 0, 0, mDisplayW, mDisplayH, 1);
+
+		deleteSync(mDisplayEditorFence[slot]);
+		mDisplayEditorFence[slot] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		glFlush();
+		return dst->id;
+	}
+
+	bool OpenGLRHI::capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height)
+	{
+		static constexpr GLuint64 kGpuWaitNs = 16'000'000ull;
+
+		const int published = mDisplayPublished.load(std::memory_order_acquire);
+		if (published < 0 || published > 1 || mDisplayW <= 0 || mDisplayH <= 0) {
+			return false;
+		}
+
+		int slot = -1;
+		for (const int candidate : { 1 - published, published }) {
+			if (!mDisplayFbo[candidate]) {
+				continue;
+			}
+			if (mDisplayGpuFence[candidate]) {
+				const GLenum wait = glClientWaitSync(
+					static_cast<GLsync>(mDisplayGpuFence[candidate]),
+					GL_SYNC_FLUSH_COMMANDS_BIT,
+					kGpuWaitNs
+				);
+				if (wait != GL_ALREADY_SIGNALED && wait != GL_CONDITION_SATISFIED) {
+					continue;
+				}
+			}
+			slot = candidate;
+			break;
+		}
+		if (slot < 0) {
+			return false;
+		}
+
+		ensureStreamCaptureResources(mDisplayW, mDisplayH);
+		execBlit(mDisplayFbo[slot], mStreamReadFb, BlitMask::Color, BlitFilter::Linear);
+
+		const GLFramebuffer* streamFb = getLive(framebuffers, mStreamReadFb.id);
+		if (!streamFb) {
+			return false;
+		}
+
+		width = mStreamCaptureW;
+		height = mStreamCaptureH;
+		const size_t byteSize = static_cast<size_t>(width) * static_cast<size_t>(height) * 4u;
+
+		const int writeIdx = mStreamPboWrite;
+		const int readIdx = 1 - mStreamPboWrite;
+
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, mStreamPbo[writeIdx]);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, streamFb->id);
+		glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+		deleteSync(mStreamPboFence[writeIdx]);
+		mStreamPboFence[writeIdx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+		if (!mStreamPboPrimed) {
+			mStreamPboPrimed = true;
+			mStreamPboWrite = readIdx;
+			return false;
+		}
+
+		if (mStreamPboFence[readIdx]) {
+			const GLenum wait = glClientWaitSync(
+				static_cast<GLsync>(mStreamPboFence[readIdx]),
+				GL_SYNC_FLUSH_COMMANDS_BIT,
+				kGpuWaitNs
+			);
+			if (wait != GL_ALREADY_SIGNALED && wait != GL_CONDITION_SATISFIED) {
+				return false;
+			}
+		}
+
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, mStreamPbo[readIdx]);
+		void* mapped = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, static_cast<GLsizeiptr>(byteSize), GL_MAP_READ_BIT);
+		if (!mapped) {
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+			mStreamPboWrite = readIdx;
+			return false;
+		}
+		rgba.resize(byteSize);
+		std::memcpy(rgba.data(), mapped, byteSize);
+		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		mStreamPboWrite = readIdx;
+		return true;
+	}
+
+	void OpenGLRHI::ensureStreamCaptureResources(int srcW, int srcH)
+	{
+		const int fullW = (std::max)(1, srcW);
+		const int fullH = (std::max)(1, srcH);
+		const int streamW = (std::min)(fullW, 1280);
+		const int streamH = (std::max)(1, fullH * streamW / fullW);
+		if (mStreamReadFb && mStreamPbo[0] && mStreamPbo[1] && mStreamCaptureW == streamW && mStreamCaptureH == streamH) {
+			return;
+		}
+
+		destroyStreamCaptureResources();
+		mStreamCaptureW = streamW;
+		mStreamCaptureH = streamH;
+
+		TextureDesc colorDesc;
+		colorDesc.width = streamW;
+		colorDesc.height = streamH;
+		colorDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+		mStreamReadTex = createTexture(colorDesc, nullptr);
+		FramebufferDesc fbDesc;
+		fbDesc.width = streamW;
+		fbDesc.height = streamH;
+		fbDesc.colorAttachments = { { mStreamReadTex } };
+		mStreamReadFb = createFramebuffer(fbDesc);
+
+		glGenBuffers(2, mStreamPbo);
+		for (int i = 0; i < 2; ++i) {
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, mStreamPbo[i]);
+			glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(streamW) * static_cast<GLsizeiptr>(streamH) * 4, nullptr, GL_STREAM_READ);
+		}
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		mStreamPboWrite = 0;
+		mStreamPboPrimed = false;
+	}
+
+	void OpenGLRHI::destroyStreamCaptureResources()
+	{
+		for (int i = 0; i < 2; ++i) {
+			deleteSync(mStreamPboFence[i]);
+		}
+		if (mStreamReadFb) {
+			destroyFramebuffer(mStreamReadFb);
+			mStreamReadFb = {};
+		}
+		if (mStreamReadTex) {
+			destroyTexture(mStreamReadTex);
+			mStreamReadTex = {};
+		}
+		if (mStreamPbo[0] || mStreamPbo[1]) {
+			glDeleteBuffers(2, mStreamPbo);
+			mStreamPbo[0] = 0;
+			mStreamPbo[1] = 0;
+		}
+		mStreamCaptureW = 0;
+		mStreamCaptureH = 0;
+		mStreamPboPrimed = false;
 	}
 
 	void OpenGLRHI::cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo)
@@ -1227,6 +1528,17 @@ namespace SFE::Render
 			setSampler("gOutlines", 5);
 			setSampler("PointLightShadowMapArray", 7);
 			setSampler("shadowMap", 8);
+			setSampler("shadowMapDepth", 6);
+			setSampler("irradianceMap", 12);
+			setSampler("prefilterMap", 13);
+			setSampler("brdfLUT", 14);
+			setSampler("inputTexture", 0);
+			setSampler("sceneColor", 4);
+			setSampler("sceneCopy", 6);
+			setSampler("bloomColor", 1);
+			setSampler("sceneHdr", 0);
+			setSampler("volumeLight", 1);
+			setSampler("historyColor", 1);
 			glUseProgram(0);
 		}
 
@@ -1323,6 +1635,60 @@ namespace SFE::Render
 		return handle;
 	}
 
+	PipelineHandle OpenGLRHI::createComputePipeline(const ComputePipelineDesc& desc)
+	{
+		if (desc.compute.id == UINT32_MAX) {
+			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: compute shader is required");
+			return {};
+		}
+
+		GLuint program = glCreateProgram();
+		if (program == 0) {
+			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: glCreateProgram failed");
+			return {};
+		}
+
+		const GLShaderModule* mod = getLive(m_shaders, desc.compute.id);
+		if (!mod || mod->id == 0) {
+			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: invalid compute shader");
+			glDeleteProgram(program);
+			return {};
+		}
+		glAttachShader(program, mod->id);
+		glLinkProgram(program);
+
+		GLint linkStatus = 0;
+		glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
+		if (!linkStatus) {
+			GLint logLen = 0;
+			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLen);
+
+			std::string log;
+			log.resize(static_cast<size_t>(logLen));
+			glGetProgramInfoLog(program, logLen, nullptr, log.data());
+
+			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: link failed:\n%s", log.c_str());
+			glDeleteProgram(program);
+			return {};
+		}
+
+		const GLuint pushIndex = glGetUniformBlockIndex(program, "PushConstants");
+		if (pushIndex != GL_INVALID_INDEX) {
+			glUniformBlockBinding(program, pushIndex, 15);
+		}
+
+		glDetachShader(program, mod->id);
+
+		GLGraphicsPipeline gp{};
+		gp.programId = program;
+		gp.isCompute = true;
+		gp.live = true;
+
+		PipelineHandle handle;
+		handle.id = storeResource(m_pipelines, m_freePipelines, std::move(gp));
+		return handle;
+	}
+
 	void OpenGLRHI::destroyGraphicsPipeline(PipelineHandle pipeline)
 	{
 		GLGraphicsPipeline* gp = getLive(m_pipelines, pipeline.id);
@@ -1385,11 +1751,27 @@ namespace SFE::Render
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(GL_LESS);
 		glClearDepth(1.f);
+		glGenQueries(2, mGpuTimeQueries);
 	}
 
 	void OpenGLRHI::cleanup()
 	{
 		if (m_inited) {
+			if (mGpuTimeQueries[0]) {
+				glDeleteQueries(2, mGpuTimeQueries);
+				mGpuTimeQueries[0] = 0;
+				mGpuTimeQueries[1] = 0;
+			}
+			for (int i = 0; i < 2; ++i) {
+				if (mDisplayGpuFence[i]) {
+					glDeleteSync(static_cast<GLsync>(mDisplayGpuFence[i]));
+					mDisplayGpuFence[i] = nullptr;
+				}
+				if (mDisplayEditorFence[i]) {
+					glDeleteSync(static_cast<GLsync>(mDisplayEditorFence[i]));
+					mDisplayEditorFence[i] = nullptr;
+				}
+			}
 			for (auto& gp : m_pipelines) {
 				if (!gp.live) {
 					continue;
@@ -1607,6 +1989,35 @@ namespace SFE::Render
 			data);
 	}
 
+	void OpenGLRHI::updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data)
+	{
+		const GLTexture* t = getLive(textures, tex.id);
+		if (!data || !t || t->desc.dimension != TextureDimension::Cube || face > 5) {
+			return;
+		}
+
+		uint32_t w = t->desc.width >> mip;
+		uint32_t h = t->desc.height >> mip;
+		if (w < 1) {
+			w = 1;
+		}
+		if (h < 1) {
+			h = 1;
+		}
+
+		glBindTexture(GL_TEXTURE_CUBE_MAP, t->id);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexSubImage2D(
+			GL_TEXTURE_CUBE_MAP_POSITIVE_X + static_cast<GLint>(face),
+			static_cast<GLint>(mip),
+			0, 0,
+			static_cast<GLsizei>(w),
+			static_cast<GLsizei>(h),
+			ToGLFormat(t->desc.format),
+			ToGLType(t->desc.format),
+			data);
+	}
+
 
 	ShaderModuleHandle OpenGLRHI::createShaderModule(const ShaderModuleDesc& desc)
 	{
@@ -1694,20 +2105,41 @@ namespace SFE::Render
 				ToGLFormat(desc.format),
 				ToGLType(desc.format),
 				data);
+			if (data && desc.mipLevels <= 1) {
+				const bool depth = desc.format == TextureFormat::DEPTH_COMPONENT16
+					|| desc.format == TextureFormat::DEPTH_COMPONENT24
+					|| desc.format == TextureFormat::DEPTH_COMPONENT32
+					|| desc.format == TextureFormat::DEPTH_COMPONENT32F
+					|| desc.format == TextureFormat::DEPTH24_STENCIL8
+					|| desc.format == TextureFormat::DEPTH32F_STENCIL8;
+				if (!depth) {
+					glGenerateMipmap(target);
+				}
+			}
 		}
 		else if (desc.dimension == TextureDimension::Cube) {
-			for (int face = 0; face < 6; ++face) {
-				glTexImage2D(
-					GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
-					0,
-					ToGLInternalFormat(desc.format),
-					static_cast<GLsizei>(desc.width),
-					static_cast<GLsizei>(desc.height),
-					0,
-					ToGLFormat(desc.format),
-					ToGLType(desc.format),
-					nullptr
-				);
+			const int levels = desc.mipLevels > 0 ? static_cast<int>(desc.mipLevels) : 1;
+			for (int mip = 0; mip < levels; ++mip) {
+				GLsizei w = static_cast<GLsizei>(desc.width >> mip);
+				GLsizei h = static_cast<GLsizei>(desc.height >> mip);
+				if (w < 1) {
+					w = 1;
+				}
+				if (h < 1) {
+					h = 1;
+				}
+				for (int face = 0; face < 6; ++face) {
+					glTexImage2D(
+						GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
+						mip,
+						ToGLInternalFormat(desc.format),
+						w, h,
+						0,
+						ToGLFormat(desc.format),
+						ToGLType(desc.format),
+						nullptr
+					);
+				}
 			}
 		}
 		else if (desc.dimension == TextureDimension::Array) {
@@ -1745,7 +2177,22 @@ namespace SFE::Render
 			glTextureParameteri(tex, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
 		}
 
-		const GLint maxLevel = desc.mipLevels > 0 ? static_cast<GLint>(desc.mipLevels - 1) : 0;
+		GLint maxLevel = desc.mipLevels > 0 ? static_cast<GLint>(desc.mipLevels - 1) : 0;
+		if (desc.dimension == TextureDimension::Tex2D && data && desc.mipLevels <= 1) {
+			uint32_t mw = desc.width;
+			uint32_t mh = desc.height;
+			int levels = 1;
+			while (mw > 1 || mh > 1) {
+				if (mw > 1) {
+					mw /= 2;
+				}
+				if (mh > 1) {
+					mh /= 2;
+				}
+				++levels;
+			}
+			maxLevel = levels - 1;
+		}
 		glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
 		glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
 		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, maxLevel > 0 ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST);
@@ -1791,6 +2238,8 @@ namespace SFE::Render
 			switch (f) {
 			case FilterMode::Nearest:
 				return isMin ? GL_NEAREST : GL_NEAREST;
+			case FilterMode::LinearMipmapLinear:
+				return isMin ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
 			case FilterMode::Linear:
 			default:
 				return isMin ? GL_LINEAR : GL_LINEAR;
@@ -1829,6 +2278,16 @@ namespace SFE::Render
 		glSamplerParameteri(samplerId, GL_TEXTURE_WRAP_S, toGlAddress(desc.addressU));
 		glSamplerParameteri(samplerId, GL_TEXTURE_WRAP_T, toGlAddress(desc.addressV));
 		glSamplerParameteri(samplerId, GL_TEXTURE_WRAP_R, toGlAddress(desc.addressW));
+
+		if (desc.maxAnisotropy > 1.f) {
+			GLfloat cap = 1.f;
+			glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &cap);
+			float aniso = desc.maxAnisotropy;
+			if (aniso > cap) {
+				aniso = cap;
+			}
+			glSamplerParameterf(samplerId, GL_TEXTURE_MAX_ANISOTROPY, aniso);
+		}
 
 		// comparison
 		if (desc.compareOp == CompareOp::None) {
@@ -1907,8 +2366,11 @@ namespace SFE::Render
 		auto resolveFb = [this](FramebufferHandle handle, int& w, int& h) -> GLuint {
 			if (!handle) {
 				auto* window = Engine::instance()->getWindow();
-				w = window ? window->getScreenData().renderW : 0;
-				h = window ? window->getScreenData().renderH : 0;
+				if (window) {
+					const auto& screen = window->getScreenData();
+					w = screen.backbufferW > 0 ? screen.backbufferW : screen.renderW;
+					h = screen.backbufferH > 0 ? screen.backbufferH : screen.renderH;
+				}
 				return 0;
 			}
 			const auto* fb = getLive(framebuffers, handle.id);

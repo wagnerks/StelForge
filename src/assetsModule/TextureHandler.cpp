@@ -1,5 +1,6 @@
 ﻿#include "TextureHandler.h"
 
+#include <glad/glad.h>
 #include <stb_image.h>
 #include <string>
 
@@ -38,11 +39,12 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	desc.dimension = SFE::Render::TextureDimension::Tex2D;
 
 	SFE::Render::SamplerDesc samplerDesc;
-	samplerDesc.minFilter = SFE::Render::FilterMode::Linear;
+	samplerDesc.minFilter = SFE::Render::FilterMode::LinearMipmapLinear;
 	samplerDesc.magFilter = SFE::Render::FilterMode::Linear;
 	samplerDesc.addressU = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressV = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressW = SFE::Render::AddressMode::Repeat;
+	samplerDesc.maxAnisotropy = 16.f;
 
 
 	if (SFE::Engine::isMainThread()) {
@@ -52,14 +54,21 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 		stbi_image_free(data);
 	}
 	else {
-		SFE::ThreadPool::instance()->addTask<SFE::WorkerType::RESOURCE_LOADING>([id = texture->assetId, desc, data, samplerDesc]()mutable {
+		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::RESOURCE_LOADING>([id = texture->assetId, desc, data, samplerDesc]()mutable {
 			auto tex = AssetsManager::instance()->getAsset<Texture>(id);
 
 			tex->texture = SFE::Engine::instance()->rhi()->createTexture(desc, data);
 			tex->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
+			glFinish();
 
 			stbi_image_free(data);
 		});
+		if (fut.valid()) {
+			fut.wait();
+		}
+		else {
+			stbi_image_free(data);
+		}
 	}
 
 	return texture;

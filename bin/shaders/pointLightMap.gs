@@ -1,24 +1,30 @@
 #version 460 core
-    
+
 layout(triangles, invocations = 6) in;
-layout(triangle_strip, max_vertices = 3) out;
+layout(triangle_strip, max_vertices = 36) out;
 
 layout (std140, binding = 3) uniform LightSpaceMatrices
 {
-    mat4 lightSpaceMatrices[36];
+    mat4 lightSpaceMatrices[72];
 };
 
-layout(std140, binding  = 15) uniform PushConstants {
-    int offset;
+layout(std140, binding = 15) uniform PushConstants {
+    int lightCount;
+    float casterOpacity;
 } pc;
 
 void main()
-{          
-    for (int i = 0; i < 6; ++i)
+{
+    int count = min(pc.lightCount, 12);
+    for (int light = 0; light < count; ++light)
     {
-        gl_Position = lightSpaceMatrices[gl_InvocationID + pc.offset] * gl_in[i].gl_Position;
-        gl_Layer = gl_InvocationID + offset;
-        EmitVertex();
+        int layer = light * 6 + gl_InvocationID;
+        for (int i = 0; i < 3; ++i)
+        {
+            gl_Position = lightSpaceMatrices[layer] * gl_in[i].gl_Position;
+            gl_Layer = layer;
+            EmitVertex();
+        }
+        EndPrimitive();
     }
-    EndPrimitive();
-}  
+}

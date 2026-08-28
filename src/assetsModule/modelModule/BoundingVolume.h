@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <vector>
 #include "mathModule/Forward.h"
 
@@ -18,6 +20,14 @@ namespace SFE::FrustumModule {
 			, distance(Math::dot(normal, p1)) {}
 
 		Plane(const Math::Vec4& p1) : normal(Math::Vec3(p1)), distance(p1.w) {}
+
+		static Plane fromClip(const Math::Vec4& p) {
+			const float mag = Math::length(Math::Vec3{ p });
+			if (mag < 1e-8f) {
+				return {};
+			}
+			return Plane{ Math::Vec4{ p.x / mag, p.y / mag, p.z / mag, p.w / mag } };
+		}
 
 		float getSignedDistanceToPlan(const Math::Vec3& point) const {
 			return Math::dot(normal, point) + distance;
@@ -115,6 +125,28 @@ namespace SFE::FrustumModule {
 	public:
 		float extents{};
 	};
+
+	inline bool isWorldVisible(const Math::Mat4& pv, const Math::Mat4& view, const Math::Mat4& world, float localRadius = 1.f) {
+		const Math::Vec3 pos{ world[3].x, world[3].y, world[3].z };
+		const float sx = Math::length(Math::Vec3{ world[0].x, world[0].y, world[0].z });
+		const float sy = Math::length(Math::Vec3{ world[1].x, world[1].y, world[1].z });
+		const float sz = Math::length(Math::Vec3{ world[2].x, world[2].y, world[2].z });
+		const float r = localRadius * (std::max)(sx, (std::max)(sy, sz));
+
+		// RH camera looks down -Z: behind the camera has positive view z.
+		if ((view * pos).z > r) {
+			return false;
+		}
+
+		const Math::Vec4 c = pv * Math::Vec4{ pos.x, pos.y, pos.z, 1.f };
+		if (c.w <= 0.f) {
+			return false;
+		}
+		const float invW = 1.f / c.w;
+		const float nr = (std::min)(r * invW, 1.f);
+		return std::abs(c.x * invW) <= 1.f + nr
+			&& std::abs(c.y * invW) <= 1.f + nr;
+	}
 
 	struct SquareAABB : BoundingVolume {
 		using BoundingVolume::isOnFrustum;
@@ -259,46 +291,38 @@ namespace SFE::FrustumModule {
 		left.y = projView[1][3] + projView[1][0];
 		left.z = projView[2][3] + projView[2][0];
 		left.w = projView[3][3] + projView[3][0];
-		left = Math::normalize(left);
-		
+
 		right.x = projView[0][3] - projView[0][0];
 		right.y = projView[1][3] - projView[1][0];
 		right.z = projView[2][3] - projView[2][0];
 		right.w = projView[3][3] - projView[3][0];
-		right = Math::normalize(right);
 
 		btm.x = projView[0][3] + projView[0][1];
 		btm.y = projView[1][3] + projView[1][1];
 		btm.z = projView[2][3] + projView[2][1];
 		btm.w = projView[3][3] + projView[3][1];
-		btm = Math::normalize(btm);
 
 		top.x = projView[0][3] - projView[0][1];
 		top.y = projView[1][3] - projView[1][1];
 		top.z = projView[2][3] - projView[2][1];
 		top.w = projView[3][3] - projView[3][1];
-		top = Math::normalize(top);
 
 		near.x = projView[0][3] + projView[0][2];
 		near.y = projView[1][3] + projView[1][2];
 		near.z = projView[2][3] + projView[2][2];
 		near.w = projView[3][3] + projView[3][2];
-		near = Math::normalize(near);
 
 		far.x = projView[0][3] - projView[0][2];
 		far.y = projView[1][3] - projView[1][2];
 		far.z = projView[2][3] - projView[2][2];
 		far.w = projView[3][3] - projView[3][2];
-		far = Math::normalize(far);
 
-		frustum.leftFace = { left };
-		frustum.rightFace = { right };
-
-		frustum.bottomFace = { btm };
-		frustum.topFace = { top };
-
-		frustum.nearFace = { near };
-		frustum.farFace = { far };
+		frustum.leftFace = Plane::fromClip(left);
+		frustum.rightFace = Plane::fromClip(right);
+		frustum.bottomFace = Plane::fromClip(btm);
+		frustum.topFace = Plane::fromClip(top);
+		frustum.nearFace = Plane::fromClip(near);
+		frustum.farFace = Plane::fromClip(far);
 
 
 

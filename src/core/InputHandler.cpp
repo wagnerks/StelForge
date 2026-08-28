@@ -109,4 +109,22 @@ namespace SFE::CoreModule {
 		window->cursorPosCallback = &InputHandler::mouseCallback;
 		window->scrollCallback = &InputHandler::scrollCallback;
 	}
+
+	void InputHandler::injectKey(int key, int action) {
+		InputProvider::instance()->fireEvent(static_cast<InputKey>(key), static_cast<InputEventType>(action));
+	}
+
+	void InputHandler::injectMouseMove(double x, double y, double dx, double dy) {
+		InputProvider::instance()->fireEvent({ x, y }, { dx, dy });
+		mMousePos = { x, y };
+	}
+
+	void InputHandler::injectMouseBtn(double x, double y, int btn, int action) {
+		mMousePos = { x, y };
+		InputProvider::instance()->fireEvent(mMousePos, static_cast<MouseButton>(btn), static_cast<InputEventType>(action));
+	}
+
+	void InputHandler::injectScroll(double xOffset, double yOffset) {
+		InputProvider::instance()->fireEvent({ xOffset, yOffset });
+	}
 }

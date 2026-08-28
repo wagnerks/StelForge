@@ -1,41 +1,52 @@
 ﻿#include "DebugPass.h"
 
-#include "imgui.h"
+#include "assetsModule/shaderModule/ShaderBase.h"
 #include "assetsModule/modelModule/ModelLoader.h"
+#include "assetsModule/modelModule/Vertex.h"
+#include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/CameraComponent.h"
 #include "componentsModule/GizmoComponent.h"
 #include "core/ECSHandler.h"
+#include "core/Engine.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
+#include "renderModule/FrameBlackboard.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/CameraSystem.h"
+#include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
+#include <algorithm>
+
+
 namespace SFE::Render::RenderPasses {
-	DebugPass::DebugPass() {
+	DebugPass::DebugPass() = default;
+
+	void DebugPass::init(SystemsModule::RenderData&) {
 		auto rhi = Engine::instance()->rhi();
 
 		BufferDesc lineBufDesc;
-		lineBufDesc.size = 1000 * sizeof(float) * 3;
+		mLinesCapacity = 65536 * sizeof(Math::Vec3);
+		lineBufDesc.size = mLinesCapacity;
 		lineBufDesc.usage = BufferUsage::Vertex;
 		lineBufDesc.cpuAccess = CpuAccess::Write;
 		linesVBO = rhi->createBuffer(lineBufDesc);
 
 		VertexLayoutDesc lineLayout;
-		lineLayout.bindings.push_back({ 0, sizeof(float) * 3, VertexInputRate::PerVertex });
+		lineLayout.bindings.push_back({ 0, sizeof(Math::Vec3), VertexInputRate::PerVertex });
 		lineLayout.attributes.push_back({
-			0,                            // location 0
 			0,
-			VertexFormat::Float3,         // vec3 position
 			0,
-			false                         // normalized
+			VertexFormat::Float3,
+			0,
+			false
 			});
-		
 
 		BufferDesc triBufDesc;
-		triBufDesc.size = 500 * sizeof(SFE::Vertex3D);
+		mTrisCapacity = 4096 * 3 * sizeof(SFE::Vertex3D);
+		triBufDesc.size = mTrisCapacity;
 		triBufDesc.usage = BufferUsage::Vertex;
 		triBufDesc.cpuAccess = CpuAccess::Write;
 		trianglesVBO = rhi->createBuffer(triBufDesc);
@@ -44,27 +55,27 @@ namespace SFE::Render::RenderPasses {
 		triLayout.bindings.push_back({ 0, sizeof(SFE::Vertex3D), VertexInputRate::PerVertex });
 
 		triLayout.attributes.push_back({
-			0,                            // location 0
 			0,
-			VertexFormat::Float3,         // vec3 position
+			0,
+			VertexFormat::Float3,
 			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, position)),
-			false                         // normalized
+			false
 			});
 
 		triLayout.attributes.push_back({
-			1,                            // location 1
+			1,
 			0,
-			VertexFormat::Float3,         // vec3 normal
+			VertexFormat::Float3,
 			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, normal)),
-			true                          // normalized = true
+			false
 			});
 
 		triLayout.attributes.push_back({
-			2,                            // location 2
+			2,
 			0,
-			VertexFormat::Float4,         // vec4 color
+			VertexFormat::Float4,
 			static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, color)),
-			true                          // normalized = true
+			false
 			});
 
 		ShaderModuleDesc triangleVS;
@@ -81,13 +92,15 @@ namespace SFE::Render::RenderPasses {
 		debugPipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(triangleVS);
 		debugPipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(triangleFS);
 		debugPipelineDesc.topology = PrimitiveTopology::Triangles;
-		debugPipelineDesc.cullMode = CullMode::Back;
+		debugPipelineDesc.cullMode = CullMode::None;
 		debugPipelineDesc.frontFace = FrontFace::CounterClockWise;
 		debugPipelineDesc.fillMode = PolygonFillMode::Fill;
-		debugPipelineDesc.depthStencilState.depthTest = true;
-		debugPipelineDesc.depthStencilState.depthWrite = true;
+		debugPipelineDesc.depthStencilState.depthTest = false;
+		debugPipelineDesc.depthStencilState.depthWrite = false;
 		debugPipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
-		debugPipelineDesc.blend.enabled = false;
+		debugPipelineDesc.blend.enabled = true;
+		debugPipelineDesc.blend.srcColor = BlendFactor::SrcAlpha;
+		debugPipelineDesc.blend.dstColor = BlendFactor::OneMinusSrcAlpha;
 		debugPipelineDesc.layout = triLayout;
 		trianglesPipeline = rhi->createGraphicsPipeline(debugPipelineDesc);
 
@@ -98,21 +111,20 @@ namespace SFE::Render::RenderPasses {
 		linePipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(ShaderModuleDesc{
 			ShaderStage::Fragment, "Debug Lines FS", ShaderModule::ShaderBase::loadShaderCode("shaders/colored_lines.fs")});
 
+		linePipelineDesc.layout = lineLayout;
 		linePipelineDesc.topology = PrimitiveTopology::Lines;
 		linePipelineDesc.cullMode = CullMode::None;
 		linePipelineDesc.frontFace = FrontFace::CounterClockWise;
-		linePipelineDesc.fillMode = PolygonFillMode::Line;
+		linePipelineDesc.fillMode = PolygonFillMode::Fill;
 		linePipelineDesc.depthStencilState.depthTest = false;
 		linePipelineDesc.depthStencilState.depthWrite = false;
 		linePipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
-		linePipelineDesc.blend.enabled = true;
-		linePipelineDesc.blend.srcColor = BlendFactor::SrcAlpha;
-		linePipelineDesc.blend.dstColor = BlendFactor::OneMinusSrcAlpha;
+		linePipelineDesc.blend.enabled = false;
 		linesPipeline = rhi->createGraphicsPipeline(linePipelineDesc);
 
 		RenderPassDesc rpd;
 		rpd.colorAttachmentCount = 1;
-		rpd.colorAttachments[0].loadOp = AttachmentLoadOp::Clear;
+		rpd.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
 		rpd.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
 		debugRenderPass = rhi->createRenderPass(rpd);
 	}
@@ -122,70 +134,77 @@ namespace SFE::Render::RenderPasses {
 	void DebugPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 		FUNCTION_BENCHMARK;
 
+		if (const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>()) {
+			if (octreeSys->drawOctrees) {
+				for (auto& [pos, tree] : octreeSys->mOctrees) {
+					(void)pos;
+					auto lock = tree.readLock();
+					tree.drawOctree(octreeSys->drawObjAABB);
+				}
+			}
+		}
+
 		for (auto [entId, gizmoComp] : ECSHandler::registry().view<ComponentsModule::GizmoComponent>()) {
 			gizmoComp->gizmo.setEntity(entId);
 			gizmoComp->gizmo.update();
 		}
+
+		auto* rhi = Engine::instance()->rhi();
+		auto fb = renderDataHandle.frame.framebuffer(FrameId::Final);
+		auto* dbg = SystemsModule::RenderDebugInfo::instance();
+
 		RenderPassBeginInfo rpBeginInfo;
 		rpBeginInfo.renderPass = debugRenderPass;
-		rpBeginInfo.framebuffer = Engine::instance()->rhi()->getBackbufferFramebuffer();
+		rpBeginInfo.framebuffer = fb;
 		rpBeginInfo.width = Engine::instance()->getWindow()->getScreenData().renderW;
 		rpBeginInfo.height = Engine::instance()->getWindow()->getScreenData().renderH;
+		rhi->cmdBeginRenderPass(cmd, rpBeginInfo);
 
-		Engine::instance()->rhi()->cmdBeginRenderPass(cmd, rpBeginInfo);
-		if (!Utils::renderTriangles.empty()) {
-			Engine::instance()->rhi()->cmdBindPipeline(cmd, trianglesPipeline);
-			Engine::instance()->rhi()->cmdBindVertexBuffer(cmd, 0, trianglesVBO);
+		if (!Utils::renderTriangles.empty() && trianglesPipeline) {
 			drawDataTriangles.pv = renderDataHandle.current.PV;
 			drawDataTriangles.viewPos = Math::Vec4(renderDataHandle.mCameraPos, 1.f);
-			Engine::instance()->rhi()->cmdPushConstants(cmd, trianglesPipeline, drawDataTriangles);
-
+			const size_t triStride = sizeof(Utils::Triangle);
+			const size_t maxTris = mTrisCapacity / triStride;
+			rhi->cmdBindPipeline(cmd, trianglesPipeline);
+			rhi->cmdBindVertexBuffer(cmd, 0, trianglesVBO);
+			rhi->cmdPushConstants(cmd, trianglesPipeline, drawDataTriangles);
 			for (auto& [data, triangles] : Utils::renderTriangles) {
-				Engine::instance()->rhi()->cmdUpdateBuffer(cmd, trianglesVBO,0, triangles.size() * sizeof(SFE::Vertex3D) * 3, triangles.data());
-				Engine::instance()->rhi()->cmdBindPipeline(cmd, getTrianglePipeline(data.blend, data.depthTest, data.cull, { BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha }));
-				Engine::instance()->rhi()->cmdDraw(cmd, static_cast<int>(triangles.size()) * 3);
+				(void)data;
+				for (size_t off = 0; off < triangles.size();) {
+					const size_t count = (std::min)(maxTris, triangles.size() - off);
+					rhi->cmdUpdateBuffer(cmd, trianglesVBO, 0, count * triStride, triangles.data() + off);
+					rhi->cmdDraw(cmd, static_cast<uint32_t>(count * 3));
+					++dbg->drawCalls;
+					off += count;
+				}
 			}
-
 			Utils::renderTriangles.clear();
 		}
 
-		if (!Utils::renderVertices.empty()) {
-			Engine::instance()->rhi()->cmdBindPipeline(cmd, linesPipeline);
-			Engine::instance()->rhi()->cmdBindVertexBuffer(cmd, 0, linesVBO);
+		if (!Utils::renderVertices.empty() && linesPipeline) {
+			rhi->cmdBindPipeline(cmd, linesPipeline);
+			rhi->cmdBindVertexBuffer(cmd, 0, linesVBO);
 			drawDataLines.pv = renderDataHandle.current.PV;
-			Engine::instance()->rhi()->cmdPushConstants(cmd, linesPipeline, drawDataLines);
+			const size_t vertStride = sizeof(Math::Vec3);
+			const size_t maxVerts = mLinesCapacity / vertStride;
 			for (auto& [data, vertices] : Utils::renderVertices) {
 				drawDataLines.color = data.color;
-				Engine::instance()->rhi()->cmdPushConstants(cmd, linesPipeline, drawDataLines);
-
-				Engine::instance()->rhi()->cmdUpdateBuffer(cmd, linesVBO, 0, vertices.size() * sizeof(SFE::Vertex3D) , vertices.data());
-				Engine::instance()->rhi()->cmdDraw(cmd, static_cast<int>(vertices.size()));
+				rhi->cmdPushConstants(cmd, linesPipeline, drawDataLines);
+				for (size_t off = 0; off < vertices.size();) {
+					const size_t count = (std::min)(maxVerts, vertices.size() - off);
+					rhi->cmdUpdateBuffer(cmd, linesVBO, 0, count * vertStride, vertices.data() + off);
+					rhi->cmdDraw(cmd, static_cast<uint32_t>(count));
+					++dbg->drawCalls;
+					off += count;
+				}
 			}
-
 			Utils::renderVertices.clear();
 		}
-		
-		Engine::instance()->rhi()->cmdEndRenderPass(cmd);
 
-		auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-		CascadeShadowComponent::debugDraw(ECSHandler::registry().pinComponent<const CascadeShadowComponent>(renderData.mCascadedShadowsPassData->shadows)->getCacheLightSpaceMatrices(), renderData.next.projection, renderData.next.view);
-
-		//if (!renderData.mCascadedShadowsPassData->shadowCascadeLevels.empty() && ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->isShadowsDebugData()) {
-		//	//auto sh = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/debugQuadDepth.vs", "shaders/debugQuadDepth.fs");
-		//	sh->use();
-		//	sh->setUniform("depthMap", 31);
-		//	
-		//	auto a = 250.f / Engine::instance()->getWindow()->getScreenData().width;
-		//	auto b = 250.f / Engine::instance()->getWindow()->getScreenData().height;
-
-		//	for (auto i = 0; i < renderData.mCascadedShadowsPassData->shadowCascadeLevels.size() - 1; i++) {
-		//		sh->setUniform("near_plane", renderData.mCascadedShadowsPassData->shadowCascadeLevels[i]);
-		//		sh->setUniform("far_plane", renderData.mCascadedShadowsPassData->shadowCascadeLevels[i + 1]);
-		//		sh->setUniform("layer", i);
-
-		//		Render::Utils::renderQuad(cmd, 1.f - a, 1.f - (static_cast<float>(i) + 1.f) * b, 1.f, 1.f - static_cast<float>(i) * b);
-		//	}
-		//}
+		rhi->cmdEndRenderPass(cmd);
+		if (fb && Engine::instance()->presentToScreen()) {
+			rhi->cmdBlit(cmd, fb, rhi->getBackbufferFramebuffer(), BlitMask::Color, BlitFilter::Nearest);
+		}
 	}
 
 	PipelineHandle DebugPass::getTrianglePipeline(bool blend, bool depthTest, bool cull, std::pair<BlendFactor, BlendFactor> blendFactors)

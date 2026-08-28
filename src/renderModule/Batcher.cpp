@@ -3,90 +3,213 @@
 #include <algorithm>
 
 #include "assetsModule/TextureHandler.h"
-#include "assetsModule/modelModule/MeshVaoRegistry.h"
-#include "assetsModule/modelModule/ModelLoader.h"
-#include "componentsModule/MaterialComponent.h"
-#include "componentsModule/TransformComponent.h"
+#include "assetsModule/modelModule/Material.h"
+#include "core/Engine.h"
 #include "debugModule/Benchmark.h"
-#include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 
 void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
-	std::ranges::sort(matrices, [&viewPos](const Matrices& a, const Matrices& b) {//todo sort bones too
+	std::ranges::sort(matrices, [&viewPos](const Matrices& a, const Matrices& b) {
 		return SFE::Math::distanceSqr(viewPos, SFE::Math::Vec3((*a.transform)[3])) < SFE::Math::distanceSqr(viewPos, SFE::Math::Vec3((*b.transform)[3]));
 	});
 }
 
 Batcher::Batcher()
 {
+	mInstanceCapacity = 131072;
 	SFE::Render::BufferDesc desc;
-	desc.size = sizeof(ecss::EntityId) * 10000;
+	desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
 	desc.usage = SFE::Render::BufferUsage::Storage;
 	desc.cpuAccess = SFE::Render::CpuAccess::Write;
 	batcherBuffer = SFE::Engine::instance()->rhi()->createBuffer(desc);
 }
 
-void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::Materials& textures, const SFE::Math::Mat4& transform, SFE::Math::Mat4* bonesTransforms) {
-	if (!meshData.vertexBuffer) {
-		return;
+namespace {
+	const SFE::ComponentsModule::MaterialComponent& emptyMaterial() {
+		static const SFE::ComponentsModule::MaterialComponent kEmpty;
+		return kEmpty;
 	}
-	auto it = drawList.find(meshData.vertexBuffer.id);
-	if (it != drawList.end()) {
-		it->second.matrices.emplace_back(const_cast<SFE::Math::Mat4*>(&transform), bonesTransforms);
-	}
-	else {
-		auto& obj  = drawList[meshData.vertexBuffer.id];
-		obj.meshData = meshData;
-		obj.materialData = textures;
-		obj.matrices.reserve(1000000);
-		obj.matrices.emplace_back(const_cast<SFE::Math::Mat4*>(&transform), bonesTransforms);
-		if (bonesTransforms) {
-			obj.bonesCount++;
+
+	static uint64_t hashMaterial(const SFE::ComponentsModule::MaterialComponent& material) {
+		uint64_t h = 1469598103934665603ull;
+		auto mix = [&](uint64_t v) {
+			h ^= v;
+			h *= 1099511628211ull;
+		};
+		mix(material.transparent ? 1ull : 0ull);
+		mix(static_cast<uint64_t>(material.opacity * 4096.f));
+		mix(static_cast<uint64_t>(material.ior * 4096.f));
+		mix(static_cast<uint64_t>(material.tint.x * 4096.f));
+		mix(static_cast<uint64_t>(material.tint.y * 4096.f));
+		mix(static_cast<uint64_t>(material.tint.z * 4096.f));
+		mix(material.materials.materialsCount);
+		for (uint8_t i = 0; i < material.materials.materialsCount; ++i) {
+			const auto& slot = material.materials.material[i];
+			mix((static_cast<uint64_t>(slot.slot) << 32) | slot.texture.id);
 		}
-		drawList.insert({ meshData.vertexBuffer.id, obj });
+		if (material.vertexShader != SFE::ComponentsModule::DefaultGBufferVS) {
+			mix(std::hash<std::string>{}(material.vertexShader));
+		}
+		if (material.fragmentShader != SFE::ComponentsModule::DefaultGBufferFS) {
+			mix(std::hash<std::string>{}(material.fragmentShader));
+		}
+		return h;
+	}
+
+	static uint64_t hashMaterialGlass(const SFE::ComponentsModule::MaterialComponent& material) {
+		uint64_t h = 1469598103934665603ull;
+		auto mix = [&](uint64_t v) {
+			h ^= v;
+			h *= 1099511628211ull;
+		};
+		mix(material.transparent ? 1ull : 0ull);
+		mix(static_cast<uint64_t>(material.ior * 4096.f));
+		mix(material.materials.materialsCount);
+		for (uint8_t i = 0; i < material.materials.materialsCount; ++i) {
+			const auto& slot = material.materials.material[i];
+			mix((static_cast<uint64_t>(slot.slot) << 32) | slot.texture.id);
+		}
+		if (material.vertexShader != SFE::ComponentsModule::DefaultGBufferVS) {
+			mix(std::hash<std::string>{}(material.vertexShader));
+		}
+		if (material.fragmentShader != SFE::ComponentsModule::DefaultGBufferFS) {
+			mix(std::hash<std::string>{}(material.fragmentShader));
+		}
+		return h;
+	}
+
+	DrawBatchKey makeBatchKey(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
+		return { meshData.vertexBuffer.id, hashMaterial(material) };
+	}
+
+	DrawBatchKey makeBatchKeyGlass(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
+		return { meshData.vertexBuffer.id, hashMaterialGlass(material) };
 	}
 }
 
-void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::Materials& textures, ecss::EntityId id)
-{
-	if (!meshData.vertexBuffer) {
+DrawObject& Batcher::batchFor(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
+	const auto key = makeBatchKey(meshData, material);
+	if (mLastObj && mLastKey == key) {
+		return *mLastObj;
+	}
+
+	auto it = drawList.find(key);
+	if (it == drawList.end()) {
+		auto& obj = drawList[key];
+		obj.meshData = meshData;
+		obj.materialData = material.materials;
+		obj.vertexShader = material.vertexShader.empty() ? SFE::ComponentsModule::DefaultGBufferVS : material.vertexShader;
+		obj.fragmentShader = material.fragmentShader.empty() ? SFE::ComponentsModule::DefaultGBufferFS : material.fragmentShader;
+		obj.opacity = material.opacity;
+		obj.ior = material.ior;
+		obj.tint = material.tint;
+		obj.entities.reserve(256);
+		obj.matrices.reserve(64);
+		mLastKey = key;
+		mLastObj = &obj;
+		return obj;
+	}
+
+	mLastKey = key;
+	mLastObj = &it->second;
+	return it->second;
+}
+
+DrawObject& Batcher::batchForGlass(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
+	const auto key = makeBatchKeyGlass(meshData, material);
+	if (mLastObj && mLastKey == key) {
+		return *mLastObj;
+	}
+
+	auto it = drawList.find(key);
+	if (it == drawList.end()) {
+		auto& obj = drawList[key];
+		obj.meshData = meshData;
+		obj.materialData = material.materials;
+		obj.vertexShader = material.vertexShader.empty() ? SFE::ComponentsModule::DefaultGBufferVS : material.vertexShader;
+		obj.fragmentShader = material.fragmentShader.empty() ? SFE::ComponentsModule::DefaultGBufferFS : material.fragmentShader;
+		obj.opacity = material.opacity;
+		obj.ior = material.ior;
+		obj.tint = material.tint;
+		obj.entities.reserve(256);
+		obj.matrices.reserve(64);
+		mLastKey = key;
+		mLastObj = &obj;
+		return obj;
+	}
+
+	mLastKey = key;
+	mLastObj = &it->second;
+	return it->second;
+}
+
+void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent& material, const SFE::Math::Mat4& transform, SFE::Math::Mat4* bonesTransforms) {
+	if (!meshData.vertexBuffer || (meshData.vertexCount == 0 && meshData.indexCount == 0)) {
 		return;
 	}
-	auto it = drawList.find(meshData.vertexBuffer.id);
-	if (it != drawList.end()) {
-		it->second.entities.emplace_back(id);
-	}
-	else {
-		auto& obj = drawList[meshData.vertexBuffer.id];
-		obj.meshData = meshData;
-		obj.materialData = textures;
-		obj.entities.reserve(1000000);
-		obj.entities.emplace_back(id);
-
-		drawList.insert({ meshData.vertexBuffer.id, obj });
+	auto& obj = batchFor(meshData, material);
+	obj.matrices.emplace_back(const_cast<SFE::Math::Mat4*>(&transform), bonesTransforms);
+	if (bonesTransforms) {
+		obj.bonesCount++;
 	}
 }
 
-void Batcher::sort(const SFE::Math::Vec3& viewPos) {
-	/*for (auto& drawObjects : drawList) {
-		drawObjects.second.sortTransformAccordingToView(viewPos);
-	}*/
-
-	/*drawList.sort([&viewPos](const std::shared_ptr<DrawObject>& a, const std::shared_ptr<DrawObject>& b) {
-		return SFE::Math::distanceSqr(viewPos, (*a.get()->matrices.front().transform)[3].xyz) > SFE::Math::distanceSqr(viewPos, (*b.get()->matrices.front().transform)[3].xyz);
-	});*/
+void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent* material, ecss::EntityId id)
+{
+	if (!meshData.vertexBuffer || (meshData.vertexCount == 0 && meshData.indexCount == 0)) {
+		return;
+	}
+	auto& obj = batchFor(meshData, material ? *material : emptyMaterial());
+	obj.entities.emplace_back(id);
 }
 
-void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle) {
+void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent& material, ecss::EntityId id)
+{
+	addToDrawList(meshData, &material, id);
+}
+
+void Batcher::addToDrawListGlass(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent& material, ecss::EntityId id)
+{
+	if (!meshData.vertexBuffer || (meshData.vertexCount == 0 && meshData.indexCount == 0)) {
+		return;
+	}
+	auto& obj = batchForGlass(meshData, material);
+	obj.entities.emplace_back(id);
+}
+
+void Batcher::sort(const SFE::Math::Vec3&) {
+}
+
+void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, DrawObject& objs, const ecss::EntityId* entityIds, size_t entityCount, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw, bool bindResources) {
+	if (!entityIds || entityCount == 0) {
+		return;
+	}
+
 	auto rhi = SFE::Engine::instance()->rhi();
-	auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
-	auto defaultNormal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png");
-	int i = 0;
-	for (auto& drawObjects : drawList) {
-		auto objs = drawObjects.second;
-		SFE::Debug::BenchmarkFunc scopeObj = SFE::Debug::BenchmarkFunc(std::string(__FUNCTION__) + std::string(" flush all") + std::to_string(i++));
 
-		rhi->cmdUpdateBuffer(cmd, batcherBuffer, 0, sizeof(ecss::EntityId) * objs.entities.size(), objs.entities.data());
+	if (bindResources) {
+		auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
+		auto defaultNormal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png");
+
+		if (!mDefaultBlack) {
+			SFE::Render::TextureDesc solidDesc;
+			solidDesc.width = 1;
+			solidDesc.height = 1;
+			solidDesc.format = SFE::Render::TextureFormat::RGBA8;
+			const uint8_t blackPx[4] = { 0, 0, 0, 255 };
+			mDefaultBlack = rhi->createTexture(solidDesc, blackPx);
+			mDefaultGray = mDefaultBlack;
+		}
+
+		if (getPipeline) {
+			if (const auto pipeline = getPipeline(objs.vertexShader, objs.fragmentShader)) {
+				rhi->cmdBindPipeline(cmd, pipeline);
+			}
+		}
+		if (beforeDraw) {
+			beforeDraw(cmd, objs);
+		}
+
 		std::vector<SFE::Render::WriteDescriptor> writes {
 		{
 			{
@@ -105,7 +228,19 @@ void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::Descript
 				.set = setHandle,
 				.binding = SFE::SPECULAR,
 				.type = SFE::Render::DescriptorType::CombinedImageSampler,
-				.images{ {defaultTex->texture, defaultTex->sampler} }
+				.images{ {mDefaultBlack, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::ROUGHNESS,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {mDefaultGray, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::METALLIC,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {mDefaultBlack, defaultTex->sampler} }
 			},
 			{
 				.set = setHandle,
@@ -118,6 +253,9 @@ void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::Descript
 
 		for (auto i = 0; i < objs.materialData.materialsCount; i++) {
 			const auto& mat = objs.materialData.material[i];
+			if (!mat.texture) {
+				continue;
+			}
 			writes.push_back(SFE::Render::WriteDescriptor{
 				.set = setHandle,
 				.binding = static_cast<uint32_t>(mat.slot),
@@ -125,43 +263,63 @@ void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::Descript
 				.images{ {mat.texture, defaultTex->sampler} }
 				});
 		}
-		SFE::Engine::instance()->rhi()->updateDescriptorSets(writes);
-
+		rhi->updateDescriptorSets(writes);
 		rhi->cmdBindDescriptorSets(cmd, {}, 0, &setHandle, 1);
-
-		rhi->cmdBindVertexBuffer(cmd, 0, objs.meshData.vertexBuffer, objs.meshData.vertexOffsetBytes);
-		rhi->cmdBindIndexBuffer(cmd, objs.meshData.indexBuffer, objs.meshData.indexType, objs.meshData.indexOffsetBytes);
-		//todo bind
-		if (objs.meshData.indexCount) {
-			rhi->cmdDrawIndexed(cmd, objs.meshData.indexCount, objs.entities.size(), 0, 0, 0);
-		}
-		else {
-			rhi->cmdDraw(cmd, objs.meshData.vertexCount, objs.entities.size(),0, 0);
-		}
-
-		SFE::SystemsModule::RenderDebugInfo::instance()->objectsRendered += objs.entities.size();
-		SFE::SystemsModule::RenderDebugInfo::instance()->verticesRendered += objs.entities.size() * objs.meshData.vertexCount;
-		SFE::SystemsModule::RenderDebugInfo::instance()->drawCalls++;
 	}
 
-	//todo do not forget about bones updating, one time allocate, then just update
-	//	if (objs.bonesCount) {
-	//		FUNCTION_BENCHMARK_NAMED(bones_binding)
-	//		batcherBuffer.bind(1);
-	//		batcherBuffer.setBufferBinding(2, 1);
-	//		batcherBuffer.allocateData(sizeof(SFE::Math::Mat4) * 100, objs.matrices.size());
-	//		auto size = sizeof(SFE::Math::Mat4) * 100;
-	//		for (auto j = 0; j < objs.matrices.size(); j++) {
-	//			if (objs.matrices[j].bones) {
-	//				batcherBuffer.setData(size, 1, objs.matrices[j].bones, j);
-	//			}
-	//			else {
-	//				batcherBuffer.setData(size, 1, mBones, j);
-	//			}
-	//		}
-	//	}
+	if (entityCount > mInstanceCapacity) {
+		mInstanceCapacity = entityCount + entityCount / 2 + 1024;
+		SFE::Render::BufferDesc desc;
+		desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
+		desc.usage = SFE::Render::BufferUsage::Storage;
+		desc.cpuAccess = SFE::Render::CpuAccess::Write;
+		batcherBuffer = rhi->createBuffer(desc);
+	}
+
+	rhi->cmdUpdateBuffer(cmd, batcherBuffer, 0, sizeof(ecss::EntityId) * entityCount, entityIds);
+
+	rhi->cmdBindVertexBuffer(cmd, 0, objs.meshData.vertexBuffer, objs.meshData.vertexOffsetBytes);
+	rhi->cmdBindIndexBuffer(cmd, objs.meshData.indexBuffer, objs.meshData.indexType, objs.meshData.indexOffsetBytes);
+	const auto instanceCount = static_cast<uint32_t>(entityCount);
+	if (objs.meshData.indexCount) {
+		rhi->cmdDrawIndexed(cmd, objs.meshData.indexCount, instanceCount, 0, 0, 0);
+	}
+	else {
+		rhi->cmdDraw(cmd, objs.meshData.vertexCount, instanceCount, 0, 0);
+	}
+
+	SFE::SystemsModule::RenderDebugInfo::instance()->objectsRendered += entityCount;
+	SFE::SystemsModule::RenderDebugInfo::instance()->verticesRendered += entityCount * objs.meshData.vertexCount;
+	SFE::SystemsModule::RenderDebugInfo::instance()->drawCalls++;
+}
+
+void Batcher::flushEntity(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, DrawObject& obj, ecss::EntityId entity, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw, bool bindResources) {
+	flushEntitiesInternal(cmd, setHandle, obj, &entity, 1, getPipeline, beforeDraw, bindResources);
+}
+
+void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw, const std::vector<DrawObject*>* ordered) {
+	FUNCTION_BENCHMARK_NAMED(Batcher_flushAll);
+	if (ordered) {
+		for (DrawObject* objs : *ordered) {
+			if (objs && !objs->entities.empty()) {
+				flushEntitiesInternal(cmd, setHandle, *objs, objs->entities.data(), objs->entities.size(), getPipeline, beforeDraw);
+			}
+		}
+		return;
+	}
+	for (auto& drawObjects : drawList) {
+		auto& objs = drawObjects.second;
+		if (!objs.entities.empty()) {
+			flushEntitiesInternal(cmd, setHandle, objs, objs.entities.data(), objs.entities.size(), getPipeline, beforeDraw);
+		}
+	}
 }
 
 void Batcher::clear() {
-	drawList.clear();
+	for (auto& [_, obj] : drawList) {
+		obj.entities.clear();
+		obj.matrices.clear();
+		obj.bonesCount = 0;
+	}
+	mLastObj = nullptr;
 }

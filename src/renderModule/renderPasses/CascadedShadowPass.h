@@ -3,7 +3,9 @@
 #include <thread>
 #include <vector>
 
-#include "componentsModule/CascadeShadowComponent.h"
+#include "assetsModule/modelModule/Mesh.h"
+#include "componentsModule/MeshComponent.h"
+#include "renderModule/FrameBlackboard.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 #include "renderModule/renderPasses/RenderPass.h"
@@ -16,20 +18,7 @@ namespace SFE::Render::RenderPasses {
 		void prepare() override;
 
 
-		struct Data {
-			TextureHandle shadowMapTexture;
-			SamplerHandle shadowMapSampler;
-			Math::Vec3 lightDirection = {};
-			Math::Vec3 lightColor = {};
-			Math::Vec2 resolution = {};
-			float cameraFarPlane = 0.f;
-			std::vector<float> shadowCascadeLevels;
-			ecss::EntityId shadows;
-			std::vector<ComponentsModule::ShadowCascade> shadowCascades;
-			float shadowsIntensity = 0.f;
-			BufferHandle lightSpaceMatricesUBO;
-			std::vector<Math::Mat4> lightSpaceMatrices;
-		};
+		using Data = Render::CsmFrame;
 
 		CascadedShadowPass();
 		~CascadedShadowPass() override;
@@ -41,12 +30,12 @@ namespace SFE::Render::RenderPasses {
 		void updateRenderData(SystemsModule::RenderData& renderDataHandle);
 		void debug(SystemsModule::RenderData& renderDataHandle);
 
-		std::vector<FramebufferHandle> lightFbos;
+		FramebufferHandle lightFbo;
 		TextureHandle  lightDepthMa;
 		SamplerHandle  lightSampler;
+		SamplerHandle  lightDepthSampler;
 
 		BufferHandle matricesUBO;
-		std::vector<BufferHandle> cascadeMatrixUBOs;
 		PipelineHandle pipeline;
 		RenderPassHandle renderPass;
 
@@ -56,6 +45,9 @@ namespace SFE::Render::RenderPasses {
 		ecss::EntityId mShadowSource;
 		bool mInited = false;
 		Data mData;
+
+		SFE::MeshObject3D mGlassShadowMesh;
+		SFE::RenderMeshData mGlassShadowMeshData;
 	};
 }
 

@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <atomic>
 #include <cassert>
 #include <functional>
 #include <future>
@@ -46,7 +47,9 @@ namespace SFE {
 
 		void waitAll() const {
 			for (auto& future : futures) {
-				future.wait();
+				if (future.valid()) {
+					future.wait();
+				}
 			}
 			futures.clear();
 		}
@@ -58,20 +61,25 @@ namespace SFE {
 			mWorkers.reserve(Size);
 
 			for (auto i = 0u; i < Size; i++) {
-				mWorkers.emplace_back(std::thread([this, task = std::packaged_task<void()>()]()mutable {
-					while (!mTerminating) {
-						mMutex.lock();
-						if (mTasksQueue.size()) {
+				mWorkers.emplace_back(std::thread([this]() {
+					while (true) {
+						std::packaged_task<void()> task;
+						{
+							std::unique_lock lock(mMutex);
+							mCondition.wait(lock, [this] {
+								return mTerminating.load(std::memory_order_acquire) || !mTasksQueue.empty();
+							});
+							if (mTasksQueue.empty()) {
+								if (mTerminating.load(std::memory_order_acquire)) {
+									break;
+								}
+								continue;
+							}
 							task = std::move(mTasksQueue.front());
 							mTasksQueue.pop();
-							mMutex.unlock();
-
-							task();
 						}
-						else {
-							mMutex.unlock();
-							auto mtx = std::unique_lock(mMutex);
-							mCondition.wait(mtx);
+						if (task.valid()) {
+							task();
 						}
 					}
 				}));
@@ -79,20 +87,36 @@ namespace SFE {
 		}
 
 		~WorkersPool() {
-			mTerminating = true;
-			
-			mMutex.lock();
-			mCondition.notify_all();
-			mMutex.unlock();
-			
+			shutdown();
+		}
 
+		void requestStop() {
+			mTerminating.store(true, std::memory_order_release);
+			mCondition.notify_all();
+		}
+
+		void join() {
 			for (auto& worker : mWorkers) {
-				worker.join();
+				if (worker.joinable()) {
+					worker.join();
+				}
 			}
+			mWorkers.clear();
+		}
+
+		void shutdown() {
+			requestStop();
+			join();
 		}
 
 		std::shared_future<void> addTask(std::function<void()>&& task) {
+			if (mTerminating.load(std::memory_order_acquire)) {
+				return {};
+			}
 			std::lock_guard lock(mMutex);
+			if (mTerminating.load(std::memory_order_acquire)) {
+				return {};
+			}
 			mTasksQueue.emplace(std::packaged_task(std::move(task)));
 			auto future = mTasksQueue.back().get_future();
 			mCondition.notify_one();
@@ -107,7 +131,7 @@ namespace SFE {
 		std::mutex mMutex;
 		std::condition_variable mCondition;
 
-		bool mTerminating = false;
+		std::atomic<bool> mTerminating{ false };
 	};
 
 	enum class WorkerType {
@@ -157,11 +181,15 @@ namespace SFE {
 			return {};
 		}
 
-		void syncUpdate();//todo create separate thread with opengl shared context
+		void syncUpdate();
+		void ensureLoadingContext();
+		void shutdown();
+		bool isShuttingDown() const { return mShuttingDown.load(std::memory_order_acquire); }
 
 	private:
 		std::shared_future<void> addTaskToSynchronization(std::function<void()>&& task);
 		std::shared_future<void> addLoadingTask(std::function<void()>&& task);
+		void drainSync();
 
 		constexpr static inline uint8_t MAX_WORKERS = 128;
 		constexpr static inline uint8_t RENDER_WORKERS = 16;
@@ -173,6 +201,8 @@ namespace SFE {
 
 		std::queue<std::packaged_task<void()>> mSyncTasks;
 		std::mutex mSyncMtx;
+		std::mutex mLoadingGlMtx;
+		std::atomic<bool> mShuttingDown{ false };
 
 		GLFWwindow* mLoadingWindow = nullptr;
 	};

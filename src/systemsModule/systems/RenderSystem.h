@@ -10,10 +10,7 @@
 #include "componentsModule/TransformComponent.h"
 #include "systemsModule/SystemBase.h"
 #include "renderModule/renderPasses/RenderPass.h"
-#include "renderModule/renderPasses/CascadedShadowPass.h"
-#include "renderModule/renderPasses/GeometryPass.h"
-#include "renderModule/renderPasses/PointLightPass.h"
-#include "renderModule/renderPasses/SSAOPass.h"
+#include "renderModule/FrameBlackboard.h"
 
 namespace SFE {
 	namespace Render {
@@ -35,12 +32,43 @@ namespace SFE::SystemsModule {
 		Math::Mat4 PV = {};
 	};
 
+	struct GraphicsSettings {
+		bool ssao = true;
+		bool ssr = true;
+		bool volumetric = true;
+		bool taa = true;
+		bool dof = true;
+		bool bloom = true;
+
+		float ssrDistance = 12.f;
+
+		float volumetricDensity = 0.022f;
+		float volumetricIntensity = 2.4f;
+		float volumetricAnisotropy = 0.68f;
+		float volumetricDistance = 70.f;
+
+		float taaBlend = 0.92f;
+
+		float dofFocus = 18.f;
+		float dofRange = 28.f;
+		float dofBlur = 3.5f;
+
+		float bloomStrength = 0.62f;
+		float exposure = 0.92f;
+		float vignette = 0.14f;
+		float chromaticAberration = 0.0028f;
+
+		float fogStart = 0.45f;
+		float glassRoughness = 0.02f;
+	};
+
 	struct RenderData {
 		FrustumModule::Frustum mCamFrustum;
 		FrustumModule::Frustum mNextCamFrustum;
 
 		RenderMatrices current;
 		RenderMatrices next;
+		Math::Mat4 prevPV = {};
 
 		Math::Vec3 mCameraPos = {};
 		Math::Vec3 mViewDir = {};
@@ -50,37 +78,50 @@ namespace SFE::SystemsModule {
 		MathModule::PerspectiveProjection cameraProjection = {};
 		MathModule::PerspectiveProjection nextCameraProjection =  {};
 
-		Render::RenderPasses::CascadedShadowPass::Data* mCascadedShadowsPassData = nullptr;
-		Render::RenderPasses::PointLightPass::Data* mPointPassData = nullptr;
-		Render::RenderPasses::GeometryPass::Data* mGeometryPassData = nullptr;
-		Render::RenderPasses::SSAOPass::Data* mSSAOPassData = nullptr;
+		Render::FrameBlackboard frame;
 
-		Render::TextureHandle finalTexture;
 		Render::BufferHandle transformsSSBO;
 		Render::BufferHandle bonesSSBO;
 		Render::BufferHandle cameraMatricesUBO;
 
 		RenderMode mRenderType = RenderMode::DEFAULT;
+		GraphicsSettings graphics;
 
 		uint8_t currentRegistry = 0;
 		uint8_t nextRegistry = 1;
+		int taaFrame = 0;
 
 		void rotate() {
 			std::swap(currentRegistry, nextRegistry);
 		}
 	};
 
-	class RenderDebugInfo : public Singleton<RenderDebugInfo>
+		class RenderDebugInfo : public Singleton<RenderDebugInfo>
 	{
 	public:
+		struct PassTime {
+			const char* name = "";
+			float cpuMs = 0.f;
+		};
+
 		size_t objectsRendered = 0;
 		size_t verticesRendered = 0;
 		size_t drawCalls = 0;
+		size_t cullConsidered = 0;
+		size_t cullVisible = 0;
+		size_t cullShadow = 0;
 		size_t shadowMeshes = 0;
 		size_t shadowFbos = 0;
 		size_t shadowFbosTotal = 0;
 		uint32_t shadowPipeline = 0;
 		float shadowIntensity = 0.f;
+
+		PassTime passTimes[16]{};
+		int passCount = 0;
+		float cpuMs = 0.f;
+		float submitMs = 0.f;
+		float presentMs = 0.f;
+		float gpuMs = 0.f;
 	};
 
 	class RenderSystem : public ecss::System {
@@ -142,21 +183,13 @@ namespace SFE::SystemsModule {
 	private:
 
 		void renderFrame();
+		bool shouldRunPass(size_t passIndex) const;
+		void ensureGpuCapacity(ecss::EntityId id);
 
 		template<typename T>
 		void markDirtyImpl(ecss::EntityId id) {
 			auto lock = std::unique_lock(dirtiesMutex);
-			auto& entities = dirties[getDirtyId<T>()];
-
-			if (auto it = entities.find([id](const std::pair<ecss::EntityId, uint8_t>& a) { return a.first == id; })) {
-				it->second = 2;
-			}
-			else {
-				entities.emplace_back(id, 2);
-			}
-			//auto& entities = dirtiesRanges[getDirtyId<T>()];
-			//entities.insert(id);
-
+			dirties[getDirtyId<T>()].emplace_back(id, 2);
 		}
 
 		//std::unordered_map<ecss::ECSType, ecss::EntitiesRanges> dirtiesRanges;
@@ -171,19 +204,17 @@ namespace SFE::SystemsModule {
 		double mLastGpuTimeMs = 0.0; // result from previous frame
 		std::chrono::high_resolution_clock::time_point mCpuFrameStart; // per RenderSystem update
 		double mLastCpuFrameMs = 0.0; // duration of last RenderSystem::update body
-		
-
-		template<typename PassType>
-		inline void addRenderPass();
 
 		RenderData mRenderData;
 		std::vector<Render::RenderPass*> mRenderPasses;
+		std::vector<const char*> mPassNames;
 		std::shared_future<void> updateLock;
 
 		Render::BufferHandle cameraMatricesUBO;
 
 		Render::BufferHandle transforms;
 		Render::BufferHandle bones;
+		size_t mGpuCapacity = 0;
 
 		Render::DescriptorSetLayoutHandle frameSetLayout;
 		Render::DescriptorSetHandle frameSet;

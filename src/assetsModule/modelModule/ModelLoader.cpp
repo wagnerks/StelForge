@@ -8,7 +8,11 @@
 #include "MeshVaoRegistry.h"
 #include "logsModule/logger.h"
 #include "assetsModule/TextureHandler.h"
+#include "core/FileSystem.h"
 #include "multithreading/ThreadPool.h"
+
+#include <algorithm>
+#include <cctype>
 
 using namespace AssetsModule;
 
@@ -42,7 +46,7 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	mtx.unlock();
 
 	Assimp::Importer import;//todo create own format with aabb, materials, etc
-	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals);
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		SFE::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
 		return nullptr;
@@ -204,21 +208,98 @@ void ModelLoader::readBonesData(std::vector<SFE::Vertex3D>& vertices, aiMesh* me
 }
 
 void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMaterial, const std::string& directory) {
+	auto bindFirst = [&material](SFE::MaterialType type, const std::vector<Texture*>& maps) {
+		if (maps.empty() || material.tryGetTexture(type)) {
+			return;
+		}
+		material[type] = SFE::MaterialTexture{ maps.front()->texture, type, type };
+	};
+
+	auto tryFiles = [&material, &directory](SFE::MaterialType type, std::initializer_list<std::string> names) {
+		if (material.tryGetTexture(type)) {
+			return;
+		}
+		for (const auto& name : names) {
+			const std::string path = directory + "/" + name;
+			if (!SFE::FileSystem::isFileExists(path)) {
+				continue;
+			}
+			auto* tex = TextureHandler::loadTexture(path);
+			if (tex && tex->isValid()) {
+				material[type] = SFE::MaterialTexture{ tex->texture, type, type };
+				return;
+			}
+		}
+	};
+
 	auto diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE, directory);
-	assert(diffuseMaps.size() < 2);
-	if (!diffuseMaps.empty()) {
-		material[SFE::DIFFUSE] = SFE::MaterialTexture{ diffuseMaps.front()->texture, SFE::DIFFUSE, SFE::DIFFUSE };
+	if (diffuseMaps.empty()) {
+		diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_BASE_COLOR, directory);
 	}
+	bindFirst(SFE::DIFFUSE, diffuseMaps);
 
 	auto specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_SPECULAR, directory);
-	if (!specularMaps.empty()) {
-		material[SFE::SPECULAR] = SFE::MaterialTexture{ specularMaps.front()->texture, SFE::SPECULAR, SFE::SPECULAR };
+	bindFirst(SFE::SPECULAR, specularMaps);
+
+	auto roughnessMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE_ROUGHNESS, directory);
+	auto metallicMaps = loadMaterialTextures(assimpMaterial, aiTextureType_METALNESS, directory);
+	auto packedMaps = loadMaterialTextures(assimpMaterial, aiTextureType_UNKNOWN, directory);
+	if (roughnessMaps.empty()) {
+		roughnessMaps = packedMaps;
 	}
+	if (metallicMaps.empty()) {
+		metallicMaps = packedMaps;
+	}
+	bindFirst(SFE::ROUGHNESS, roughnessMaps);
+	bindFirst(SFE::METALLIC, metallicMaps);
 
 	auto normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMALS, directory);
-	if (!normalMaps.empty()) {
-		material[SFE::NORMALS] = SFE::MaterialTexture{ normalMaps.front()->texture, SFE::NORMALS, SFE::NORMALS };
+	if (normalMaps.empty()) {
+		normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMAL_CAMERA, directory);
 	}
+	bindFirst(SFE::NORMALS, normalMaps);
+
+	aiString matName;
+	assimpMaterial->Get(AI_MATKEY_NAME, matName);
+	std::string n = matName.C_Str();
+	std::string nUs = n;
+	std::string nSp = n;
+	std::replace(nUs.begin(), nUs.end(), ' ', '_');
+	std::replace(nSp.begin(), nSp.end(), '_', ' ');
+
+	tryFiles(SFE::DIFFUSE, {
+		n + "_Base_Color.png", n + "_BaseColor.png", n + "_albedo.png",
+		nUs + "_Base_Color.png", nUs + "_BaseColor.png",
+		nSp + "_Base_Color.png", nSp + "_BaseColor.png"
+	});
+	tryFiles(SFE::NORMALS, {
+		n + "_Normal.png", n + "_Normal_OpenGL.png",
+		nUs + "_Normal.png", nSp + "_Normal.png"
+	});
+	tryFiles(SFE::ROUGHNESS, {
+		n + "_Roughness.png", nUs + "_Roughness.png", nSp + "_Roughness.png"
+	});
+	tryFiles(SFE::METALLIC, {
+		n + "_Metallic.png", nUs + "_Metallic.png", nSp + "_Metallic.png"
+	});
+
+	float opacity = 1.f;
+	assimpMaterial->Get(AI_MATKEY_OPACITY, opacity);
+	float ior = 1.5f;
+	assimpMaterial->Get(AI_MATKEY_REFRACTI, ior);
+	float transmission = 0.f;
+	assimpMaterial->Get(AI_MATKEY_TRANSMISSION_FACTOR, transmission);
+
+	std::string nl = n;
+	std::transform(nl.begin(), nl.end(), nl.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	const bool nameGlass = nl.find("glass") != std::string::npos
+		|| nl.find("window") != std::string::npos
+		|| nl.find("transparent") != std::string::npos
+		|| nl.find("water") != std::string::npos;
+
+	material.opacity = opacity;
+	material.ior = ior > 1.f ? ior : 1.5f;
+	material.transparent = nameGlass || transmission > 0.01f || (opacity > 0.001f && opacity < 0.99f);
 }
 
 void ModelLoader::readIndicesData(std::vector<unsigned>& indices, unsigned numFaces, aiFace* faces) {
@@ -296,10 +377,32 @@ std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextu
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
-		std::string path = std::string(str.C_Str());
-		path.erase(0, std::string(str.C_Str()).find_last_of("\\") + 1);
+		std::string raw = str.C_Str();
+		std::string filename = raw;
+		if (const auto pos = raw.find_last_of("/\\"); pos != std::string::npos) {
+			filename = raw.substr(pos + 1);
+		}
+		std::string relative = raw;
+		std::replace(relative.begin(), relative.end(), '\\', '/');
 
-		textures.emplace_back(TextureHandler::loadTexture(directory + "/" + path));
+		Texture* tex = nullptr;
+		const std::string candidates[] = {
+			directory + "/" + filename,
+			directory + "/" + relative,
+		};
+		for (const auto& candidate : candidates) {
+			if (!SFE::FileSystem::isFileExists(candidate)) {
+				continue;
+			}
+			tex = TextureHandler::loadTexture(candidate);
+			if (tex && tex->isValid()) {
+				break;
+			}
+			tex = nullptr;
+		}
+		if (tex) {
+			textures.emplace_back(tex);
+		}
 	}
 	return textures;
 }

@@ -129,9 +129,20 @@ namespace SFE::Render {
 		void create(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints = {});
 		GLFWwindow* getWindow() const { return mWindow; }
 		bool isClosing() const;
+		bool isVisible() const;
+		void show() const;
+		void hide() const;
 		void swapBuffers() const;
 		void setInputMode(CursorType type);
 		void close() const;
+
+#ifdef _WIN32
+		void* getNativeHandle() const;
+		bool isEmbeddedInHost() const { return mEmbeddedInHost; }
+		bool embedInHost(void* ownerHwnd, int screenX, int screenY, int w, int h);
+		void refreshEmbeddedOverlay(void* ownerHwnd, int screenX, int screenY, int w, int h) const;
+		void detachFromHost();
+#endif
 
 		std::function<void(int, int)> onFramebufferResize = {};
 		std::function<void(int, int)> onPosChange = {};
@@ -149,6 +160,9 @@ namespace SFE::Render {
 		CoreModule::ViewportData data;
 
 		GLFWwindow* mWindow = nullptr;
+#ifdef _WIN32
+		bool mEmbeddedInHost = false;
+#endif
 	};
 
 	static inline std::unordered_map<GLFWwindow*, Window*> windows;

@@ -2,42 +2,45 @@
 layout (location = 0) out highp vec4 gPosition;
 layout (location = 1) out vec4 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
-layout (location = 3) out highp vec3 gViewPosition;
 
 layout (binding = 1) uniform sampler2D texture_diffuse1;
 layout (binding = 2) uniform sampler2D normalMap;
 layout (binding = 3) uniform sampler2D texture_specular1;
+layout (binding = 4) uniform sampler2D texture_roughness;
+layout (binding = 5) uniform sampler2D texture_metallic;
 
 in vec2 TexCoords;
 in highp vec3 FragPos;
 in vec3 Normal;
-in vec3 ViewPos;
-
-out vec4 FragColor;
 in mat3 TBN;
 
 void main()
-{ 
-    // store the fragment position vector in the first gbuffer texture
+{
     gPosition.rgb = FragPos;
-    gPosition.a = gl_FragCoord.z;
-    // also store the per-fragment normals into the gbuffer
-    //gNormal.xyz = Normal;
-    gNormal.a = gl_FragCoord.z / gl_FragCoord.w; //4 byte for depth buffer
-    gViewPosition = ViewPos;
+    gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 
-    // obtain normal from normal map in range [0,1]
     vec3 normal = texture(normalMap, TexCoords).rgb;
-    // transform normal vector to range [-1,1]
     gNormal.xyz = normalize(TBN * normalize(normal * 2.0 - 1.0));
 
-    // and the diffuse per-fragment color
-    gAlbedoSpec.rgb = texture(texture_diffuse1, TexCoords).rgb;
+    vec3 albedoSrgb = texture(texture_diffuse1, TexCoords).rgb;
+    gAlbedoSpec.rgb = pow(albedoSrgb, vec3(2.2));
 
-    // store specular intensity in gAlbedoSpec's alpha component
-    vec4 specular = texture(texture_specular1, TexCoords);
-    gAlbedoSpec.a = (specular.r + specular.g + specular.b) / 3.0;
+    float spec = texture(texture_specular1, TexCoords).r;
+    float roughMap = texture(texture_roughness, TexCoords).g;
+    if (roughMap < 0.001) {
+        roughMap = texture(texture_roughness, TexCoords).r;
+    }
+    float roughness = 0.5;
+    if (roughMap > 0.001) {
+        roughness = roughMap;
+    } else if (spec > 0.001) {
+        roughness = 1.0 - spec;
+    }
+    float metallic = texture(texture_metallic, TexCoords).b;
+    if (metallic < 0.001) {
+        metallic = texture(texture_metallic, TexCoords).r;
+    }
 
-    //gl_FragDepth = gl_FragCoord.z / gl_FragCoord.w; 
-    FragColor = vec4(1.0);
+    gAlbedoSpec.a = clamp(roughness, 0.04, 1.0);
+    gPosition.a = clamp(metallic, 0.0, 1.0);
 }

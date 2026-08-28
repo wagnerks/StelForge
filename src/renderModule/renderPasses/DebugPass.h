@@ -9,6 +9,7 @@ namespace SFE::Render::RenderPasses {
 	public:
 		DebugPass();
 		~DebugPass();
+		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
 
@@ -83,6 +84,8 @@ namespace SFE::Render::RenderPasses {
 
 		BufferHandle trianglesVBO;
 		BufferHandle linesVBO;
+		size_t mLinesCapacity = 0;
+		size_t mTrisCapacity = 0;
 
 		PipelineHandle trianglesPipeline;
 		PipelineHandle linesPipeline;

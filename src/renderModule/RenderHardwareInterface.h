@@ -111,7 +111,7 @@ namespace SFE::Render
 
 	inline TextureUsage operator|(TextureUsage a, TextureUsage b) { return static_cast<TextureUsage>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b)); }
 
-	enum class FilterMode : uint8_t { Nearest, Linear };
+	enum class FilterMode : uint8_t { Nearest, Linear, LinearMipmapLinear };
 
 	enum class AddressMode : uint8_t { Repeat, ClampToEdge, ClampToBorder, MirrorRepeat, MirrorClampToEdge };
 
@@ -192,6 +192,7 @@ namespace SFE::Render
 		Host = 1u << 7,
 		AllGraphics = 1u << 8,
 		AllCommands = 1u << 9,
+		Compute = 1u << 10,
 	};
 
 	inline PipelineStage operator|(PipelineStage a, PipelineStage b) {
@@ -261,6 +262,7 @@ namespace SFE::Render
 		AddressMode addressV = AddressMode::ClampToEdge; //wrap.T
 		AddressMode addressW = AddressMode::ClampToEdge; //wrap.R
 		CompareOp   compareOp = CompareOp::None;
+		float       maxAnisotropy = 1.f;
 	};
 
 	struct FramebufferAttachmentDesc {
@@ -356,6 +358,10 @@ namespace SFE::Render
 		// compute separately in ComputePipelineDesc
 	};
 
+	struct ComputePipelineDesc {
+		ShaderModuleHandle compute;
+	};
+
 	struct GraphicsPipelineDesc {
 		PipelineShaders shaders;
 
@@ -419,6 +425,7 @@ namespace SFE::Render
 		virtual void cleanup() = 0;
 
 		virtual PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) = 0;
+		virtual PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) = 0;
 		virtual void destroyGraphicsPipeline(PipelineHandle pipeline) = 0;
 		virtual TextureHandle createTexture(const TextureDesc& desc, const void* data = nullptr) = 0;
 		virtual void destroyTexture(TextureHandle texture) = 0;
@@ -467,6 +474,7 @@ namespace SFE::Render
 
 		virtual void cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstVertex = 0, uint32_t firstInstance = 0) = 0;
 		virtual void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t  vertexOffset = 0, uint32_t firstInstance = 0) = 0;
+		virtual void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY = 1, uint32_t groupCountZ = 1) = 0;
 
 		virtual void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask = BlitMask::Color, BlitFilter filter = BlitFilter::Nearest) = 0;
 		virtual void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) = 0;
@@ -474,8 +482,13 @@ namespace SFE::Render
 
 		virtual void submit(const CommandListHandle* lists, uint32_t count) = 0;
 		virtual void present() = 0;
+		virtual double lastGpuMs() const { return 0.0; }
+		virtual void publishDisplay(FramebufferHandle src) { (void)src; }
+		virtual uint64_t editorViewNativeId() { return 0; }
+		virtual bool capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) { (void)rgba; (void)width; (void)height; return false; }
 
 		virtual void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) = 0;
+		virtual void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) = 0;
 		virtual uint64_t getNativeTextureId(TextureHandle tex) const = 0;
 
 		// helpers

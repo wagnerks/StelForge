@@ -221,6 +221,11 @@ namespace SFE::CoreModule {
 		static void mouseBtnInput(int btn, int act, int mode);
 		static void init(Render::Window* window);
 
+		static void injectKey(int key, int action);
+		static void injectMouseMove(double x, double y, double dx, double dy);
+		static void injectMouseBtn(double x, double y, int btn, int action);
+		static void injectScroll(double xOffset, double yOffset);
+
 	private:
 		inline static Math::DVec2 mMousePos = {};
 	};

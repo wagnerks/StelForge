@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "renderModule/renderPasses/RenderPass.h"
+#include "renderModule/IblBaker.h"
 
 namespace SFE::Render::RenderPasses {
 	class LightingPass : public RenderPass {
@@ -20,7 +21,7 @@ namespace SFE::Render::RenderPasses {
 			int   pointLightsSize = 0;
 			int   cascadeCount = 0;
 			float ambientX = 0.f, ambientY = 0.f, ambientZ = 0.f;
-			float _pad0 = 0.f;
+			float ssaoAmount = 1.f;
 		};
 
 		struct CascadData {
@@ -50,20 +51,24 @@ namespace SFE::Render::RenderPasses {
 
 		struct PointLight {
 			Math::Vec3 Position;
+			float pad0 = 0.f;
 			Math::Vec2 texelSize;
-			float bias;
-			int samples;
-			float radius;
-			int offset;
-
+			float bias = 0.f;
+			int samples = 0;
+			float radius = 0.f;
+			int offset = 0;
+			float pad1 = 0.f;
+			float pad2 = 0.f;
 			Math::Vec3 Color;
-			float Linear;
-			float Quadratic;
-			int Type;
-			int Layers;
+			float Linear = 0.f;
+			float Quadratic = 0.f;
+			int Type = 0;
+			int Layers = 0;
+			float pad3 = 0.f;
 		};
+		static_assert(sizeof(PointLight) == 80);
 
-		PointLight pointLight[6];
+		PointLight pointLight[12];
 
 		BufferHandle pointLightsUBO;
 		BufferHandle cascadedShadowsUBO;
@@ -75,5 +80,7 @@ namespace SFE::Render::RenderPasses {
 		FramebufferHandle lightingFBO;
 		FramebufferHandle mPresentFbo[2];
 		int mPresentShow = 0;
+
+		IblMaps mIbl;
 	};
 }

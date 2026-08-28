@@ -18,6 +18,8 @@ namespace SFE::CoreModule {
 		int height = 1080;
 		int renderW = width;
 		int renderH = height;
+		int backbufferW = width;
+		int backbufferH = height;
 
 		float renderScaleW = 1.f;
 		float renderScaleH = 1.f;

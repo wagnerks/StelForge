@@ -434,7 +434,7 @@ namespace SFE {
 			};
 
 
-			constexpr static auto notEmptyColor = Math::Vec4(0.f, 0.5f, 0.f, 0.02f);
+			constexpr static auto notEmptyColor = Math::Vec4(0.f, 0.8f, 0.f, 0.12f);
 
 			forEachNode([&](const SFE::Math::Vec3& nodePos, float nodeSize, Node& node)
 			{
@@ -492,7 +492,7 @@ namespace SFE {
 				if (entirely || FrustumModule::SquareAABB::isOnFrustum(frustum, center, halfSize)) {
 					auto& node = nodes[entry.index];
 					for (const auto& object : node.data) {
-						if (entirely || FrustumModule::AABB::isOnFrustum(frustum, object.pos, object.size)) {
+						if (FrustumModule::AABB::isOnFrustum(frustum, object.pos, object.size)) {
 							std::invoke(std::forward<Func>(func), object.data);
 						}
 					}
@@ -614,13 +614,18 @@ namespace SFE {
 			}
 		}
 
-		void erase(const DataType& data) {
+		void erase(const DataType& data, size_t nodeIndex = static_cast<size_t>(-1)) {
+			if (nodeIndex < NodesCount) {
+				auto& bucket = nodes[nodeIndex].data;
+				bucket.erase(std::remove_if(bucket.begin(), bucket.end(), [&](const auto& a) { return a == data; }), bucket.end());
+				return;
+			}
 			for (auto& node : nodes) {
 				node.data.erase(std::remove_if(node.data.begin(), node.data.end(), [&](const auto& a) { return a == data; }), node.data.end());
 			}
 		}
 
-		bool insert(const SFE::Math::Vec3& globalPos, const SFE::Math::Vec3& size, const DataType& data) {
+		bool insert(const SFE::Math::Vec3& globalPos, const SFE::Math::Vec3& size, const DataType& data, size_t* outNode = nullptr) {
 			if (!isAABBInBoxAny(globalPos, size, mPos, mSize)) {
 				return false;
 			}
@@ -651,6 +656,9 @@ namespace SFE {
 			}
 
 			nodes[index].data.emplace_back(globalPos, size, data);
+			if (outNode) {
+				*outNode = index;
+			}
 			return true;
 		}
 

@@ -26,6 +26,7 @@ namespace ecss {
 		friend class SystemManager;
 
 	public:
+		virtual ~System() = default;
 		virtual void update(float dt) {}
 		virtual void debugUpdate(float dt) {}
 		virtual void updateAsync(const std::vector<SectorId>& entitiesToProcess) {}

@@ -9,8 +9,6 @@ layout (location = 6) in vec4 aWeights;
 
 out highp vec3 FragPos;
 out vec2 TexCoords;
-out vec3 Normal;
-out vec3 ViewPos;
 out mat3 TBN;
 
 
@@ -55,12 +53,10 @@ void main() {
         BoneTransform = mat4(1.f);
     }
     
-    mat3 normalMatrix = transpose(inverse(mat3(model[index]))) * transpose(inverse(mat3(BoneTransform)));
+    mat3 normalMatrix = mat3(model[index]) * mat3(BoneTransform);
     vec4 newPos = BoneTransform * vec4(aPos.xyz, 1.0);
     newPos /= newPos.w;
     vec4 worldPos = model[index] * vec4(newPos);
-
-    ViewPos = vec3(matrices.view * worldPos);
 
     FragPos = worldPos.xyz; 
     TexCoords = aTexCoords;

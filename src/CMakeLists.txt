@@ -19,13 +19,33 @@ foreach(EXCLUDE_DIR ${EXCLUDE_DIR_1})
     list(REMOVE_ITEM SRC ${EXCLUDE_FILES})
 endforeach()
 
+list(REMOVE_ITEM SRC
+	"${CMAKE_CURRENT_SOURCE_DIR}/core/main.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/runtime/main.cpp"
+)
+
 if (EDITOR)
 	message("-- engine with editor")
 	add_library(${ENGINE_NAME} STATIC ${SRC})
-	add_definitions(-DEDITOR_ENABLED)
+	target_compile_definitions(${ENGINE_NAME} PRIVATE EDITOR_ENABLED)
+
+	add_executable(StelForgeRuntime "${CMAKE_CURRENT_SOURCE_DIR}/runtime/main.cpp")
+	target_link_libraries(StelForgeRuntime PRIVATE ${ENGINE_NAME})
+	target_include_directories(StelForgeRuntime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+	set_target_properties(StelForgeRuntime PROPERTIES
+		FOLDER Engine
+		CXX_STANDARD 23
+		VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin"
+		WORKING_DIRECTORY "${ENGINE_PATH}/bin"
+	)
+	if(MSVC)
+		set_target_properties(StelForgeRuntime PROPERTIES
+			LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
+		)
+	endif()
 else()
 	message("-- engine without editor")
-	add_executable(${ENGINE_NAME} ${SRC})
+	add_executable(${ENGINE_NAME} ${SRC} "${CMAKE_CURRENT_SOURCE_DIR}/core/main.cpp")
 endif()
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC})
@@ -73,6 +93,7 @@ if(MSVC)
 	target_link_libraries(${ENGINE_NAME}
 	PUBLIC
 		"${ENGINE_PATH}/lib/glfw/glfw3.lib"
+		ws2_32
 		pdh
 	debug
 		"${ENGINE_PATH}/lib/freetype/lib/win/debug/freetyped.lib"

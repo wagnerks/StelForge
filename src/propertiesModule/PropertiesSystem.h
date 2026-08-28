@@ -1,5 +1,6 @@
 #pragma once
 #include <mutex>
+#include <vector>
 #include <json/value.h>
 
 #include "TypeName.h"
@@ -16,6 +17,13 @@ namespace SFE::PropertiesModule {
 		static void fillTree(ecss::EntityId entity, const Json::Value& properties);
 
 		static Json::Value serializeEntity(const ecss::EntityId entity);
+
+		static void bindRenderable(ecss::EntityId entity);
+		static void spawnDefaultScene();
+		static void spawnSphereGrid(int chunkX, int chunkZ, float chunkSize, float spacing);
+		static Json::Value serializeEntities(const std::vector<ecss::EntityId>& entities);
+		static Json::Value serializeWorldSnapshot(const Json::Value& request);
+		static std::vector<ecss::EntityId> loadEntities(const Json::Value& root);
 
 		template<class T>
 		static void deserializeProperty(const ecss::EntityId entity, const Json::Value& properties);

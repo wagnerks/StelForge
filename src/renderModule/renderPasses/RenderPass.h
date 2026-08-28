@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <future>
 #include <vector>
+#include <atomic>
 
 #include "renderModule/Batcher.h"
 
@@ -27,6 +28,23 @@ namespace SFE::Render {
 
 		std::atomic<RenderPreparingStatus> mStatus = RenderPreparingStatus::READY; //default status is ready for passes without render data
 
+		void markPreparing() {
+			mStatus.store(RenderPreparingStatus::PREPARING, std::memory_order_release);
+		}
+
+		void markReady() {
+			mStatus.store(RenderPreparingStatus::READY, std::memory_order_release);
+			mStatus.notify_all();
+		}
+
+		void waitReady() {
+			auto status = mStatus.load(std::memory_order_acquire);
+			while (status != RenderPreparingStatus::READY) {
+				mStatus.wait(status, std::memory_order_acquire);
+				status = mStatus.load(std::memory_order_acquire);
+			}
+		}
+
 	private:
 		std::vector<Batcher> mBatchers{{}};
 	};
@@ -41,6 +59,12 @@ namespace SFE::Render {
 
 	private:
 		size_t mPriority = 0;
+	};
+
+	struct RenderPassEntry {
+		const char* name = "";
+		bool enabled = true;
+		RenderPass* (*create)() = nullptr;
 	};
 
 	class RenderPassDataContainer {

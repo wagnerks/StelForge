@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "componentsModule/ModelComponent.h"
+#include "assetsModule/shaderModule/ShaderBase.h"
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
@@ -32,10 +33,10 @@ using namespace SFE::Render::RenderPasses;
 void GeometryPass::prepare() {
 	auto curPassData = getContainer().getCurrentPassData();
 	auto outlineData = mOutlineData.getCurrentPassData();
-	curPassData->mStatus = RenderPreparingStatus::PREPARING;
+		curPassData->markPreparing();
 
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mCameraPos, outlineData]() mutable {
+	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum, outlineData]() mutable {
 		FUNCTION_BENCHMARK;
 		curPassData->getBatcher().clear();
 		outlineData->getBatcher().clear();
@@ -44,37 +45,37 @@ void GeometryPass::prepare() {
 		{
 			FUNCTION_BENCHMARK_NAMED(GeometryPass_octree);
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			for (auto& treePos : octreeSys->getAABBOctrees(camFrustum.generateAABB())) {
-				if (const auto tree = octreeSys->getOctree(treePos)) {
-					auto lock = tree->readLock();
-					tree->forEachObjectInsideFrustum(camFrustum, [&entities](auto id) {
-						entities.insert(id);
-					});
-				}
-			}
+			entities = octreeSys->collectVisibleRanges(camFrustum);
 		}
 
 		{
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher);
 			auto& batcher = curPassData->getBatcher();
 			auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
-			auto addMeshes = [&](auto&& view) {
-				for (auto [ent, transform, meshComp, matComp, armatComp/*, oclComp*/] : view) {
-					if (!meshComp) {
+			auto addMeshes = [&](auto&& viewObjs) {
+				size_t considered = 0;
+				size_t visible = 0;
+				for (auto [ent, transform, meshComp, matComp] : viewObjs) {
+					if (!meshComp || !transform || (matComp && matComp->transparent)) {
 						continue;
 					}
+					++considered;
+					++visible;
 					for (const auto& mesh : meshComp->meshGraph) {
-						batcher.addToDrawList(mesh.value, {}, ent);
+						batcher.addToDrawList(mesh.value, matComp, ent);
 					}
 				}
+				auto* info = SystemsModule::RenderDebugInfo::instance();
+				info->cullConsidered = considered;
+				info->cullVisible = visible;
 			};
-			if (entities.empty()) {
-				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent, const ComponentsModule::ArmatureBonesComponent>());
+			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+			if (entities.empty() && octreeSys->empty()) {
+				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
 			}
 			else {
-				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent, const ComponentsModule::ArmatureBonesComponent>(entities));
+				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
 			}
-			batcher.sort(camPos);
 		}
 
 		{
@@ -94,13 +95,13 @@ void GeometryPass::prepare() {
 				}*/
 
 				for (const auto& mesh : meshComp->meshGraph) {
-					outlineBatcher.addToDrawList(mesh.value, {}, entity);
+					outlineBatcher.addToDrawList(mesh.value, nullptr, entity);
 				}
 			}
 
 			//outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
 		}
-		curPassData->mStatus = RenderPreparingStatus::READY;
+		curPassData->markReady();
 	});
 }
 
@@ -144,13 +145,6 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	albedoBufDesc.format = TextureFormat::RGBA16F;
 	mData.albedoBuffer = rhi->createTexture(albedoBufDesc);
 
-	// viewPos buffer
-	TextureDesc viewPositionBufDesc;
-	viewPositionBufDesc.width = w;
-	viewPositionBufDesc.height = h;
-	viewPositionBufDesc.format = TextureFormat::RGBA32F;
-	mData.viewPositionBuffer = rhi->createTexture(viewPositionBufDesc);
-
 	// outline buffer
 	TextureDesc outlinesBufDesc;
 	outlinesBufDesc.width = w;
@@ -168,7 +162,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	FramebufferDesc mainFboDesc;
 	mainFboDesc.width = w;
 	mainFboDesc.height = h;
-	mainFboDesc.colorAttachments = { {mData.positionBuffer}, {mData.normalBuffer},{mData.albedoBuffer}, {mData.viewPositionBuffer}/*, {mData.outlinesBuffer}, {mData.lightsBuffer}*/ };
+	mainFboDesc.colorAttachments = { {mData.positionBuffer}, {mData.normalBuffer}, {mData.albedoBuffer} };
 
 	TextureDesc depthTex{};
 	depthTex.width = w;
@@ -220,13 +214,14 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 		});
 
 	geometryPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+	mGBufferPipelineDesc = pipelineDesc;
+	mGBufferPipelines.emplace(std::string(ComponentsModule::DefaultGBufferVS) + "|" + ComponentsModule::DefaultGBufferFS, geometryPipeline);
 
 	RenderPassDesc geometryPassDesc;
-	geometryPassDesc.colorAttachmentCount = 4;
+	geometryPassDesc.colorAttachmentCount = 3;
 	geometryPassDesc.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //position
 	geometryPassDesc.colorAttachments[1] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //normal
 	geometryPassDesc.colorAttachments[2] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //albedo
-	geometryPassDesc.colorAttachments[3] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //viewPos
 	geometryPassDesc.hasDepthStencil = true;
 	geometryPassDesc.depthAttachment = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, 1.f, 0, false };
 
@@ -285,6 +280,8 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
 	mTexSetLayoutOutlines = rhi->createDescriptorSetLayout(texLayoutDesc);
 	mTexSetOutlines = rhi->allocateDescriptorSet(mTexSetLayoutOutlines);
@@ -293,11 +290,27 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	texLayoutDescGBuf.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDescGBuf.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDescGBuf.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDescGBuf.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
 	gBuffetLayout = rhi->createDescriptorSetLayout(texLayoutDescGBuf);
 	gBuffetLayoutSet = rhi->allocateDescriptorSet(gBuffetLayout);
 
-	renderDataHandle.mGeometryPassData = &mData;
+	initGrid();
+	publish(renderDataHandle);
+}
+
+void GeometryPass::publish(SystemsModule::RenderData& renderDataHandle) {
+	auto& frame = renderDataHandle.frame;
+	const auto s = mData.sampler;
+	frame.set(FrameId::GBufferFbo, { .framebuffer = mData.gFramebuffer });
+	frame.set(FrameId::GBufferOutlineFbo, { .framebuffer = mData.outlineFramebuffer });
+	frame.set(FrameId::GBufferPosition, { .texture = mData.positionBuffer, .sampler = s });
+	frame.set(FrameId::GBufferNormal, { .texture = mData.normalBuffer, .sampler = s });
+	frame.set(FrameId::GBufferAlbedo, { .texture = mData.albedoBuffer, .sampler = s });
+	frame.set(FrameId::GBufferOutlines, { .texture = mData.outlinesBuffer, .sampler = s });
+	frame.set(FrameId::GBufferLights, { .texture = mData.lightsBuffer, .sampler = s });
+	frame.set(FrameId::GBufferDepth, { .texture = mData.depthsBuffer, .sampler = s });
 }
 
 void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -310,10 +323,10 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 		//PolygonMode<PolygonFace::FRONT_AND_BACK>::push(PolygonType::LINE);
 	//}
 
-	renderDataHandle.mGeometryPassData = &mData;
+	publish(renderDataHandle);
 	{
 		const auto curPassData = getContainer().getCurrentPassData();
-		while (curPassData->mStatus != RenderPreparingStatus::READY) {}
+		curPassData->waitReady();
 	}
 
 	const auto curPassData = getContainer().getCurrentPassData();
@@ -329,10 +342,12 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	geometryPassBegin.height = Engine::instance()->getWindow()->getScreenData().renderH;
 
 	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
-	rhi->cmdBindPipeline(cmd, geometryPipeline);
 	if (!curPassData->getBatcher().drawList.empty()) {
-		curPassData->getBatcher().flushAll(cmd, gBuffetLayoutSet);
+		curPassData->getBatcher().flushAll(cmd, gBuffetLayoutSet, [this](const std::string& vs, const std::string& fs) {
+			return getGBufferPipeline(vs, fs);
+		});
 	}
+	drawGrid(renderDataHandle, cmd);
 	rhi->cmdEndRenderPass(cmd);
 
 	/*if (!batcher.drawList.empty()) {
@@ -418,4 +433,84 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	//if (renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME) {
 	//	PolygonMode<PolygonFace::FRONT_AND_BACK>::pop();
 	//}
+}
+
+SFE::Render::PipelineHandle GeometryPass::getGBufferPipeline(const std::string& vertexShader, const std::string& fragmentShader) {
+	const std::string vs = vertexShader.empty() ? ComponentsModule::DefaultGBufferVS : vertexShader;
+	const std::string fs = fragmentShader.empty() ? ComponentsModule::DefaultGBufferFS : fragmentShader;
+	const auto key = vs + "|" + fs;
+	if (const auto it = mGBufferPipelines.find(key); it != mGBufferPipelines.end()) {
+		return it->second;
+	}
+
+	auto* rhi = Engine::instance()->rhi();
+	const auto vertCode = ShaderModule::ShaderBase::loadShaderCode(vs);
+	const auto fragCode = ShaderModule::ShaderBase::loadShaderCode(fs);
+	if (vertCode.empty() || fragCode.empty()) {
+		LogsModule::Logger::LOG_WARNING("GBuffer shader missing: %s / %s", vs.c_str(), fs.c_str());
+		return geometryPipeline;
+	}
+
+	auto desc = mGBufferPipelineDesc;
+	desc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, vs, vertCode });
+	desc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, fs, fragCode });
+	const auto pipeline = rhi->createGraphicsPipeline(desc);
+	mGBufferPipelines.emplace(key, pipeline);
+	return pipeline;
+}
+
+void GeometryPass::initGrid() {
+	auto* rhi = Engine::instance()->rhi();
+	std::vector<SFE::Vertex3D> vertices = {
+		{{ 1.f, 0.f, -1.f}, {1.f,1.f}, {0.f,1.f,0.f}},
+		{{ 1.f, 0.f,  1.f}, {1.f,0.f}, {0.f,1.f,0.f}},
+		{{-1.f, 0.f,  1.f}, {0.f,0.f}, {0.f,1.f,0.f}},
+		{{-1.f, 0.f, -1.f}, {0.f,1.f}, {0.f,1.f,0.f}},
+	};
+	std::vector<unsigned> indices = { 0, 2, 1, 3, 2, 0 };
+
+	BufferDesc vboDesc;
+	vboDesc.size = vertices.size() * sizeof(SFE::Vertex3D);
+	vboDesc.usage = BufferUsage::Vertex;
+	vboDesc.cpuAccess = CpuAccess::None;
+	mGridVBO = rhi->createBuffer(vboDesc, vertices.data());
+
+	BufferDesc eboDesc;
+	eboDesc.size = indices.size() * sizeof(unsigned);
+	eboDesc.usage = BufferUsage::Index;
+	eboDesc.cpuAccess = CpuAccess::None;
+	mGridEBO = rhi->createBuffer(eboDesc, indices.data());
+
+	GraphicsPipelineDesc pipelineDesc;
+	pipelineDesc.layout.bindings.push_back({ 0, sizeof(SFE::Vertex3D), VertexInputRate::PerVertex });
+	pipelineDesc.layout.attributes.push_back({ 0, 0, VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, position)), false });
+	pipelineDesc.layout.attributes.push_back({ 1, 0, VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, normal)), true });
+	pipelineDesc.layout.attributes.push_back({ 2, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, texCoords)), true });
+	pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "grid vs", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.vs") });
+	pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "grid fs", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.fs") });
+	pipelineDesc.topology = PrimitiveTopology::Triangles;
+	pipelineDesc.cullMode = CullMode::None;
+	pipelineDesc.frontFace = FrontFace::CounterClockWise;
+	pipelineDesc.fillMode = PolygonFillMode::Fill;
+	pipelineDesc.depthStencilState = { true, true, CompareOp::LessEqual };
+	pipelineDesc.blend = { false };
+	mGridPipeline = rhi->createGraphicsPipeline(pipelineDesc);
+}
+
+void GeometryPass::drawGrid(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
+	if (!mGridPipeline) {
+		return;
+	}
+
+	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
+	auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(camera);
+	auto* rhi = Engine::instance()->rhi();
+	rhi->cmdBindPipeline(cmd, mGridPipeline);
+	rhi->cmdBindIndexBuffer(cmd, mGridEBO, IndexType::Uint32);
+	rhi->cmdBindVertexBuffer(cmd, 0, mGridVBO);
+	mGridDrawData.viewPos.xyz = renderDataHandle.mCameraPos;
+	mGridDrawData.far = cameraComp->getProjection().getFar();
+	mGridDrawData.near = cameraComp->getProjection().getNear();
+	rhi->cmdPushConstants(cmd, mGridPipeline, mGridDrawData);
+	rhi->cmdDrawIndexed(cmd, 6);
 }

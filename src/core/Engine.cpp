@@ -40,6 +40,7 @@ namespace SFE {
 		if (mRHI) {
 			mRHI->init();
 		}
+		ThreadPool::instance()->ensureLoadingContext();
 		mCore.init();
 
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
@@ -140,6 +141,9 @@ namespace SFE {
 	}
 
 	Engine::~Engine() {
+		if (ThreadPool::isAlive()) {
+			ThreadPool::instance()->shutdown();
+		}
 		if (mRHI) {
 			if (mWindow && mWindow->getWindow()) {
 				glfwMakeContextCurrent(mWindow->getWindow());
@@ -152,8 +156,21 @@ namespace SFE {
 	}
 
 	void Engine::fpsSync(int fps) const {
-		if (mDeltaTime < 1.f / fps) {
-			std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>((1.f / fps - mDeltaTime) * 1000.f * 1000.f)));
+		if (fps <= 0) {
+			return;
+		}
+
+		const double target = 1.0 / static_cast<double>(fps);
+		const double start = static_cast<double>(mLastFrame);
+		for (;;) {
+			const double remain = target - (glfwGetTime() - start);
+			if (remain <= 0.0) {
+				break;
+			}
+			// Windows sleep_for(<2ms) often overshoots to 1–15ms and tanks FPS.
+			if (remain > 0.002) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
 		}
 	}
 }

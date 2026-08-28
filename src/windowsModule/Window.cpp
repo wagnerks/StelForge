@@ -2,6 +2,15 @@
 
 #include "logsModule/logger.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#endif
+
 namespace SFE::Render {
 	void errorCallback(int error, const char* description) {
 		LogsModule::Logger::LOG_ERROR("GLFW Error: %d, %s\n", error, description);
@@ -90,9 +99,12 @@ namespace SFE::Render {
 
 		glfwGetWindowSize(mWindow, &data.width, &data.height);
 		glfwGetWindowContentScale(mWindow, &data.renderScaleW, &data.renderScaleH);
-		glfwGetFramebufferSize(mWindow, &data.renderW, &data.renderH);
-
-		data.setSize(data.width, data.height);
+		glfwGetFramebufferSize(mWindow, &data.backbufferW, &data.backbufferH);
+		// Internal render resolution stays at requested size (matches editor shared-context window).
+		data.renderW = w;
+		data.renderH = h;
+		data.width = w;
+		data.height = h;
 		glfwDefaultWindowHints();
 
 		glfwSetWindowPosCallback(mWindow, [](GLFWwindow* window, int x, int y) {
@@ -108,11 +120,10 @@ namespace SFE::Render {
 		});
 
 		glfwSetFramebufferSizeCallback(mWindow, [](GLFWwindow* window, int width, int height) {
-			glfwSetWindowSize(window, width, height);
-
 			if (windows.contains(window)) {
 				if (const auto win = windows[window]) {
-					win->data.setSize(width, height);
+					win->data.backbufferW = width;
+					win->data.backbufferH = height;
 					if (win->onFramebufferResize) {
 						win->onFramebufferResize(width, height);
 					}
@@ -179,6 +190,22 @@ namespace SFE::Render {
 		return glfwWindowShouldClose(mWindow);
 	}
 
+	bool Window::isVisible() const {
+		return mWindow && glfwGetWindowAttrib(mWindow, GLFW_VISIBLE);
+	}
+
+	void Window::show() const {
+		if (mWindow) {
+			glfwShowWindow(mWindow);
+		}
+	}
+
+	void Window::hide() const {
+		if (mWindow) {
+			glfwHideWindow(mWindow);
+		}
+	}
+
 	void Window::swapBuffers() const {
 		if (!mWindow) {
 			return;
@@ -197,4 +224,61 @@ namespace SFE::Render {
 
 		glfwSetWindowShouldClose(mWindow, true);
 	}
+
+#ifdef _WIN32
+	void* Window::getNativeHandle() const
+	{
+		return mWindow ? reinterpret_cast<void*>(glfwGetWin32Window(mWindow)) : nullptr;
+	}
+
+	bool Window::embedInHost(void* ownerHwnd, int screenX, int screenY, int w, int h)
+	{
+		if (!mWindow || w <= 0 || h <= 0) {
+			return false;
+		}
+		HWND hwnd = glfwGetWin32Window(mWindow);
+		if (!hwnd || !IsWindow(hwnd)) {
+			return false;
+		}
+		if (ownerHwnd) {
+			HWND owner = static_cast<HWND>(ownerHwnd);
+			if (!IsWindow(owner)) {
+				return false;
+			}
+		}
+
+		mEmbeddedInHost = true;
+		SetWindowPos(hwnd, HWND_TOP, screenX, screenY, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+		ShowWindow(hwnd, SW_SHOWNA);
+		return true;
+	}
+
+	void Window::refreshEmbeddedOverlay(void* ownerHwnd, int screenX, int screenY, int w, int h) const
+	{
+		if (!mEmbeddedInHost || !mWindow || w <= 0 || h <= 0) {
+			return;
+		}
+		HWND hwnd = glfwGetWin32Window(mWindow);
+		if (!hwnd || !IsWindow(hwnd)) {
+			return;
+		}
+		if (ownerHwnd) {
+			HWND owner = static_cast<HWND>(ownerHwnd);
+			if (!IsWindow(owner)) {
+				return;
+			}
+		}
+		SetWindowPos(hwnd, HWND_TOP, screenX, screenY, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+	}
+
+	void Window::detachFromHost()
+	{
+		if (!mEmbeddedInHost || !mWindow) {
+			return;
+		}
+
+		glfwHideWindow(mWindow);
+		mEmbeddedInHost = false;
+	}
+#endif
 }

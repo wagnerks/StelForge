@@ -59,15 +59,13 @@ void main()
 { 
     FragColor = vec4(1.0);
 
-    // store the fragment position vector in the first gbuffer texture
     gPosition.rgb = FragPos;
-    gPosition.a = gl_FragCoord.z;
-    // also store the per-fragment normals into the gbuffer
-    gNormal.xyz = Normal;
-    gNormal.a = gl_FragCoord.z / gl_FragCoord.w; //4 byte for depth buffer
+    gPosition.a = 0.0;
+    gNormal.xyz = vec3(0.0, 1.0, 0.0);
+    gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 
     gViewPosition = ViewPos;
-    gAlbedoSpec.a = 0.0;
+    gAlbedoSpec.a = 0.28;
     
     float distanceKoef = min(abs(pc.cameraPos.y), pc.far) / pc.far; //0 is near, 1 is far
     

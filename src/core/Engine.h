@@ -36,6 +36,13 @@ namespace SFE {
 
 		Render::RenderHardwareInterface* rhi() const { return mRHI; }
 
+		void setEmbeddedInEditor(bool embedded) { mEmbeddedInEditor = embedded; }
+		bool isEmbeddedInEditor() const { return mEmbeddedInEditor; }
+		void setPublishEditorDisplay(bool publish) { mPublishEditorDisplay = publish; }
+		bool publishEditorDisplay() const { return mPublishEditorDisplay; }
+		void setPresentToScreen(bool present) { mPresentToScreen = present; }
+		bool presentToScreen() const { return mPresentToScreen; }
+
 	protected:
 		Engine();
 		~Engine() override;
@@ -53,6 +60,9 @@ namespace SFE {
 
 
 		bool mAlive = false;
+		bool mEmbeddedInEditor = false;
+		bool mPublishEditorDisplay = false;
+		bool mPresentToScreen = false;
 
 		CoreModule::Core mCore;
 		

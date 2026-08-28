@@ -1,11 +1,17 @@
 #include "propertiesModule/PropertiesSystem.h"
 #include "core/FileSystem.h"
 
+#include <cmath>
+#include <cstdint>
+
+#include "assetsModule/AssetsManager.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
+#include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
 #include "componentsModule/DebugDataComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
+#include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
@@ -13,18 +19,268 @@
 #include "componentsModule/TransformComponent.h"
 #include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
+#include "core/Engine.h"
 #include "multithreading/ThreadPool.h"
+#include "componentsModule/CameraComponent.h"
+#include "mathModule/VectorOperations.h"
+#include "systemsModule/systems/CameraSystem.h"
 
 namespace SFE::PropertiesModule {
+	namespace {
+		void applyMaterial(ecss::EntityId entity, const Json::Value& properties) {
+			if (!properties.isMember("MaterialComponent")) {
+				return;
+			}
+			auto mat = ECSHandler::addComponent<ComponentsModule::MaterialComponent>(entity);
+			const auto& j = properties["MaterialComponent"];
+			if (j.isMember("transparent")) {
+				mat->transparent = j["transparent"].asBool();
+			}
+			if (j.isMember("opacity")) {
+				mat->opacity = j["opacity"].asFloat();
+			}
+			if (j.isMember("ior")) {
+				mat->ior = j["ior"].asFloat();
+			}
+			if (j.isMember("tint") && j["tint"].isArray() && j["tint"].size() >= 3) {
+				mat->tint = {
+					j["tint"][0].asFloat(),
+					j["tint"][1].asFloat(),
+					j["tint"][2].asFloat()
+				};
+			}
+		}
+
+		AssetsModule::Model* getOrCreateUnitSphere() {
+			constexpr const char* kPath = "builtin:sphere";
+			if (auto* existing = AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>(kPath)) {
+				return existing;
+			}
+
+			constexpr int stacks = 32;
+			constexpr int slices = 48;
+			constexpr float pi = 3.14159265f;
+
+			auto makeVert = [](float u, float v, float x, float y, float z) {
+				SFE::Vertex3D vert{};
+				vert.position = { x, y, z };
+				vert.normal = vert.position;
+				vert.texCoords = { u, 1.f - v };
+				const float lenXZ = std::sqrt(x * x + z * z);
+				if (lenXZ > 1e-4f) {
+					vert.tangent = { -z / lenXZ, 0.f, x / lenXZ };
+				}
+				else {
+					vert.tangent = { 1.f, 0.f, 0.f };
+				}
+				vert.biTangent = Math::cross(vert.normal, vert.tangent);
+				return vert;
+			};
+
+			SFE::MeshObject3D meshObj;
+			meshObj.mesh.vertices.push_back(makeVert(0.5f, 0.f, 0.f, 1.f, 0.f));
+			for (int i = 1; i < stacks; ++i) {
+				const float v = static_cast<float>(i) / static_cast<float>(stacks);
+				const float phi = v * pi;
+				const float sp = std::sin(phi);
+				const float cp = std::cos(phi);
+				for (int j = 0; j <= slices; ++j) {
+					const float u = static_cast<float>(j) / static_cast<float>(slices);
+					const float theta = u * 2.f * pi;
+					meshObj.mesh.vertices.push_back(makeVert(u, v, sp * std::cos(theta), cp, sp * std::sin(theta)));
+				}
+			}
+			meshObj.mesh.vertices.push_back(makeVert(0.5f, 1.f, 0.f, -1.f, 0.f));
+
+			const unsigned ring = static_cast<unsigned>(slices + 1);
+			const unsigned south = static_cast<unsigned>(meshObj.mesh.vertices.size() - 1);
+			for (int j = 0; j < slices; ++j) {
+				const unsigned a = 1u + static_cast<unsigned>(j);
+				meshObj.mesh.indices.push_back(0);
+				meshObj.mesh.indices.push_back(a);
+				meshObj.mesh.indices.push_back(a + 1);
+			}
+			const int rings = stacks - 1;
+			for (int i = 0; i < rings - 1; ++i) {
+				for (int j = 0; j < slices; ++j) {
+					const unsigned a = 1u + static_cast<unsigned>(i) * ring + static_cast<unsigned>(j);
+					const unsigned b = a + ring;
+					meshObj.mesh.indices.push_back(a);
+					meshObj.mesh.indices.push_back(b);
+					meshObj.mesh.indices.push_back(a + 1);
+					meshObj.mesh.indices.push_back(a + 1);
+					meshObj.mesh.indices.push_back(b);
+					meshObj.mesh.indices.push_back(b + 1);
+				}
+			}
+			const unsigned lastRing = 1u + static_cast<unsigned>(rings - 1) * ring;
+			for (int j = 0; j < slices; ++j) {
+				meshObj.mesh.indices.push_back(south);
+				meshObj.mesh.indices.push_back(lastRing + static_cast<unsigned>(j) + 1);
+				meshObj.mesh.indices.push_back(lastRing + static_cast<unsigned>(j));
+			}
+			meshObj.aabb = SFE::FrustumModule::AABB({ -1.f, -1.f, -1.f }, { 1.f, 1.f, 1.f });
+
+			SFE::Tree<SFE::MeshObject3D> tree;
+			tree.value = std::move(meshObj);
+			return AssetsModule::AssetsManager::instance()->createAsset<AssetsModule::Model>(
+				kPath, std::move(tree), AssetsModule::Armature{}, std::vector<AssetsModule::Animation>{});
+		}
+
+		ecss::EntityId spawnModelEntity(AssetsModule::Model* model, const char* path, const Math::Vec3& pos, const Math::Vec3& scale, bool glass) {
+			if (!SFE::Engine::instance()->isAlive() || !model) {
+				return {};
+			}
+
+			auto entity = ECSHandler::registry().takeEntity();
+			auto aabbCmp = ECSHandler::addComponent<SFE::ComponentsModule::AABBComponent>(entity);
+			aabbCmp->aabbScale = 1.f;
+			ECSHandler::addComponent<OcTreeComponent>(entity);
+			auto modelComp = ECSHandler::addComponent<ModelComponent>(entity, entity);
+			modelComp->mPath = path;
+			modelComp->boneMatrices = model->getDefaultBoneMatrices();
+			modelComp->armature = model->getArmature();
+			modelComp->setModel(model->getLODs());
+
+			auto transformComp = ECSHandler::addComponent<TransformComponent>(entity, entity);
+			transformComp->setPos(pos);
+			transformComp->setScale(scale);
+			transformComp->reloadTransform();
+			SFE::SystemsModule::TasksManager::instance()->notify({
+				entity, SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED, transformComp
+			});
+			ECSHandler::addComponent<IsDrawableComponent>(entity);
+
+			PropertiesSystem::bindRenderable(entity);
+			if (glass) {
+				if (auto materialComp = ECSHandler::registry().pinComponent<ComponentsModule::MaterialComponent>(entity)) {
+					materialComp->transparent = true;
+					materialComp->opacity = 0.22f;
+					materialComp->ior = 1.52f;
+					SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MATERIAL_UPDATED });
+				}
+			}
+			return entity;
+		}
+
+		void spawnModelEntity(const char* path, const Math::Vec3& pos, const Math::Vec3& scale, bool glass) {
+			spawnModelEntity(AssetsModule::ModelLoader::instance()->load(path), path, pos, scale, glass);
+		}
+
+		const AssetsModule::Animation* pickDanceClip(const AssetsModule::Model* model) {
+			if (!model) {
+				return nullptr;
+			}
+			const auto& anims = model->getAnimations();
+			for (const auto& anim : anims) {
+				const auto& name = anim.getName();
+				if (name.find("dance") != std::string::npos || name.find("Dance") != std::string::npos) {
+					return &anim;
+				}
+			}
+			return anims.empty() ? nullptr : &anims.front();
+		}
+
+		ecss::EntityId spawnDancingVampire(const Math::Vec3& pos, float yawDegrees, float animPhase = 0.f) {
+			constexpr const char* kPath = "models/vampire.fbx";
+			auto* model = AssetsModule::ModelLoader::instance()->load(kPath);
+			if (!model) {
+				return {};
+			}
+
+			const auto id = spawnModelEntity(model, kPath, pos, { 0.1f }, false);
+			if (!id) {
+				return {};
+			}
+
+			if (auto transform = ECSHandler::registry().pinComponent<TransformComponent>(id)) {
+				transform->setRotate({ 0.f, yawDegrees, 0.f });
+				transform->reloadTransform();
+				SFE::SystemsModule::TasksManager::instance()->notify({
+					id, SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED, transform.get()
+				});
+			}
+
+			if (const auto* clip = pickDanceClip(model)) {
+				auto* anim = ECSHandler::registry().addComponent<ComponentsModule::AnimationComponent>(id);
+				anim->mCurrentAnimation = clip;
+				anim->mPlay = true;
+				anim->mLoop = true;
+				anim->mCurrentTime = animPhase;
+			}
+
+			if (auto debug = ECSHandler::registry().pinComponent<DebugDataComponent>(id)) {
+				debug->stringId = "dancer";
+			}
+			return id;
+		}
+
+		void hsvToRgb(float h, float s, float v, float& r, float& g, float& b) {
+			h = h - std::floor(h);
+			const float c = v * s;
+			const float x = c * (1.f - std::fabs(std::fmod(h * 6.f, 2.f) - 1.f));
+			const float m = v - c;
+			float rf = 0.f, gf = 0.f, bf = 0.f;
+			const int sector = static_cast<int>(h * 6.f) % 6;
+			switch (sector) {
+			case 0: rf = c; gf = x; break;
+			case 1: rf = x; gf = c; break;
+			case 2: gf = c; bf = x; break;
+			case 3: gf = x; bf = c; break;
+			case 4: rf = x; bf = c; break;
+			default: rf = c; bf = x; break;
+			}
+			r = rf + m;
+			g = gf + m;
+			b = bf + m;
+		}
+
+		void applyGlassTint(ecss::EntityId entity, uint32_t hash) {
+			if (!entity) {
+				return;
+			}
+			const float hue = static_cast<float>(hash % 12u) / 12.f;
+			const float sat = 0.55f + static_cast<float>((hash >> 4) & 3u) * 0.12f;
+			const float val = 0.75f + static_cast<float>((hash >> 6) & 3u) * 0.08f;
+			float r = 1.f, g = 1.f, b = 1.f;
+			hsvToRgb(hue, sat, val, r, g, b);
+			if (auto mat = ECSHandler::registry().pinComponent<ComponentsModule::MaterialComponent>(entity)) {
+				mat->transparent = true;
+				mat->opacity = 0.22f;
+				mat->ior = 1.52f;
+				mat->tint = { r, g, b };
+				SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MATERIAL_UPDATED });
+			}
+		}
+
+		void makeSphereLamp(ecss::EntityId entity, float spacing) {
+			if (!entity) {
+				return;
+			}
+			auto light = ECSHandler::addComponent<LightSourceComponent>(entity, entity, ComponentsModule::eLightType::POINT);
+			light->setLightColor({ 6.5f, 4.0f, 1.8f });
+			light->setIntensity(1.f);
+			light->mRadius = (std::max)(28.f, spacing * 5.5f);
+			light->mNear = 0.2f;
+			light->mLinear = 0.07f;
+			light->mQuadratic = 0.017f;
+			light->setSamples(8);
+			light->setBias(0.0035f);
+			light->setTexelSize({ 0.004f, 0.004f });
+			light->mWithShadows = true;
+
+			auto debug = ECSHandler::addComponent<DebugDataComponent>(entity);
+			debug->stringId = "lamp";
+		}
+	}
+
 	ecss::EntityId PropertiesSystem::loadScene(std::string_view path) {
 		if (!FileSystem::isFileExists(path)) {
 			return {};
 		}
 
 		auto scene = ECSHandler::registry().takeEntity();
-
 		fillTree(scene, FileSystem::readJson(path));
-
 		return scene;
 	}
 
@@ -38,6 +294,66 @@ namespace SFE::PropertiesModule {
 
 		deserializeProperty<ModelComponent>(entity, properties["Properties"]);
 		deserializeProperty<TransformComponent>(entity, properties["Properties"]);
+	}
+
+	void PropertiesSystem::bindRenderable(ecss::EntityId entity) {
+		auto modelComp = ECSHandler::registry().pinComponent<const ModelComponent>(entity);
+		if (!modelComp || modelComp->getModel().meshes.empty()) {
+			return;
+		}
+
+		AssetsModule::Model* model = nullptr;
+		if (!modelComp->mPath.empty()) {
+			model = AssetsModule::ModelLoader::instance()->load(modelComp->mPath);
+		}
+
+		auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
+		if (model) {
+			SFE::Graph<SFE::RenderMeshData> meshData;
+			meshData.fill<SFE::MeshObject3D>(model->getMeshTree(), [](const SFE::MeshObject3D& meshObj) {
+				return std::move(SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)));
+			});
+			meshComp->meshGraph = meshData;
+			meshComp->meshModel = model;
+		}
+		else {
+			meshComp->meshGraph.root().value = SFE::MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh);
+		}
+		SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MESH_UPDATED });
+
+		auto materialComp = ECSHandler::addComponent<MaterialComponent>(entity);
+		const SFE::Material* srcMat = nullptr;
+		for (const auto* meshObj : modelComp->getModel().meshes) {
+			if (!meshObj) {
+				continue;
+			}
+			if (meshObj->material.transparent) {
+				materialComp->transparent = true;
+				materialComp->opacity = meshObj->material.opacity;
+				materialComp->ior = meshObj->material.ior;
+			}
+			if (!srcMat && !meshObj->material.materialTextures.empty()) {
+				srcMat = &meshObj->material;
+			}
+		}
+		if (srcMat) {
+			materialComp->materials.clearMaterials();
+			for (auto& mat : srcMat->materialTextures) {
+				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture });
+			}
+		}
+		SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MATERIAL_UPDATED });
+
+		if (modelComp->armature.bones.size()) {
+			auto armatureComp = ECSHandler::addComponent<SFE::ComponentsModule::ArmatureComponent>(entity);
+			armatureComp->armature = modelComp->armature;
+		}
+
+		if (!modelComp->boneMatrices.empty()) {
+			auto armatureBonesComp = ECSHandler::registry().addComponent<SFE::ComponentsModule::ArmatureBonesComponent>(entity);
+			std::ranges::copy(modelComp->boneMatrices, armatureBonesComp->boneMatrices.begin());
+			SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ARMATURE_UPDATED });
+		}
 	}
 
 	void PropertiesSystem::fillTree(ecss::EntityId entity, const Json::Value& properties) {
@@ -54,29 +370,15 @@ namespace SFE::PropertiesModule {
 		ECSHandler::registry().addComponent<OcTreeComponent>(entity);
 		applyProperties(entity, properties);
 		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
-		auto modelComp = ECSHandler::registry().pinComponent<const ModelComponent>(entity);
-		if (modelComp && !modelComp->getModel().meshes.empty()) {
-			auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
-			meshComp->meshGraph.root().value = MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh);
-
-			auto materialComp = ECSHandler::registry().addComponent<MaterialComponent>(entity);
-			for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
-				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture});
-			}
-
-			auto armatureComp = ECSHandler::registry().addComponent<ComponentsModule::ArmatureComponent>(entity);
-			auto armatureBonesComp = ECSHandler::registry().addComponent<ComponentsModule::ArmatureBonesComponent>(entity);
-			
-			armatureComp->armature = modelComp->armature;
-
-			std::ranges::copy(modelComp->boneMatrices, armatureBonesComp->boneMatrices.begin());
+		bindRenderable(entity);
+		if (properties.isMember("Properties")) {
+			applyMaterial(entity, properties["Properties"]);
 		}
-		
-		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity);
 
+		auto treeComp = ECSHandler::registry().addComponent<TreeComponent>(entity, entity);
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
-				auto child = ECSHandler::registry().takeEntity();				
+				auto child = ECSHandler::registry().takeEntity();
 				fillTree(child, element);
 				treeComp->addChildEntity(child);
 			}
@@ -92,11 +394,21 @@ namespace SFE::PropertiesModule {
 		if (auto debugData = ECSHandler::registry().pinComponent<const DebugDataComponent>(entity)) {
 			result["id"] = debugData->stringId;
 		}
-		
 
 		serializeProperty<ComponentsModule::TransformComponent>(entity, result["Properties"]);
 		serializeProperty<ModelComponent>(entity, result["Properties"]);
 		serializeProperty<CascadeShadowComponent>(entity, result["Properties"]);
+
+		if (auto mat = ECSHandler::registry().pinComponent<const ComponentsModule::MaterialComponent>(entity)) {
+			auto& j = result["Properties"]["MaterialComponent"];
+			j["transparent"] = mat->transparent;
+			j["opacity"] = mat->opacity;
+			j["ior"] = mat->ior;
+			j["tint"] = Json::arrayValue;
+			j["tint"].append(mat->tint.x);
+			j["tint"].append(mat->tint.y);
+			j["tint"].append(mat->tint.z);
+		}
 
 		auto treeComp = ECSHandler::registry().pinComponent<const ComponentsModule::TreeComponent>(entity);
 		auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
@@ -109,5 +421,182 @@ namespace SFE::PropertiesModule {
 		}
 
 		return result;
+	}
+
+	bool isSnapshotEntity(ecss::EntityId id) {
+		if (!ECSHandler::registry().pinComponent<const ModelComponent>(id)) {
+			return false;
+		}
+		if (ECSHandler::registry().pinComponent<const CameraComponent>(id)) {
+			return false;
+		}
+		if (ECSHandler::registry().pinComponent<const CascadeShadowComponent>(id)) {
+			return false;
+		}
+		if (auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(id)) {
+			if (tree->getParent() != ecss::INVALID_ID) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	Json::Value PropertiesSystem::serializeWorldSnapshot(const Json::Value& request) {
+		Json::Value root = Json::objectValue;
+
+		const size_t maxEntities = (std::max)(1u, request.get("maxEntities", 512).asUInt());
+		const uint32_t detailId = request.get("detailId", 0u).asUInt();
+
+		Math::Vec3 camPos{};
+		if (auto* camSys = ECSHandler::getSystem<SystemsModule::CameraSystem>()) {
+			if (auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(camSys->getCurrentCamera())) {
+				camPos = tc->getPos(true);
+			}
+		}
+
+		std::vector<std::pair<float, ecss::EntityId>> ranked;
+		ranked.reserve(4096);
+		for (const auto& [id, model, transform] : ECSHandler::registry().view<const ModelComponent, const TransformComponent>()) {
+			if (!isSnapshotEntity(id)) {
+				continue;
+			}
+			const float dist = Math::distanceSqr(camPos, transform->getPos(true));
+			ranked.emplace_back(dist, id);
+		}
+
+		root["entityCount"] = static_cast<Json::UInt64>(ranked.size());
+		root["fps"] = Engine::instance()->getFPS();
+
+		std::ranges::sort(ranked, [](const auto& a, const auto& b) { return a.first < b.first; });
+
+		Json::Value entities = Json::arrayValue;
+		const size_t count = (std::min)(maxEntities, ranked.size());
+		for (size_t i = 0; i < count; ++i) {
+			const ecss::EntityId id = ranked[i].second;
+			auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(id);
+			auto modelComp = ECSHandler::registry().pinComponent<const ModelComponent>(id);
+			if (!transform || !modelComp) {
+				continue;
+			}
+
+			Json::Value entry = Json::objectValue;
+			entry["id"] = static_cast<Json::UInt>(static_cast<uint32_t>(id));
+			entry["model"] = modelComp->mPath;
+			const auto pos = transform->getPos(true);
+			entry["pos"] = Json::arrayValue;
+			entry["pos"].append(pos.x);
+			entry["pos"].append(pos.y);
+			entry["pos"].append(pos.z);
+			if (auto mat = ECSHandler::registry().pinComponent<const ComponentsModule::MaterialComponent>(id)) {
+				entry["glass"] = mat->transparent;
+				entry["opacity"] = mat->opacity;
+			}
+			entities.append(std::move(entry));
+		}
+		root["entities"] = std::move(entities);
+
+		if (detailId != 0) {
+			const ecss::EntityId detailEntity = static_cast<ecss::EntityId>(detailId);
+			if (ECSHandler::registry().contains(detailEntity)) {
+				root["detail"] = serializeEntity(detailEntity);
+				root["detail"]["id"] = detailId;
+			}
+		}
+
+		return root;
+	}
+
+	Json::Value PropertiesSystem::serializeEntities(const std::vector<ecss::EntityId>& entities) {
+		Json::Value root = Json::objectValue;
+		root["entities"] = Json::arrayValue;
+		for (auto id : entities) {
+			root["entities"].append(serializeEntity(id));
+		}
+		return root;
+	}
+
+	std::vector<ecss::EntityId> PropertiesSystem::loadEntities(const Json::Value& root) {
+		std::vector<ecss::EntityId> ids;
+		if (!root.isMember("entities") || !root["entities"].isArray()) {
+			return ids;
+		}
+		for (const auto& element : root["entities"]) {
+			auto entity = ECSHandler::registry().takeEntity();
+			fillTree(entity, element);
+			ids.push_back(entity);
+		}
+		return ids;
+	}
+
+	void PropertiesSystem::spawnDefaultScene() {
+		constexpr int kDancers = 8;
+		constexpr float kRadius = 4.f;
+		constexpr float kTwoPi = 6.2831853f;
+
+		auto* sampleModel = AssetsModule::ModelLoader::instance()->load("models/vampire.fbx");
+		const AssetsModule::Animation* sampleClip = pickDanceClip(sampleModel);
+		const float clipDuration = sampleClip ? sampleClip->getDuration() : 0.f;
+
+		for (int i = 0; i < kDancers; ++i) {
+			const float angle = kTwoPi * static_cast<float>(i) / static_cast<float>(kDancers);
+			const float x = kRadius * std::cos(angle);
+			const float z = kRadius * std::sin(angle);
+			const float yaw = Math::degrees(std::atan2(-x, -z));
+			const float phase = clipDuration > 0.f
+				? clipDuration * static_cast<float>(i) / static_cast<float>(kDancers)
+				: 0.f;
+			spawnDancingVampire({ x, 0.f, z }, yaw, phase);
+		}
+
+		spawnDancingVampire({ 0.f, 0.f, 0.f }, 0.f, clipDuration * 0.25f);
+	}
+
+	void PropertiesSystem::spawnSphereGrid(int chunkX, int chunkZ, float chunkSize, float spacing) {
+		if (spacing < 4.f) {
+			spacing = 4.f;
+		}
+		if (spacing > 64.f) {
+			spacing = 64.f;
+		}
+
+		auto* model = getOrCreateUnitSphere();
+		if (!model) {
+			return;
+		}
+
+		int n = static_cast<int>(chunkSize / spacing);
+		if (n < 1) {
+			n = 1;
+		}
+
+		const float originX = static_cast<float>(chunkX) * chunkSize;
+		const float originZ = static_cast<float>(chunkZ) * chunkSize;
+		const float scaleV = spacing * 0.45f;
+		const Math::Vec3 scale{ scaleV };
+
+		uint32_t ch = static_cast<uint32_t>(chunkX) * 374761393u + static_cast<uint32_t>(chunkZ) * 668265263u;
+		ch = (ch ^ (ch >> 13)) * 1274126177u;
+		const int lampI = static_cast<int>(ch % static_cast<uint32_t>(n));
+		const int lampJ = static_cast<int>((ch >> 8) % static_cast<uint32_t>(n));
+
+		for (int i = 0; i < n; ++i) {
+			for (int j = 0; j < n; ++j) {
+				const int gx = chunkX * n + i;
+				const int gz = chunkZ * n + j;
+				uint32_t h = static_cast<uint32_t>(gx) * 374761393u + static_cast<uint32_t>(gz) * 668265263u;
+				h = (h ^ (h >> 13)) * 1274126177u;
+				const float y = scaleV + static_cast<float>(h & 255u) * (spacing * 1.5f / 255.f);
+				const float x = originX + (static_cast<float>(i) + 0.5f) * spacing;
+				const float z = originZ + (static_cast<float>(j) + 0.5f) * spacing;
+				const bool isLamp = (i == lampI && j == lampJ);
+				const auto id = spawnModelEntity(model, "builtin:sphere", { x, y, z }, scale, !isLamp);
+				if (isLamp) {
+					makeSphereLamp(id, spacing);
+				}
+				else {
+					applyGlassTint(id, h);
+				}
+			}
+		}
 	}
 }

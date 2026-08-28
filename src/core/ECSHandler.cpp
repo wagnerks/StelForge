@@ -8,10 +8,13 @@
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/IsDrawableComponent.h"
+#include "componentsModule/MaterialComponent.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/TransformComponent.h"
+#include "core/Engine.h"
 #include "debugModule/Benchmark.h"
 #include "propertiesModule/PropertiesSystem.h"
 
@@ -26,7 +29,6 @@
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/PhysicsSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
-#include "systemsModule/systems/ShaderSystem.h"
 #include "systemsModule/systems/SkeletalAnimationSystem.h"
 #include "systemsModule/systems/TransformSystem.h"
 #include "systemsModule/systems/WorldTimeSystem.h"
@@ -975,115 +977,20 @@ void ECSHandler::initSystems() {
 	mSystemManager.createSystem<SFE::SystemsModule::TransformSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::OcTreeSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::AABBSystem>();
-	//mSystemManager.createSystem<SFE::SystemsModule::ChunksSystem>();
-
-
 	mSystemManager.createSystem<SFE::SystemsModule::CameraSystem>();
+	mSystemManager.createSystem<SFE::SystemsModule::ChunksSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::RenderSystem>();
 
 	//mSystemManager.createSystem<SFE::SystemsModule::Physics>();
 	//mSystemManager.createSystem<SFE::SystemsModule::ActionSystem>();
 	//mSystemManager.createSystem<SFE::SystemsModule::WorldTimeSystem>();
 	//mSystemManager.createSystem<SFE::SystemsModule::SkeletalAnimationSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::ShaderSystem>();
 
 
-	//mSystemManager.addTickSystems<SFE::SystemsModule::Physics, SFE::SystemsModule::ActionSystem, SFE::SystemsModule::ShaderSystem>(32);
 	mSystemManager.addTickSystems<SFE::SystemsModule::WorldTimeSystem>(1);
 	mSystemManager.addTickSystems<SFE::SystemsModule::SkeletalAnimationSystem>(24);
 	mSystemManager.addTickSystems<SFE::SystemsModule::CameraSystem>(256);
 
 
 	mSystemManager.addRootSystems<SFE::SystemsModule::RenderSystem>();
-
-	SFE::ThreadPool::instance()->addTask([]() {
-
-		//SFE::PropertiesModule::PropertiesSystem::loadScene("shadowsTest.json");
-		//SFE::PropertiesModule::PropertiesSystem::loadScene("stressTest.json");
-		//auto path = "models/vampire.fbx";
-		
-		auto path = "models/cube.fbx";
-		auto model = AssetsModule::ModelLoader::instance()->load(path);
-		SFE::Graph<SFE::RenderMeshData> meshData;
-        meshData.fill<SFE::MeshObject3D>(model->getMeshTree(), [](const SFE::MeshObject3D& meshObj) {
-            return std::move(SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)));
-        });
-
-		for (auto i = 0u; i < 1; i++) {
-			for (auto j = 0u; j < 1; j++) {
-				for (auto k = 1u; k < 2; k++) {
-					if (!SFE::Engine::instance()->isAlive()) {
-						return;
-					}
-					auto entity = ECSHandler::registry().takeEntity();
-
-					auto aabbCmp = ECSHandler::addComponent<SFE::ComponentsModule::AABBComponent>(entity);
-					aabbCmp->aabbScale = 0.01f;
-					ECSHandler::addComponent<OcTreeComponent>(entity);
-					auto modelComp = ECSHandler::addComponent<ModelComponent>(entity, entity);
-
-					modelComp->mPath = path;
-					modelComp->boneMatrices = model->getDefaultBoneMatrices();
-					modelComp->armature = model->getArmature();
-					modelComp->setModel(model->getLODs());
-
-					auto transformComp = ECSHandler::addComponent<TransformComponent>(entity, entity);
-					transformComp->setPos({ i * 14.f, k*14.f, j * 14.f });
-					transformComp->setScale({ 2.f });
-					ECSHandler::addComponent<IsDrawableComponent>(entity);
-
-					if (modelComp && !modelComp->getModel().meshes.empty()) {
-						auto meshComp = ECSHandler::addComponent<MeshComponent>(entity);
-						meshComp->meshGraph = meshData;
-                        meshComp->meshModel = model;
-
-						SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MESH_UPDATED });
-
-						if (modelComp->getModel().meshes[0]->material.materialTextures.size()) {
-							auto materialComp = ECSHandler::addComponent<MaterialComponent>(entity);
-							meshComp->meshModel = model;
-							for (auto& mat : modelComp->getModel().meshes[0]->material.materialTextures) {
-
-								materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture });
-							}
-							SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MATERIAL_UPDATED });
-						}
-
-						if (modelComp->armature.bones.size()) {
-							auto armatureComp = ECSHandler::addComponent<SFE::ComponentsModule::ArmatureComponent>(entity);
-							armatureComp->armature = modelComp->armature;
-
-							auto armatureBonesComp = ECSHandler::registry().addComponent<SFE::ComponentsModule::ArmatureBonesComponent>(entity);
-							std::ranges::copy(modelComp->boneMatrices, armatureBonesComp->boneMatrices.begin());
-
-							SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ARMATURE_UPDATED });
-						}
-					}
-
-					if (model->getAnimations().size()) {
-						auto animComp = ECSHandler::addComponent<SFE::ComponentsModule::AnimationComponent>(entity);
-						animComp->mCurrentAnimation = &model->getAnimations()[0];
-						animComp->mCurrentTime = static_cast<float>(i);
-					}
-					
-
-
-
-					/*auto oclC = ECSHandler::addComponent<SFE::ComponentsModule::OcclusionComponent>(entity);
-					oclC->query = new SFE::GLW::Query<SFE::GLW::QueryType::SAMPLES_PASSED>();
-					oclC->query->generate();
-					auto center = SFE::Math::Vec3{ i * 40.f, k * 40.f, j * 40.f };
-					auto min = center - SFE::Math::Vec3{ 10.f, 10.f, 10.f };
-					auto max = center + SFE::Math::Vec3{ 10.f, 10.f, 10.f};
-
-					auto minB = center - SFE::Math::Vec3{ 9.f, 9.f, 9.f };
-					auto maxB = center + SFE::Math::Vec3{ 9.f, 9.f, 9.f };*/
-					//oclC->occludeeAABB.push_back(SFE::FrustumModule::AABB(min, max));
-					//if (i == 0 && j == 0) {
-					//oclC->occluderAABB.push_back(SFE::FrustumModule::AABB(minB, maxB));
-					//}
-				}
-			}
-		}
-	});
 }

@@ -37,12 +37,12 @@ namespace SFE::Render::RenderPasses {
 	private:
 		struct SSAOParams
 		{
-			float samples = 64.f;
-			float intensity = 1.5f;
+			float samples = 12.f;
+			float intensity = 1.0f;
 			float scale = 0.5f;
-			float bias = 0.1f;
-			float sample_rad = 1.2f;
-			float max_distance = 0.01f;
+			float bias = 0.025f;
+			float sample_rad = 0.45f;
+			float max_distance = 1.2f;
 		};
 
 		SSAOParams params;
@@ -79,5 +79,8 @@ namespace SFE::Render::RenderPasses {
 
 		Render::DescriptorSetLayoutHandle blurTexSetLayout;
 		Render::DescriptorSetHandle       blurTexSet;
+
+		int mSsaoW = 0;
+		int mSsaoH = 0;
 	};
 }
