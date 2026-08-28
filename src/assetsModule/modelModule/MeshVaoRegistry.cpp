@@ -5,28 +5,11 @@
 #include "core/Engine.h"
 #include "assetsModule/RenderMeshData.h"
 #include "multithreading/ThreadPool.h"
+#include "renderModule/GraphicsBackend.h"
 
 namespace SFE {
-	const RenderMeshData& MeshVaoRegistry::get(Mesh<Vertex3D>* mesh) {
-		assert(mesh);
-		auto res = mMeshVAO.find(mesh);
-		if (res != mMeshVAO.end()) {
-			return res->second;
-		}
-
-		return initMesh(mesh);
-	}
-
-	const RenderMeshData& MeshVaoRegistry::initMesh(Mesh<Vertex3D>* mesh) {
-		assert(mesh);
-
-		auto& data = mMeshVAO[mesh];
-
-		if (mesh->vertices.empty() && mesh->indices.empty()) {
-			return data;
-		}
-
-		if (SFE::Engine::isMainThread()) {
+	namespace {
+		void uploadMeshBuffers(Mesh<Vertex3D>* mesh, RenderMeshData& data) {
 			data.release();
 
 			Render::BufferDesc vboBuf;
@@ -47,6 +30,30 @@ namespace SFE {
 
 			data.vertexCount = static_cast<uint32_t>(mesh->vertices.size());
 			data.indexCount = static_cast<uint32_t>(mesh->indices.size());
+		}
+	}
+	const RenderMeshData& MeshVaoRegistry::get(Mesh<Vertex3D>* mesh) {
+		assert(mesh);
+		auto res = mMeshVAO.find(mesh);
+		if (res != mMeshVAO.end()) {
+			return res->second;
+		}
+
+		return initMesh(mesh);
+	}
+
+	const RenderMeshData& MeshVaoRegistry::initMesh(Mesh<Vertex3D>* mesh) {
+		assert(mesh);
+
+		auto& data = mMeshVAO[mesh];
+
+		if (mesh->vertices.empty() && mesh->indices.empty()) {
+			return data;
+		}
+
+		const bool vulkanBackend = Render::activeGraphicsBackend() == Render::GraphicsBackend::Vulkan;
+		if (SFE::Engine::isMainThread() || vulkanBackend) {
+			uploadMeshBuffers(mesh, data);
 		}
 		else {
 			auto futur = ThreadPool::instance()->addTask<WorkerType::SYNC>([mesh]()mutable {

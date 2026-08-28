@@ -86,6 +86,7 @@ namespace SFE::Render {
 
 		hints.apply();
 		//glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+		mNoApi = hints.ints.contains(CLIENT_API) && hints.ints.at(CLIENT_API) == GLFW_NO_API;
 		mWindow = glfwCreateWindow(w, h, title.c_str(), nullptr, share);
 		if (!mWindow) {
 			LogsModule::Logger::LOG_FATAL(false, "Failed to create glfw window \"%s\"", title.c_str());
@@ -93,7 +94,9 @@ namespace SFE::Render {
 		}
 		windows[mWindow] = this;
 		
-		glfwMakeContextCurrent(mWindow);
+		if (!mNoApi) {
+			glfwMakeContextCurrent(mWindow);
+		}
 
 		glfwGetWindowPos(mWindow, &data.posX, &data.posY);
 

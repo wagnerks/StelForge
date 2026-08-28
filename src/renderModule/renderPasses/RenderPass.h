@@ -4,6 +4,7 @@
 #include <atomic>
 
 #include "renderModule/Batcher.h"
+#include "multithreading/ThreadPool.h"
 
 namespace SFE {
 	namespace SystemsModule {
@@ -40,6 +41,9 @@ namespace SFE::Render {
 		void waitReady() {
 			auto status = mStatus.load(std::memory_order_acquire);
 			while (status != RenderPreparingStatus::READY) {
+				if (SFE::ThreadPool::isAlive()) {
+					SFE::ThreadPool::instance()->syncUpdate();
+				}
 				mStatus.wait(status, std::memory_order_acquire);
 				status = mStatus.load(std::memory_order_acquire);
 			}

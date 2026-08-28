@@ -1,5 +1,6 @@
 #include "core/Engine.h"
 #include "runtimeBridge/RuntimeBridge.h"
+#include "renderModule/GraphicsBackend.h"
 #include "windowsModule/Window.h"
 
 #if defined(VLD)
@@ -16,6 +17,8 @@ extern "C"
 
 int main(int argc, char** argv)
 {
+	SFE::Render::configureGraphicsBackend(argc, argv);
+
 	bool serveEditor = false;
 	bool visibleWindow = true;
 	for (int i = 1; i < argc; ++i) {

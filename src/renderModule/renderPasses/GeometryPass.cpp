@@ -13,9 +13,9 @@
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
+#include "componentsModule/TransformComponent.h"
 #include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/OutlineComponent.h"
-#include "componentsModule/TransformComponent.h"
 #include "containersModule/Vector.h"
 #include "core/ECSHandler.h"
 #include "multithreading/ThreadPool.h"
@@ -25,10 +25,62 @@
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
+#include "renderModule/GraphicsBackend.h"
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
 
 using namespace SFE::Render::RenderPasses;
+
+void GeometryPass::fillBatcher(Batcher& batcher, const bool vulkanGeometry, const uint8_t nextRegistry, SystemsModule::RenderData& renderData) {
+	batcher.clear();
+
+	ecss::Ranges<ecss::EntityId> entities;
+	{
+		const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+		entities = octreeSys->collectVisibleRanges(renderData.mCamFrustum);
+	}
+
+	auto addMeshes = [&](auto&& viewObjs) {
+		size_t considered = 0;
+		size_t visible = 0;
+		for (auto [ent, transform, meshComp, matComp] : viewObjs) {
+			if (!meshComp || !transform || (matComp && matComp->transparent)) {
+				continue;
+			}
+			++considered;
+			size_t added = 0;
+			for (const auto& mesh : meshComp->meshGraph) {
+				if (mesh.value.vertexBuffer && (mesh.value.vertexCount || mesh.value.indexCount)) {
+					batcher.addToDrawList(mesh.value, matComp, ent);
+					++added;
+				}
+			}
+			if (added > 0) {
+				++visible;
+			}
+		}
+		auto* info = SystemsModule::RenderDebugInfo::instance();
+		info->cullConsidered = considered;
+		info->cullVisible = visible;
+	};
+
+	if (vulkanGeometry) {
+		addMeshes(ECSHandler::registry().view<const TransformComponent, const MeshComponent, const MaterialComponent>());
+		return;
+	}
+
+	auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
+	const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+	if (entities.empty() && octreeSys->empty()) {
+		addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
+	}
+	else {
+		addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
+	}
+	if (SystemsModule::RenderDebugInfo::instance()->cullVisible == 0) {
+		addMeshes(ECSHandler::registry().view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
+	}
+}
 
 void GeometryPass::prepare() {
 	auto curPassData = getContainer().getCurrentPassData();
@@ -36,46 +88,15 @@ void GeometryPass::prepare() {
 		curPassData->markPreparing();
 
 	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum, outlineData]() mutable {
+	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, outlineData, renderData]() mutable {
 		FUNCTION_BENCHMARK;
-		curPassData->getBatcher().clear();
 		outlineData->getBatcher().clear();
+		fillBatcher(curPassData->getBatcher(), false, nextRegistry, renderData);
 
 		ecss::Ranges<ecss::EntityId> entities;
 		{
-			FUNCTION_BENCHMARK_NAMED(GeometryPass_octree);
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			entities = octreeSys->collectVisibleRanges(camFrustum);
-		}
-
-		{
-			FUNCTION_BENCHMARK_NAMED(addedToBatcher);
-			auto& batcher = curPassData->getBatcher();
-			auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
-			auto addMeshes = [&](auto&& viewObjs) {
-				size_t considered = 0;
-				size_t visible = 0;
-				for (auto [ent, transform, meshComp, matComp] : viewObjs) {
-					if (!meshComp || !transform || (matComp && matComp->transparent)) {
-						continue;
-					}
-					++considered;
-					++visible;
-					for (const auto& mesh : meshComp->meshGraph) {
-						batcher.addToDrawList(mesh.value, matComp, ent);
-					}
-				}
-				auto* info = SystemsModule::RenderDebugInfo::instance();
-				info->cullConsidered = considered;
-				info->cullVisible = visible;
-			};
-			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			if (entities.empty() && octreeSys->empty()) {
-				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
-			}
-			else {
-				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
-			}
+			entities = octreeSys->collectVisibleRanges(renderData.mCamFrustum);
 		}
 
 		{
@@ -118,10 +139,17 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
 
 	auto rhi = Engine::instance()->rhi();
+	const bool vulkanGeometry = rhi->supportsGeometryPass() && !rhi->supportsFullPipeline();
+	auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
+	const auto frameLayout = renderDataHandle.frameSetLayout
+		? renderDataHandle.frameSetLayout
+		: (renderSystem ? renderSystem->frameSetLayoutHandle() : Render::DescriptorSetLayoutHandle{});
+
 	TextureDesc positionBufDesc;
 	positionBufDesc.width = w;
 	positionBufDesc.height = h;
 	positionBufDesc.format = TextureFormat::RGBA32F;
+	positionBufDesc.usage = TextureUsage::Sampled | TextureUsage::ColorAttachment;
 
 	SamplerDesc positionSamplerDesc;
 	positionSamplerDesc.minFilter = FilterMode::Nearest;
@@ -136,6 +164,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	normalBufDesc.width = w;
 	normalBufDesc.height = h;
 	normalBufDesc.format = TextureFormat::RGBA16F;
+	normalBufDesc.usage = TextureUsage::Sampled | TextureUsage::ColorAttachment;
 	mData.normalBuffer = rhi->createTexture(normalBufDesc);
 
 	// color + specular color buffer
@@ -143,6 +172,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	albedoBufDesc.width = w;
 	albedoBufDesc.height = h;
 	albedoBufDesc.format = TextureFormat::RGBA16F;
+	albedoBufDesc.usage = TextureUsage::Sampled | TextureUsage::ColorAttachment;
 	mData.albedoBuffer = rhi->createTexture(albedoBufDesc);
 
 	// outline buffer
@@ -159,29 +189,40 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	lightsBufDesc.format = TextureFormat::RGBA8;
 	mData.lightsBuffer = rhi->createTexture(lightsBufDesc);
 
-	FramebufferDesc mainFboDesc;
-	mainFboDesc.width = w;
-	mainFboDesc.height = h;
-	mainFboDesc.colorAttachments = { {mData.positionBuffer}, {mData.normalBuffer}, {mData.albedoBuffer} };
-
 	TextureDesc depthTex{};
 	depthTex.width = w;
 	depthTex.height = h;
 	depthTex.depth = 1;
 	depthTex.dimension = TextureDimension::Tex2D;
 	depthTex.format = TextureFormat::DEPTH_COMPONENT24;
-	depthTex.usage = TextureUsage::DepthStencilAttachment;
+	depthTex.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
 
 	mData.depthsBuffer = rhi->createTexture(depthTex);
-	mainFboDesc.depthStencilAttachment = FramebufferAttachmentDesc{.texture = mData.depthsBuffer };
 
+	RenderPassDesc geometryPassDesc;
+	geometryPassDesc.colorAttachmentCount = 3;
+	geometryPassDesc.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA32F };
+	geometryPassDesc.colorAttachments[1] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA16F };
+	geometryPassDesc.colorAttachments[2] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA16F };
+	geometryPassDesc.hasDepthStencil = true;
+	geometryPassDesc.depthAttachment = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, 1.f, 0, false, TextureFormat::DEPTH_COMPONENT24 };
+	geometryPass = rhi->createRenderPass(geometryPassDesc);
+
+	FramebufferDesc mainFboDesc;
+	mainFboDesc.width = w;
+	mainFboDesc.height = h;
+	mainFboDesc.renderPass = geometryPass;
+	mainFboDesc.colorAttachments = { {mData.positionBuffer}, {mData.normalBuffer}, {mData.albedoBuffer} };
+	mainFboDesc.depthStencilAttachment = FramebufferAttachmentDesc{.texture = mData.depthsBuffer };
 	mData.gFramebuffer = rhi->createFramebuffer(mainFboDesc);
 
-	FramebufferDesc outlineFboDesc;
-	outlineFboDesc.width = w;
-	outlineFboDesc.height = h;
-	outlineFboDesc.colorAttachments = { {mData.outlinesBuffer} };
-	mData.outlineFramebuffer = rhi->createFramebuffer(outlineFboDesc);
+	if (!vulkanGeometry) {
+		FramebufferDesc outlineFboDesc;
+		outlineFboDesc.width = w;
+		outlineFboDesc.height = h;
+		outlineFboDesc.colorAttachments = { {mData.outlinesBuffer} };
+		mData.outlineFramebuffer = rhi->createFramebuffer(outlineFboDesc);
+	}
 
 	GraphicsPipelineDesc pipelineDesc;
 
@@ -196,12 +237,16 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layout.attributes.push_back({ 6,0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
 	pipelineDesc.topology = PrimitiveTopology::Triangles;
 	pipelineDesc.cullMode = CullMode::Back;
-	pipelineDesc.frontFace = FrontFace::CounterClockWise;
+	pipelineDesc.frontFace = vulkanGeometry ? FrontFace::ClockWise : FrontFace::CounterClockWise;
 	pipelineDesc.fillMode = PolygonFillMode::Fill;
 	pipelineDesc.depthStencilState.depthTest = true;
 	pipelineDesc.depthStencilState.depthWrite = true;
 	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
 	pipelineDesc.blend.enabled = false;
+	pipelineDesc.renderPass = geometryPass;
+	if (frameLayout) {
+		pipelineDesc.descriptorSetLayouts = { frameLayout };
+	}
 	pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({
 		ShaderStage::Vertex,
 		"g_buffer.vs",
@@ -213,21 +258,23 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 		ShaderModule::ShaderBase::loadShaderCode("shaders/g_buffer.fs")
 		});
 
+	Render::DescriptorSetLayoutDesc texLayoutDescGBuf;
+	texLayoutDescGBuf.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	gBuffetLayout = rhi->createDescriptorSetLayout(texLayoutDescGBuf);
+	gBuffetLayoutSet = rhi->allocateDescriptorSet(gBuffetLayout);
+	if (frameLayout) {
+		pipelineDesc.descriptorSetLayouts.push_back(gBuffetLayout);
+	}
+
 	geometryPipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
 	mGBufferPipelineDesc = pipelineDesc;
 	mGBufferPipelines.emplace(std::string(ComponentsModule::DefaultGBufferVS) + "|" + ComponentsModule::DefaultGBufferFS, geometryPipeline);
 
-	RenderPassDesc geometryPassDesc;
-	geometryPassDesc.colorAttachmentCount = 3;
-	geometryPassDesc.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //position
-	geometryPassDesc.colorAttachments[1] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //normal
-	geometryPassDesc.colorAttachments[2] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f} }; //albedo
-	geometryPassDesc.hasDepthStencil = true;
-	geometryPassDesc.depthAttachment = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, 1.f, 0, false };
-
-	geometryPass = Engine::instance()->rhi()->createRenderPass(geometryPassDesc);
-
-
+	if (!vulkanGeometry) {
 	GraphicsPipelineDesc gBufferOutlinePDesc;
 	gBufferOutlinePDesc.layout = layout;
 	gBufferOutlinePDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({
@@ -246,9 +293,8 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 
 	RenderPassDesc gbrp;
 	gbrp.colorAttachmentCount = 1;
-	gbrp.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 0.f} }; //outlines
+	gbrp.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 0.f} };
 	outlineBufferRenderPass = Engine::instance()->rhi()->createRenderPass(gbrp);
-
 
 	GraphicsPipelineDesc outlinePDesc;
 	outlinePDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule({
@@ -270,7 +316,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 
 	RenderPassDesc outlineRPD;
 	outlineRPD.colorAttachmentCount = 1;
-	outlineRPD.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 0.f} }; //final outline
+	outlineRPD.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 0.f} };
 	outlineRenderPass = Engine::instance()->rhi()->createRenderPass(outlineRPD);
 
 	Render::DescriptorSetLayoutDesc texLayoutDesc;
@@ -286,17 +332,10 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	mTexSetLayoutOutlines = rhi->createDescriptorSetLayout(texLayoutDesc);
 	mTexSetOutlines = rhi->allocateDescriptorSet(mTexSetLayoutOutlines);
 
-	Render::DescriptorSetLayoutDesc texLayoutDescGBuf;
-	texLayoutDescGBuf.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDescGBuf.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDescGBuf.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDescGBuf.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDescGBuf.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDescGBuf.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
-	gBuffetLayout = rhi->createDescriptorSetLayout(texLayoutDescGBuf);
-	gBuffetLayoutSet = rhi->allocateDescriptorSet(gBuffetLayout);
+	}
 
-	initGrid();
+	initGrid(vulkanGeometry, frameLayout);
+
 	publish(renderDataHandle);
 }
 
@@ -324,17 +363,25 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	//}
 
 	publish(renderDataHandle);
-	{
-		const auto curPassData = getContainer().getCurrentPassData();
-		curPassData->waitReady();
+	auto rhi = Engine::instance()->rhi();
+	const bool vulkanGeometry = rhi->supportsGeometryPass() && !rhi->supportsFullPipeline();
+
+	RenderPassData* curPassData = nullptr;
+	RenderPassData* outlineData = nullptr;
+	if (vulkanGeometry) {
+		curPassData = getContainer().getCurrentPassData();
+		outlineData = mOutlineData.getCurrentPassData();
+		fillBatcher(curPassData->getBatcher(), true, renderDataHandle.nextRegistry, renderDataHandle);
+	}
+	else {
+		getContainer().getCurrentPassData()->waitReady();
+		curPassData = getContainer().getCurrentPassData();
+		outlineData = mOutlineData.getCurrentPassData();
+		getContainer().rotate();
+		mOutlineData.rotate();
+		prepare();
 	}
 
-	const auto curPassData = getContainer().getCurrentPassData();
-	const auto outlineData = mOutlineData.getCurrentPassData();
-	getContainer().rotate();
-	mOutlineData.rotate();
-	prepare();
-	auto rhi = Engine::instance()->rhi();
 	RenderPassBeginInfo geometryPassBegin;
 	geometryPassBegin.renderPass = geometryPass;
 	geometryPassBegin.framebuffer = mData.gFramebuffer;
@@ -350,13 +397,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	drawGrid(renderDataHandle, cmd);
 	rhi->cmdEndRenderPass(cmd);
 
-	/*if (!batcher.drawList.empty()) {
-		auto lightObjectsPass = SHADER_CONTROLLER->loadVertexFragmentShader("shaders/g_buffer_light.vs", "shaders/g_buffer_light.fs");
-		lightObjectsPass->use();
-		batcher.flushAll(true);
-	}*/
-
-	if (!outlineData->getBatcher().drawList.empty()) {
+	if (!vulkanGeometry && !outlineData->getBatcher().drawList.empty()) {
 		RenderPassBeginInfo beginGBuf;
 		beginGBuf.renderPass = outlineBufferRenderPass;
 		beginGBuf.framebuffer = mData.outlineFramebuffer;
@@ -416,7 +457,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 		Utils::renderQuad(cmd);
 		rhi->cmdEndRenderPass(cmd);
 	}
-	else {
+	else if (!vulkanGeometry) {
 		if (needClearOutlines) {
 			RenderPassBeginInfo beginGBuf;
 			beginGBuf.renderPass = outlineBufferRenderPass;
@@ -459,7 +500,7 @@ SFE::Render::PipelineHandle GeometryPass::getGBufferPipeline(const std::string& 
 	return pipeline;
 }
 
-void GeometryPass::initGrid() {
+void GeometryPass::initGrid(const bool vulkanGeometry, const Render::DescriptorSetLayoutHandle frameLayout) {
 	auto* rhi = Engine::instance()->rhi();
 	std::vector<SFE::Vertex3D> vertices = {
 		{{ 1.f, 0.f, -1.f}, {1.f,1.f}, {0.f,1.f,0.f}},
@@ -486,8 +527,19 @@ void GeometryPass::initGrid() {
 	pipelineDesc.layout.attributes.push_back({ 0, 0, VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, position)), false });
 	pipelineDesc.layout.attributes.push_back({ 1, 0, VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, normal)), true });
 	pipelineDesc.layout.attributes.push_back({ 2, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, texCoords)), true });
-	pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "grid vs", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.vs") });
-	pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "grid fs", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.fs") });
+	if (vulkanGeometry) {
+		pipelineDesc.renderPass = geometryPass;
+		if (frameLayout) {
+			pipelineDesc.descriptorSetLayouts = { frameLayout };
+		}
+		pipelineDesc.pushConstantSize = static_cast<uint32_t>(sizeof(GridDrawData));
+		pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "grid.vs", {} });
+		pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "grid.fs", {} });
+	}
+	else {
+		pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "grid vs", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.vs") });
+		pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "grid fs", ShaderModule::ShaderBase::loadShaderCode("shaders/testSh.fs") });
+	}
 	pipelineDesc.topology = PrimitiveTopology::Triangles;
 	pipelineDesc.cullMode = CullMode::None;
 	pipelineDesc.frontFace = FrontFace::CounterClockWise;
@@ -505,7 +557,16 @@ void GeometryPass::drawGrid(SystemsModule::RenderData& renderDataHandle, Render:
 	auto camera = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
 	auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(camera);
 	auto* rhi = Engine::instance()->rhi();
+	const bool vulkanGeometry = rhi->supportsGeometryPass() && !rhi->supportsFullPipeline();
 	rhi->cmdBindPipeline(cmd, mGridPipeline);
+	if (vulkanGeometry) {
+		if (auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()) {
+			const auto frameSet = renderSystem->frameSetHandle();
+			if (frameSet) {
+				rhi->cmdBindDescriptorSets(cmd, mGridPipeline, 0, &frameSet, 1);
+			}
+		}
+	}
 	rhi->cmdBindIndexBuffer(cmd, mGridEBO, IndexType::Uint32);
 	rhi->cmdBindVertexBuffer(cmd, 0, mGridVBO);
 	mGridDrawData.viewPos.xyz = renderDataHandle.mCameraPos;

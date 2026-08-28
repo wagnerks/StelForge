@@ -128,6 +128,7 @@ namespace SFE::Render {
 
 		void create(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints = {});
 		GLFWwindow* getWindow() const { return mWindow; }
+		bool isNoApi() const { return mNoApi; }
 		bool isClosing() const;
 		bool isVisible() const;
 		void show() const;
@@ -160,6 +161,7 @@ namespace SFE::Render {
 		CoreModule::ViewportData data;
 
 		GLFWwindow* mWindow = nullptr;
+		bool mNoApi = false;
 #ifdef _WIN32
 		bool mEmbeddedInHost = false;
 #endif

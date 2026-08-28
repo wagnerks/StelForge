@@ -1,5 +1,7 @@
 ﻿#include "CameraSystem.h"
 
+#include <GLFW/glfw3.h>
+
 #include "OcTreeSystem.h"
 #include "PhysicsSystem.h"
 #include "componentsModule/CameraComponent.h"
@@ -67,13 +69,17 @@ namespace SFE::SystemsModule {
 		};
 
 		onMouseBtnEvent = [this](Math::DVec2 mPos, CoreModule::MouseButton btn, CoreModule::InputEventType action) {
+			GLFWwindow* glfwWindow = Engine::instance()->getMainWindow();
+			if (!glfwWindow) {
+				return;
+			}
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::PRESS) {
 				processMouse = true;
-				glfwSetInputMode(glfwGetCurrentContext(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+				glfwSetInputMode(glfwWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 			}
 			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::RELEASE) {
 				processMouse = false;
-				glfwSetInputMode(glfwGetCurrentContext(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				glfwSetInputMode(glfwWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			}
 		};
 

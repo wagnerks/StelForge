@@ -9,10 +9,16 @@
 #include "InputHandler.h"
 #include "logsModule/logger.h"
 #include "multithreading/ThreadPool.h"
+#include "renderModule/GraphicsBackend.h"
 #include "renderModule/OpenGLRHI.h"
+#include "renderModule/VulkanRHI.h"
 #include "renderModule/TextRenderer.h"
 
 namespace SFE {
+	using Render::activeGraphicsBackend;
+	using Render::graphicsBackendName;
+	using Render::GraphicsBackend;
+
 	void Engine::setWindow(Render::Window* window) {
 		if (mWindow) {
 			delete mWindow;
@@ -36,11 +42,15 @@ namespace SFE {
 		}
 
 		mMainThreadID = std::this_thread::get_id();
-		glfwMakeContextCurrent(mWindow->getWindow());
+		if (activeGraphicsBackend() == GraphicsBackend::OpenGL) {
+			glfwMakeContextCurrent(mWindow->getWindow());
+		}
 		if (mRHI) {
 			mRHI->init();
 		}
-		ThreadPool::instance()->ensureLoadingContext();
+		if (mRHI && mRHI->supportsFullPipeline()) {
+			ThreadPool::instance()->ensureLoadingContext();
+		}
 		mCore.init();
 
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
@@ -57,14 +67,18 @@ namespace SFE {
 	}
 
 	void Engine::initRender() {
-		
-
-		glfwSwapInterval(0);
-		SFE::LogsModule::Logger::LOG_INFO("engine render initialized");
+		if (activeGraphicsBackend() == GraphicsBackend::OpenGL) {
+			glfwSwapInterval(0);
+		}
+		SFE::LogsModule::Logger::LOG_INFO("engine render initialized (%s backend)",
+			graphicsBackendName(activeGraphicsBackend()));
 	}
 
 
 	Render::Window* Engine::createWindow(int width, int height, GLFWwindow* window, const std::string& title, Render::WindowHints hints) {
+		if (activeGraphicsBackend() == GraphicsBackend::Vulkan) {
+			hints.ints[Render::CLIENT_API] = GLFW_NO_API;
+		}
 		setWindow(new Render::Window(width, height, title, window, hints));
 
 		return mWindow;
@@ -137,7 +151,15 @@ namespace SFE {
 
 	Engine::Engine()
 	{
-		mRHI = new Render::OpenGLRHI();
+		switch (activeGraphicsBackend()) {
+		case GraphicsBackend::Vulkan:
+			mRHI = new Render::VulkanRHI();
+			break;
+		default:
+			mRHI = new Render::OpenGLRHI();
+			break;
+		}
+		LogsModule::Logger::LOG_INFO("Engine backend: %s", graphicsBackendName(activeGraphicsBackend()));
 	}
 
 	Engine::~Engine() {
@@ -145,7 +167,7 @@ namespace SFE {
 			ThreadPool::instance()->shutdown();
 		}
 		if (mRHI) {
-			if (mWindow && mWindow->getWindow()) {
+			if (mWindow && mWindow->getWindow() && activeGraphicsBackend() == GraphicsBackend::OpenGL) {
 				glfwMakeContextCurrent(mWindow->getWindow());
 			}
 			mRHI->cleanup();

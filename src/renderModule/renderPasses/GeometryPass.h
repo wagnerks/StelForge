@@ -55,8 +55,10 @@ namespace SFE::Render::RenderPasses {
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
 		Render::PipelineHandle getGBufferPipeline(const std::string& vertexShader, const std::string& fragmentShader);
-		void initGrid();
+		void initGrid(bool vulkanGeometry, Render::DescriptorSetLayoutHandle frameLayout);
 		void drawGrid(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
+
+		void fillBatcher(Batcher& batcher, bool vulkanGeometry, uint8_t nextRegistry, SystemsModule::RenderData& renderData);
 
 		bool mInited = false;
 		Data mData;

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "AssetsManager.h"
+#include "renderModule/GraphicsBackend.h"
 #include "core/Engine.h"
 #include "multithreading/ThreadPool.h"
 #include "logsModule/logger.h"
@@ -47,10 +48,9 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	samplerDesc.maxAnisotropy = 16.f;
 
 
-	if (SFE::Engine::isMainThread()) {
+	if (SFE::Engine::isMainThread() || SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::Vulkan) {
 		texture->texture = SFE::Engine::instance()->rhi()->createTexture(desc, data);
 		texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
-
 		stbi_image_free(data);
 	}
 	else {
@@ -59,7 +59,9 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 
 			tex->texture = SFE::Engine::instance()->rhi()->createTexture(desc, data);
 			tex->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
-			glFinish();
+			if (SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::OpenGL) {
+				glFinish();
+			}
 
 			stbi_image_free(data);
 		});

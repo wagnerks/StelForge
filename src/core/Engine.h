@@ -5,6 +5,7 @@
 #include "Core.h"
 #include "InputHandler.h"
 #include "containersModule/Singleton.h"
+#include "renderModule/GraphicsBackend.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 class Camera;

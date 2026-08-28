@@ -14,6 +14,7 @@
 #include "componentsModule/TransformComponent.h"
 #include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
+#include "core/Engine.h"
 #include "core/FileSystem.h"
 #include "debugModule/Benchmark.h"
 #include "propertiesModule/PropertiesSystem.h"
@@ -57,6 +58,25 @@ namespace {
 		return false;
 	}
 
+	bool hasPopulatedChunks() {
+		namespace fs = std::filesystem;
+		std::error_code ec;
+		const fs::path dir = "world/chunks";
+		if (!fs::exists(dir, ec)) {
+			return false;
+		}
+		for (const auto& entry : fs::directory_iterator(dir, ec)) {
+			if (entry.path().extension() != ".json") {
+				continue;
+			}
+			const auto json = SFE::FileSystem::readJson(entry.path().string());
+			if (json.isMember("entities") && json["entities"].isArray() && !json["entities"].empty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void clearSavedChunks() {
 		namespace fs = std::filesystem;
 		std::error_code ec;
@@ -75,9 +95,16 @@ namespace {
 namespace SFE::SystemsModule {
 	ChunksSystem::ChunksSystem() : System({ SFE::SystemsModule::TaskType::CAMERA_UPDATED }) {
 		FileSystem::createDirectories("world/chunks");
-		ThreadPool::instance()->addTask([this] {
-			if (!debugData.proceduralSpheres) {
+		if (!debugData.proceduralSpheres) {
+			if (Engine::instance()->rhi()
+				&& (Engine::instance()->rhi()->supportsFullPipeline() || Engine::instance()->rhi()->supportsGeometryPass())) {
 				seedIfEmpty();
+			}
+		}
+		ThreadPool::instance()->addTask([this] {
+			if (Engine::instance()->rhi() && !Engine::instance()->rhi()->supportsFullPipeline()
+				&& !Engine::instance()->rhi()->supportsGeometryPass()) {
+				return;
 			}
 			if (auto camSys = ECSHandler::getSystem<CameraSystem>()) {
 				updateAsync({ camSys->getCurrentCamera() });
@@ -144,7 +171,7 @@ namespace SFE::SystemsModule {
 
 	void ChunksSystem::seedIfEmpty() {
 		const int savedVersion = readSceneVersion();
-		const bool hasChunkFile = hasSavedChunks();
+		const bool hasChunkFile = hasPopulatedChunks();
 		if (hasChunkFile && savedVersion == kDefaultSceneVersion) {
 			return;
 		}

@@ -2,6 +2,7 @@
 
 #include "core/Engine.h"
 #include "logsModule/logger.h"
+#include "renderModule/GraphicsBackend.h"
 
 
 namespace SFE {
@@ -12,6 +13,9 @@ namespace SFE {
 	}
 
 	void ThreadPool::ensureLoadingContext() {
+		if (Render::activeGraphicsBackend() == Render::GraphicsBackend::Vulkan) {
+			return;
+		}
 		if (mShuttingDown.load(std::memory_order_acquire) || mLoadingWindow) {
 			return;
 		}

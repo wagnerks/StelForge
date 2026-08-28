@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "mathModule/Forward.h"
+#include "renderModule/GraphicsBackend.h"
 
 namespace SFE::Render
 {
@@ -110,6 +111,7 @@ namespace SFE::Render
 	};
 
 	inline TextureUsage operator|(TextureUsage a, TextureUsage b) { return static_cast<TextureUsage>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b)); }
+	inline bool operator&(TextureUsage a, TextureUsage b) { return (static_cast<uint8_t>(a) & static_cast<uint8_t>(b)) != 0; }
 
 	enum class FilterMode : uint8_t { Nearest, Linear, LinearMipmapLinear };
 
@@ -274,6 +276,7 @@ namespace SFE::Render
 	struct FramebufferDesc {
 		uint32_t width = 0;
 		uint32_t height = 0;
+		RenderPassHandle renderPass = {}; // Vulkan: compatible render pass
 
 		std::vector<FramebufferAttachmentDesc> colorAttachments;
 		std::optional<FramebufferAttachmentDesc> depthStencilAttachment;
@@ -309,6 +312,7 @@ namespace SFE::Render
 		AttachmentLoadOp  loadOp = AttachmentLoadOp::Clear;
 		AttachmentStoreOp storeOp = AttachmentStoreOp::Store;
 		Math::Vec4        clearColor{ 0.f, 0.f, 0.f, 1.f };
+		TextureFormat     format = TextureFormat::RGBA8; // Vulkan: attachment format
 	};
 
 	struct RenderPassDepthAttachmentDesc {
@@ -317,6 +321,7 @@ namespace SFE::Render
 		float             clearDepth = 1.f;
 		uint8_t           clearStencil = 0;
 		bool              hasStencil = false;
+		TextureFormat     format = TextureFormat::DEPTH_COMPONENT24;
 	};
 
 	struct RenderPassDesc {
@@ -360,6 +365,7 @@ namespace SFE::Render
 
 	struct ComputePipelineDesc {
 		ShaderModuleHandle compute;
+		std::vector<DescriptorSetLayoutHandle> descriptorSetLayouts;
 	};
 
 	struct GraphicsPipelineDesc {
@@ -378,6 +384,9 @@ namespace SFE::Render
 		// For Vulkan backend: which render pass and subpass this pipeline is compatible with.
 		RenderPassHandle		renderPass = {};
 		uint32_t				subpassIndex = 0; // meanwhile only 0
+		std::vector<DescriptorSetLayoutHandle> descriptorSetLayouts; // Vulkan pipeline layout
+		uint32_t				pushConstantSize = 0;
+		ShaderStage				pushConstantStages = ShaderStage::Vertex | ShaderStage::Fragment;
 	};
 
 	struct DescriptorBufferInfo {
@@ -423,6 +432,12 @@ namespace SFE::Render
 
 		virtual void init() = 0;
 		virtual void cleanup() = 0;
+
+		virtual GraphicsBackend backend() const { return GraphicsBackend::OpenGL; }
+		virtual bool supportsFullPipeline() const { return true; }
+		virtual bool supportsGpuResources() const { return true; }
+		virtual bool supportsGeometryPass() const { return supportsFullPipeline(); }
+		virtual void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) { (void)texture; (void)sampler; }
 
 		virtual PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) = 0;
 		virtual PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) = 0;

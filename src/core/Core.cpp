@@ -18,6 +18,7 @@ namespace SFE::CoreModule {
 	void Core::update(float dt) {
 		FUNCTION_BENCHMARK;
 
+		ThreadPool::instance()->syncUpdate();
 		ECSHandler::systemManager().update(dt);
 		ThreadPool::instance()->syncUpdate();
 	}

@@ -79,13 +79,7 @@ namespace {
 
 void AnimationComputePass::init(SystemsModule::RenderData&) {
 	auto* rhi = Engine::instance()->rhi();
-
-	const auto cs = rhi->createShaderModule({
-		ShaderStage::Compute,
-		"animate bones cs",
-		ShaderModule::ShaderBase::loadShaderCode("shaders/animateBones.cs")
-	});
-	mPipeline = rhi->createComputePipeline({ cs });
+	const bool vulkanGeometry = rhi->supportsGeometryPass() && !rhi->supportsFullPipeline();
 
 	DescriptorSetLayoutDesc layout;
 	layout.bindings = {
@@ -99,6 +93,20 @@ void AnimationComputePass::init(SystemsModule::RenderData&) {
 	};
 	mSetLayout = rhi->createDescriptorSetLayout(layout);
 	mSet = rhi->allocateDescriptorSet(mSetLayout);
+
+	ShaderModuleHandle cs{};
+	if (vulkanGeometry) {
+		cs = rhi->createShaderModule({ ShaderStage::Compute, "animateBones.cs", {} });
+		mPipeline = rhi->createComputePipeline({ cs, { mSetLayout } });
+	}
+	else {
+		cs = rhi->createShaderModule({
+			ShaderStage::Compute,
+			"animate bones cs",
+			ShaderModule::ShaderBase::loadShaderCode("shaders/animateBones.cs")
+		});
+		mPipeline = rhi->createComputePipeline({ cs });
+	}
 
 	BufferDesc instDesc;
 	instDesc.size = sizeof(AnimPush) * 4096;

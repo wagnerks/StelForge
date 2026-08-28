@@ -37,75 +37,102 @@
 
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
+#include "componentsModule/ArmatureComponent.h"
+#include "renderModule/renderPasses/GeometryPass.h"
+#include "renderModule/renderPasses/AnimationComputePass.h"
 #include "containersModule/Vector.h"
 #include "renderModule/renderPasses/FinalPass.h"
 
 namespace SFE::SystemsModule {
 
 	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, MATERIAL_UPDATED, MESH_UPDATED }) {
-		mRenderPasses.reserve(std::size(RENDER_PASSES));
-		for (size_t i = 0; i < std::size(RENDER_PASSES); ++i) {
-			const auto& entry = RENDER_PASSES[i];
-			if (!entry.enabled || !entry.create) {
-				continue;
-			}
-			auto* pass = entry.create();
-			pass->init(mRenderData);
-			pass->setPriority(i);
-			mRenderPasses.emplace_back(pass);
-			mPassNames.emplace_back(entry.name);
+		auto* rhi = Engine::instance()->rhi();
+		if (!rhi->supportsFullPipeline() && !rhi->supportsGpuResources()) {
+			return;
 		}
-	
-		{
+
+		if (rhi->supportsFullPipeline() || rhi->supportsGpuResources()) {
 			Render::BufferDesc uboDesc;
 			uboDesc.size = sizeof(RenderMatrices);
 			uboDesc.usage = Render::BufferUsage::Uniform;
 			uboDesc.cpuAccess = Render::CpuAccess::Write;
 			uboDesc.debugName = "CameraMatricesUBO";
 			cameraMatricesUBO = Engine::instance()->rhi()->createBuffer(uboDesc);
+
+			constexpr size_t maxDrawSize = 4096;
+			mGpuCapacity = maxDrawSize;
+			{
+				Render::BufferDesc ssbDesc;
+				ssbDesc.size = sizeof(Math::Mat4) * maxDrawSize;
+				ssbDesc.usage = Render::BufferUsage::Storage;
+				ssbDesc.cpuAccess = Render::CpuAccess::Write;
+				ssbDesc.debugName = "TransformsSSBO";
+				transforms = Engine::instance()->rhi()->createBuffer(ssbDesc);
+			}
+
+			{
+				Render::BufferDesc ssbDesc;
+				ssbDesc.size = sizeof(SFE::Math::Mat4) * 100 * maxDrawSize;
+				ssbDesc.usage = Render::BufferUsage::Storage;
+				ssbDesc.cpuAccess = Render::CpuAccess::Write;
+				ssbDesc.debugName = "BonesSSBO";
+				bones = Engine::instance()->rhi()->createBuffer(ssbDesc);
+			}
+
+			{
+				Render::DescriptorSetLayoutDesc frameLayout;
+				frameLayout.bindings = {
+					{ 5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment | Render::ShaderStage::Geometry },
+					{ 1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
+					{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
+					{ 3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment },
+				};
+				frameSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(frameLayout);
+				frameSet = Engine::instance()->rhi()->allocateDescriptorSet(frameSetLayout);
+				mRenderData.frameSetLayout = frameSetLayout;
+				Engine::instance()->rhi()->updateDescriptorSets({
+					{ frameSet, 5, Render::DescriptorType::UniformBuffer, {{ cameraMatricesUBO }} },
+					{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
+					{ frameSet, 2, Render::DescriptorType::StorageBuffer, {{ bones }} },
+				});
+				mRenderData.transformsSSBO = transforms;
+				mRenderData.bonesSSBO = bones;
+				mRenderData.cameraMatricesUBO = cameraMatricesUBO;
+			}
 		}
 
-		constexpr size_t maxDrawSize = 4096;
-		mGpuCapacity = maxDrawSize;
-		{
-			Render::BufferDesc ssbDesc;
-			ssbDesc.size = sizeof(Math::Mat4) * maxDrawSize;
-			ssbDesc.usage = Render::BufferUsage::Storage;
-			ssbDesc.cpuAccess = Render::CpuAccess::Write;
-			ssbDesc.debugName = "TransformsSSBO";
-			transforms = Engine::instance()->rhi()->createBuffer(ssbDesc);
+		if (rhi->supportsFullPipeline()) {
+			mRenderPasses.reserve(std::size(RENDER_PASSES));
+			for (size_t i = 0; i < std::size(RENDER_PASSES); ++i) {
+				const auto& entry = RENDER_PASSES[i];
+				if (!entry.enabled || !entry.create) {
+					continue;
+				}
+				auto* pass = entry.create();
+				pass->init(mRenderData);
+				pass->setPriority(i);
+				mRenderPasses.emplace_back(pass);
+				mPassNames.emplace_back(entry.name);
+			}
+		}
+		else if (rhi->supportsGeometryPass()) {
+			auto* animPass = new Render::RenderPasses::AnimationComputePass();
+			animPass->init(mRenderData);
+			animPass->setPriority(0);
+			mRenderPasses.emplace_back(animPass);
+			mPassNames.emplace_back("AnimationCompute");
+
+			auto* pass = new Render::RenderPasses::GeometryPass();
+			pass->init(mRenderData);
+			pass->setPriority(1);
+			mRenderPasses.emplace_back(pass);
+			mPassNames.emplace_back("Geometry");
 		}
 
-		{
-			Render::BufferDesc ssbDesc;
-			ssbDesc.size = sizeof(SFE::Math::Mat4) * 100 * maxDrawSize;
-			ssbDesc.usage = Render::BufferUsage::Storage;
-			ssbDesc.cpuAccess = Render::CpuAccess::Write;
-			ssbDesc.debugName = "BonesSSBO";
-			bones = Engine::instance()->rhi()->createBuffer(ssbDesc);
+		if (rhi->supportsFullPipeline() || rhi->supportsGeometryPass()) {
+			ECSHandler::drawRegistry(0).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
+			ECSHandler::drawRegistry(1).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
 		}
-
-		{
-			Render::DescriptorSetLayoutDesc frameLayout;
-			frameLayout.bindings = {
-				{ 5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment | Render::ShaderStage::Geometry },
-				{ 1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
-				{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
-			};
-			frameSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(frameLayout);
-			frameSet = Engine::instance()->rhi()->allocateDescriptorSet(frameSetLayout);
-			Engine::instance()->rhi()->updateDescriptorSets({
-				{ frameSet, 5, Render::DescriptorType::UniformBuffer, {{ cameraMatricesUBO }} },
-				{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
-				{ frameSet, 2, Render::DescriptorType::StorageBuffer, {{ bones }} },
-			});
-			mRenderData.transformsSSBO = transforms;
-			mRenderData.bonesSSBO = bones;
-			mRenderData.cameraMatricesUBO = cameraMatricesUBO;
-		}
-
-		ECSHandler::drawRegistry(0).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
-		ECSHandler::drawRegistry(1).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
 
 		// init gpu timer queries
 		//glGenQueries(2, mGpuTimeQueries);
@@ -113,6 +140,39 @@ namespace SFE::SystemsModule {
 
 	void RenderSystem::update(float_t dt) {
 		FUNCTION_BENCHMARK;
+
+		if (!Engine::instance()->rhi()->supportsFullPipeline()) {
+			if (Engine::instance()->rhi()->supportsGeometryPass()) {
+				prepareDataForNextFrame();
+
+				auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
+				const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
+				const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera);
+				mRenderData.nextCameraProjection = cameraComp->getProjection();
+				mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
+				mRenderData.next.view = transformComp->getViewMatrix();
+				mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
+				mRenderData.mNextCameraPos = transformComp->getPos(true);
+				mRenderData.mNextViewDir = normalize(transformComp->getForward());
+				mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
+
+				mRenderData.current = mRenderData.next;
+				mRenderData.cameraProjection = mRenderData.nextCameraProjection;
+				mRenderData.mCameraPos = mRenderData.mNextCameraPos;
+				mRenderData.mViewDir = mRenderData.mNextViewDir;
+				mRenderData.mCamFrustum = mRenderData.mNextCamFrustum;
+				Engine::instance()->rhi()->updateBuffer(cameraMatricesUBO, 0, sizeof(RenderMatrices), &mRenderData.current);
+
+				syncVulkanGpuFrameData();
+
+				mRenderData.rotate();
+
+				renderFrame();
+				return;
+			}
+			renderFrame();
+			return;
+		}
 
 		mRenderData.prevPV = mRenderData.current.PV;
 		mRenderData.current = mRenderData.next;
@@ -202,6 +262,39 @@ namespace SFE::SystemsModule {
 		rhi->updateDescriptorSets({
 			{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
 		});
+	}
+
+	void RenderSystem::syncVulkanGpuFrameData() {
+		for (auto [entId, transform, mesh] : ECSHandler::registry().view<const TransformComponent, const MeshComponent>()) {
+			if (!transform || !mesh) {
+				continue;
+			}
+			const Math::Mat4& mat = transform->getTransform();
+			if (auto transformMat = ECSHandler::registry().pinComponent<ComponentsModule::TransformMatComp>(entId)) {
+				transformMat->mTransform = mat;
+			}
+			else {
+				ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(entId, mat);
+			}
+			ensureGpuCapacity(entId);
+			Engine::instance()->rhi()->updateBuffer(transforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &mat);
+		}
+
+		for (auto [entId, armature] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
+			if (!armature || armature->boneMatrices.empty()) {
+				continue;
+			}
+			if (ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entId)) {
+				continue;
+			}
+			ensureGpuCapacity(entId);
+			const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(100));
+			Engine::instance()->rhi()->updateBuffer(
+				bones,
+				static_cast<size_t>(entId) * 100 * sizeof(Math::Mat4),
+				boneCount * sizeof(Math::Mat4),
+				armature->boneMatrices.data());
+		}
 	}
 
 	void RenderSystem::prepareDataForNextFrame() {
@@ -330,6 +423,44 @@ namespace SFE::SystemsModule {
 		const auto tFrame = std::chrono::high_resolution_clock::now();
 
 		auto rhi = Engine::instance()->rhi();
+		if (!rhi->supportsFullPipeline()) {
+			if (rhi->supportsGeometryPass() && !mRenderPasses.empty()) {
+				const auto tPresent = std::chrono::high_resolution_clock::now();
+				auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
+				for (size_t i = 0; i < mRenderPasses.size(); ++i) {
+					const auto tPass = std::chrono::high_resolution_clock::now();
+					mRenderPasses[i]->render(mRenderData, cmd);
+					if (info->passCount < 16) {
+						info->passTimes[info->passCount] = {
+							i < mPassNames.size() ? mPassNames[i] : "pass",
+							std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPass).count()
+						};
+						++info->passCount;
+					}
+				}
+				rhi->endCommandList(cmd);
+
+				const auto tSubmit = std::chrono::high_resolution_clock::now();
+				rhi->submit(&cmd, 1);
+				info->submitMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tSubmit).count();
+
+				const auto albedo = mRenderData.frame.texture(Render::FrameId::GBufferAlbedo);
+				const auto albedoSampler = mRenderData.frame.sampler(Render::FrameId::GBufferAlbedo);
+				rhi->setPresentBlitSource(albedo, albedoSampler);
+
+				rhi->present();
+				info->presentMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPresent).count();
+				info->cpuMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tFrame).count();
+				return;
+			}
+
+			const auto tPresent = std::chrono::high_resolution_clock::now();
+			rhi->present();
+			info->presentMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPresent).count();
+			info->cpuMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tFrame).count();
+			return;
+		}
+
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
 		rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
 		for (size_t i = 0; i < mRenderPasses.size(); ++i) {

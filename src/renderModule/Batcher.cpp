@@ -7,6 +7,8 @@
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
 #include "systemsModule/systems/RenderSystem.h"
+#include "renderModule/GraphicsBackend.h"
+#include "core/ECSHandler.h"
 
 void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
 	std::ranges::sort(matrices, [&viewPos](const Matrices& a, const Matrices& b) {
@@ -201,54 +203,37 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 			mDefaultGray = mDefaultBlack;
 		}
 
-		if (getPipeline) {
-			if (const auto pipeline = getPipeline(objs.vertexShader, objs.fragmentShader)) {
-				rhi->cmdBindPipeline(cmd, pipeline);
-			}
-		}
-		if (beforeDraw) {
-			beforeDraw(cmd, objs);
-		}
-
 		std::vector<SFE::Render::WriteDescriptor> writes {
 		{
-			{
-				.set = setHandle,
-				.binding = SFE::DIFFUSE,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
-				.images{ {defaultTex->texture, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::NORMALS,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
-				.images{ {defaultNormal->texture, defaultNormal->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::SPECULAR,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
-				.images{ {mDefaultBlack, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::ROUGHNESS,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
-				.images{ {mDefaultGray, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::METALLIC,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
-				.images{ {mDefaultBlack, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = 3,
-				.type = SFE::Render::DescriptorType::StorageBuffer,
-				.buffers{ {batcherBuffer} }
-			}
-		}
+			.set = setHandle,
+			.binding = SFE::DIFFUSE,
+			.type = SFE::Render::DescriptorType::CombinedImageSampler,
+			.images{ {defaultTex->texture, defaultTex->sampler} }
+		},
+		{
+			.set = setHandle,
+			.binding = SFE::NORMALS,
+			.type = SFE::Render::DescriptorType::CombinedImageSampler,
+			.images{ {defaultNormal->texture, defaultNormal->sampler} }
+		},
+		{
+			.set = setHandle,
+			.binding = SFE::SPECULAR,
+			.type = SFE::Render::DescriptorType::CombinedImageSampler,
+			.images{ {mDefaultBlack, defaultTex->sampler} }
+		},
+		{
+			.set = setHandle,
+			.binding = SFE::ROUGHNESS,
+			.type = SFE::Render::DescriptorType::CombinedImageSampler,
+			.images{ {mDefaultGray, defaultTex->sampler} }
+		},
+		{
+			.set = setHandle,
+			.binding = SFE::METALLIC,
+			.type = SFE::Render::DescriptorType::CombinedImageSampler,
+			.images{ {mDefaultBlack, defaultTex->sampler} }
+		},
 		};
 
 		for (auto i = 0; i < objs.materialData.materialsCount; i++) {
@@ -263,8 +248,39 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 				.images{ {mat.texture, defaultTex->sampler} }
 				});
 		}
+
+		auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
+		const auto frameSet = renderSystem ? renderSystem->frameSetHandle() : SFE::Render::DescriptorSetHandle{};
+		if (frameSet) {
+			writes.push_back(SFE::Render::WriteDescriptor{
+				.set = frameSet,
+				.binding = 3,
+				.type = SFE::Render::DescriptorType::StorageBuffer,
+				.buffers{ {batcherBuffer} }
+			});
+		}
+
 		rhi->updateDescriptorSets(writes);
-		rhi->cmdBindDescriptorSets(cmd, {}, 0, &setHandle, 1);
+
+		SFE::Render::PipelineHandle pipeline{};
+		if (getPipeline) {
+			pipeline = getPipeline(objs.vertexShader, objs.fragmentShader);
+			if (pipeline) {
+				rhi->cmdBindPipeline(cmd, pipeline);
+			}
+		}
+		if (beforeDraw) {
+			beforeDraw(cmd, objs);
+		}
+
+		const bool vulkanGeometry = rhi->supportsGeometryPass() && !rhi->supportsFullPipeline();
+		if (vulkanGeometry && pipeline && frameSet && setHandle) {
+			const SFE::Render::DescriptorSetHandle sets[] = { frameSet, setHandle };
+			rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+		}
+		else {
+			rhi->cmdBindDescriptorSets(cmd, {}, 0, &setHandle, 1);
+		}
 	}
 
 	if (entityCount > mInstanceCapacity) {

@@ -83,6 +83,7 @@ namespace SFE::SystemsModule {
 		Render::BufferHandle transformsSSBO;
 		Render::BufferHandle bonesSSBO;
 		Render::BufferHandle cameraMatricesUBO;
+		Render::DescriptorSetLayoutHandle frameSetLayout;
 
 		RenderMode mRenderType = RenderMode::DEFAULT;
 		GraphicsSettings graphics;
@@ -133,8 +134,11 @@ namespace SFE::SystemsModule {
 		void debugUpdate(float dt) override;
 		inline void setRenderType(RenderMode type) { mRenderData.mRenderType = type; }
 		inline RenderData& getRenderData() { return mRenderData; }
+		Render::DescriptorSetHandle frameSetHandle() const { return frameSet; }
+		Render::DescriptorSetLayoutHandle frameSetLayoutHandle() const { return frameSetLayout; }
 
 		void prepareDataForNextFrame();
+		void syncVulkanGpuFrameData();
 
 		bool isShadowsDebugData() const {
 			return mShadowsDebugDataDraw;
