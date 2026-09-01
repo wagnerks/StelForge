@@ -1,4 +1,11 @@
-﻿#include "ECSHandler.h"
+﻿// Must precede ECSHandler.h, which reaches GLFW: glfwCreateWindowSurface is only declared
+// when a Vulkan header was seen first. vulkan.hpp rather than vulkan_raii.hpp because nothing
+// here names vk::raii. This is the only translation unit in the engine that needs the C++
+// bindings; it used to get them transitively from Window.h, which included vulkan_raii.hpp
+// without using it and charged every dependent TU ~308k preprocessed lines.
+#include <vulkan/vulkan.hpp>
+
+#include "ECSHandler.h"
 
 #include <fstream>
 #include <iostream>

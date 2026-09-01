@@ -6,7 +6,6 @@
 #include <unordered_map>
 
 
-#include <vulkan/vulkan_raii.hpp>
 #include <GLFW/glfw3.h>
 
 #include "windowsModule/ViewportData.h"
@@ -128,6 +127,7 @@ namespace SFE::Render {
 
 		void create(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints = {});
 		GLFWwindow* getWindow() const { return mWindow; }
+		const std::string& title() const { return mTitle; }
 		bool isNoApi() const { return mNoApi; }
 		bool isClosing() const;
 		bool isVisible() const;
@@ -161,6 +161,7 @@ namespace SFE::Render {
 		CoreModule::ViewportData data;
 
 		GLFWwindow* mWindow = nullptr;
+		std::string mTitle;
 		bool mNoApi = false;
 #ifdef _WIN32
 		bool mEmbeddedInHost = false;
