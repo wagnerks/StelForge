@@ -3,7 +3,9 @@
 /*.dll
 *.pdb
 /*.lib
-build
+build/
+out/
 bin/imgui.ini
 imgui.ini
 Microsoft.DTfW.DHL.manifest
+.*/
