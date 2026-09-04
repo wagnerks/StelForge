@@ -1,27 +1,25 @@
-#version 460 core
-
+#version 450 core
+#include "sfe.glsl"
 layout(triangles, invocations = 6) in;
 layout(triangle_strip, max_vertices = 36) out;
 
-layout (std140, binding = 3) uniform LightSpaceMatrices
-{
+layout(SFE_SET(0, 11), std140) uniform LightSpaceMatrices {
     mat4 lightSpaceMatrices[72];
 };
 
-layout(std140, binding = 15) uniform PushConstants {
+SFE_PUSH_BLOCK Push {
     int lightCount;
     float casterOpacity;
 } pc;
 
-void main()
-{
+void main() {
     int count = min(pc.lightCount, 12);
-    for (int light = 0; light < count; ++light)
-    {
+    for (int light = 0; light < count; ++light) {
         int layer = light * 6 + gl_InvocationID;
-        for (int i = 0; i < 3; ++i)
-        {
-            gl_Position = lightSpaceMatrices[layer] * gl_in[i].gl_Position;
+        for (int i = 0; i < 3; ++i) {
+            vec4 clip = lightSpaceMatrices[layer] * gl_in[i].gl_Position;
+            clip.z = (clip.z + clip.w) * 0.5;
+            gl_Position = clip;
             gl_Layer = layer;
             EmitVertex();
         }

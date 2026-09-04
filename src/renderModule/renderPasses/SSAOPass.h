@@ -42,7 +42,7 @@ namespace SFE::Render::RenderPasses {
 			float scale = 0.5f;
 			float bias = 0.025f;
 			float sample_rad = 0.45f;
-			float max_distance = 1.2f;
+			float max_distance = 2.4f;
 		};
 
 		SSAOParams params;

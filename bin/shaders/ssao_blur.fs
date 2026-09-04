@@ -1,17 +1,17 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(SFE_SET(0, 0)) uniform sampler2D ssaoInput;
+layout(SFE_SET(0, 1)) uniform sampler2D gPosition;
 
-layout(binding = 0) uniform sampler2D ssaoInput;
-layout(binding = 1) uniform sampler2D gPosition;
-
-layout(std140, binding = 2) uniform SSAOBlurParams {
+layout(SFE_SET(0, 2), std140) uniform SSAOBlurParams {
     float sigmaS;
     float sigmaL;
     float facS;
     float facL;
 } params;
 
-in vec2 TexCoords;
-out float FragColor;
+layout(location = 0) in vec2 TexCoords;
+layout(location = 0) out float FragColor;
 
 void main() {
     vec3 p0 = texture(gPosition, TexCoords).rgb;

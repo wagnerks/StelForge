@@ -78,13 +78,9 @@ void main()
 
     vec4 color3 = grid(FragPos.xyz, 0.01);
 
-    //fragColor = color1;
-    gAlbedoSpec.rgb = color1.rgb;
-    gAlbedoSpec.rgb = mix(color2.rgb, gAlbedoSpec.rgb, 1.0);
-    gAlbedoSpec.rgb = mix(color3.rgb, gAlbedoSpec.rgb, 1.0);
-    gAlbedoSpec.rgb *= vec3(max(color1.a, max(color2.a, color3.a)));
-    gAlbedoSpec.rgb *= 3.0;
     float linearDepth = computeLinearDepth(FragPos.xyz);
     float fading = max(0, (0.8 - linearDepth));
+    float lines = clamp(max(color1.a, max(color2.a, color3.a)), 0.0, 1.0);
+    gAlbedoSpec.rgb = mix(vec3(0.12, 0.12, 0.13), vec3(0.04), lines * 0.7);
     gAlbedoSpec.rgb *= vec3(fading);
 }

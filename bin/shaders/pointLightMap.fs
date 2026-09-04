@@ -1,6 +1,6 @@
-#version 430 core
-
-layout(std140, binding = 15) uniform PushConstants {
+#version 450 core
+#include "sfe.glsl"
+SFE_PUSH_BLOCK Push {
     int lightCount;
     float casterOpacity;
 } params;

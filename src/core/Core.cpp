@@ -6,11 +6,13 @@
 #include "InputHandler.h"
 #include "multithreading/ThreadPool.h"
 #include "assetsModule/modelModule/ModelLoader.h"
+#include "assetsModule/TextureHandler.h"
 #include "debugModule/imguiDecorator.h"
 #include "systemsModule/SystemManager.h"
 #include "assetsModule/AssetsManager.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "debugModule/Benchmark.h"
+#include "logsModule/logger.h"
 #include "mathModule/Forward.h"
 #include "renderModule/TextRenderer.h"
 
@@ -21,20 +23,42 @@ namespace SFE::CoreModule {
 		ThreadPool::instance()->syncUpdate();
 		ECSHandler::systemManager().update(dt);
 		ThreadPool::instance()->syncUpdate();
+		ECSHandler::registry().update();
+		ECSHandler::drawRegistry(0).update();
+		ECSHandler::drawRegistry(1).update();
 	}
 
 	void Core::init() {
+		// ecss names every component whose array loses the memmove paths. Its own reporter
+		// writes to stderr, which a windowed build has nowhere to show, so send it to the log.
+		ecss::setTrivialityReporter([](std::string_view component) {
+			LogsModule::Logger::LOG_WARNING(
+				"ecss: component '%.*s' is not trivially copyable -- its array falls back to "
+				"per-element move + destroy for inserts and defragmentation",
+				static_cast<int>(component.size()), component.data());
+		});
+		ECSHandler::registry().setAccessTracking(true);
+
 		ECSHandler::instance()->initSystems();
 		CoreModule::InputHandler::init(Engine::instance()->getWindow());
 	}
 
-	Core::~Core() {
+	void Core::shutdown() {
+		if (mShutdown) {
+			return;
+		}
+		mShutdown = true;
+		// Systems / GPU assets still need Engine::rhi() and the GL context.
+		if (ECSHandler::isAlive()) {
+			ECSHandler::terminate();
+		}
 		AssetsModule::TextureHandler::terminate();
 		AssetsModule::ModelLoader::terminate();
-
 		ThreadPool::terminate();
-		ECSHandler::terminate();
-
 		AssetsModule::AssetsManager::terminate();
+	}
+
+	Core::~Core() {
+		shutdown();
 	}
 }

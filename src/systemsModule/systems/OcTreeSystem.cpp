@@ -1,7 +1,9 @@
-﻿#include "OcTreeSystem.h"
+#include "OcTreeSystem.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <vector>
 
 #include "CameraSystem.h"
 #include "imgui.h"
@@ -55,6 +57,11 @@ namespace SFE::SystemsModule {
 	}
 
 	void OcTreeSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {
+		auto* renderSys = ECSHandler::getSystem<RenderSystem>();
+		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : RenderSystem::WorldReadGuard{};
+		if (renderSys && !worldLock) {
+			return;
+		}
 		ECSHandler::registry().forEachAsync<ComponentsModule::AABBComponent, OcTreeComponent>(entitiesToProcess, [this](ecss::SectorId entity, ComponentsModule::AABBComponent* aabbcomp, OcTreeComponent* component) {
 			if (!aabbcomp || !component) {
 				return;
@@ -72,18 +79,21 @@ namespace SFE::SystemsModule {
 			aabbcomp->mtx.lock_shared();
 			for (auto aabb : aabbcomp->aabbs) {
 				forEachOctreePosInAABB(aabb, [&component, &aabb, entity, this](const Math::Vec3& octree) {
-					auto* tree = getOctree(octree);
-					if (!tree) {
-						curMaxX = std::max(octree.x, curMaxX);
-						curMaxY = std::max(octree.y, curMaxY);
-						curMaxZ = std::max(octree.z, curMaxZ);
-						curMinX = std::min(octree.x, curMinX);
-						curMinY = std::min(octree.y, curMinY);
-						curMinZ = std::min(octree.z, curMinZ);
-
-						mOctrees.try_emplace(octree, octree);
-						LogsModule::Logger::LOG_INFO("added %f %f %f octree on entity %d ", octree.x, octree.y, octree.z, entity);
-						tree = getOctree(octree);
+					SysOcTree* tree = nullptr;
+					{
+						auto mapLock = writeLock();
+						tree = findOctree(octree);
+						if (!tree) {
+							curMaxX = (std::max)(octree.x, curMaxX);
+							curMaxY = (std::max)(octree.y, curMaxY);
+							curMaxZ = (std::max)(octree.z, curMaxZ);
+							curMinX = (std::min)(octree.x, curMinX);
+							curMinY = (std::min)(octree.y, curMinY);
+							curMinZ = (std::min)(octree.z, curMinZ);
+							auto [it, _] = mOctrees.try_emplace(octree, octree);
+							tree = &it->second;
+							LogsModule::Logger::LOG_INFO("added %f %f %f octree on entity %d ", octree.x, octree.y, octree.z, entity);
+						}
 					}
 					if (!tree) {
 						return;
@@ -112,23 +122,36 @@ namespace SFE::SystemsModule {
 	}
 
 	void OcTreeSystem::forEachOctreeInAABB(const FrustumModule::AABB& aabb, std::function<void(SysOcTree&)> func) {
-		if (mOctrees.empty()) {
-			return;
-		}
-
-		forEachOctreePosInAABB(aabb, [this, func](const Math::Vec3& pos) {
-			if (auto tree = getOctree(pos)) {
-				func(*tree);
+		std::vector<SysOcTree*> trees;
+		{
+			auto mapLock = readLock();
+			if (mOctrees.empty()) {
+				return;
 			}
-		}, true);
+			for (auto& [pos, tree] : mOctrees) {
+				if (aabbOverlapsOctree(aabb, pos, static_cast<float>(OCTREE_SIZE))) {
+					trees.push_back(&tree);
+				}
+			}
+		}
+		for (auto* tree : trees) {
+			func(*tree);
+		}
 	}
 
 	void OcTreeSystem::forEachOctreePosInAABB(const FrustumModule::AABB& aabb, std::function<void(const Math::Vec3&)> func, bool onlyExisted) {
 		if (onlyExisted) {
-			for (const auto& [pos, tree] : mOctrees) {
-				if (aabbOverlapsOctree(aabb, pos, static_cast<float>(OCTREE_SIZE))) {
-					func(pos);
+			std::vector<Math::Vec3> positions;
+			{
+				auto mapLock = readLock();
+				for (const auto& [pos, tree] : mOctrees) {
+					if (aabbOverlapsOctree(aabb, pos, static_cast<float>(OCTREE_SIZE))) {
+						positions.push_back(pos);
+					}
 				}
+			}
+			for (const auto& pos : positions) {
+				func(pos);
 			}
 			return;
 		}
@@ -136,16 +159,47 @@ namespace SFE::SystemsModule {
 		float maxX, minX, maxY, minY, maxZ, minZ;
 		calculateAABBOctrees(aabb, OCTREE_SIZE, maxX, minX, maxY, minY, maxZ, minZ);
 
-		for (auto i = minX; i <= maxX; i += OCTREE_SIZE) {
-			for (auto j = maxY; minY <= j; j -= OCTREE_SIZE) {
-				for (auto k = minZ; k <= maxZ; k += OCTREE_SIZE) {
-					func({ i, j, k });
+		if (!std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY)
+			|| !std::isfinite(minZ) || !std::isfinite(maxZ) || maxX < minX || maxY < minY || maxZ < minZ) {
+			return;
+		}
+
+		constexpr float kMaxAbs = 1.0e7f;
+		if (std::fabs(minX) > kMaxAbs || std::fabs(maxX) > kMaxAbs
+			|| std::fabs(minY) > kMaxAbs || std::fabs(maxY) > kMaxAbs
+			|| std::fabs(minZ) > kMaxAbs || std::fabs(maxZ) > kMaxAbs) {
+			return;
+		}
+
+		const float size = static_cast<float>(OCTREE_SIZE);
+		auto axisSteps = [size](float a, float b) -> int {
+			const double n = (static_cast<double>(b) - static_cast<double>(a)) / static_cast<double>(size);
+			if (n > 8.0 || n < 0.0) {
+				return -1;
+			}
+			return static_cast<int>(n) + 1;
+		};
+		constexpr int kMaxAxisSteps = 8;
+		const int nx = axisSteps(minX, maxX);
+		const int ny = axisSteps(minY, maxY);
+		const int nz = axisSteps(minZ, maxZ);
+		if (nx < 1 || ny < 1 || nz < 1 || nx > kMaxAxisSteps || ny > kMaxAxisSteps || nz > kMaxAxisSteps) {
+			return;
+		}
+
+		for (int ix = 0; ix < nx; ++ix) {
+			const float x = minX + static_cast<float>(ix) * size;
+			for (int iy = 0; iy < ny; ++iy) {
+				const float y = maxY - static_cast<float>(iy) * size;
+				for (int iz = 0; iz < nz; ++iz) {
+					func({ x, y, minZ + static_cast<float>(iz) * size });
 				}
 			}
 		}
 	}
 
 	void OcTreeSystem::deleteOctree(const Math::Vec3& octree) {
+		auto mapLock = writeLock();
 		mOctrees.erase(octree);
 		curMaxX = curMaxY = curMaxZ = std::numeric_limits<float>::lowest();
 		curMinX = curMinY = curMinZ = std::numeric_limits<float>::max();

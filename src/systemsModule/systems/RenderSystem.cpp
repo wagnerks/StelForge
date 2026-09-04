@@ -5,9 +5,14 @@
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <unordered_map>
+
+#include "renderModule/FrameCapture.h"
 
 #include "CameraSystem.h"
-#include "imgui.h"
 #include "OcTreeSystem.h"
 #include "systemsModule/SystemManager.h"
 #include "systemsModule/SystemsPriority.h"
@@ -41,43 +46,117 @@
 #include "renderModule/renderPasses/GeometryPass.h"
 #include "renderModule/renderPasses/AnimationComputePass.h"
 #include "containersModule/Vector.h"
-#include "renderModule/renderPasses/FinalPass.h"
 
 namespace SFE::SystemsModule {
 
+	namespace {
+		// Writes one PNG per pass output plus a crc index, so a comparison script can find the
+		// FIRST pass where two backends diverge instead of guessing from the final image.
+		class PassDumpWriter {
+		public:
+			explicit PassDumpWriter(std::string dir) : mDir(std::move(dir)) {
+				if (mDir.empty()) {
+					return;
+				}
+				std::error_code ec;
+				std::filesystem::create_directories(mDir, ec);
+				mIndex.open(std::filesystem::path(mDir) / "passes.csv", std::ios::trunc);
+				if (mIndex) {
+					mIndex << "index,pass,slot,width,height,crc\n";
+				}
+			}
+
+			// Records what each slot holds before any pass has run, so content inherited from the
+			// previous frame is not reported as this frame's first pass output.
+			void seed(const Render::FrameBlackboard& frame) {
+				if (mDir.empty()) {
+					return;
+				}
+				mSeeding = true;
+				dump(0, "seed", "Final", frame.texture(Render::FrameId::Final));
+				mSeeding = false;
+			}
+
+			void write(size_t passIndex, const char* passName, const Render::FrameBlackboard& frame) {
+				if (mDir.empty()) {
+					return;
+				}
+				// The colour chain is what every pass rewrites, so it is dumped every time. The
+				// G-buffer and AO targets are written once, by the pass that produces them.
+				dump(passIndex, passName, "Final", frame.texture(Render::FrameId::Final));
+				if (std::strcmp(passName, "CascadedShadow") == 0) {
+					// One image per cascade: this is a depth array, so each layer is read on its own.
+					for (uint32_t cascade = 0; cascade < 4; ++cascade) {
+						char slot[32];
+						std::snprintf(slot, sizeof(slot), "ShadowCascade%u", cascade);
+						dump(passIndex, passName, slot, frame.texture(Render::FrameId::ShadowCsmDepth), cascade);
+					}
+				}
+				else if (std::strcmp(passName, "Geometry") == 0) {
+					dump(passIndex, passName, "GBufferAlbedo", frame.texture(Render::FrameId::GBufferAlbedo));
+					dump(passIndex, passName, "GBufferNormal", frame.texture(Render::FrameId::GBufferNormal));
+					dump(passIndex, passName, "GBufferPosition", frame.texture(Render::FrameId::GBufferPosition));
+				}
+				else if (std::strcmp(passName, "SSAO") == 0) {
+					dump(passIndex, passName, "SsaoBlur", frame.texture(Render::FrameId::SsaoBlur));
+				}
+			}
+
+		private:
+			void dump(size_t passIndex, const char* passName, const char* slot, Render::TextureHandle tex, uint32_t layer = 0) {
+				auto* rhi = Engine::instance()->rhi();
+				if (!tex || !rhi) {
+					return;
+				}
+				std::vector<uint8_t> rgba;
+				int width = 0;
+				int height = 0;
+				if (!rhi->readbackTexture(tex, rgba, width, height, layer)) {
+					return;
+				}
+
+				// Final carries over between passes: a pass that never touches it would otherwise
+				// be reported as diverging on the previous frame's leftovers. Skip unchanged content.
+				const uint32_t crc = Render::crcOfPixels(rgba);
+				auto& last = mLastCrc[slot];
+				if (last == crc) {
+					return;
+				}
+				last = crc;
+				if (mSeeding) {
+					return;
+				}
+
+				char name[160];
+				std::snprintf(name, sizeof(name), "%02d_%s_%s.png", static_cast<int>(passIndex), passName, slot);
+				const auto path = (std::filesystem::path(mDir) / name).string();
+				if (Render::writePng(path, rgba, width, height) && mIndex) {
+					mIndex << passIndex << ',' << passName << ',' << slot << ','
+						<< width << ',' << height << ',' << crc << '\n';
+					mIndex.flush();
+				}
+			}
+
+			std::string mDir;
+			std::ofstream mIndex;
+			std::unordered_map<std::string, uint32_t> mLastCrc;
+			bool mSeeding = false;
+		};
+	}
+
 	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, MATERIAL_UPDATED, MESH_UPDATED }) {
 		auto* rhi = Engine::instance()->rhi();
+		if (!Engine::instance()->temporalAccumulation()) {
+			mRenderData.graphics.taa = false;
+		}
 		if (!rhi->supportsFullPipeline() && !rhi->supportsGpuResources()) {
 			return;
 		}
 
 		if (rhi->supportsFullPipeline() || rhi->supportsGpuResources()) {
-			Render::BufferDesc uboDesc;
-			uboDesc.size = sizeof(RenderMatrices);
-			uboDesc.usage = Render::BufferUsage::Uniform;
-			uboDesc.cpuAccess = Render::CpuAccess::Write;
-			uboDesc.debugName = "CameraMatricesUBO";
-			cameraMatricesUBO = Engine::instance()->rhi()->createBuffer(uboDesc);
-
+			mGpuFrames = (std::min)(kMaxGpuFrames, (std::max)(1u, rhi->framesInFlight()));
 			constexpr size_t maxDrawSize = 4096;
 			mGpuCapacity = maxDrawSize;
-			{
-				Render::BufferDesc ssbDesc;
-				ssbDesc.size = sizeof(Math::Mat4) * maxDrawSize;
-				ssbDesc.usage = Render::BufferUsage::Storage;
-				ssbDesc.cpuAccess = Render::CpuAccess::Write;
-				ssbDesc.debugName = "TransformsSSBO";
-				transforms = Engine::instance()->rhi()->createBuffer(ssbDesc);
-			}
-
-			{
-				Render::BufferDesc ssbDesc;
-				ssbDesc.size = sizeof(SFE::Math::Mat4) * 100 * maxDrawSize;
-				ssbDesc.usage = Render::BufferUsage::Storage;
-				ssbDesc.cpuAccess = Render::CpuAccess::Write;
-				ssbDesc.debugName = "BonesSSBO";
-				bones = Engine::instance()->rhi()->createBuffer(ssbDesc);
-			}
 
 			{
 				Render::DescriptorSetLayoutDesc frameLayout;
@@ -87,51 +166,57 @@ namespace SFE::SystemsModule {
 					{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
 					{ 3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment },
 				};
-				frameSetLayout = Engine::instance()->rhi()->createDescriptorSetLayout(frameLayout);
-				frameSet = Engine::instance()->rhi()->allocateDescriptorSet(frameSetLayout);
+				frameSetLayout = rhi->createDescriptorSetLayout(frameLayout);
 				mRenderData.frameSetLayout = frameSetLayout;
-				Engine::instance()->rhi()->updateDescriptorSets({
-					{ frameSet, 5, Render::DescriptorType::UniformBuffer, {{ cameraMatricesUBO }} },
-					{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
-					{ frameSet, 2, Render::DescriptorType::StorageBuffer, {{ bones }} },
-				});
-				mRenderData.transformsSSBO = transforms;
-				mRenderData.bonesSSBO = bones;
-				mRenderData.cameraMatricesUBO = cameraMatricesUBO;
 			}
+
+			for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
+				createGpuFrameResources(slot, maxDrawSize);
+			}
+			bindGpuFrame();
 		}
 
-		if (rhi->supportsFullPipeline()) {
+		if (rhi->supportsFullPipeline() || rhi->supportsGeometryPass()) {
+			SFE::Engine::reproTrace("RenderSystem passes");
 			mRenderPasses.reserve(std::size(RENDER_PASSES));
 			for (size_t i = 0; i < std::size(RENDER_PASSES); ++i) {
 				const auto& entry = RENDER_PASSES[i];
-				if (!entry.enabled || !entry.create) {
+				if (!entry.enabled || !entry.create || !rhi->supportsRenderPass(entry.name)) {
 					continue;
 				}
+				SFE::Engine::reproTrace(entry.name);
 				auto* pass = entry.create();
 				pass->init(mRenderData);
 				pass->setPriority(i);
 				mRenderPasses.emplace_back(pass);
 				mPassNames.emplace_back(entry.name);
 			}
-		}
-		else if (rhi->supportsGeometryPass()) {
-			auto* animPass = new Render::RenderPasses::AnimationComputePass();
-			animPass->init(mRenderData);
-			animPass->setPriority(0);
-			mRenderPasses.emplace_back(animPass);
-			mPassNames.emplace_back("AnimationCompute");
-
-			auto* pass = new Render::RenderPasses::GeometryPass();
-			pass->init(mRenderData);
-			pass->setPriority(1);
-			mRenderPasses.emplace_back(pass);
-			mPassNames.emplace_back("Geometry");
+			SFE::Engine::reproTrace("RenderSystem passes ok");
 		}
 
 		if (rhi->supportsFullPipeline() || rhi->supportsGeometryPass()) {
 			ECSHandler::drawRegistry(0).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
 			ECSHandler::drawRegistry(1).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
+
+			// ChunksSystem seeds before this ctor; MESH_UPDATED/TRAHSFORM_RELOADED never reached us.
+			auto& live = ECSHandler::registry();
+			for (auto id : live.getAllEntities()) {
+				if (live.hasComponent<MeshComponent>(id)) {
+					markDirty<MeshComponent>(id);
+				}
+				if (live.hasComponent<ComponentsModule::TransformMatComp>(id)) {
+					markDirty<ComponentsModule::TransformMatComp>(id);
+				}
+				if (live.hasComponent<MaterialComponent>(id)) {
+					markDirty<MaterialComponent>(id);
+				}
+				if (live.hasComponent<ComponentsModule::ArmatureBonesComponent>(id)) {
+					markDirty<ComponentsModule::ArmatureBonesComponent>(id);
+				}
+			}
+			SFE::Engine::reproTrace("RenderSystem prepare");
+			prepareDataForNextFrame();
+			SFE::Engine::reproTrace("RenderSystem prepare ok");
 		}
 
 		// init gpu timer queries
@@ -141,20 +226,29 @@ namespace SFE::SystemsModule {
 	void RenderSystem::update(float_t dt) {
 		FUNCTION_BENCHMARK;
 
-		if (!Engine::instance()->rhi()->supportsFullPipeline()) {
-			if (Engine::instance()->rhi()->supportsGeometryPass()) {
-				prepareDataForNextFrame();
+		auto* rhi = Engine::instance()->rhi();
+		rhi->beginFrame();
+		bindGpuFrame();
+		auto frameLock = tryLockWorldRead();
 
-				auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
-				const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
-				const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera);
-				mRenderData.nextCameraProjection = cameraComp->getProjection();
-				mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
-				mRenderData.next.view = transformComp->getViewMatrix();
-				mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
-				mRenderData.mNextCameraPos = transformComp->getPos(true);
-				mRenderData.mNextViewDir = normalize(transformComp->getForward());
-				mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
+		if (!rhi->supportsFullPipeline()) {
+			if (Engine::instance()->rhi()->supportsGeometryPass()) {
+				if (frameLock) {
+					prepareDataForNextFrame();
+				}
+
+				{
+					auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
+					const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
+					const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera);
+					mRenderData.nextCameraProjection = cameraComp->getProjection();
+					mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
+					mRenderData.next.view = transformComp->getViewMatrix();
+					mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
+					mRenderData.mNextCameraPos = transformComp->getPos(true);
+					mRenderData.mNextViewDir = normalize(transformComp->getForward());
+					mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
+				}
 
 				mRenderData.current = mRenderData.next;
 				mRenderData.cameraProjection = mRenderData.nextCameraProjection;
@@ -163,7 +257,9 @@ namespace SFE::SystemsModule {
 				mRenderData.mCamFrustum = mRenderData.mNextCamFrustum;
 				Engine::instance()->rhi()->updateBuffer(cameraMatricesUBO, 0, sizeof(RenderMatrices), &mRenderData.current);
 
-				syncVulkanGpuFrameData();
+				if (frameLock) {
+					syncVulkanGpuFrameData();
+				}
 
 				mRenderData.rotate();
 
@@ -207,28 +303,83 @@ namespace SFE::SystemsModule {
 
 		Engine::instance()->rhi()->updateBuffer(cameraMatricesUBO, 0, sizeof(RenderMatrices), &mRenderData.current);
 
-		auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
-		const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
-		const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera);
+		{
+			auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
+			const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
+			const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera);
 
-		mRenderData.nextCameraProjection = cameraComp->getProjection();
-		mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
-		mRenderData.next.view = transformComp->getViewMatrix();
-		mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
+			mRenderData.nextCameraProjection = cameraComp->getProjection();
+			mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
+			mRenderData.next.view = transformComp->getViewMatrix();
+			mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
 
-		mRenderData.mNextCameraPos = transformComp->getPos(true);
-		mRenderData.mNextViewDir = normalize(transformComp->getForward());
-		mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
+			mRenderData.mNextCameraPos = transformComp->getPos(true);
+			mRenderData.mNextViewDir = normalize(transformComp->getForward());
+			mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
+		}
 
 		mRenderData.rotate();
 
+		if (frameLock) {
+			syncVulkanGpuFrameData();
+		}
+
 		renderFrame();
 
-		prepareDataForNextFrame();
+		frameLock = {};
+		frameLock = tryLockWorldRead();
+		if (frameLock) {
+			prepareDataForNextFrame();
+		}
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
-		return;
+	}
+
+	void RenderSystem::bindGpuFrame() {
+		if (mGpuFrames == 0) {
+			return;
+		}
+		auto* rhi = Engine::instance()->rhi();
+		const uint32_t slot = rhi->frameInFlight() % mGpuFrames;
+		cameraMatricesUBO = mCameraUbo[slot];
+		transforms = mTransforms[slot];
+		bones = mBones[slot];
+		frameSet = mFrameSet[slot];
+		mRenderData.transformsSSBO = transforms;
+		mRenderData.bonesSSBO = bones;
+		mRenderData.cameraMatricesUBO = cameraMatricesUBO;
+	}
+
+	void RenderSystem::createGpuFrameResources(const uint32_t slot, const size_t transformCount) {
+		auto* rhi = Engine::instance()->rhi();
+		Render::BufferDesc uboDesc;
+		uboDesc.size = sizeof(RenderMatrices);
+		uboDesc.usage = Render::BufferUsage::Uniform;
+		uboDesc.cpuAccess = Render::CpuAccess::Write;
+		uboDesc.debugName = "CameraMatricesUBO";
+		mCameraUbo[slot] = rhi->createBuffer(uboDesc);
+
+		Render::BufferDesc transformDesc;
+		transformDesc.size = sizeof(Math::Mat4) * transformCount;
+		transformDesc.usage = Render::BufferUsage::Storage;
+		transformDesc.cpuAccess = Render::CpuAccess::Write;
+		transformDesc.debugName = "TransformsSSBO";
+		mTransforms[slot] = rhi->createBuffer(transformDesc);
+
+		Render::BufferDesc boneDesc;
+		boneDesc.size = sizeof(Math::Mat4) * ComponentsModule::kMaxArmatureBones * transformCount;
+		boneDesc.usage = Render::BufferUsage::Storage;
+		boneDesc.cpuAccess = Render::CpuAccess::Write;
+		boneDesc.debugName = "BonesSSBO";
+		mBones[slot] = rhi->createBuffer(boneDesc);
+
+		mFrameSet[slot] = rhi->allocateDescriptorSet(frameSetLayout);
+		rhi->updateDescriptorSets({
+			{ mFrameSet[slot], 5, Render::DescriptorType::UniformBuffer, {{ mCameraUbo[slot] }} },
+			{ mFrameSet[slot], 1, Render::DescriptorType::StorageBuffer, {{ mTransforms[slot] }} },
+			{ mFrameSet[slot], 2, Render::DescriptorType::StorageBuffer, {{ mBones[slot] }} },
+		});
 	}
 
 	void RenderSystem::ensureGpuCapacity(ecss::EntityId id) {
@@ -243,72 +394,145 @@ namespace SFE::SystemsModule {
 		}
 
 		auto* rhi = Engine::instance()->rhi();
-		Render::BufferDesc ssbDesc;
-		ssbDesc.size = sizeof(Math::Mat4) * newCap;
-		ssbDesc.usage = Render::BufferUsage::Storage;
-		ssbDesc.cpuAccess = Render::CpuAccess::Write;
-		ssbDesc.debugName = "TransformsSSBO";
-		auto newTransforms = rhi->createBuffer(ssbDesc);
+		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
+			Render::BufferDesc ssbDesc;
+			ssbDesc.size = sizeof(Math::Mat4) * newCap;
+			ssbDesc.usage = Render::BufferUsage::Storage;
+			ssbDesc.cpuAccess = Render::CpuAccess::Write;
+			ssbDesc.debugName = "TransformsSSBO";
+			auto newTransforms = rhi->createBuffer(ssbDesc);
 
-		for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::TransformMatComp>()) {
-			if (static_cast<size_t>(entId) < newCap && comp) {
-				rhi->updateBuffer(newTransforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &comp->mTransform);
+			for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::TransformMatComp>()) {
+				if (static_cast<size_t>(entId) < newCap && comp) {
+					rhi->updateBuffer(newTransforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &comp->mTransform);
+				}
 			}
+
+			Render::BufferDesc boneDesc;
+			boneDesc.size = sizeof(Math::Mat4) * ComponentsModule::kMaxArmatureBones * newCap;
+			boneDesc.usage = Render::BufferUsage::Storage;
+			boneDesc.cpuAccess = Render::CpuAccess::Write;
+			boneDesc.debugName = "BonesSSBO";
+			mBones[slot] = rhi->createBuffer(boneDesc);
+
+			mTransforms[slot] = newTransforms;
+			rhi->updateDescriptorSets({
+				{ mFrameSet[slot], 1, Render::DescriptorType::StorageBuffer, {{ mTransforms[slot] }} },
+				{ mFrameSet[slot], 2, Render::DescriptorType::StorageBuffer, {{ mBones[slot] }} },
+			});
 		}
 
-		transforms = newTransforms;
 		mGpuCapacity = newCap;
-		mRenderData.transformsSSBO = transforms;
-		rhi->updateDescriptorSets({
-			{ frameSet, 1, Render::DescriptorType::StorageBuffer, {{ transforms }} },
-		});
+		bindGpuFrame();
 	}
 
 	void RenderSystem::syncVulkanGpuFrameData() {
-		for (auto [entId, transform, mesh] : ECSHandler::registry().view<const TransformComponent, const MeshComponent>()) {
-			if (!transform || !mesh) {
-				continue;
+		struct TransformUpload {
+			ecss::EntityId id = ecss::INVALID_ID;
+			Math::Mat4 mat{};
+			bool missing = false;
+		};
+		std::vector<TransformUpload> transformUploads;
+		{
+			for (auto [entId, transform, mesh] : ECSHandler::registry().view<const TransformComponent, const MeshComponent>()) {
+				if (!transform || !mesh) {
+					continue;
+				}
+				TransformUpload upload{ entId, transform->getTransform(), false };
+				if (auto transformMat = ECSHandler::registry().pinComponent<ComponentsModule::TransformMatComp>(entId)) {
+					transformMat->mTransform = upload.mat;
+				}
+				else {
+					upload.missing = true;
+				}
+				transformUploads.push_back(upload);
 			}
-			const Math::Mat4& mat = transform->getTransform();
-			if (auto transformMat = ECSHandler::registry().pinComponent<ComponentsModule::TransformMatComp>(entId)) {
-				transformMat->mTransform = mat;
-			}
-			else {
-				ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(entId, mat);
-			}
-			ensureGpuCapacity(entId);
-			Engine::instance()->rhi()->updateBuffer(transforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &mat);
 		}
 
-		for (auto [entId, armature] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
-			if (!armature || armature->boneMatrices.empty()) {
-				continue;
+		ecss::EntityId maxTransformId = 0;
+		for (auto& upload : transformUploads) {
+			if (upload.missing) {
+				ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(upload.id, upload.mat);
 			}
-			if (ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entId)) {
-				continue;
+			maxTransformId = (std::max)(maxTransformId, upload.id);
+		}
+
+		bool hasBoneUpload = false;
+		{
+			for (auto [entId, armature] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
+				if (!armature || armature->boneMatrices.empty()) {
+					continue;
+				}
+				if (const auto anim = ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entId);
+					anim && anim->mCurrentAnimation && anim->mPlay) {
+					continue;
+				}
+				hasBoneUpload = true;
+				maxTransformId = (std::max)(maxTransformId, entId);
 			}
-			ensureGpuCapacity(entId);
-			const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(100));
-			Engine::instance()->rhi()->updateBuffer(
-				bones,
-				static_cast<size_t>(entId) * 100 * sizeof(Math::Mat4),
-				boneCount * sizeof(Math::Mat4),
-				armature->boneMatrices.data());
+		}
+
+		if (!transformUploads.empty() || hasBoneUpload) {
+			ensureGpuCapacity(maxTransformId);
+		}
+
+		auto* rhi = Engine::instance()->rhi();
+		for (const auto& upload : transformUploads) {
+			rhi->updateBuffer(transforms, static_cast<size_t>(upload.id) * sizeof(Math::Mat4), sizeof(Math::Mat4), &upload.mat);
+		}
+		if (hasBoneUpload) {
+			for (auto [entId, armature] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
+				if (!armature || armature->boneMatrices.empty()) {
+					continue;
+				}
+				if (const auto anim = ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entId);
+					anim && anim->mCurrentAnimation && anim->mPlay) {
+					continue;
+				}
+				const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(ComponentsModule::kMaxArmatureBones));
+				rhi->updateBuffer(
+					bones,
+					static_cast<size_t>(entId) * ComponentsModule::kMaxArmatureBones * sizeof(Math::Mat4),
+					boneCount * sizeof(Math::Mat4),
+					armature->boneMatrices.data());
+			}
 		}
 	}
 
+	bool RenderSystem::allPassesReady() const {
+		for (size_t i = 0; i < mRenderPasses.size(); ++i) {
+			if (!shouldRunPass(i) || !mRenderPasses[i]) {
+				continue;
+			}
+			if (!mRenderPasses[i]->isAllSlotsReady()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	void RenderSystem::prepareDataForNextFrame() {
-		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dir;
+		struct DirtyBatch {
+			ecss::ECSType id = 0;
+			std::vector<ecss::EntityId> ids;
+		};
+		std::vector<DirtyBatch> batches;
 		{
 			FUNCTION_BENCHMARK_NAMED(dirties_copy);
-			dirtiesMutex.lock();
-			dir = dirties;
+			std::unique_lock lock(dirtiesMutex);
+			batches.reserve(dirties.size());
 			for (auto& [id, entities] : dirties) {
+				DirtyBatch batch;
+				batch.id = id;
+				batch.ids.reserve(entities.size());
+				for (auto [entId, _] : entities) {
+					batch.ids.push_back(entId);
+				}
 				std::erase_if(entities, [](std::pair<ecss::EntityId, uint8_t>& val) {
 					return val.second-- <= 1;
 				});
+				batches.push_back(std::move(batch));
 			}
-			dirtiesMutex.unlock();
 		}
 
 		//prepare data for next frame
@@ -316,12 +540,9 @@ namespace SFE::SystemsModule {
 			FUNCTION_BENCHMARK_NAMED(copy_components_transform_armat);
 
 
-			for (auto& [id, entities] : dir) {
-				std::vector<ecss::EntityId> ids;
-				ids.reserve(entities.size());
-				for (auto [entId, _] : entities) {
-					ids.push_back(entId);
-				}
+			for (auto& batch : batches) {
+				auto& ids = batch.ids;
+				const auto id = batch.id;
 				std::sort(ids.begin(), ids.end());
 				ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
 				if (id == getDirtyId<ComponentsModule::TransformMatComp>() && !ids.empty()) {
@@ -356,9 +577,14 @@ namespace SFE::SystemsModule {
 			}
 			{
 				FUNCTION_BENCHMARK_NAMED(copy_components);
-				// todo i need some system which will handle dirty for render components, may be it should be render system itself, then when i updating draw registry
-				ECSHandler::drawRegistry(mRenderData.currentRegistry).insert<OutlineComponent>(*ECSHandler::registry().getComponentContainer<OutlineComponent>());
-				ECSHandler::drawRegistry(mRenderData.currentRegistry).insert<ComponentsModule::OccludedComponent>(*ECSHandler::registry().getComponentContainer<ComponentsModule::OccludedComponent>());
+				auto& draw = ECSHandler::drawRegistry(mRenderData.currentRegistry);
+				auto& live = ECSHandler::registry();
+				if (auto* outline = live.getComponentContainer<OutlineComponent>()) {
+					draw.insert<OutlineComponent>(*outline);
+				}
+				if (auto* occluded = live.getComponentContainer<ComponentsModule::OccludedComponent>()) {
+					draw.insert<ComponentsModule::OccludedComponent>(*occluded);
+				}
 			}
 		}
 	}
@@ -402,10 +628,23 @@ namespace SFE::SystemsModule {
 		if (std::strcmp(name, "DoF") == 0) {
 			return gfx.dof;
 		}
+		if (std::strcmp(name, "Sheen") == 0) {
+			return gfx.sheen;
+		}
+		if (std::strcmp(name, "SSS") == 0) {
+			return gfx.sss;
+		}
+		if (std::strcmp(name, "ContactGI") == 0) {
+			return gfx.contactGi;
+		}
+
+		if (std::strcmp(name, "ImGui") == 0) {
+			return Engine::instance()->presentToScreen();
+		}
 
 		auto* engine = Engine::instance();
 		if (engine->publishEditorDisplay() && !engine->presentToScreen()) {
-			if (std::strcmp(name, "Debug") == 0 || std::strcmp(name, "TextOverlay") == 0) {
+			if (std::strcmp(name, "Debug") == 0) {
 				return false;
 			}
 		}
@@ -427,7 +666,11 @@ namespace SFE::SystemsModule {
 			if (rhi->supportsGeometryPass() && !mRenderPasses.empty()) {
 				const auto tPresent = std::chrono::high_resolution_clock::now();
 				auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
+				rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
 				for (size_t i = 0; i < mRenderPasses.size(); ++i) {
+					if (!shouldRunPass(i)) {
+						continue;
+					}
 					const auto tPass = std::chrono::high_resolution_clock::now();
 					mRenderPasses[i]->render(mRenderData, cmd);
 					if (info->passCount < 16) {
@@ -438,15 +681,28 @@ namespace SFE::SystemsModule {
 						++info->passCount;
 					}
 				}
+				auto presentTex = mRenderData.frame.texture(Render::FrameId::GBufferAlbedo);
+				auto presentSampler = mRenderData.frame.sampler(Render::FrameId::GBufferAlbedo);
+				if (const auto finalTex = mRenderData.frame.texture(Render::FrameId::Final)) {
+					presentTex = finalTex;
+					presentSampler = mRenderData.frame.sampler(Render::FrameId::Final);
+				}
+				rhi->setPresentBlitSource(presentTex, presentSampler);
+
 				rhi->endCommandList(cmd);
 
 				const auto tSubmit = std::chrono::high_resolution_clock::now();
 				rhi->submit(&cmd, 1);
 				info->submitMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tSubmit).count();
 
-				const auto albedo = mRenderData.frame.texture(Render::FrameId::GBufferAlbedo);
-				const auto albedoSampler = mRenderData.frame.sampler(Render::FrameId::GBufferAlbedo);
-				rhi->setPresentBlitSource(albedo, albedoSampler);
+				if (Engine::instance()->publishEditorDisplay()) {
+					auto presentFb = mRenderData.frame.framebuffer(Render::FrameId::Final);
+					// Empty FBO → Vulkan publishDisplay uses present blit texture (albedo), not GBufferFbo[0].
+					rhi->publishDisplay(presentFb);
+					if (RuntimeBridge::RuntimeBridge::isAlive()) {
+						RuntimeBridge::RuntimeBridge::instance()->streamPresentedFrame();
+					}
+				}
 
 				rhi->present();
 				info->presentMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPresent).count();
@@ -460,6 +716,17 @@ namespace SFE::SystemsModule {
 			info->cpuMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tFrame).count();
 			return;
 		}
+
+		// One diagnostic frame can snapshot every pass in turn. That needs each pass submitted on
+		// its own so the GPU has actually produced the image before it is read back, which is far
+		// too expensive for a normal frame -- hence the narrow condition.
+		++mRenderedFrames;
+		auto* engine = Engine::instance();
+		const bool dumpPasses = engine->capturingFrame()
+			&& !engine->passDumpDir().empty()
+			&& mRenderedFrames == engine->captureFrame();
+		PassDumpWriter passDump(dumpPasses ? engine->passDumpDir() : std::string{});
+		passDump.seed(mRenderData.frame);
 
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
 		rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
@@ -476,6 +743,15 @@ namespace SFE::SystemsModule {
 				};
 				++info->passCount;
 			}
+
+			if (dumpPasses) {
+				rhi->endCommandList(cmd);
+				rhi->submit(&cmd, 1);
+				rhi->waitIdle();
+				passDump.write(i, i < mPassNames.size() ? mPassNames[i] : "pass", mRenderData.frame);
+				cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
+				rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
+			}
 		}
 		rhi->endCommandList(cmd);
 
@@ -483,6 +759,17 @@ namespace SFE::SystemsModule {
 		rhi->submit(&cmd, 1);
 		info->submitMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tSubmit).count();
 		info->gpuMs = static_cast<float>(rhi->lastGpuMs());
+		{
+			auto presentTex = mRenderData.frame.texture(Render::FrameId::Final);
+			auto presentSampler = mRenderData.frame.sampler(Render::FrameId::Final);
+			if (!presentTex) {
+				presentTex = mRenderData.frame.texture(Render::FrameId::GBufferAlbedo);
+				presentSampler = mRenderData.frame.sampler(Render::FrameId::GBufferAlbedo);
+			}
+			if (presentTex) {
+				rhi->setPresentBlitSource(presentTex, presentSampler);
+			}
+		}
 		if (Engine::instance()->publishEditorDisplay()) {
 			rhi->publishDisplay(mRenderData.frame.framebuffer(Render::FrameId::Final));
 			if (RuntimeBridge::RuntimeBridge::isAlive()) {

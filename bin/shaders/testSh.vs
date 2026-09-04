@@ -22,9 +22,9 @@ layout(std140, binding = 15) uniform PushConstants {
 
 
 mat4 scaleMatrix = mat4(
-    pc.far*2.0, 0.0,   0.0,   0.0,
-    0.0,   pc.far*2.0, 0.0,   0.0,
-    0.0,   0.0,   pc.far*2.0, 0.0,
+    200.0, 0.0,   0.0,   0.0,
+    0.0,   1.0,   0.0,   0.0,
+    0.0,   0.0,   200.0, 0.0,
     0.0,   0.0,   0.0,   1.0
 );
 

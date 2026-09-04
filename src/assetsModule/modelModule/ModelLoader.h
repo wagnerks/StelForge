@@ -32,7 +32,8 @@ namespace AssetsModule {
 		static void processNode(aiNode* node, const aiScene* scene, const std::string& directory, SFE::Tree<SFE::MeshObject3D>& meshes, Armature& armature);
 		static void processMesh(aiMesh* assimpMesh, const aiScene* scene, const std::string& directory, SFE::MeshObject3D& rawModel, Armature& armature);
 
-		static void readBonesData(std::vector<SFE::Vertex3D>& vertices, aiMesh* mesh, const aiScene* scene, Armature& armature);
+		static void readBonesData(std::vector<SFE::Vertex3D>& vertices, aiMesh* mesh, Armature& armature);
+		static void finalizeArmature(const aiScene* scene, Armature& armature);
 		static void readMaterialData(SFE::Material& material, aiMaterial* assimpMaterial, const std::string& directory);
 		static void readIndicesData(std::vector<unsigned>& vector, unsigned numFaces, aiFace* faces);
 		static void readVerticesData(std::vector<SFE::Vertex3D>& vector, unsigned numVertices, aiMesh* aiMesh);

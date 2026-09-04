@@ -4,6 +4,7 @@
 #include "core/InputHandler.h"
 #include "editorProtocol/TcpSocket.h"
 #include "propertiesModule/PropertiesSystem.h"
+#include "renderModule/GraphicsBackend.h"
 #include "renderModule/RenderHardwareInterface.h"
 #include "windowsModule/Window.h"
 #ifdef _WIN32
@@ -291,6 +292,7 @@ namespace SFE::RuntimeBridge {
 			Json::Value status;
 			status["subscribed"] = true;
 			status["display"] = mEmbeddedHostMode ? "embed" : "stream";
+			status["backend"] = Render::graphicsBackendName(Render::activeGraphicsBackend());
 			Json::StreamWriterBuilder builder;
 			builder["indentation"] = "";
 			sendPacket(MessageType::Status, Json::writeString(builder, status));
@@ -321,6 +323,7 @@ namespace SFE::RuntimeBridge {
 	{
 		Json::Value root;
 		root["fps"] = Engine::instance()->getFPS();
+		root["backend"] = Render::graphicsBackendName(Render::activeGraphicsBackend());
 		root["port"] = mPort;
 		root["hasClient"] = mHasClient.load();
 		root["subscribed"] = mSubscribeFrames.load();

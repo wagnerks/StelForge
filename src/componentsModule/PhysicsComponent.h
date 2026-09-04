@@ -15,12 +15,6 @@ namespace SFE::ComponentsModule {
 		SFE::Math::Vec3 lastPos = {};
 		SFE::Math::Vec3 lastRotate = {};
 		bool isSleeping = false;
-
-		//PhysicsComponent(const JPH::BodyID& id) : mBodyID(id) {}
-
-
-
-		~PhysicsComponent();
 	};
 }
 

@@ -20,6 +20,7 @@ namespace SFE::Render::VulkanVkUtil {
 		case TextureFormat::RGBA32F: return VK_FORMAT_R32G32B32A32_SFLOAT;
 		case TextureFormat::DEPTH_COMPONENT16: return VK_FORMAT_D16_UNORM;
 		case TextureFormat::DEPTH_COMPONENT24: return VK_FORMAT_D32_SFLOAT;
+		case TextureFormat::DEPTH_COMPONENT32: return VK_FORMAT_D32_SFLOAT;
 		case TextureFormat::DEPTH_COMPONENT32F: return VK_FORMAT_D32_SFLOAT;
 		case TextureFormat::DEPTH24_STENCIL8: return VK_FORMAT_D24_UNORM_S8_UINT;
 		case TextureFormat::DEPTH32F_STENCIL8: return VK_FORMAT_D32_SFLOAT_S8_UINT;
@@ -77,6 +78,8 @@ namespace SFE::Render::VulkanVkUtil {
 		if (stage & ShaderStage::Vertex) flags |= VK_SHADER_STAGE_VERTEX_BIT;
 		if (stage & ShaderStage::Fragment) flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
 		if (stage & ShaderStage::Geometry) flags |= VK_SHADER_STAGE_GEOMETRY_BIT;
+		if (stage & ShaderStage::TessControl) flags |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+		if (stage & ShaderStage::TessEval) flags |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
 		if (stage & ShaderStage::Compute) flags |= VK_SHADER_STAGE_COMPUTE_BIT;
 		if (flags == 0) flags = VK_SHADER_STAGE_ALL_GRAPHICS;
 		return flags;
@@ -165,6 +168,39 @@ namespace SFE::Render::VulkanVkUtil {
 		return flags;
 	}
 
+	inline VkBlendFactor toVkBlendFactor(BlendFactor factor) {
+		switch (factor) {
+		case BlendFactor::Zero: return VK_BLEND_FACTOR_ZERO;
+		case BlendFactor::One: return VK_BLEND_FACTOR_ONE;
+		case BlendFactor::SrcAlpha: return VK_BLEND_FACTOR_SRC_ALPHA;
+		case BlendFactor::OneMinusSrcAlpha: return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		default: return VK_BLEND_FACTOR_ONE;
+		}
+	}
+
+	inline uint32_t bytesPerPixel(TextureFormat format) {
+		switch (format) {
+		case TextureFormat::R8: return 1;
+		case TextureFormat::RG8: return 2;
+		case TextureFormat::RGB8: return 3;
+		case TextureFormat::RGBA8:
+		case TextureFormat::SRGB8_ALPHA8:
+		case TextureFormat::R32F:
+		case TextureFormat::DEPTH_COMPONENT32:
+		case TextureFormat::DEPTH_COMPONENT32F:
+		case TextureFormat::DEPTH_COMPONENT24:
+		case TextureFormat::DEPTH24_STENCIL8: return 4;
+		case TextureFormat::R16F: return 2;
+		case TextureFormat::RG16F:
+		case TextureFormat::DEPTH_COMPONENT16: return 4;
+		case TextureFormat::RGBA16F:
+		case TextureFormat::RG32F:
+		case TextureFormat::DEPTH32F_STENCIL8: return 8;
+		case TextureFormat::RGBA32F: return 16;
+		default: return 4;
+		}
+	}
+
 	inline VkFormat vertexFormatToVk(VertexFormat format) {
 		switch (format) {
 		case VertexFormat::Float: return VK_FORMAT_R32_SFLOAT;
@@ -203,6 +239,7 @@ namespace SFE::Render::VulkanVkUtil {
 		case PrimitiveTopology::Points: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 		case PrimitiveTopology::Lines: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 		case PrimitiveTopology::LineLoop: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+		case PrimitiveTopology::Patches: return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
 		case PrimitiveTopology::Triangles: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		case PrimitiveTopology::TriangleStrip: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 		default: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -218,7 +255,31 @@ namespace SFE::Render::VulkanVkUtil {
 	}
 
 	inline VkFrontFace toVkFrontFace(FrontFace face) {
-		return face == FrontFace::ClockWise ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
+		// Viewport is not Y-flipped; invert winding so GL CCW is front on Vulkan.
+		return face == FrontFace::ClockWise ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+	}
+
+	inline bool isImageDescriptor(DescriptorType type) {
+		return type == DescriptorType::CombinedImageSampler;
+	}
+
+	inline bool descriptorLayoutNeedsSplit(const DescriptorSetLayoutDesc& desc) {
+		for (size_t i = 0; i < desc.bindings.size(); ++i) {
+			for (size_t j = i + 1; j < desc.bindings.size(); ++j) {
+				if (desc.bindings[i].binding == desc.bindings[j].binding
+					&& isImageDescriptor(desc.bindings[i].type) != isImageDescriptor(desc.bindings[j].type)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	inline VkSampleCountFlagBits toVkSampleCount(uint32_t count) {
+		if (count >= 8) return VK_SAMPLE_COUNT_8_BIT;
+		if (count >= 4) return VK_SAMPLE_COUNT_4_BIT;
+		if (count >= 2) return VK_SAMPLE_COUNT_2_BIT;
+		return VK_SAMPLE_COUNT_1_BIT;
 	}
 
 	inline VkPolygonMode toVkPolygonMode(PolygonFillMode mode) {

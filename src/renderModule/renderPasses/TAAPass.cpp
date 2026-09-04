@@ -23,22 +23,11 @@ void TAAPass::init(SystemsModule::RenderData&) {
 	nearS.magFilter = SFE::Render::FilterMode::Nearest;
 	mNearest = rhi->createSampler(nearS);
 
-	SFE::Render::GraphicsPipelineDesc pipelineDesc;
-	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(SFE::Vertex2D)), SFE::Render::VertexInputRate::PerVertex);
-	pipelineDesc.layout.attributes.emplace_back(0, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, position)), false);
-	pipelineDesc.layout.attributes.emplace_back(1, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, texCoords)), false);
-	pipelineDesc.topology = SFE::Render::PrimitiveTopology::Triangles;
-	pipelineDesc.cullMode = SFE::Render::CullMode::None;
-	pipelineDesc.depthStencilState.depthTest = false;
-	pipelineDesc.depthStencilState.depthWrite = false;
-	pipelineDesc.shaders.vertex = rhi->createShaderModule({ SFE::Render::ShaderStage::Vertex, "taa vs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.vs") });
-	pipelineDesc.shaders.fragment = rhi->createShaderModule({ SFE::Render::ShaderStage::Fragment, "taa fs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/taa.fs") });
-	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
 	SFE::Render::RenderPassDesc rpDesc;
 	rpDesc.colorAttachmentCount = 1;
 	rpDesc.colorAttachments[0].loadOp = SFE::Render::AttachmentLoadOp::Clear;
 	rpDesc.colorAttachments[0].storeOp = SFE::Render::AttachmentStoreOp::Store;
+	rpDesc.colorAttachments[0].format = SFE::Render::TextureFormat::RGBA16F;
 	mRenderPass = rhi->createRenderPass(rpDesc);
 
 	SFE::Render::TextureDesc texDesc;
@@ -51,17 +40,10 @@ void TAAPass::init(SystemsModule::RenderData&) {
 		SFE::Render::FramebufferDesc fb;
 		fb.width = w;
 		fb.height = h;
+		fb.renderPass = mRenderPass;
 		fb.colorAttachments = { { mHistory[i] } };
 		mFbo[i] = rhi->createFramebuffer(fb);
 	}
-
-	SFE::Render::BufferDesc uboDesc;
-	uboDesc.usage = SFE::Render::BufferUsage::Uniform;
-	uboDesc.cpuAccess = SFE::Render::CpuAccess::Write;
-	uboDesc.size = sizeof(Params);
-	mParams.resX = static_cast<float>(w);
-	mParams.resY = static_cast<float>(h);
-	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
 
 	SFE::Render::DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(0, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
@@ -70,6 +52,28 @@ void TAAPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
+
+	SFE::Render::GraphicsPipelineDesc pipelineDesc;
+	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(SFE::Vertex2D)), SFE::Render::VertexInputRate::PerVertex);
+	pipelineDesc.layout.attributes.emplace_back(0, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, position)), false);
+	pipelineDesc.layout.attributes.emplace_back(1, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, texCoords)), false);
+	pipelineDesc.topology = SFE::Render::PrimitiveTopology::Triangles;
+	pipelineDesc.cullMode = SFE::Render::CullMode::None;
+	pipelineDesc.depthStencilState.depthTest = false;
+	pipelineDesc.depthStencilState.depthWrite = false;
+	pipelineDesc.renderPass = mRenderPass;
+	pipelineDesc.descriptorSetLayouts = { mLayout };
+	pipelineDesc.shaders.vertex = rhi->loadShader(SFE::Render::ShaderStage::Vertex, "shaders/deferred_shading.vs");
+	pipelineDesc.shaders.fragment = rhi->loadShader(SFE::Render::ShaderStage::Fragment, "shaders/taa.fs");
+	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
+
+	SFE::Render::BufferDesc uboDesc;
+	uboDesc.usage = SFE::Render::BufferUsage::Uniform;
+	uboDesc.cpuAccess = SFE::Render::CpuAccess::Write;
+	uboDesc.size = sizeof(Params);
+	mParams.resX = static_cast<float>(w);
+	mParams.resY = static_cast<float>(h);
+	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
 }
 
 void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::CommandListHandle cmd) {

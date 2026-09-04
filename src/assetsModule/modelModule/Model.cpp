@@ -5,7 +5,6 @@
 
 namespace AssetsModule {
 	Model::Model(SFE::Tree<SFE::MeshObject3D> model, Armature armature, std::vector<Animation> animations) : mArmature(std::move(armature)), mAnimations(std::move(animations)), mMeshTree(std::move(model)) {
-		recalculateNormals(true);
 		bindMeshes();
 
 		if (!mArmature.bones.empty()) {

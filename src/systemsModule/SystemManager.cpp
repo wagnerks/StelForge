@@ -45,7 +45,9 @@ namespace ecss {
 		}
 
 		for (auto system : mSystemsMap) {
-			system->debugUpdate(dt);
+			if (system) { // slots are type-indexed, so gaps are normal
+				system->debugUpdate(dt);
+			}
 		}
 	}
 }

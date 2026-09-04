@@ -25,7 +25,7 @@ namespace SFE::CoreModule {
 		float renderScaleH = 1.f;
 
 		float far = 5000.f;
-		float near = 1.f;
+		float near = 0.15f;
 
 		int posX = 0;
 		int posY = 0;

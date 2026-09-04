@@ -1,0 +1,5 @@
+Validation Error: [ UNASSIGNED-Threading-MultipleThreads-Write ] | MessageID = 0xa05b236e
+vkQueueSubmit(): THREADING ERROR : object of type VkQueue is simultaneously used in current thread 26300 and thread 31272
+Objects: 1
+    [0] VkQueue 0x28e1f192aa0
+

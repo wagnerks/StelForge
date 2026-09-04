@@ -1,0 +1,15 @@
+index,pass,slot,width,height,crc
+1,CascadedShadow,ShadowCascade0,4096,4096,4132048787
+1,CascadedShadow,ShadowCascade1,4096,4096,3297648336
+1,CascadedShadow,ShadowCascade2,4096,4096,4023545471
+1,CascadedShadow,ShadowCascade3,4096,4096,2316194138
+3,Geometry,GBufferAlbedo,1920,1080,729290201
+3,Geometry,GBufferNormal,1920,1080,2984474649
+3,Geometry,GBufferPosition,1920,1080,3356254227
+4,SSAO,SsaoBlur,960,540,3595717018
+5,Lighting,Final,1920,1080,2401071785
+7,SSS,Final,1920,1080,2261045930
+9,SSR,Final,1920,1080,3326679846
+12,TAA,Final,1920,1080,653743426
+14,Final,Final,1920,1080,217694158
+16,ImGui,Final,1920,1080,3222121022

@@ -49,6 +49,7 @@ namespace SFE::SystemsModule {
 
 		void loadChunk(const Chunk& chunk);
 		void unloadChunk(const Chunk& chunk);
+		std::vector<ecss::EntityId> detachChunk(const Chunk& chunk);
 		void seedIfEmpty();
 		std::vector<ecss::EntityId> entitiesInChunk(const Chunk& chunk) const;
 		bool isWorldEntity(ecss::EntityId id) const;

@@ -8,6 +8,10 @@ namespace SFE::CoreModule {
 
 		void update(float dt);
 		void init();
+		void shutdown();
+
+	private:
+		bool mShutdown = false;
 	};
 }
 

@@ -1,6 +1,10 @@
 ﻿#pragma once
 #include "renderModule/renderPasses/RenderPass.h"
 
+namespace SFE::Render {
+	struct Font;
+}
+
 namespace SFE::Render::RenderPasses {
 	class FinalPass : public RenderPass {
 	public:
@@ -8,11 +12,12 @@ namespace SFE::Render::RenderPasses {
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 	private:
-		PipelineHandle makeFullscreen(RenderHardwareInterface* rhi, const char* vsName, const char* fsName, const std::string& vs, const std::string& fs);
+		PipelineHandle makeFullscreen(RenderHardwareInterface* rhi, RenderPassHandle renderPass, const char* vsPath, const char* fsPath);
 
 		PipelineHandle mBloomPipeline{};
 		PipelineHandle mPostPipeline{};
-		RenderPassHandle mRenderPass{};
+		RenderPassHandle mBloomPass{};
+		RenderPassHandle mDisplayPass{};
 		DescriptorSetLayoutHandle mLayout{};
 		DescriptorSetHandle mBloomSet{};
 		DescriptorSetHandle mPostSet{};
@@ -30,5 +35,6 @@ namespace SFE::Render::RenderPasses {
 		FramebufferHandle mBloomFbo{};
 		TextureHandle mDisplayTex{};
 		FramebufferHandle mDisplayFbo{};
+		Font* mOverlayFont = nullptr;
 	};
 }

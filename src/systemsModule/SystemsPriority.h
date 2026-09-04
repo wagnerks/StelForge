@@ -16,6 +16,10 @@
 #include "renderModule/renderPasses/TAAPass.h"
 #include "renderModule/renderPasses/DoFPass.h"
 #include "renderModule/renderPasses/TextOverlayPass.h"
+#include "renderModule/renderPasses/ImGuiPass.h"
+#include "renderModule/renderPasses/SheenPass.h"
+#include "renderModule/renderPasses/SSSPass.h"
+#include "renderModule/renderPasses/ContactGIPass.h"
 
 namespace SFE::SystemsModule {
 
@@ -25,6 +29,7 @@ namespace SFE::SystemsModule {
 	}
 
 	// Order is draw order. Flip `enabled` to include a pass; insert a row to add one.
+	// Vulkan uses the same list; unsupported passes are filtered via RHI::supportsRenderPass().
 	inline const Render::RenderPassEntry RENDER_PASSES[] = {
 		{ "AnimationCompute", true,  &createRenderPass<Render::RenderPasses::AnimationComputePass> },
 		{ "CascadedShadow", true,  &createRenderPass<Render::RenderPasses::CascadedShadowPass> },
@@ -32,15 +37,19 @@ namespace SFE::SystemsModule {
 		{ "Geometry",       true,  &createRenderPass<Render::RenderPasses::GeometryPass> },
 		{ "SSAO",           true,  &createRenderPass<Render::RenderPasses::SSAOPass> },
 		{ "Lighting",       true,  &createRenderPass<Render::RenderPasses::LightingPass> },
+		{ "Sheen",          true,  &createRenderPass<Render::RenderPasses::SheenPass> },
+		{ "SSS",            true,  &createRenderPass<Render::RenderPasses::SSSPass> },
+		{ "ContactGI",      true,  &createRenderPass<Render::RenderPasses::ContactGIPass> },
 		{ "SSR",            true,  &createRenderPass<Render::RenderPasses::SSRPass> },
 		{ "Glass",          true,  &createRenderPass<Render::RenderPasses::GlassPass> },
 		{ "Volumetric",     true,  &createRenderPass<Render::RenderPasses::VolumetricPass> },
 		{ "TAA",            true,  &createRenderPass<Render::RenderPasses::TAAPass> },
 		{ "DoF",            true,  &createRenderPass<Render::RenderPasses::DoFPass> },
-		{ "GUI",            false, &createRenderPass<Render::RenderPasses::GUIPass> },
 		{ "Final",          true,  &createRenderPass<Render::RenderPasses::FinalPass> },
+		{ "GUI",            false, &createRenderPass<Render::RenderPasses::GUIPass> },
 		{ "Debug",          true,  &createRenderPass<Render::RenderPasses::DebugPass> },
-		{ "TextOverlay",    true,  &createRenderPass<Render::RenderPasses::TextOverlayPass> },
+		{ "TextOverlay",    false, &createRenderPass<Render::RenderPasses::TextOverlayPass> },
+		{ "ImGui",          true,  &createRenderPass<Render::RenderPasses::ImGuiPass> },
 	};
 
 }

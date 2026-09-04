@@ -1,9 +1,8 @@
-#version 330 core
+#version 450 core
+#include "sfe.glsl"
 
-layout (location = 0) out vec4 gOutlines;
+layout(location = 0) out vec4 gOutlines;
 
-void main()
-{ 
-    gOutlines.g = 1.0;
-    gOutlines.a = 1.0;
+void main() {
+    gOutlines = vec4(0.0, 1.0, 0.0, 1.0);
 }

@@ -1,23 +1,23 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
 
-out vec4 FragColor;
-in vec2 TexCoords;
+layout(location = 0) out vec4 FragColor;
+layout(location = 0) in vec2 TexCoords;
 
-layout(binding = 0) uniform sampler2D gPosition;
-layout(binding = 1) uniform sampler2D gNormal;
-layout(binding = 2) uniform sampler2D gAlbedoSpec;
-layout(binding = 3) uniform sampler2D ssao;
-layout(binding = 4) uniform sampler2D shadows;
-layout(binding = 5) uniform sampler2D gOutlines;
+layout(SFE_SET(0, 0)) uniform sampler2D gPosition;
+layout(SFE_SET(0, 1)) uniform sampler2D gNormal;
+layout(SFE_SET(0, 2)) uniform sampler2D gAlbedoSpec;
+layout(SFE_SET(0, 3)) uniform sampler2D ssao;
+layout(SFE_SET(0, 5)) uniform sampler2D gOutlines;
 
-layout(binding = 6) uniform sampler2DArray shadowMapDepth;
-layout(binding = 7) uniform sampler2DArrayShadow PointLightShadowMapArray;
-layout(binding = 8) uniform sampler2DArrayShadow shadowMap;
-layout(binding = 12) uniform samplerCube irradianceMap;
-layout(binding = 13) uniform samplerCube prefilterMap;
-layout(binding = 14) uniform sampler2D brdfLUT;
+layout(SFE_SET(0, 6)) uniform sampler2DArray shadowMapDepth;
+layout(SFE_SET(0, 7)) uniform sampler2DArrayShadow PointLightShadowMapArray;
+layout(SFE_SET(0, 8)) uniform sampler2DArrayShadow shadowMap;
+layout(SFE_SET(0, 12)) uniform samplerCube irradianceMap;
+layout(SFE_SET(0, 13)) uniform samplerCube prefilterMap;
+layout(SFE_SET(0, 14)) uniform sampler2D brdfLUT;
 
-layout (std140, binding = 15) uniform PushConstants {
+layout(SFE_SET(1, 15), std140) uniform PushConstants {
     vec3 viewPos;
     float shadowIntensity;
 
@@ -28,6 +28,13 @@ layout (std140, binding = 15) uniform PushConstants {
 
     vec3 ambientColor;
     float ssaoAmount;
+
+    vec3 viewDir;
+    float iblStrength;
+    float shadowAmbient;
+    float padLook0;
+    float padLook1;
+    float debugTerm;
 } pc;
 
 
@@ -48,7 +55,7 @@ struct PointLight {
 
 const int MAX_POINT_LIGHTS_SIZE = 12;
 
-layout (std140, binding = 10) uniform pointLightsBlock {
+layout(SFE_SET(1, 10), std140) uniform pointLightsBlock {
     PointLight pointLight[MAX_POINT_LIGHTS_SIZE];
 } plb;
 
@@ -57,7 +64,7 @@ struct CascadData{
     vec4 cascade;
 };
 
-layout (std140, binding = 9) uniform cascadedShadowBlock {
+layout(SFE_SET(1, 9), std140) uniform cascadedShadowBlock {
     vec4 direction_intensity; // xyz direction, w intensity
     vec4 color_and_misc; 
     CascadData data[6];
@@ -65,17 +72,17 @@ layout (std140, binding = 9) uniform cascadedShadowBlock {
     vec4 cascadeSplits2;
 } cascadedShadow;
 
-layout (std140, binding = 11) uniform LightSpaceMatrices {
+layout(SFE_SET(1, 11), std140) uniform LightSpaceMatrices {
     mat4 lightSpaceMatrices[6];
 };
 
-layout(std140, binding = 5) uniform SharedMatrices {
+layout(SFE_SET(1, 5), std140) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
     mat4 PV;
 } matrices;
 
-layout (std140, binding = 3) uniform PointLightMatrices {
+layout(SFE_SET(1, 3), std140) uniform PointLightMatrices {
     mat4 pointLightMatrices[72];
 };
 
@@ -119,41 +126,43 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
     }
 
     float angle = interleavedGradientNoise(gl_FragCoord.xy) * 6.28318530718;
-    float uvTexel = max(cascadedShadow.data[layer].cascade.x, 1.0 / 2048.0);
+    float uvTexel = max(cascadedShadow.data[layer].cascade.x, 1.0 / 4096.0);
     projCoords.z -= max(bias, uvTexel * 1.25);
 
-    const int sampleCount = 4;
-    float radius = uvTexel * 1.5;
+    const int sampleCount = clamp(int(cascadedShadow.data[layer].cascade.w + 0.5), 4, 16);
+    float radius = uvTexel * 2.2;
     float shadow = 0.0;
+    int used = 0;
     for (uint i = 0; i < uint(sampleCount); ++i) {
         vec2 offset = vogel_disk_sample(i, sampleCount, angle) * radius;
-        float lit = texture(shadowMap, vec4(projCoords.xy + offset, float(layer), projCoords.z));
+        vec2 uv = projCoords.xy + offset;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            continue;
+        }
+        float lit = texture(shadowMap, vec4(uv, float(layer), projCoords.z));
         shadow += 1.0 - lit;
+        used += 1;
     }
-    return shadow / float(sampleCount);
+    if (used == 0) {
+        return 0.0;
+    }
+    return shadow / float(used);
 }
 
-float TechniqueVogelPoint(PointLight light, int layer, float bias, vec3 projCoords) {
-    float shadow = 0.f; 
+float TechniqueVogelPoint(PointLight light, int layer, vec3 projCoords) {
+    float shadow = 0.0;
 
-    const float penumbra        = 1.0f;
-    
-    const float temporal_offset = 0.0;
-    const float temporal_angle  = temporal_offset * 3.14 * 2;
-    const float g_shadow_filter_size = 1.0;
     const int sampleCount = clamp(light.samples, 1, 64);
-    const float g_shadow_samples_rpc = 1.0 / float(sampleCount);
-
-    
+    const float invSamples = 1.0 / float(sampleCount);
+    const float angle = interleavedGradientNoise(gl_FragCoord.xy) * 6.28318530718;
 
     for (int i = 0; i < sampleCount; i++) {
-        const vec2 offset = vogel_disk_sample(uint(i), sampleCount, temporal_angle) * (light.texelSize) *  g_shadow_filter_size * penumbra;
-        
-        const float lit = texture(PointLightShadowMapArray, vec4(projCoords.xy + offset, layer + light.offset, projCoords.z + bias));
-        shadow += 1.0 - lit;   
-    } 
+        const vec2 offset = vogel_disk_sample(uint(i), sampleCount, angle) * light.texelSize;
+        const float lit = texture(PointLightShadowMapArray, vec4(projCoords.xy + offset, layer + light.offset, projCoords.z));
+        shadow += 1.0 - lit;
+    }
 
-    return shadow * g_shadow_samples_rpc;
+    return shadow * invSamples;
 }
 
 float cascadeSplit(int idx) {
@@ -166,7 +175,9 @@ float cascadeSplit(int idx) {
 vec3 worldToShadowUv(int layer, vec3 worldPos) {
     vec4 light = lightSpaceMatrices[layer] * vec4(worldPos, 1.0);
     vec3 proj = light.xyz / light.w;
-    return proj * 0.5 + 0.5;
+    proj.xy = proj.xy * 0.5 + 0.5;
+    proj.z = proj.z * 0.5 + 0.5;
+    return proj;
 }
 
 float sampleCascade(int layer, vec3 worldPos, vec3 Normal) {
@@ -191,16 +202,8 @@ int cascadeForViewZ(float viewZ, int cc) {
     return layer;
 }
 
-int cascadeContaining(vec3 worldPos, int cc, int preferred) {
-    if (preferred >= 0 && preferred < cc && shadowUvOk(worldToShadowUv(preferred, worldPos))) {
-        return preferred;
-    }
-    for (int i = 0; i < cc; ++i) {
-        if (shadowUvOk(worldToShadowUv(i, worldPos))) {
-            return i;
-        }
-    }
-    return -1;
+float frustumViewZ(vec3 worldPos) {
+    return abs(dot(worldPos - pc.viewPos, pc.viewDir));
 }
 
 float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
@@ -213,12 +216,11 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
         cc = 4;
     }
 
-    float viewZ = abs((matrices.view * vec4(fragPosWorldSpace, 1.0)).z);
-    int layer = cascadeContaining(fragPosWorldSpace, cc, cascadeForViewZ(viewZ, cc));
-    if (layer < 0) {
-        return 0.0;
+    float viewZ = frustumViewZ(fragPosWorldSpace);
+    int layer = clamp(cascadeForViewZ(viewZ, cc), 0, cc - 1);
+    while (layer + 1 < cc && !shadowUvOk(worldToShadowUv(layer, fragPosWorldSpace))) {
+        layer += 1;
     }
-
     float shadow = sampleCascade(layer, fragPosWorldSpace, Normal);
     if (layer + 1 >= cc) {
         return shadow;
@@ -226,9 +228,15 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
 
     float split = cascadeSplit(layer);
     float prev = layer > 0 ? cascadeSplit(layer - 1) : 0.0;
-    float band = max((split - prev) * 0.18, 0.35);
+    float band = max((split - prev) * 0.14, 0.25);
     float blend = clamp((viewZ - (split - band)) / band, 0.0, 1.0);
-    if (blend <= 0.0 || !shadowUvOk(worldToShadowUv(layer + 1, fragPosWorldSpace))) {
+    if (blend <= 0.0) {
+        return shadow;
+    }
+    // Only cross-fade into the next cascade when the fragment actually lands inside it.
+    // TechniqueVogelCascaded answers "lit" for out-of-range coordinates, so blending towards a
+    // cascade that does not cover this fragment faded real shadows out at every boundary.
+    if (!shadowUvOk(worldToShadowUv(layer + 1, fragPosWorldSpace))) {
         return shadow;
     }
     return mix(shadow, sampleCascade(layer + 1, fragPosWorldSpace, Normal), blend);
@@ -237,29 +245,32 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
 
 
 float PointLightCalculation(PointLight light, vec3 fragPosWorldSpace, vec3 Normal) {//return 0.0 - light, 1.0 - dark
-    vec4 fragPosLightSpace;
-    vec3 projCoords;
-
-    const vec3 lightDir  = normalize(light.Position - fragPosWorldSpace);
-    const float illumination = -dot(Normal, -lightDir); // -1 = darkest, 1 = lightest
-    float bias = light.bias * (-illumination);
+    const vec3 lightDir = normalize(light.Position - fragPosWorldSpace);
+    const float nDotL = clamp(dot(Normal, lightDir), 0.0, 1.0);
+    // texelSize is the PCF kernel, not 1/mapSize. Cap the old 0.0035 NDC default —
+    // that plus a second z+bias sample is what detached contact shadows (peter panning).
+    const float mapTexel = 1.0 / 1024.0;
+    const float ndcBias = min(max(light.bias, 0.0), mapTexel * 1.5);
+    const float zBias = max(ndcBias, mapTexel * 0.6) * mix(2.0, 0.35, nDotL);
 
     int layer = 0;
+    vec3 projCoords = vec3(0.0);
     for (; layer < light.Layers; ++layer) {
-        fragPosLightSpace = pointLightMatrices[layer + light.offset] * vec4(fragPosWorldSpace, 1.0);
-        projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w; // perform perspective divide
-        projCoords = projCoords * 0.5 + 0.5; // transform to [0,1] range
-        projCoords.z -= light.bias * light.texelSize.x * illumination; //fix light line on corners
-        if (projCoords.x > 0.0 && projCoords.x < 1.0 && projCoords.y > 0.0 && projCoords.y < 1.0 && projCoords.z > 0.0 && projCoords.z < 1.0) {
+        vec4 fragPosLightSpace = pointLightMatrices[layer + light.offset] * vec4(fragPosWorldSpace, 1.0);
+        projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+        projCoords = projCoords * 0.5 + 0.5;
+        if (projCoords.x > 0.0 && projCoords.x < 1.0 && projCoords.y > 0.0 && projCoords.y < 1.0 &&
+            projCoords.z > 0.0 && projCoords.z < 1.0) {
             break;
         }
     }
 
-    if (layer >= light.Layers){
-        return 0.f;//it means that fragment further then light radius, so it is dark
+    if (layer >= light.Layers) {
+        return 0.0;
     }
 
-    return TechniqueVogelPoint(light, layer, bias, projCoords);
+    projCoords.z -= zBias;
+    return TechniqueVogelPoint(light, layer, projCoords);
 }
 
 const float PI = 3.14159265;
@@ -321,7 +332,10 @@ float customMix(float x, float y, float a) {
 void main() {
     vec4 posSample = texture(gPosition, TexCoords);
     const vec3 FragPos = posSample.rgb;
-    const vec3 Normal = normalize(texture(gNormal, TexCoords).rgb);
+    const vec3 nSample = texture(gNormal, TexCoords).rgb;
+    const float nLen = length(nSample);
+    const vec3 Normal = nLen > 1e-5 ? nSample / nLen : vec3(0.0, 1.0, 0.0);
+    const float sssAmt = clamp((1.0 - nLen) * 2.0, 0.0, 1.0);
     const float Depth = texture(gNormal, TexCoords).a;
     vec4 albedoSample = texture(gAlbedoSpec, TexCoords);
     vec3 albedo = albedoSample.rgb;
@@ -365,27 +379,111 @@ void main() {
 
     vec3 F = fresnelSchlickRoughness(max(dot(Normal, V), 0.0), F0, roughness);
     vec3 kD = (1.0 - F) * (1.0 - metallic);
-    vec3 irradiance = texture(irradianceMap, Normal).rgb;
+    vec3 irradiance = texture(irradianceMap, Normal).rgb * pc.iblStrength;
     vec3 diffuse = irradiance * albedo;
     vec3 R = reflect(-V, Normal);
-    vec3 prefilteredColor = textureLod(prefilterMap, R, roughness * MAX_REFLECTION_LOD).rgb;
+    vec3 prefilteredColor = textureLod(prefilterMap, R, roughness * MAX_REFLECTION_LOD).rgb * pc.iblStrength;
     vec2 brdf = texture(brdfLUT, vec2(max(dot(Normal, V), 0.0), roughness)).rg;
     vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
     float ao = mix(1.0, AmbientOcclusion, pc.ssaoAmount);
     vec3 ambient = kD * diffuse * ao + specular;
-    ambient *= mix(0.7, 1.0, shadowFactor);
-    // Follow sun brightness so a dim sun doesn't leave bright IBL wash.
-    float sunAmt = clamp(dot(pc.ambientColor, vec3(0.333)), 0.0, 1.0);
-    ambient *= mix(0.05, 1.0, sunAmt);
+    ambient *= mix(pc.shadowAmbient, 1.0, shadowFactor);
+
+    // Backend-parity debugging: isolate one term so it can be captured and diffed on its own.
+    // 1 shadow factor, 2 ambient/IBL, 3 direct light, 4 albedo, 5 normal, 6 AO, 7 irradiance,
+    // 8 prefiltered reflection, 9 brdf LUT.
+    if (pc.debugTerm > 0.5) {
+        int term = int(pc.debugTerm + 0.5);
+        vec3 dbg = vec3(0.0);
+        if      (term == 1) dbg = vec3(shadowFactor);
+        else if (term == 2) dbg = ambient;
+        else if (term == 3) dbg = Lo;
+        else if (term == 4) dbg = albedo;
+        else if (term == 5) dbg = Normal * 0.5 + 0.5;
+        else if (term == 6) dbg = vec3(ao);
+        else if (term == 7) dbg = irradiance;
+        else if (term == 8) dbg = prefilteredColor;
+        else if (term == 9) dbg = vec3(brdf, 0.0);
+        else if (term == 14) {
+            // R = hardware comparison sampler result, G = manual compare on the same texel,
+            // B = stored depth. If R and G disagree the comparison sampler is the problem.
+            int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
+            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
+            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            vec3 sp = worldToShadowUv(L, FragPos);
+            float hw = texture(shadowMap, vec4(sp.xy, float(L), sp.z));
+            float stored = texture(shadowMapDepth, vec3(sp.xy, float(L))).r;
+            float manual = sp.z <= stored ? 1.0 : 0.0;
+            dbg = vec3(hw, manual, stored);
+        }
+        else if (term == 13) {
+            // The cross-fade weight itself: black = pure current cascade, white = fully the next
+            // one. Shows exactly where the transition band sits on screen.
+            int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
+            float vz = frustumViewZ(FragPos);
+            int L = clamp(cascadeForViewZ(vz, cc), 0, cc - 1);
+            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            float bl = 0.0;
+            if (L + 1 < cc) {
+                float sp = cascadeSplit(L);
+                float pv = L > 0 ? cascadeSplit(L - 1) : 0.0;
+                float bd = max((sp - pv) * 0.14, 0.25);
+                bl = clamp((vz - (sp - bd)) / bd, 0.0, 1.0);
+            }
+            dbg = vec3(bl);
+        }
+        else if (term == 12) {
+            // Receiver depth minus stored occluder depth, amplified. >0.5 means the receiver sits
+            // behind an occluder and should be shadowed; 0.5 means nothing is stored above it.
+            int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
+            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
+            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            vec3 sp = worldToShadowUv(L, FragPos);
+            float blocker = texture(shadowMapDepth, vec3(sp.xy, float(L))).r;
+            dbg = vec3((sp.z - blocker) * 100.0 + 0.5);
+        }
+        else if (term == 11) {
+            // Green where the selected cascade's UV+depth are inside [0,1] (a shadow lookup can
+            // happen at all), red where they are not and the test silently returns "lit".
+            int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
+            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
+            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            vec3 sp = worldToShadowUv(L, FragPos);
+            dbg = shadowUvOk(sp) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        }
+        else if (term == 10) {
+            // Chosen cascade, as a step per level: 0 black, then 0.25 / 0.5 / 0.75 / 1.0.
+            int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
+            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
+            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            dbg = vec3(float(L + 1) / float(max(cc, 1)));
+        }
+        FragColor = vec4(dbg, 1.0);
+        return;
+    }
 
     vec3 lighting = ambient + Lo;
+    if (sssAmt > 0.001 && metallic < 0.45) {
+        float wrap = max(pc.padLook0, 0.0);
+        float str = max(pc.padLook1, 0.0);
+        float nDotL = dot(Normal, Lsun);
+        float trans = max(-nDotL, 0.0);
+        float wrapL = clamp((nDotL + wrap) / max(1.0 + wrap, 1e-3), 0.0, 1.0);
+        vec3 scatter = albedo * vec3(1.2, 0.4, 0.22);
+        vec3 sssL = scatter * cascadedShadow.color_and_misc.xyz * 3.14159265
+            * (trans * 2.6 + wrapL * 0.35) * sssAmt * str;
+        lighting += sssL * mix(shadowFactor, 1.0, trans * 0.85);
+    }
 
     const float outlines = texture(gOutlines, TexCoords).b;
-    vec3 fogColor = pc.ambientColor * 0.25 + vec3(0.10, 0.14, 0.20);
-    float heightFog = 1.0 - exp(-max(0.0, 6.0 - FragPos.y) * 0.05);
+    vec3 fogColor = pc.ambientColor * 0.15 + vec3(0.08, 0.10, 0.14);
     float distFog = smoothstep(pc.fogStart, pc.drawDistance, Depth);
-    float fogFactor = clamp(max(distFog, heightFog * 0.4), 0.0, 0.82);
+    float fogFactor = clamp(distFog * 0.45, 0.0, 0.35);
     vec3 color = mix(lighting, fogColor, fogFactor);
+    if (dot(nSample, nSample) < 0.01) {
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
     color += vec3(0.0, 0.78, 0.86) * outlines * 0.8;
     FragColor = vec4(color, 1.0);
 }

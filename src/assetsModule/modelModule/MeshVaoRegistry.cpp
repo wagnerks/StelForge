@@ -34,49 +34,48 @@ namespace SFE {
 	}
 	const RenderMeshData& MeshVaoRegistry::get(Mesh<Vertex3D>* mesh) {
 		assert(mesh);
-		auto res = mMeshVAO.find(mesh);
-		if (res != mMeshVAO.end()) {
-			return res->second;
-		}
-
 		return initMesh(mesh);
 	}
 
 	const RenderMeshData& MeshVaoRegistry::initMesh(Mesh<Vertex3D>* mesh) {
 		assert(mesh);
 
+		std::unique_lock lock(mMutex);
 		auto& data = mMeshVAO[mesh];
 
 		if (mesh->vertices.empty() && mesh->indices.empty()) {
+			return data;
+		}
+		if (data.vertexBuffer) {
 			return data;
 		}
 
 		const bool vulkanBackend = Render::activeGraphicsBackend() == Render::GraphicsBackend::Vulkan;
 		if (SFE::Engine::isMainThread() || vulkanBackend) {
 			uploadMeshBuffers(mesh, data);
+			return data;
 		}
-		else {
-			auto futur = ThreadPool::instance()->addTask<WorkerType::SYNC>([mesh]()mutable {
-				MeshVaoRegistry::instance()->initMesh(mesh);
-			});
-			if (!futur.valid()) {
-				return data;
-			}
+
+		lock.unlock();
+		auto futur = ThreadPool::instance()->addTask<WorkerType::SYNC>([mesh]() {
+			MeshVaoRegistry::instance()->initMesh(mesh);
+		});
+		if (futur.valid()) {
 			while (futur.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
 				if (!ThreadPool::isAlive() || ThreadPool::instance()->isShuttingDown()) {
-					return data;
+					break;
 				}
 			}
 		}
-
-		return data;
+		lock.lock();
+		return mMeshVAO[mesh];
 	}
 
 	void MeshVaoRegistry::release(Mesh<Vertex3D>* mesh) {
 		if (!mesh) {
 			return;
 		}
-
+		std::lock_guard lock(mMutex);
 		mMeshVAO.erase(mesh);
 	}
 }

@@ -1,20 +1,20 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) out vec4 FragColor;
+layout(location = 0) in vec2 TexCoords;
 
-out vec4 FragColor;
-in vec2 TexCoords;
+layout(SFE_SET(0, 0)) uniform sampler2D sceneHdr;
+layout(SFE_SET(0, 1)) uniform sampler2D historyColor;
+layout(SFE_SET(0, 2)) uniform sampler2D worldPos;
 
-layout(binding = 0) uniform sampler2D sceneHdr;
-layout(binding = 1) uniform sampler2D historyColor;
-layout(binding = 2) uniform sampler2D worldPos;
-
-layout(std140, binding = 15) uniform PushConstants {
+layout(SFE_SET(0, 15), std140) uniform PushConstants {
     mat4 prevPV;
     vec2 resolution;
     float blend;
     int reset;
 } params;
 
-vec3 neighborhoodClamp(vec3 history, vec2 texel) {
+vec3 neighborhoodClamp(vec3 history, vec2 texel, out float contrast) {
     vec3 aabbMin = vec3(1e10);
     vec3 aabbMax = vec3(-1e10);
     for (int y = -1; y <= 1; ++y) {
@@ -24,6 +24,7 @@ vec3 neighborhoodClamp(vec3 history, vec2 texel) {
             aabbMax = max(aabbMax, c);
         }
     }
+    contrast = length(aabbMax - aabbMin);
     return clamp(history, aabbMin, aabbMax);
 }
 
@@ -49,9 +50,10 @@ void main() {
     }
 
     vec2 texel = 1.0 / vec2(textureSize(sceneHdr, 0));
-    vec3 history = neighborhoodClamp(texture(historyColor, prevUV).rgb, texel);
+    float contrast = 0.0;
+    vec3 history = neighborhoodClamp(texture(historyColor, prevUV).rgb, texel, contrast);
     float motion = length((TexCoords - prevUV) * vec2(textureSize(sceneHdr, 0)));
-    float currentW = mix(1.0 - params.blend, 0.28, clamp(motion * 0.08, 0.0, 1.0));
+    float currentW = mix(1.0 - params.blend, 0.45, clamp(motion * 0.08 + contrast * 0.12, 0.0, 1.0));
     vec3 color = mix(history, current, currentW);
     FragColor = vec4(color, 1.0);
 }

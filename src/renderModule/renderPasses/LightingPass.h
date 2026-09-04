@@ -22,6 +22,15 @@ namespace SFE::Render::RenderPasses {
 			int   cascadeCount = 0;
 			float ambientX = 0.f, ambientY = 0.f, ambientZ = 0.f;
 			float ssaoAmount = 1.f;
+			float viewDirX = 0.f, viewDirY = 0.f, viewDirZ = 1.f;
+			float iblStrength = 1.f;
+			float shadowAmbient = 0.42f;
+			float padLook0 = 0.f; // SSS wrap
+			float padLook1 = 0.f; // SSS strength
+			// Backend-parity debugging: non-zero makes deferred_shading.fs output one isolated
+			// term instead of the lit result, so each term can be diffed on its own. Reuses the
+			// last free pad slot, so the UBO layout does not change.
+			float debugTerm = 0.f;
 		};
 
 		struct CascadData {
@@ -41,6 +50,8 @@ namespace SFE::Render::RenderPasses {
 
 		Render::DescriptorSetLayoutHandle mTexSetLayout{};
 		Render::DescriptorSetHandle       mTexSet{};
+		Render::DescriptorSetLayoutHandle mUboSetLayout{};
+		Render::DescriptorSetHandle       mUboSet{};
 		bool                              mTexSetInitialized = false;
 
 		Render::PipelineHandle            mLightingPipeline{};    // предполагаем, что ты его будешь создавать по RHI
@@ -74,13 +85,34 @@ namespace SFE::Render::RenderPasses {
 		BufferHandle cascadedShadowsUBO;
 		BufferHandle pushConstantsUBO;
 		BufferHandle lightMatricesUBO;
+		TextureHandle mDummyPointShadow;
+		SamplerHandle mDummyPointShadowSampler;
 
-		TextureHandle mLitTexture;
 		TextureHandle mPresentTex[2];
-		FramebufferHandle lightingFBO;
+		SamplerHandle mPresentSampler{};
 		FramebufferHandle mPresentFbo[2];
 		int mPresentShow = 0;
 
 		IblMaps mIbl;
+
+		struct BoundImage {
+			TextureHandle texture;
+			SamplerHandle sampler;
+		};
+		BoundImage mBoundGPos{};
+		BoundImage mBoundGNormal{};
+		BoundImage mBoundGAlbedo{};
+		BoundImage mBoundSsao{};
+		BoundImage mBoundPointShadow{};
+		BoundImage mBoundOutlines{};
+		BoundImage mBoundCsm{};
+		BoundImage mBoundCsmDepth{};
+		BoundImage mBoundIblIrr{};
+		BoundImage mBoundIblPref{};
+		BoundImage mBoundIblLut{};
+		BufferHandle mBoundLightMat{};
+		BufferHandle mBoundPointMat{};
+		BufferHandle mBoundPc{};
+		BufferHandle mBoundCam{};
 	};
 }

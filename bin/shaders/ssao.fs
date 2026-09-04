@@ -1,12 +1,12 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) out float FragColor;
+layout(location = 0) in vec2 TexCoords;
 
-out float FragColor;
-in vec2 TexCoords;
+layout(SFE_SET(0, 0)) uniform sampler2D gPosition;
+layout(SFE_SET(0, 1)) uniform sampler2D gNormal;
 
-layout(binding = 0) uniform sampler2D gPosition;
-layout(binding = 1) uniform sampler2D gNormal;
-
-layout(std140, binding = 3) uniform SSAOParams {
+layout(SFE_SET(0, 3), std140) uniform SSAOParams {
     float samples;
     float intensity;
     float scale;
@@ -15,7 +15,7 @@ layout(std140, binding = 3) uniform SSAOParams {
     float max_distance;
 } params;
 
-layout(std140, binding = 5) uniform SharedMatrices {
+layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
     mat4 PV;
@@ -58,34 +58,19 @@ void main() {
         }
         n *= inversesqrt(n2);
     }
-    n *= sign(dot(n, -p));
 
-    float phi = ign(gl_FragCoord.xy) * 6.2831853;
-    float uvR = params.sample_rad / max(abs(p.z), 0.5);
-    uvR = min(uvR, 0.035);
-
-    float maxD2 = params.max_distance * params.max_distance;
-    float ao = 0.0;
+    float phi = ign(TexCoords * vec2(1024.0, 768.0)) * 6.2831853;
+    float occlusion = 0.0;
+    const float uvRad = 0.032;
     for (int i = 0; i < SAMPLE_COUNT; ++i) {
-        vec2 uv = TexCoords + vogel(i, phi) * uvR;
-        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+        vec2 uvOff = vogel(i, phi) * uvRad;
+        vec3 sampleView = toView(texture(gPosition, TexCoords + uvOff).rgb);
+        if (dot(sampleView, sampleView) < 1e-8) {
             continue;
         }
-        vec3 worldS = texture(gPosition, uv).rgb;
-        if (dot(worldS, worldS) < 1e-8) {
-            continue;
-        }
-        vec3 s = toView(worldS);
-        vec3 v = s - p;
-        float d2 = dot(v, v);
-        if (d2 > maxD2 || d2 < 1e-8) {
-            continue;
-        }
-        float occ = max(0.0, dot(n, v) - params.bias) / (d2 + 0.05);
-        occ *= 1.0 - smoothstep(maxD2 * 0.35, maxD2, d2);
-        ao += occ;
+        float dist = abs(p.z - sampleView.z);
+        float rangeCheck = 1.0 - smoothstep(params.max_distance * 0.35, params.max_distance, dist);
+        occlusion += (sampleView.z >= p.z + params.bias ? 1.0 : 0.0) * rangeCheck;
     }
-
-    ao = 1.0 - ao * params.intensity / float(SAMPLE_COUNT);
-    FragColor = clamp(ao, 0.0, 1.0);
+    FragColor = pow(1.0 - occlusion / float(SAMPLE_COUNT), params.intensity);
 }

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <future>
 #include <mutex>
 #include <thread>
@@ -24,15 +24,9 @@ namespace SFE::Render::RenderPasses {
 
 			TextureHandle positionBuffer;
 			TextureHandle viewPositionBuffer;
-			TextureHandle outlinesBuffer;
-			TextureHandle lightsBuffer;
 			TextureHandle normalBuffer;
 			TextureHandle albedoBuffer;
 			TextureHandle depthsBuffer;
-
-			SamplerHandle sampler;
-
-			FramebufferHandle outlineFramebuffer;
 		};
 
 		void publish(SystemsModule::RenderData& renderDataHandle);
@@ -47,6 +41,7 @@ namespace SFE::Render::RenderPasses {
 
 		Render::DescriptorSetLayoutHandle mTexSetLayoutOutlines{};
 		Render::DescriptorSetHandle       mTexSetOutlines{};
+		Render::DescriptorSetHandle       mOutlineFrameSet{};
 
 		Render::DescriptorSetLayoutHandle gBuffetLayout{};
 		Render::DescriptorSetHandle       gBuffetLayoutSet{};
@@ -55,13 +50,23 @@ namespace SFE::Render::RenderPasses {
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
 		Render::PipelineHandle getGBufferPipeline(const std::string& vertexShader, const std::string& fragmentShader);
-		void initGrid(bool vulkanGeometry, Render::DescriptorSetLayoutHandle frameLayout);
+		void initGrid(Render::DescriptorSetLayoutHandle frameLayout);
 		void drawGrid(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
 
-		void fillBatcher(Batcher& batcher, bool vulkanGeometry, uint8_t nextRegistry, SystemsModule::RenderData& renderData);
+		void fillBatcher(Batcher& batcher, uint8_t nextRegistry, SystemsModule::RenderData& renderData);
 
 		bool mInited = false;
-		Data mData;
+		Data mFrames[2];
+		uint32_t mGpuFrames = 1;
+		SamplerHandle mSampler{};
+		TextureHandle outlinesMask{};
+		TextureHandle outlinesBuffer{};
+		TextureHandle lightsBuffer{};
+		FramebufferHandle outlineFramebuffer{};
+		FramebufferHandle outlineResultFbo{};
+		TextureHandle mBoundOutlineLights{};
+		TextureHandle mBoundOutlineNormal{};
+		TextureHandle mBoundOutlineMask{};
 		bool needClearOutlines = true;
 
 		RenderPassDataContainer mOutlineData;

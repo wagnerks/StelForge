@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <mutex>
 #include <unordered_map>
 
 #include "Mesh.h"
@@ -14,6 +15,7 @@ namespace SFE {
 		void release(Mesh<Vertex3D>* mesh);
 
 	private:
+		std::mutex mMutex;
 		std::unordered_map<Mesh<Vertex3D>*, RenderMeshData> mMeshVAO;
 	};
 }

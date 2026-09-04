@@ -2,6 +2,7 @@
 
 #include "core/Engine.h"
 #include "renderModule/FrameBlackboard.h"
+#include "renderModule/GraphicsBackend.h"
 #include "renderModule/TextRenderer.h"
 #include "systemsModule/systems/RenderSystem.h"
 
@@ -11,18 +12,30 @@ namespace SFE::Render::RenderPasses {
 
 	void TextOverlayPass::init(SystemsModule::RenderData&)
 	{
-		TextRenderer::instance();
+		auto* rhi = Engine::instance()->rhi();
 		mFont = FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 22);
+
+		// Vulkan draws FPS inside FinalPass (same RP as tonemap). A second begin after Final
+		// invalidates the scene command buffer.
+		if (!rhi->supportsFullPipeline()) {
+			return;
+		}
 
 		RenderPassDesc rpd;
 		rpd.colorAttachmentCount = 1;
 		rpd.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
 		rpd.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
-		mRenderPass = Engine::instance()->rhi()->createRenderPass(rpd);
+		rpd.colorAttachments[0].format = TextureFormat::RGBA8;
+		mRenderPass = rhi->createRenderPass(rpd);
+		TextRenderer::instance()->bindRenderPass(mRenderPass);
 	}
 
 	void TextOverlayPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd)
 	{
+		auto* rhi = Engine::instance()->rhi();
+		if (!rhi->supportsFullPipeline()) {
+			return;
+		}
 		if (!mFont || !mRenderPass) {
 			return;
 		}
@@ -31,14 +44,17 @@ namespace SFE::Render::RenderPasses {
 		std::snprintf(
 			mOverlayText,
 			sizeof(mOverlayText),
-			"FPS: %d\nGPU: %.1f ms  CPU: %.1f ms",
+			"%s\nFPS: %d\nGPU: %.1f ms  CPU: %.1f ms",
+			graphicsBackendName(activeGraphicsBackend()),
 			Engine::instance()->getFPS(),
 			static_cast<double>(info->gpuMs),
 			static_cast<double>(info->cpuMs)
 		);
 
-		auto* rhi = Engine::instance()->rhi();
 		const auto fb = renderDataHandle.frame.framebuffer(FrameId::Final);
+		if (!fb) {
+			return;
+		}
 		const auto& screen = Engine::instance()->getWindow()->getScreenData();
 
 		RenderPassBeginInfo rpBeginInfo;
@@ -59,9 +75,6 @@ namespace SFE::Render::RenderPasses {
 		);
 
 		rhi->cmdEndRenderPass(cmd);
-		if (fb && Engine::instance()->presentToScreen()) {
-			rhi->cmdBlit(cmd, fb, rhi->getBackbufferFramebuffer(), BlitMask::Color, BlitFilter::Nearest);
-		}
 	}
 
 } // namespace SFE::Render::RenderPasses

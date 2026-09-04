@@ -1,49 +1,48 @@
-#version 430 core
-layout (location = 0) in vec3 aPos;
-layout (location = 5) in ivec4 aBoneIds;
-layout (location = 6) in vec4 aWeights;
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) in vec3 aPos;
+layout(location = 5) in ivec4 aBoneIds;
+layout(location = 6) in vec4 aWeights;
 
-layout(std140, binding = 5) uniform SharedMatrices {
+layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
+    mat4 model[];
+};
+
+const int MAX_BONES = 256;
+const int MAX_BONE_INFLUENCE = 4;
+
+layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
+    mat4 bones[][MAX_BONES];
+};
+
+layout(SFE_SET(0, 3), std430) readonly buffer gpuIndex {
+    uint entToGpuIdx[];
+};
+
+layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
     mat4 PV;
 } matrices;
 
-layout(std430, binding = 1) buffer modelMatrices
-{
-    mat4 model[];
-};
+void main() {
+    uint index = entToGpuIdx[SFE_INSTANCE_ID];
 
-layout(std430, binding = 3) buffer gpuIndex
-{
-    uint entToGpuIdx[];
-};
-
-const int MAX_BONES = 100;
-const int MAX_BONE_INFLUENCE = 4;
-
-layout(std430, binding = 2) buffer bonesMatrices
-{
-    mat4 bones[][MAX_BONES];
-};
-
-void main()
-{
-    mat4 BoneTransform = mat4(0.0f);
+    mat4 BoneTransform = mat4(0.0);
     bool withBones = false;
-    for(int i = 0 ; i < MAX_BONE_INFLUENCE ; i++) {
+    for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
         int boneIdx = aBoneIds[i];
-        if(boneIdx == -1 || boneIdx >= MAX_BONES){
-             continue;
+        if (boneIdx < 0 || boneIdx >= MAX_BONES) {
+            continue;
         }
         withBones = true;
-        BoneTransform += bones[entToGpuIdx[gl_InstanceID]][boneIdx] * aWeights[i];
+        BoneTransform += bones[index][boneIdx] * aWeights[i];
     }
-    if (!withBones){
-        BoneTransform = mat4(1.f);
+    if (!withBones) {
+        BoneTransform = mat4(1.0);
     }
+
     vec4 totalPosition = BoneTransform * vec4(aPos.xyz, 1.0);
     totalPosition /= totalPosition.w;
-
-    gl_Position = matrices.PV * (model[entToGpuIdx[gl_InstanceID]] * totalPosition);
+    gl_Position = matrices.PV * (model[index] * totalPosition);
 }

@@ -23,35 +23,60 @@ list(REMOVE_ITEM SRC
 	"${CMAKE_CURRENT_SOURCE_DIR}/core/main.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/runtime/main.cpp"
 )
+list(APPEND SRC "${CMAKE_CURRENT_SOURCE_DIR}/assetsModule/modelModule/mikktspace.c")
 
 if (EDITOR)
 	message("-- engine with editor")
-	add_library(${ENGINE_NAME} STATIC ${SRC})
-	target_compile_definitions(${ENGINE_NAME} PRIVATE EDITOR_ENABLED)
-
-	add_executable(StelForgeRuntime "${CMAKE_CURRENT_SOURCE_DIR}/runtime/main.cpp")
-	target_link_libraries(StelForgeRuntime PRIVATE ${ENGINE_NAME})
-	target_include_directories(StelForgeRuntime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-	set_target_properties(StelForgeRuntime PROPERTIES
-		FOLDER Engine
-		CXX_STANDARD 23
-		VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin"
-		WORKING_DIRECTORY "${ENGINE_PATH}/bin"
-	)
-	if(MSVC)
-		set_target_properties(StelForgeRuntime PROPERTIES
-			LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
-		)
-	endif()
 else()
 	message("-- engine without editor")
-	add_executable(${ENGINE_NAME} ${SRC} "${CMAKE_CURRENT_SOURCE_DIR}/core/main.cpp")
+endif()
+
+message("-- engine as library")
+add_library(${ENGINE_NAME} STATIC ${SRC})
+
+if(EDITOR)
+	target_compile_definitions(${ENGINE_NAME} PRIVATE EDITOR_ENABLED)
+endif()
+
+add_executable(StelForgeRuntime "${CMAKE_CURRENT_SOURCE_DIR}/runtime/main.cpp")
+target_link_libraries(StelForgeRuntime PRIVATE ${ENGINE_NAME})
+target_include_directories(StelForgeRuntime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+set_target_properties(StelForgeRuntime PROPERTIES
+	FOLDER Engine
+	CXX_STANDARD 23
+	VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin"
+	WORKING_DIRECTORY "${ENGINE_PATH}/bin"
+)
+if(MSVC)
+	set_target_properties(StelForgeRuntime PROPERTIES
+		LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
+	)
 endif()
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC})
 
 add_subdirectory(submodules/ecss)
 target_link_libraries(${ENGINE_NAME} PUBLIC ecss)
+
+# ecss is header-only and templated, so every translation unit that opens a view has to
+# parse the whole thing, and only a fifth of that is ecss's own code -- the rest is the
+# <vector>/<atomic>/<algorithm>/<memory> closure underneath it. Thirty-one files here
+# include it, most of them transitively through core/ECSHandler.h.
+#
+# Worth 32% of compiler front-end time over a six-file sample, and not a net loss on any
+# single file in it, including files that never name ecss themselves. Re-check with
+# scripts/measure-frontend.ps1 -- and note why that script exists rather than a stopwatch
+# on a full build: see the warning in the top-level CMakeLists.txt.
+#
+# Angle brackets so it is looked up on the include path; a bare name would be taken as a
+# path relative to this directory. mikktspace.c opts out rather than the header being
+# wrapped in a COMPILE_LANGUAGE genex, because the '>' of <ecss/Registry.h> would close the
+# genex early -- and a C compile cannot consume a C++ precompiled header either way.
+target_precompile_headers(${ENGINE_NAME} PRIVATE <ecss/Registry.h>)
+set_source_files_properties(
+	"${CMAKE_CURRENT_SOURCE_DIR}/assetsModule/modelModule/mikktspace.c"
+	PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+)
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/myPhysicsEngine")
 #target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics")
@@ -60,11 +85,16 @@ target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/jsoncpp/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glm")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/stb")
+target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/vma")
 
 #target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
 
 find_package(OpenGL REQUIRED)
-find_package(Vulkan REQUIRED)
+find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
+if(MSVC AND TARGET Vulkan::shaderc_combined)
+	set_property(TARGET Vulkan::shaderc_combined PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
+	set_property(TARGET Vulkan::shaderc_combined PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
+endif()
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glfw/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/assimp/include")
@@ -80,11 +110,76 @@ endif()
 target_link_libraries(${ENGINE_NAME} 
 	PRIVATE 
 		Vulkan::Vulkan
+		Vulkan::shaderc_combined
 	PUBLIC
 		glad
 		imgui
 		OpenGL::GL
 	)
+
+# Shared third-party DLLs: IMPORTED location is the source of truth.
+# CMake stages them into out/<Config>/ThirdParty; Windows has no rpath.
+set(SFE_NATIVE_SHARED_LIBS "")
+if(MSVC)
+	add_library(sfe_assimp SHARED IMPORTED GLOBAL)
+	set_target_properties(sfe_assimp PROPERTIES
+		IMPORTED_IMPLIB "${ENGINE_PATH}/lib/assimp/Release/assimp-vc143-mt.lib"
+		IMPORTED_LOCATION "${ENGINE_PATH}/lib/assimp/Release/assimp-vc143-mt.dll"
+	)
+	add_library(sfe_jsoncpp SHARED IMPORTED GLOBAL)
+	set_target_properties(sfe_jsoncpp PROPERTIES
+		IMPORTED_IMPLIB "${ENGINE_PATH}/lib/jsoncpp/lib/release/jsoncpp.lib"
+		IMPORTED_LOCATION "${ENGINE_PATH}/lib/jsoncpp/lib/release/jsoncpp.dll"
+	)
+	set(SFE_NATIVE_SHARED_LIBS sfe_assimp sfe_jsoncpp)
+	if(VLD)
+		add_library(sfe_vld SHARED IMPORTED GLOBAL)
+		set_target_properties(sfe_vld PROPERTIES
+			IMPORTED_IMPLIB "${ENGINE_PATH}/utils/VisualLeakDetector/lib/Win64/vld.lib"
+			IMPORTED_LOCATION "${ENGINE_PATH}/utils/VisualLeakDetector/bin/Win64/vld_x64.dll"
+		)
+		list(APPEND SFE_NATIVE_SHARED_LIBS sfe_vld)
+		target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/utils/VisualLeakDetector/include")
+		target_compile_definitions(${ENGINE_NAME} PUBLIC VLD=true)
+		target_link_libraries(${ENGINE_NAME} PUBLIC sfe_vld)
+		message(STATUS "visual leak detector: ON")
+	endif()
+	set(SFE_NATIVE_SHARED_LIBS "${SFE_NATIVE_SHARED_LIBS}" CACHE INTERNAL "Imported native shared libs")
+endif()
+
+macro(sfe_stage_app tgt)
+	set_target_properties(${tgt} PROPERTIES
+		RUNTIME_OUTPUT_DIRECTORY "${SFE_STAGE_ROOT}/${tgt}/$<CONFIG>"
+		RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SFE_STAGE_ROOT}/${tgt}/Debug"
+		RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SFE_STAGE_ROOT}/${tgt}/Release"
+		RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${SFE_STAGE_ROOT}/${tgt}/RelWithDebInfo"
+		RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${SFE_STAGE_ROOT}/${tgt}/MinSizeRel"
+	)
+	if(MSVC AND SFE_NATIVE_SHARED_LIBS)
+		foreach(_lib ${SFE_NATIVE_SHARED_LIBS})
+			target_link_options(${tgt} PRIVATE "/DELAYLOAD:$<TARGET_FILE_NAME:${_lib}>")
+		endforeach()
+		target_link_libraries(${tgt} PRIVATE delayimp)
+		set(_dlls)
+		foreach(_lib ${SFE_NATIVE_SHARED_LIBS})
+			list(APPEND _dlls "$<TARGET_FILE:${_lib}>")
+		endforeach()
+		add_custom_command(TARGET ${tgt} POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${tgt}>/ThirdParty"
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_dlls} "$<TARGET_FILE_DIR:${tgt}>/ThirdParty/"
+			COMMENT "Stage ThirdParty DLLs for ${tgt}"
+		)
+		if(TARGET sfe_vld)
+			add_custom_command(TARGET ${tgt} POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different
+					"${ENGINE_PATH}/utils/VisualLeakDetector/bin/Win64/dbghelp.dll"
+					"${ENGINE_PATH}/utils/VisualLeakDetector/bin/Win64/Microsoft.DTfW.DHL.manifest"
+					"$<TARGET_FILE_DIR:${tgt}>/ThirdParty/"
+			)
+		endif()
+	endif()
+endmacro()
+sfe_stage_app(StelForgeRuntime)
 
 if(MSVC)
 	# Add PDH for SystemLoadHelper + Windows version/UNICODE defines
@@ -95,32 +190,15 @@ if(MSVC)
 		"${ENGINE_PATH}/lib/glfw/glfw3.lib"
 		ws2_32
 		pdh
-	debug
-		"${ENGINE_PATH}/lib/freetype/lib/win/debug/freetyped.lib"
-		optimized
 		"${ENGINE_PATH}/lib/freetype/lib/win/release/freetype.lib"
-		debug
-		"${ENGINE_PATH}/lib/jsoncpp/lib/debug/jsoncpp.lib"
-		optimized
-		"${ENGINE_PATH}/lib/jsoncpp/lib/release/jsoncpp.lib"
-		debug
-		"${ENGINE_PATH}/lib/assimp/Debug/assimp-vc143-mtd.lib"
-		optimized
-		"${ENGINE_PATH}/lib/assimp/Release/assimp-vc143-mt.lib"
-		optimized
+		sfe_jsoncpp
+		sfe_assimp
 		MSVCRT
 	)
+
 	set(CMAKE_EXE_LINKER_FLAGS "/NODEFAULTLIB:MSVCRT")
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
 	set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
-
-	add_custom_command(TARGET ${ENGINE_NAME}
-	POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/assimp/Release/assimp-vc143-mt.dll ${CMAKE_SOURCE_DIR}/.
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/assimp/Debug/assimp-vc143-mtd.dll ${CMAKE_SOURCE_DIR}/.
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/jsoncpp/lib/debug/jsoncpp_d.dll ${CMAKE_SOURCE_DIR}/.
-		COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/lib/jsoncpp/lib/release/jsoncpp.dll ${CMAKE_SOURCE_DIR}/.
-	)
 elseif(XCODE)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 	add_definitions(-std=c++20)
@@ -141,19 +219,3 @@ elseif(XCODE)
 	)
 endif()
 
-if(VLD)
-	include_directories("${ENGINE_PATH}/utils/VisualLeakDetector/include")
-	target_link_libraries(${ENGINE_NAME}
-		PUBLIC
-		"${ENGINE_PATH}/utils/VisualLeakDetector/lib/Win64/vld.lib"
-	)
-	add_custom_command(TARGET ${ENGINE_NAME}
-	POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/utils/VisualLeakDetector/bin/Win64/dbghelp.dll ${ENGINE_PATH}/.
-	COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/utils/VisualLeakDetector/bin/Win64/Microsoft.DTfW.DHL.manifest ${ENGINE_PATH}/.
-	COMMAND ${CMAKE_COMMAND} -E copy ${ENGINE_PATH}/utils/VisualLeakDetector/bin/Win64/vld_x64.dll ${ENGINE_PATH}/.
-	)
-	add_definitions(-DVLD=true)
-
-	message(visual leak detector : ON)
-endif()

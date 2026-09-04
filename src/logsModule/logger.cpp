@@ -8,9 +8,11 @@
 #endif
 
 #include "chrono"
+#include "core/FileSystem.h"
 #include <sstream>
 #include <ctime>
 #include <iomanip>
+#include <cstdio>
 
 using namespace SFE::LogsModule;
 
@@ -71,6 +73,12 @@ void Logger::logMessage(const eLogLevel level, const char* msg) {
 #else
 	OutputDebugString(to_wstring_utf8(oss.str()).c_str());
 #endif
+	if (level == eLogLevel::FATAL || level == eLogLevel::ERROR_) {
+		if (FILE* logFile = fopen(SFE::FileSystem::resolve("sfe_fatal.log").string().c_str(), "a")) {
+			fputs(oss.str().c_str(), logFile);
+			fclose(logFile);
+		}
+	}
 	if (level == eLogLevel::FATAL) {
 		assert(false && msg);
 	}

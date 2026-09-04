@@ -8,7 +8,7 @@ namespace SFE::ComponentsModule {
 	class TreeComponent : public ecss::ComponentInterface {
 	public:
 		TreeComponent(ecss::SectorId id) : ComponentInterface(id) {};
-		~TreeComponent() override;
+		~TreeComponent();
 		ecss::SectorId getParent() const;
 		void addChildEntityForce(ecss::SectorId id);
 
@@ -28,5 +28,7 @@ namespace SFE::ComponentsModule {
 		std::vector<ecss::SectorId> mChildrenEntities;
 	};
 }
+
+template<> struct ecss::AllowNonTrivial<SFE::ComponentsModule::TreeComponent> : std::true_type {};
 
 using SFE::ComponentsModule::TreeComponent;

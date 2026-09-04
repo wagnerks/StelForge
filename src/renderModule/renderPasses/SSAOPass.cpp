@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "assetsModule/shaderModule/ShaderBase.h"
+#include "core/Engine.h"
 #include "renderModule/Utils.h"
 #include "debugModule/Benchmark.h"
 #include "systemsModule/systems/RenderSystem.h"
@@ -25,15 +26,33 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 	mData.mSsaoColorBuffer = rhi->createTexture(ssaoColorDesc);
 	mData.mSsaoColorBufferBlur = rhi->createTexture(ssaoColorDesc);
 
+	RenderPassDesc mainRPD;
+	mainRPD.colorAttachmentCount = 1;
+	mainRPD.colorAttachments[0].loadOp = AttachmentLoadOp::Clear;
+	mainRPD.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
+	mainRPD.colorAttachments[0].clearColor = {1.f, 1.f, 1.f, 1.f};
+	mainRPD.colorAttachments[0].format = TextureFormat::R8;
+	main = rhi->createRenderPass(mainRPD);
+
+	RenderPassDesc blurRPD;
+	blurRPD.colorAttachmentCount = 1;
+	blurRPD.colorAttachments[0].loadOp = AttachmentLoadOp::Clear;
+	blurRPD.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
+	blurRPD.colorAttachments[0].clearColor = {1.f, 1.f, 1.f, 1.f};
+	blurRPD.colorAttachments[0].format = TextureFormat::R8;
+	blur = rhi->createRenderPass(blurRPD);
+
 	FramebufferDesc fbDesc;
 	fbDesc.width = mSsaoW;
 	fbDesc.height = mSsaoH;
+	fbDesc.renderPass = main;
 	fbDesc.colorAttachments = {{mData.mSsaoColorBuffer}};
 	mData.mSsaoFbo = rhi->createFramebuffer(fbDesc);
 
 	FramebufferDesc blurFbDesc;
 	blurFbDesc.width = mSsaoW;
 	blurFbDesc.height = mSsaoH;
+	blurFbDesc.renderPass = blur;
 	blurFbDesc.colorAttachments = {{mData.mSsaoColorBufferBlur}};
 	mData.mSsaoBlurFbo = rhi->createFramebuffer(blurFbDesc);
 
@@ -42,39 +61,45 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 	samplerDesc.magFilter = FilterMode::Linear;
 	mData.sampler = rhi->createSampler(samplerDesc);
 
+	Render::DescriptorSetLayoutDesc texLayoutDesc;
+	texLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	mainTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
+	mainTexSet = rhi->allocateDescriptorSet(mainTexSetLayout);
+
+	Render::DescriptorSetLayoutDesc texLayoutBlurDesc;
+	texLayoutBlurDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutBlurDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutBlurDesc.bindings.emplace_back(2, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	blurTexSetLayout = rhi->createDescriptorSetLayout(texLayoutBlurDesc);
+	blurTexSet = rhi->allocateDescriptorSet(blurTexSetLayout);
+
 	GraphicsPipelineDesc mainPipelineDesc;
 	Render::VertexLayoutDesc& layout = mainPipelineDesc.layout;
 	layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
 	layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
 	layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
 	mainPipelineDesc.topology = PrimitiveTopology::Triangles;
-	mainPipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "ssao_first_stage_vs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao.vs") });
-	mainPipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "ssao_first_stage_fs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao.fs")});
+	mainPipelineDesc.cullMode = CullMode::None;
+	mainPipelineDesc.renderPass = main;
+	mainPipelineDesc.descriptorSetLayouts = { mainTexSetLayout };
+	mainPipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/ssao.vs");
+	mainPipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/ssao.fs");
 	mainPipeline = rhi->createGraphicsPipeline(mainPipelineDesc);
-
-	RenderPassDesc mainRPD;
-	mainRPD.colorAttachmentCount = 1;
-	mainRPD.colorAttachments[0].loadOp = AttachmentLoadOp::Clear;
-	mainRPD.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
-	mainRPD.colorAttachments[0].clearColor = {1.f, 1.f, 1.f, 1.f};
-	main = rhi->createRenderPass(mainRPD);
 
 	GraphicsPipelineDesc blurPipelineDesc;
 	blurPipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
 	blurPipelineDesc.layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
 	blurPipelineDesc.layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
 	blurPipelineDesc.topology = PrimitiveTopology::Triangles;
-	blurPipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "ssao_blur_stage_vs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao.vs") });
-	blurPipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "ssao_blur_stage_fs", ShaderModule::ShaderBase::loadShaderCode("shaders/ssao_blur.fs") });
+	blurPipelineDesc.cullMode = CullMode::None;
+	blurPipelineDesc.renderPass = blur;
+	blurPipelineDesc.descriptorSetLayouts = { blurTexSetLayout };
+	blurPipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/ssao.vs");
+	blurPipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/ssao_blur.fs");
 	blurPipeline = rhi->createGraphicsPipeline(blurPipelineDesc);
-
-	RenderPassDesc blurRPD;
-	blurRPD.colorAttachmentCount = 1;
-	blurRPD.colorAttachments[0].loadOp = AttachmentLoadOp::Clear;
-	blurRPD.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
-	blurRPD.colorAttachments[0].clearColor = {1.f, 1.f, 1.f, 1.f};
-	blur = rhi->createRenderPass(blurRPD);
-
 	BufferDesc ssaoBufferDesc;
 	ssaoBufferDesc.usage = BufferUsage::Uniform;
 	ssaoBufferDesc.size = sizeof(SSAOParams);
@@ -91,23 +116,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 	blurParams.updateFac();
 
 	ssaoBlurParamsBuffer = rhi->createBuffer(ssaoBlurBufferDesc, &blurParams);
-
-	Render::DescriptorSetLayoutDesc texLayoutDesc;
-	texLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-
-	mainTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
-	mainTexSet = rhi->allocateDescriptorSet(mainTexSetLayout);
-
-	Render::DescriptorSetLayoutDesc texLayoutBlurDesc;
-	texLayoutBlurDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutBlurDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutBlurDesc.bindings.emplace_back(2, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-
-	blurTexSetLayout = rhi->createDescriptorSetLayout(texLayoutBlurDesc);
-	blurTexSet = rhi->allocateDescriptorSet(blurTexSetLayout);
 
 	const auto gPos = renderDataHandle.frame.texture(FrameId::GBufferPosition);
 	const auto gPosSamp = renderDataHandle.frame.sampler(FrameId::GBufferPosition);

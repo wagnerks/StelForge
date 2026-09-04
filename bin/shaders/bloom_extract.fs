@@ -1,9 +1,9 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) out vec4 FragColor;
+layout(location = 0) in vec2 TexCoords;
 
-out vec4 FragColor;
-in vec2 TexCoords;
-
-layout(binding = 0) uniform sampler2D inputTexture;
+layout(SFE_SET(0, 0)) uniform sampler2D inputTexture;
 
 void main() {
     vec2 texel = 1.0 / vec2(textureSize(inputTexture, 0));

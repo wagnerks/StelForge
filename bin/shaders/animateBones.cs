@@ -1,7 +1,8 @@
-#version 430
+#version 450 core
+#include "sfe.glsl"
 layout(local_size_x = 1) in;
 
-const int MAX_BONES = 100;
+const int MAX_BONES = 256;
 
 struct BoneDesc {
     mat4 offset;
@@ -29,12 +30,12 @@ struct QuatKey {
     float p2;
 };
 
-layout(std430, binding = 20) readonly buffer BoneDescs { BoneDesc bones[]; };
-layout(std430, binding = 21) readonly buffer PosKeys { Vec3Key posKeys[]; };
-layout(std430, binding = 22) readonly buffer RotKeys { QuatKey rotKeys[]; };
-layout(std430, binding = 23) readonly buffer SclKeys { Vec3Key sclKeys[]; };
-layout(std430, binding = 24) readonly buffer Order { int order[]; };
-layout(std430, binding = 2) buffer OutBones { mat4 outBones[]; };
+layout(SFE_SET(0, 20), std430) readonly buffer BoneDescs { BoneDesc bones[]; };
+layout(SFE_SET(0, 21), std430) readonly buffer PosKeys { Vec3Key posKeys[]; };
+layout(SFE_SET(0, 22), std430) readonly buffer RotKeys { QuatKey rotKeys[]; };
+layout(SFE_SET(0, 23), std430) readonly buffer SclKeys { Vec3Key sclKeys[]; };
+layout(SFE_SET(0, 24), std430) readonly buffer Order { int order[]; };
+layout(SFE_SET(0, 2), std430) buffer OutBones { mat4 outBones[]; };
 
 struct AnimInstance {
     mat4 armatureTransform;
@@ -43,7 +44,7 @@ struct AnimInstance {
     int boneCount;
 };
 
-layout(std430, binding = 25) readonly buffer AnimInstances {
+layout(SFE_SET(0, 25), std430) readonly buffer AnimInstances {
     AnimInstance instances[];
 };
 
@@ -181,10 +182,23 @@ void main() {
 
         mat4 local = b.restLocal;
         if (b.posCnt > 0 || b.rotCnt > 0 || b.sclCnt > 0) {
-            vec3 pos = lerpVec3Keys(b.posOff, b.posCnt, inst.animTime);
-            vec4 rot = lerpQuatKeys(b.rotOff, b.rotCnt, inst.animTime);
-            vec3 scl = lerpSclKeys(b.sclOff, b.sclCnt, inst.animTime);
-            local = localTRS(pos, rot, scl);
+            vec3 pos = b.restLocal[3].xyz;
+            vec3 scl = vec3(length(b.restLocal[0].xyz), length(b.restLocal[1].xyz), length(b.restLocal[2].xyz));
+            if (b.posCnt > 0) {
+                pos = lerpVec3Keys(b.posOff, b.posCnt, inst.animTime);
+            }
+            if (b.sclCnt > 0) {
+                scl = lerpSclKeys(b.sclOff, b.sclCnt, inst.animTime);
+            }
+            if (b.rotCnt > 0) {
+                vec4 rot = lerpQuatKeys(b.rotOff, b.rotCnt, inst.animTime);
+                if (scl.x < 1e-8) scl.x = 1.0;
+                if (scl.y < 1e-8) scl.y = 1.0;
+                if (scl.z < 1e-8) scl.z = 1.0;
+                local = localTRS(pos, rot, scl);
+            } else {
+                local[3] = vec4(pos, 1.0);
+            }
         }
 
         mat4 parent = (b.parent < 0) ? inst.armatureTransform : worlds[b.parent];

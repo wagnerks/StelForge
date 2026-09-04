@@ -1,15 +1,23 @@
-﻿#include "Projection.h"
+#include "Projection.h"
 
 #include "mathModule/Utils.h"
 
 using namespace SFE::MathModule;
 
-OrthoProjection::OrthoProjection(Math::Vec2 leftBtm, Math::Vec2 rightTop, float zNear, float zFar) : Projection(zNear, zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
-	OrthoProjection::initProjection();
+OrthoProjection::OrthoProjection(Math::Vec2 leftBtm, Math::Vec2 rightTop, float zNear, float zFar) : Projection(ORTHO, zNear, zFar), mLeftBtm(leftBtm), mRightTop(rightTop) {
+	recomputeProjection();
 }
 
-PerspectiveProjection::PerspectiveProjection(float FOV, float aspect, float zNear, float zFar) : Projection(zNear, zFar), mFOV(FOV), mAspect(aspect) {
-	PerspectiveProjection::initProjection();
+PerspectiveProjection::PerspectiveProjection(float FOV, float aspect, float zNear, float zFar) : Projection(PERSPECTIVE, zNear, zFar), mFOV(FOV), mAspect(aspect) {
+	recomputeProjection();
+}
+
+void Projection::recomputeProjection() {
+	switch (mType) {
+	case ORTHO:       static_cast<OrthoProjection*>(this)->initProjection(); break;
+	case PERSPECTIVE: static_cast<PerspectiveProjection*>(this)->initProjection(); break;
+	default: break;
+	}
 }
 
 const SFE::Math::Mat4& Projection::getProjectionsMatrix() const {
@@ -29,14 +37,14 @@ void Projection::setNear(float near) {
 		return;
 	}
 	mNear = near;
-	initProjection();
+	recomputeProjection();
 }
 void Projection::setFar(float far) {
 	if (std::fabs(mFar - far) < std::numeric_limits<float>::epsilon()) {
 		return;
 	}
 	mFar = far;
-	initProjection();
+	recomputeProjection();
 }
 
 void Projection::setNearFar(float near, float far) {
@@ -46,7 +54,7 @@ void Projection::setNearFar(float near, float far) {
 	mNear = near;
 	mFar = far;
 
-	initProjection();
+	recomputeProjection();
 }
 
 
@@ -97,5 +105,6 @@ float PerspectiveProjection::getAspect() const {
 }
 
 void PerspectiveProjection::initProjection() {
+	// Keep OpenGL-compatible NO clip for now — ZO is deferred until lighting/shadows are stable on Vulkan.
 	mProjectionMatrix = Math::perspectiveRH_NO(Math::radians(mFOV), mAspect, getNear(), getFar());
 }

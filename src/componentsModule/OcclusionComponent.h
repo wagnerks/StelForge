@@ -2,14 +2,10 @@
 
 #include <vector>
 #include <assetsModule/modelModule/BoundingVolume.h>
+#include "ecss/Types.h"
 
 namespace SFE::ComponentsModule {
 	struct OcclusionComponent {
-		OcclusionComponent() {}
-
-		~OcclusionComponent() {}
-		//GLW::Query<GLW::QueryType::SAMPLES_PASSED>* query = nullptr;
-
 		bool occluded = false;
 
 		std::vector<FrustumModule::AABB> occluderAABB; //occluder is smaller bounding volume  representing object shape which can occlude other objects, it is should be the shape equal or smaller then object itself, (for tree it is only the tree tunk itself)
@@ -20,3 +16,5 @@ namespace SFE::ComponentsModule {
 		bool occluded = false;
 	};
 }
+
+template<> struct ecss::AllowNonTrivial<SFE::ComponentsModule::OcclusionComponent> : std::true_type {};

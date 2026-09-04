@@ -17,6 +17,7 @@ namespace SFE::Render::RenderPasses {
 	private:
 		void publish(SystemsModule::RenderData& renderDataHandle);
 		void collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<ecss::SectorId>* entities);
+		void ensureGpu(SystemsModule::RenderData& renderDataHandle);
 
 		FramebufferHandle lightFramebuffer;
 		TextureHandle mLightDepthMaps;
@@ -28,6 +29,7 @@ namespace SFE::Render::RenderPasses {
 		Render::DescriptorSetHandle mSet{};
 
 		bool mInited = false;
+		bool mGpuReady = false;
 		Data data{};
 
 		static constexpr int shadowResolution = 1024;

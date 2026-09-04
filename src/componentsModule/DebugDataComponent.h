@@ -12,4 +12,6 @@ namespace SFE::ComponentsModule {
 	};
 }
 
+template<> struct ecss::AllowNonTrivial<SFE::ComponentsModule::DebugDataComponent> : std::true_type {};
+
 using SFE::ComponentsModule::DebugDataComponent;

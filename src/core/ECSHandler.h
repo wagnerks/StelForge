@@ -62,7 +62,9 @@ public:
 	void initSystems();
 
 private:
-	ecss::SystemManager mSystemManager;
+	// Registry must outlive systems: ~SystemManager joins tick threads and
+	// ChunksSystem::saveLoaded() still walks entities.
 	ecss::Registry<> mRegistry;
 	std::array<ecss::Registry<true, ecss::Memory::ChunksAllocator<65536>>, 2> mDrawRegistry;
+	ecss::SystemManager mSystemManager;
 };

@@ -52,17 +52,20 @@ void CascadedShadowPass::prepare() {
 	auto curPassData = getContainer().getCurrentPassData();
 	curPassData->markPreparing();
 	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
-	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camProj = renderData.nextCameraProjection, view = renderData.next.view, camFrustum = renderData.mNextCamFrustum]() mutable {
+	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum]() mutable {
 		FUNCTION_BENCHMARK;
+		struct ReadyGuard {
+			RenderPassData* data = nullptr;
+			~ReadyGuard() { if (data) { data->markReady(); } }
+		} ready{ curPassData };
 
-		curPassData->getBatcher().clear();
-		auto shadowsComp = ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource);
-		if (!shadowsComp) {
-			curPassData->markReady();
+		auto* renderSys = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : SystemsModule::RenderSystem::WorldReadGuard{};
+		if (renderSys && !worldLock) {
 			return;
 		}
 
-		shadowsComp->calculateLightSpaceMatrices(camProj, view);
+		curPassData->getBatcher().clear();
 
 		{
 			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
@@ -94,31 +97,31 @@ void CascadedShadowPass::prepare() {
 					if (!meshComp) {
 						continue;
 					}
-					for (const auto& mesh : meshComp->meshGraph) {
-						if (!mesh.value.vertexBuffer) {
-							continue;
-						}
-						// Glass: low-poly proxy (~50x fewer tris than render sphere).
-						if (matComp && matComp->transparent && mGlassShadowMeshData.vertexBuffer) {
-							batcher.addToDrawList(mGlassShadowMeshData, matComp, ent);
+					meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
+						if (mat && mat->transparent && mGlassShadowMeshData.vertexBuffer) {
+							batcher.addToDrawList(mGlassShadowMeshData, mat, ent);
 						}
 						else {
-							batcher.addToDrawList(mesh.value, matComp, ent);
+							batcher.addToDrawList(mesh, mat, ent);
 						}
 						++n;
-					}
+					});
 				}
 				SystemsModule::RenderDebugInfo::instance()->cullShadow = n;
+				return n;
 			};
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
+			size_t added = 0;
 			if (entities.empty() && (!octreeSys || octreeSys->empty())) {
-				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
+				added = addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
 			}
 			else {
-				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
+				added = addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
+			}
+			if (added == 0) {
+				added = addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
 			}
 		}
-		curPassData->markReady();
 	});
 }
 
@@ -140,9 +143,8 @@ void CascadedShadowPass::init(SystemsModule::RenderData& renderDataHandle) {
 	
 	auto transform = ECSHandler::registry().addComponent<TransformComponent>(mShadowSource, mShadowSource);
 	auto worldLight = ECSHandler::registry().addComponent<LightSourceComponent>(mShadowSource, mShadowSource, SFE::ComponentsModule::eLightType::WORLD);
-	// Dim sun so point lamps are visible in the scene.
-	worldLight->setLightColor({ 0.03f, 0.035f, 0.05f });
-	worldLight->setIntensity(0.08f);
+	worldLight->setLightColor({ 1.0f, 0.96f, 0.88f });
+	worldLight->setIntensity(3.2f);
 
 	auto cmp = ECSHandler::registry().addComponent<CascadeShadowComponent>(mShadowSource, mShadowSource);
 	
@@ -153,11 +155,10 @@ void CascadedShadowPass::init(SystemsModule::RenderData& renderDataHandle) {
 	auto shadow = FileSystem::readJson("cascadedShadows.json");
 
 	PropertiesModule::PropertiesSystem::deserializeProperty<CascadeShadowComponent>(mShadowSource, shadow["Properties"]);
-	cmp->shadowIntensity = 0.35f;
 	//cmp->resolution = Math::Vec2{ 256.f, 256.f };
 	//cmp->shadowCascadeLevels = { cameraProjection.getNear(), 50.f, 150.f, /*500.f, 5000.f*/ };
 	//cmp->updateCascades(cameraProjection);
-	transform->setRotate({ -0.4f * 180.f,0.f, 0.4f * 5.f });
+	transform->setRotate({ -32.f, 28.f, 8.f });
 
 	initRender();
 	renderDataHandle.frame.setData(FrameId::Csm, &mData);
@@ -231,7 +232,9 @@ void CascadedShadowPass::initRender() {
 	TextureDesc depthTex;
 	depthTex.width = static_cast<int>(cmp->resolution.x);
 	depthTex.height = static_cast<int>(cmp->resolution.y);
-	depthTex.depth = static_cast<int>(cmp->cascades.size());
+	const uint32_t cascadeLayers = static_cast<uint32_t>((std::max)(size_t{1}, cmp->cascades.size()));
+	depthTex.depth = cascadeLayers;
+	depthTex.arrayLayers = cascadeLayers;
 	depthTex.dimension = TextureDimension::Array;
 	depthTex.format = TextureFormat::DEPTH_COMPONENT32;
 	depthTex.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
@@ -256,55 +259,58 @@ void CascadedShadowPass::initRender() {
 	lightSampler = Engine::instance()->rhi()->createSampler(shadowSamp);
 	lightDepthSampler = Engine::instance()->rhi()->createSampler(depthSamp);
 
+	auto* rhi = Engine::instance()->rhi();
+
+	RenderPassDesc rpDesc;
+	rpDesc.hasDepthStencil = true;
+	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
+	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+	rpDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT32;
+	renderPass = rhi->createRenderPass(rpDesc);
+
 	FramebufferDesc fb{};
 	fb.width = static_cast<uint32_t>(cmp->resolution.x);
 	fb.height = static_cast<uint32_t>(cmp->resolution.y);
+	fb.renderPass = renderPass;
+	fb.layers = cascadeLayers;
 	FramebufferAttachmentDesc depthAtt;
 	depthAtt.texture = lightDepthMa;
 	depthAtt.mipLevel = 0;
 	depthAtt.layer = UINT32_MAX;
 	fb.depthStencilAttachment = depthAtt;
-	lightFbo = Engine::instance()->rhi()->createFramebuffer(fb);
+	lightFbo = rhi->createFramebuffer(fb);
 	
 	BufferDesc desc;
 	desc.size = sizeof(Math::Mat4) * 6; //max 6 cascades
 	desc.usage = BufferUsage::Uniform;
 	desc.cpuAccess = CpuAccess::Write;
 	desc.debugName = "CascadedShadowPass_MatricesUBO";
-	matricesUBO = Engine::instance()->rhi()->createBuffer(desc);
+	matricesUBO = rhi->createBuffer(desc);
 	mData.lightSpaceMatricesUBO = matricesUBO;
 
-	ShaderModuleDesc shaderVDesc;
-	shaderVDesc.stage = ShaderStage::Vertex;
-	shaderVDesc.name = "CascadedShadowPass_Vertex";
-	shaderVDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.vs");
+	Render::DescriptorSetLayoutDesc shadowsLayoutDesc;
+	shadowsLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
+	shadowsLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	shadowsLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	shadowsLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 
-	ShaderModuleDesc shaderGDesc;
-	shaderGDesc.stage = ShaderStage::Geometry;
-	shaderGDesc.name = "CascadedShadowPass_Geometry";
-	shaderGDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.gs");
-	{
-		const std::string needle = "invocations = 4";
-		const auto repl = "invocations = " + std::to_string(cmp->cascades.size());
-		if (const auto pos = shaderGDesc.source.find(needle); pos != std::string::npos) {
-			shaderGDesc.source.replace(pos, needle.size(), repl);
-		}
-	}
-
-	ShaderModuleDesc shaderFDesc;
-	shaderFDesc.stage = ShaderStage::Fragment;
-	shaderFDesc.name = "CascadedShadowPass_Fragment";
-	shaderFDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.fs");
+	shadowsLayoutHandle = rhi->createDescriptorSetLayout(shadowsLayoutDesc);
+	shadowsSetDescHandle = rhi->allocateDescriptorSet(shadowsLayoutHandle);
 
 	GraphicsPipelineDesc pipelineDesc;
 	pipelineDesc.depthStencilState.depthTest = true;
 	pipelineDesc.depthStencilState.depthWrite = true;
 	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
-			pipelineDesc.cullMode = CullMode::Front;
+	pipelineDesc.cullMode = CullMode::Front;
+	// Match GeometryPass winding; Vulkan RHI inverts CCW because the viewport is not Y-flipped.
 	pipelineDesc.frontFace = FrontFace::CounterClockWise;
-	pipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(shaderVDesc);
-	pipelineDesc.shaders.geometry = Engine::instance()->rhi()->createShaderModule(shaderGDesc);
-	pipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(shaderFDesc);
+	pipelineDesc.renderPass = renderPass;
+	pipelineDesc.descriptorSetLayouts = { shadowsLayoutHandle };
+	pipelineDesc.pushConstantSize = 16u;
+	pipelineDesc.pushConstantStages = ShaderStage::Fragment | ShaderStage::Geometry;
+	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/cascadeShadowMap.vs");
+	pipelineDesc.shaders.geometry = rhi->loadShader(ShaderStage::Geometry, "shaders/cascadeShadowMap.gs");
+	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/cascadeShadowMap.fs");
 	
 	Render::VertexLayoutDesc vaoDesc;
 	vaoDesc.bindings.push_back({ 0,sizeof(Vertex3D), Render::VertexInputRate::PerVertex });
@@ -313,34 +319,14 @@ void CascadedShadowPass::initRender() {
 	vaoDesc.attributes.push_back({ 2,0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex3D, texCoords)), true });
 	vaoDesc.attributes.push_back({ 3,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, tangent)), true });
 	vaoDesc.attributes.push_back({ 4,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, biTangent)), true });
-	vaoDesc.attributes.push_back({ 5,0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false }); //todo only for dynamic mesh
+	vaoDesc.attributes.push_back({ 5,0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false });
 	vaoDesc.attributes.push_back({ 6,0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
 
 	pipelineDesc.layout = vaoDesc;
 
-	pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
+	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
 
-	RenderPassDesc rpDesc;
-	rpDesc.hasDepthStencil = true;
-	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
-	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
-	renderPass = Engine::instance()->rhi()->createRenderPass(rpDesc);
-
-	Render::DescriptorSetLayoutDesc shadowsLayoutDesc;
-	shadowsLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
-
-	shadowsLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	shadowsLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	shadowsLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-
-	shadowsLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	shadowsLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	shadowsLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-
-	shadowsLayoutHandle = Engine::instance()->rhi()->createDescriptorSetLayout(shadowsLayoutDesc);
-	shadowsSetDescHandle = Engine::instance()->rhi()->allocateDescriptorSet(shadowsLayoutHandle);
-
-	Engine::instance()->rhi()->updateDescriptorSets({
+	rhi->updateDescriptorSets({
 		{
 			.set = shadowsSetDescHandle,
 			.binding = 11,
@@ -359,12 +345,14 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 
 	FUNCTION_BENCHMARK;
 
+	auto rhi = Engine::instance()->rhi();
+
 	updateRenderData(renderDataHandle);
-	{
-		FUNCTION_BENCHMARK_NAMED(_wait_lock);
-		const auto curPassData = getContainer().getCurrentPassData();
-		curPassData->waitReady();
-	}
+
+	auto* curPassData = getContainer().getCurrentPassData();
+	curPassData->waitReady();
+	getContainer().rotate();
+	prepare();
 
 	auto shadowsComp = ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource);
 	if (!shadowsComp) {
@@ -374,19 +362,18 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 	shadowsComp->calculateLightSpaceMatrices(renderDataHandle.cameraProjection, renderDataHandle.current.view);
 	const auto lightMatrices = shadowsComp->getLightSpaceMatrices();
 
-	const auto curPassData = getContainer().getCurrentPassData();
-	getContainer().rotate();
-	prepare();
-
 	updateRenderData(renderDataHandle);
 
 	if (!lightMatrices.empty()) {
 		FUNCTION_BENCHMARK_NAMED(_bind_ubo);
 		mData.lightSpaceMatrices = lightMatrices;
-		Engine::instance()->rhi()->updateBuffer(matricesUBO, 0, lightMatrices.size() * sizeof(Math::Mat4), lightMatrices.data());
+		Math::Mat4 packed[6]{};
+		const size_t n = (std::min)(lightMatrices.size(), size_t{6});
+		for (size_t i = 0; i < 6; ++i) {
+			packed[i] = lightMatrices[i < n ? i : n - 1];
+		}
+		rhi->updateBuffer(matricesUBO, 0, sizeof(packed), packed);
 	}
-
-	auto rhi = Engine::instance()->rhi();
 
 	if (renderDataHandle.transformsSSBO) {
 		rhi->updateDescriptorSets({
@@ -416,27 +403,26 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 
 		rhi->cmdBeginRenderPass(cmd, begin);
 		rhi->cmdBindPipeline(cmd, pipeline);
-		curPassData->getBatcher().flushAll(cmd, shadowsSetDescHandle, {},
-			[this](SFE::Render::CommandListHandle drawCmd, const DrawObject& obj) {
-				struct ShadowPush {
-					float casterOpacity = 1.f;
-					float pad0 = 0.f;
-					float pad1 = 0.f;
-					float pad2 = 0.f;
-				} pc;
-				// Opaque batches keep full shadow; glass uses material opacity.
-				pc.casterOpacity = (obj.opacity > 0.f && obj.opacity < 0.999f) ? obj.opacity : 1.f;
-				Engine::instance()->rhi()->cmdPushConstants(drawCmd, pipeline, SFE::Render::ShaderStage::Fragment, &pc, sizeof(pc));
-			});
+		const int cascadeDraws = static_cast<int>(lightMatrices.size());
+		for (int layer = 0; layer < cascadeDraws; ++layer) {
+			curPassData->getBatcher().flushAll(cmd, shadowsSetDescHandle, {},
+				[this, layer](SFE::Render::CommandListHandle drawCmd, const DrawObject& obj) {
+					struct ShadowPush {
+						float casterOpacity = 1.f;
+						int cascadeLayer = 0;
+						float pad1 = 0.f;
+						float pad2 = 0.f;
+					} pc;
+					pc.casterOpacity = (obj.opacity > 0.f && obj.opacity < 0.999f) ? obj.opacity : 1.f;
+					pc.cascadeLayer = layer;
+					Engine::instance()->rhi()->cmdPushConstants(
+						drawCmd, pipeline,
+						SFE::Render::ShaderStage::Fragment | SFE::Render::ShaderStage::Geometry,
+						&pc, sizeof(pc));
+				}, nullptr, false);
+		}
 		rhi->cmdEndRenderPass(cmd);
 	}
-
-	rhi->cmdPipelineBarrier(cmd, {
-		.srcStage = PipelineStage::LateFragmentTests,
-		.dstStage = PipelineStage::FragmentShader,
-		.srcAccess = AccessMask::DepthStencilAttachmentWrite,
-		.dstAccess = AccessMask::ShaderRead
-	});
 
 	{
 		auto* info = SFE::SystemsModule::RenderDebugInfo::instance();
@@ -454,7 +440,8 @@ void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataH
 	mData.shadowMapTexture = lightDepthMa;
 	mData.shadowMapSampler = lightSampler;
 	mData.lightDirection = ECSHandler::registry().pinComponent<const TransformComponent>(mShadowSource)->getForward();
-	mData.lightColor = ECSHandler::registry().pinComponent<const LightSourceComponent>(mShadowSource)->getLightColor();
+	mData.lightColor = ECSHandler::registry().pinComponent<const LightSourceComponent>(mShadowSource)->getLightColor()
+		* renderDataHandle.graphics.sunIntensity;
 	mData.resolution = shadowsComp->resolution;
 	mData.cameraFarPlane = shadowsComp->cascades.back().viewProjection.getFar();
 	mData.shadowCascadeLevels = shadowsComp->shadowCascadeLevels;

@@ -1,22 +1,22 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) out vec4 FragColor;
+layout(location = 0) in vec2 TexCoords;
 
-out vec4 FragColor;
-in vec2 TexCoords;
+layout(SFE_SET(0, 0)) uniform sampler2D worldPos;
+layout(SFE_SET(0, 8)) uniform sampler2DArrayShadow shadowMap;
 
-layout(binding = 0) uniform sampler2D worldPos;
-layout(binding = 8) uniform sampler2DArrayShadow shadowMap;
-
-layout (std140, binding = 11) uniform LightSpaceMatrices {
+layout(SFE_SET(0, 11), std140) uniform LightSpaceMatrices {
     mat4 lightSpaceMatrices[6];
 };
 
-layout(std140, binding = 5) uniform SharedMatrices {
+layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
     mat4 PV;
 } matrices;
 
-layout(std140, binding = 15) uniform PushConstants {
+layout(SFE_SET(0, 15), std140) uniform PushConstants {
     vec3 viewPos;
     float density;
     vec3 lightDir;

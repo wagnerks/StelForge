@@ -1,14 +1,14 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) out vec4 FragColor;
+layout(location = 0) in vec2 TexCoords;
 
-out vec4 FragColor;
-in vec2 TexCoords;
+layout(SFE_SET(0, 0)) uniform sampler2D gPosition;
+layout(SFE_SET(0, 1)) uniform sampler2D gNormal;
+layout(SFE_SET(0, 2)) uniform sampler2D gAlbedoSpec;
+layout(SFE_SET(0, 4)) uniform sampler2D sceneColor;
 
-layout(binding = 0) uniform sampler2D gPosition;
-layout(binding = 1) uniform sampler2D gNormal;
-layout(binding = 2) uniform sampler2D gAlbedoSpec;
-layout(binding = 4) uniform sampler2D sceneColor;
-
-layout(std140, binding = 3) uniform SsrParams {
+layout(SFE_SET(0, 3), std140) uniform SsrParams {
     vec3 viewPos;
     float maxDistance;
     vec2 resolution;
@@ -16,7 +16,7 @@ layout(std140, binding = 3) uniform SsrParams {
     float stride;
 } params;
 
-layout(std140, binding = 5) uniform SharedMatrices {
+layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
     mat4 PV;

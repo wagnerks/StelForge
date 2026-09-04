@@ -2,7 +2,6 @@
 
 #include <shared_mutex>
 #include <vector>
-#include <json/value.h>
 
 #include "ComponentBase.h"
 #include "assetsModule/modelModule/Animation.h"
@@ -10,7 +9,6 @@
 #include "assetsModule/modelModule/Mesh.h"
 #include "assetsModule/modelModule/Model.h"
 #include "ecss/Types.h"
-#include "propertiesModule/Serializable.h"
 
 
 namespace SFE::ComponentsModule {
@@ -58,7 +56,7 @@ namespace SFE::ComponentsModule {
 		std::shared_mutex mtx;
 	};
 
-	class ModelComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
+	class ModelComponent : public ecss::ComponentInterface {
 	public:
 		ModelComponent(ecss::SectorId id) : ComponentInterface(id) {};
 		void init(AssetsModule::Model* model) {
@@ -71,17 +69,14 @@ namespace SFE::ComponentsModule {
 		const AssetsModule::Model::LOD& getModelLowestDetails() const;
 
 		void setModel(std::vector<AssetsModule::Model::LOD>* data);
+		void addMeshData(std::vector<AssetsModule::Model::LOD>* meshData);
 		LODData mLOD;
 
-		void serialize(Json::Value& data) override;
-		void deserialize(const Json::Value& data) override;
 		std::string mPath = "";
 
 		AssetsModule::Armature armature;
 		std::vector<SFE::Math::Mat4> boneMatrices;
 	private:
-		void addMeshData(std::vector<AssetsModule::Model::LOD>* meshData);
-
 		std::vector<AssetsModule::Model::LOD>* mModel = nullptr;
 	};
 
@@ -98,5 +93,8 @@ namespace SFE::ComponentsModule {
 		bool mLoop = true;
 	};
 }
+
+template<> struct ecss::AllowNonTrivial<SFE::ComponentsModule::AABBComponent> : std::true_type {};
+template<> struct ecss::AllowNonTrivial<SFE::ComponentsModule::ModelComponent> : std::true_type {};
 
 using SFE::ComponentsModule::ModelComponent;

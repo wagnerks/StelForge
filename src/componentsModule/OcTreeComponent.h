@@ -12,3 +12,6 @@ public:
 	bool inOctree = false;
 	std::vector<ParentTree> parents;
 };
+
+#include "ecss/Types.h"
+template<> struct ecss::AllowNonTrivial<OcTreeComponent> : std::true_type {};

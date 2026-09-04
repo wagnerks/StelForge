@@ -21,7 +21,7 @@ using namespace SFE::Render;
 using namespace SFE::Render::RenderPasses;
 
 namespace {
-	constexpr int kMaxBones = 100;
+	constexpr int kMaxBones = SFE::ComponentsModule::kMaxArmatureBones;
 
 	struct GpuBoneDesc {
 		SFE::Math::Mat4 offset;
@@ -66,20 +66,20 @@ namespace {
 		return rhi->createBuffer(desc, data);
 	}
 
-	void collectOrder(const std::vector<AssetsModule::Bone>& bones, uint32_t idx, std::vector<int>& order) {
-		if (idx >= bones.size()) {
+	void collectOrder(const std::vector<AssetsModule::Bone>& bones, uint32_t idx, std::vector<int>& order, std::vector<char>& seen) {
+		if (idx >= bones.size() || seen[idx]) {
 			return;
 		}
+		seen[idx] = 1;
 		order.push_back(static_cast<int>(idx));
 		for (const auto child : bones[idx].childrenBones) {
-			collectOrder(bones, child, order);
+			collectOrder(bones, child, order, seen);
 		}
 	}
 }
 
 void AnimationComputePass::init(SystemsModule::RenderData&) {
 	auto* rhi = Engine::instance()->rhi();
-	const bool vulkanGeometry = rhi->supportsGeometryPass() && !rhi->supportsFullPipeline();
 
 	DescriptorSetLayoutDesc layout;
 	layout.bindings = {
@@ -94,19 +94,8 @@ void AnimationComputePass::init(SystemsModule::RenderData&) {
 	mSetLayout = rhi->createDescriptorSetLayout(layout);
 	mSet = rhi->allocateDescriptorSet(mSetLayout);
 
-	ShaderModuleHandle cs{};
-	if (vulkanGeometry) {
-		cs = rhi->createShaderModule({ ShaderStage::Compute, "animateBones.cs", {} });
-		mPipeline = rhi->createComputePipeline({ cs, { mSetLayout } });
-	}
-	else {
-		cs = rhi->createShaderModule({
-			ShaderStage::Compute,
-			"animate bones cs",
-			ShaderModule::ShaderBase::loadShaderCode("shaders/animateBones.cs")
-		});
-		mPipeline = rhi->createComputePipeline({ cs });
-	}
+	ShaderModuleHandle cs = rhi->loadShader(ShaderStage::Compute, "shaders/animateBones.cs");
+	mPipeline = rhi->createComputePipeline({ cs, { mSetLayout } });
 
 	BufferDesc instDesc;
 	instDesc.size = sizeof(AnimPush) * 4096;
@@ -130,7 +119,18 @@ const AnimationComputePass::GpuClip* AnimationComputePass::packClip(const Assets
 	std::vector<GpuQuatKey> rotKeys;
 	std::vector<GpuVec3Key> sclKeys;
 	std::vector<int> order;
-	collectOrder(armature.bones, 0, order);
+	std::vector<char> seen(armature.bones.size(), 0);
+	for (size_t i = 0; i < armature.bones.size(); ++i) {
+		const auto parent = armature.bones[i].parentBoneIdx;
+		if (parent == std::numeric_limits<uint32_t>::max() || parent >= armature.bones.size()) {
+			collectOrder(armature.bones, static_cast<uint32_t>(i), order, seen);
+		}
+	}
+	for (size_t i = 0; i < armature.bones.size(); ++i) {
+		if (!seen[i]) {
+			collectOrder(armature.bones, static_cast<uint32_t>(i), order, seen);
+		}
+	}
 
 	for (size_t i = 0; i < armature.bones.size(); ++i) {
 		const auto& bone = armature.bones[i];
@@ -220,7 +220,11 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		}
 
 		auto* anim = animationComp->mCurrentAnimation;
-		if (animationComp->mPlay || animationComp->step) {
+		// The animation clock lives in this pass rather than in SkeletalAnimationSystem, so a
+		// capture has to stop it here as well -- silencing the tick systems alone still left the
+		// pose advancing, which made frame N a different scene and every measurement depend on
+		// which frame it was taken at.
+		if ((animationComp->mPlay || animationComp->step) && !Engine::instance()->capturingFrame()) {
 			animationComp->step = false;
 			float tps = anim->getTicksPerSecond();
 			if (tps <= 0.f) {

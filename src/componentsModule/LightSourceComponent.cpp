@@ -75,10 +75,3 @@ int LightSourceComponent::getSamples() const {
 	return mSamples;
 }
 
-void LightSourceComponent::serialize(Json::Value& data) {
-
-}
-
-void LightSourceComponent::deserialize(const Json::Value& data) {
-
-}

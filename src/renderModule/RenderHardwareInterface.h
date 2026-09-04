@@ -1,5 +1,9 @@
 ﻿#pragma once
+#include <cstdint>
+#include <functional>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "mathModule/Forward.h"
@@ -170,7 +174,7 @@ namespace SFE::Render
 
 	enum class AttachmentStoreOp : uint8_t { Store, DontCare };
 
-	enum class PrimitiveTopology : uint8_t { Triangles, TriangleStrip, Lines, Points, LineLoop };
+	enum class PrimitiveTopology : uint8_t { Triangles, TriangleStrip, Lines, Points, LineLoop, Patches };
 
 	enum class CullMode : uint8_t { None, Front, Back };
 
@@ -255,6 +259,7 @@ namespace SFE::Render
 		TextureDimension dimension = TextureDimension::Tex2D;
 		TextureFormat    format = TextureFormat::RGBA8;
 		TextureUsage     usage = TextureUsage::Sampled;
+		uint32_t         sampleCount = 1; // 1, 2, 4, or 8
 	};
 
 	struct SamplerDesc {
@@ -276,6 +281,7 @@ namespace SFE::Render
 	struct FramebufferDesc {
 		uint32_t width = 0;
 		uint32_t height = 0;
+		uint32_t layers = 1;
 		RenderPassHandle renderPass = {}; // Vulkan: compatible render pass
 
 		std::vector<FramebufferAttachmentDesc> colorAttachments;
@@ -329,6 +335,7 @@ namespace SFE::Render
 		RenderPassColorAttachmentDesc	colorAttachments[8];
 		bool							hasDepthStencil = false;
 		RenderPassDepthAttachmentDesc	depthAttachment;
+		uint32_t						sampleCount = 1;
 	};
 
 	struct RenderPassBeginInfo {
@@ -387,6 +394,8 @@ namespace SFE::Render
 		std::vector<DescriptorSetLayoutHandle> descriptorSetLayouts; // Vulkan pipeline layout
 		uint32_t				pushConstantSize = 0;
 		ShaderStage				pushConstantStages = ShaderStage::Vertex | ShaderStage::Fragment;
+		uint32_t				sampleCount = 1;
+		uint32_t				patchControlPoints = 3;
 	};
 
 	struct DescriptorBufferInfo {
@@ -432,12 +441,18 @@ namespace SFE::Render
 
 		virtual void init() = 0;
 		virtual void cleanup() = 0;
+		virtual void waitIdle() {}
 
 		virtual GraphicsBackend backend() const { return GraphicsBackend::OpenGL; }
 		virtual bool supportsFullPipeline() const { return true; }
 		virtual bool supportsGpuResources() const { return true; }
 		virtual bool supportsGeometryPass() const { return supportsFullPipeline(); }
+		// When supportsFullPipeline() is false, still allow a subset of RENDER_PASSES by name.
+		virtual bool supportsRenderPass(const char* name) const;
 		virtual void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) { (void)texture; (void)sampler; }
+		virtual void beginFrame() {}
+		virtual uint32_t frameInFlight() const { return 0; }
+		virtual uint32_t framesInFlight() const { return 1; }
 
 		virtual PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) = 0;
 		virtual PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) = 0;
@@ -450,6 +465,8 @@ namespace SFE::Render
 
 		virtual ShaderModuleHandle createShaderModule(const ShaderModuleDesc& desc) = 0;
 		virtual void destroyShaderModule(ShaderModuleHandle handle) = 0;
+		// Backend-agnostic: OpenGL loads GLSL from path; Vulkan loads shaders/vulkan/{basename}.spv
+		ShaderModuleHandle loadShader(ShaderStage stage, std::string_view path);
 
 		virtual FramebufferHandle createFramebuffer(const FramebufferDesc& desc) = 0;
 		virtual void destroyFramebuffer(FramebufferHandle framebuffer) = 0;
@@ -489,9 +506,27 @@ namespace SFE::Render
 
 		virtual void cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstVertex = 0, uint32_t firstInstance = 0) = 0;
 		virtual void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t  vertexOffset = 0, uint32_t firstInstance = 0) = 0;
+		virtual void cmdDrawIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset = 0, uint32_t drawCount = 1, uint32_t stride = 16) = 0;
+		virtual void cmdDrawIndexedIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset = 0, uint32_t drawCount = 1, uint32_t stride = 20) = 0;
 		virtual void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY = 1, uint32_t groupCountZ = 1) = 0;
 
 		virtual void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask = BlitMask::Color, BlitFilter filter = BlitFilter::Nearest) = 0;
+		// Scissor is top-left origin (Vulkan / ImGui). OpenGL flips Y using the current pass height.
+		virtual void cmdSetScissor(CommandListHandle cmd, int32_t x, int32_t y, uint32_t width, uint32_t height) {
+			(void)cmd;
+			(void)x;
+			(void)y;
+			(void)width;
+			(void)height;
+		}
+		virtual void cmdSetPolygonFillMode(CommandListHandle cmd, PolygonFillMode mode) {
+			(void)cmd;
+			(void)mode;
+		}
+		virtual void cmdHostCallback(CommandListHandle cmd, std::function<void()> callback) {
+			(void)cmd;
+			(void)callback;
+		}
 		virtual void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) = 0;
 		virtual void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) = 0;
 
@@ -502,8 +537,19 @@ namespace SFE::Render
 		virtual uint64_t editorViewNativeId() { return 0; }
 		virtual bool capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) { (void)rgba; (void)width; (void)height; return false; }
 
+		// Exact readback of one colour texture -- full resolution, no rescale, converted to RGBA8
+		// with rows top-down on every backend, so two backends' dumps compare pixel for pixel.
+		// capturePublishedFrame() is the editor streaming path and caps width at 1280 on OpenGL,
+		// so it cannot serve this purpose.
+		// `layer` picks the slice of an array texture (shadow cascades); ignored for plain 2D.
+		virtual bool readbackTexture(TextureHandle tex, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer = 0) { (void)tex; (void)rgba; (void)width; (void)height; (void)layer; return false; }
+		// The texture present() blits to the screen.
+		virtual TextureHandle presentSourceTexture() const { return {}; }
+		bool readbackPresentSource(std::vector<uint8_t>& rgba, int& width, int& height) { return readbackTexture(presentSourceTexture(), rgba, width, height); }
+
 		virtual void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) = 0;
 		virtual void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) = 0;
+		virtual void updateCubeMip(TextureHandle tex, uint32_t mip, const void* packed6Faces, size_t faceBytes);
 		virtual uint64_t getNativeTextureId(TextureHandle tex) const = 0;
 
 		// helpers

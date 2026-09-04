@@ -1,8 +1,9 @@
-﻿#pragma once
+#pragma once
 #include "systemsModule/SystemBase.h"
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "containersModule/OcTree.h"
 #include <ecss/Ranges.h>
+#include <vector>
 
 namespace SFE::SystemsModule {
 	class OcTreeSystem : public ecss::System, public ThreadSynchronizer {
@@ -21,22 +22,29 @@ namespace SFE::SystemsModule {
 		void forEachOctreePosInAABB(const FrustumModule::AABB& aabb, std::function<void(const Math::Vec3&)> func, bool onlyExisted = false);
 
 		SysOcTree* getOctree(const Math::Vec3& octree) {
-			auto treeIt = mOctrees.find(octree);
-			if (treeIt != mOctrees.end()) {
-				return &treeIt->second;
-			}
-
-			return nullptr;
+			auto mapLock = readLock();
+			return findOctree(octree);
 		}
 
-		bool empty() const { return mOctrees.empty(); }
+		bool empty() {
+			auto mapLock = readLock();
+			return mOctrees.empty();
+		}
 
 		template<class Func>
 		void forEachObjectInFrustum(const FrustumModule::Frustum& frustum, Func&& func) {
-			for (auto& [treePos, tree] : mOctrees) {
-				(void)treePos;
-				auto lock = tree.readLock();
-				tree.forEachObjectInsideFrustum(frustum, func);
+			std::vector<SysOcTree*> trees;
+			{
+				auto mapLock = readLock();
+				trees.reserve(mOctrees.size());
+				for (auto& [treePos, tree] : mOctrees) {
+					(void)treePos;
+					trees.push_back(&tree);
+				}
+			}
+			for (auto* tree : trees) {
+				auto lock = tree->readLock();
+				tree->forEachObjectInsideFrustum(frustum, func);
 			}
 		}
 
@@ -48,6 +56,15 @@ namespace SFE::SystemsModule {
 		float curMaxX, curMaxY, curMaxZ;
 		
 		void deleteOctree(const Math::Vec3& octree);
+
+		SysOcTree* findOctree(const Math::Vec3& octree) {
+			auto treeIt = mOctrees.find(octree);
+			if (treeIt != mOctrees.end()) {
+				return &treeIt->second;
+			}
+			return nullptr;
+		}
+
 	public:
 
 		std::map<Math::Vec3, SysOcTree> mOctrees;

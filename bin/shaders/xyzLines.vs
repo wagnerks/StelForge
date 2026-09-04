@@ -1,9 +1,10 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
 layout (location = 0) in vec3 aPos;
 
-out vec3 texPos;
+layout(location = 0) out vec3 texPos;
 
-layout(std140, binding = 15) uniform PushConstants {
+SFE_PUSH_BLOCK Push {
     vec4 color;
     mat4 PVM;
 } pc;

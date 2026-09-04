@@ -8,7 +8,7 @@
 #include "backends/imgui_impl_opengl3.h"
 
 namespace SFE::Debug {
-	void ImGuiDecorator::init(GLFWwindow* window) {
+	void ImGuiDecorator::init(GLFWwindow* window, bool viewports) {
 		if (context || !window) {
 			return;
 		}
@@ -16,7 +16,9 @@ namespace SFE::Debug {
 		IMGUI_CHECKVERSION();
 		context = ImGui::CreateContext();
 
-		ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable | ImGuiConfigFlags_DockingEnable;
+		if (viewports) {
+			ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable | ImGuiConfigFlags_DockingEnable;
+		}
 
 		setStyle();
 
@@ -24,7 +26,7 @@ namespace SFE::Debug {
 		ImGui_ImplOpenGL3_Init("#version 330");
 	}
 
-	void ImGuiDecorator::setStyle() {
+	void applyDefaultImGuiStyle() {
 		ImGuiIO& io = ImGui::GetIO();
 
 		ImGui::StyleColorsDark();
@@ -103,6 +105,10 @@ namespace SFE::Debug {
 #endif
 	}
 
+	void ImGuiDecorator::setStyle() {
+		applyDefaultImGuiStyle();
+	}
+
 	void ImGuiDecorator::preDraw() {
 		if (!context) {
 			return;
@@ -149,9 +155,16 @@ namespace SFE::Debug {
 			return;
 		}
 
+		ImGuiContext* restore = ImGui::GetCurrentContext();
+		if (restore == context) {
+			restore = nullptr;
+		}
+		ImGui::SetCurrentContext(context);
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
-		ImGui::DestroyContext();
+		ImGui::DestroyContext(context);
 		context = nullptr;
+		previous = nullptr;
+		ImGui::SetCurrentContext(restore);
 	}
 }

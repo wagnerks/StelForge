@@ -25,29 +25,19 @@ void SSRPass::init(SystemsModule::RenderData& renderDataHandle) {
 	samplerDesc.magFilter = FilterMode::Linear;
 	mSampler = rhi->createSampler(samplerDesc);
 
-	FramebufferDesc fbDesc;
-	fbDesc.width = w;
-	fbDesc.height = h;
-	fbDesc.colorAttachments = { { mColor } };
-	mFbo = rhi->createFramebuffer(fbDesc);
-
-	GraphicsPipelineDesc pipelineDesc;
-	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
-	pipelineDesc.layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
-	pipelineDesc.layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
-	pipelineDesc.topology = PrimitiveTopology::Triangles;
-	pipelineDesc.cullMode = CullMode::None;
-	pipelineDesc.depthStencilState.depthTest = false;
-	pipelineDesc.depthStencilState.depthWrite = false;
-	pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "ssr vs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.vs") });
-	pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "ssr fs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/ssr.fs") });
-	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
 	RenderPassDesc rpDesc;
 	rpDesc.colorAttachmentCount = 1;
 	rpDesc.colorAttachments[0].loadOp = AttachmentLoadOp::Clear;
 	rpDesc.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
+	rpDesc.colorAttachments[0].format = TextureFormat::RGBA16F;
 	mRenderPass = rhi->createRenderPass(rpDesc);
+
+	FramebufferDesc fbDesc;
+	fbDesc.width = w;
+	fbDesc.height = h;
+	fbDesc.renderPass = mRenderPass;
+	fbDesc.colorAttachments = { { mColor } };
+	mFbo = rhi->createFramebuffer(fbDesc);
 
 	BufferDesc uboDesc;
 	uboDesc.usage = BufferUsage::Uniform;
@@ -67,6 +57,20 @@ void SSRPass::init(SystemsModule::RenderData& renderDataHandle) {
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
 
+	GraphicsPipelineDesc pipelineDesc;
+	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), Render::VertexInputRate::PerVertex);
+	pipelineDesc.layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
+	pipelineDesc.layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
+	pipelineDesc.topology = PrimitiveTopology::Triangles;
+	pipelineDesc.cullMode = CullMode::None;
+	pipelineDesc.depthStencilState.depthTest = false;
+	pipelineDesc.depthStencilState.depthWrite = false;
+	pipelineDesc.renderPass = mRenderPass;
+	pipelineDesc.descriptorSetLayouts = { mLayout };
+	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/deferred_shading.vs");
+	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/ssr.fs");
+	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
+
 	std::vector<WriteDescriptor> initWrites;
 	{
 		WriteDescriptor w{};
@@ -77,8 +81,6 @@ void SSRPass::init(SystemsModule::RenderData& renderDataHandle) {
 		initWrites.push_back(std::move(w));
 	}
 	rhi->updateDescriptorSets(initWrites);
-
-	renderDataHandle.frame.set(FrameId::Final, { .texture = mColor, .sampler = mSampler, .framebuffer = mFbo });
 }
 
 void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -86,11 +88,14 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 
 	auto* rhi = Engine::instance()->rhi();
 	auto& frame = renderDataHandle.frame;
-	const auto lit = frame.texture(FrameId::Lit);
+	auto src = frame.texture(FrameId::Final);
+	if (!src) {
+		src = frame.texture(FrameId::Lit);
+	}
 	if (!renderDataHandle.graphics.ssr) {
 		return;
 	}
-	if (!lit) {
+	if (!src || !mPipeline || !mFbo) {
 		return;
 	}
 
@@ -135,7 +140,7 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		w.set = mSet;
 		w.binding = 4;
 		w.type = DescriptorType::CombinedImageSampler;
-		w.images.push_back({ lit, mSampler });
+		w.images.push_back({ src, mSampler });
 		writes.push_back(std::move(w));
 	}
 	{

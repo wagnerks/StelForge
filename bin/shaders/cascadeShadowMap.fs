@@ -1,7 +1,8 @@
-#version 430 core
-
-layout(std140, binding = 15) uniform PushConstants {
+#version 450 core
+#include "sfe.glsl"
+SFE_PUSH_BLOCK PushConstants {
     float casterOpacity;
+    int cascadeLayer;
 } params;
 
 float ign(vec2 p) {
@@ -9,8 +10,6 @@ float ign(vec2 p) {
 }
 
 void main() {
-    // Stochastic transparency for shadow maps: PCF averages leftover
-    // depth samples into a soft shadow proportional to opacity.
     float opacity = clamp(params.casterOpacity, 0.0, 1.0);
     if (opacity < 0.999 && ign(gl_FragCoord.xy) > opacity) {
         discard;

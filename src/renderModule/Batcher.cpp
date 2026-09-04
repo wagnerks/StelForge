@@ -7,7 +7,6 @@
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
 #include "systemsModule/systems/RenderSystem.h"
-#include "renderModule/GraphicsBackend.h"
 #include "core/ECSHandler.h"
 
 void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
@@ -19,11 +18,16 @@ void DrawObject::sortTransformAccordingToView(const SFE::Math::Vec3& viewPos) {
 Batcher::Batcher()
 {
 	mInstanceCapacity = 131072;
+	auto* rhi = SFE::Engine::instance()->rhi();
+	mGpuFrames = rhi ? (std::max)(1u, (std::min)(2u, rhi->framesInFlight())) : 1u;
 	SFE::Render::BufferDesc desc;
 	desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
 	desc.usage = SFE::Render::BufferUsage::Storage;
 	desc.cpuAccess = SFE::Render::CpuAccess::Write;
-	batcherBuffer = SFE::Engine::instance()->rhi()->createBuffer(desc);
+	for (uint32_t i = 0; i < mGpuFrames; ++i) {
+		mBatcherBuffer[i] = rhi->createBuffer(desc);
+	}
+	batcherBuffer = mBatcherBuffer[0];
 }
 
 namespace {
@@ -41,6 +45,8 @@ namespace {
 		mix(material.transparent ? 1ull : 0ull);
 		mix(static_cast<uint64_t>(material.opacity * 4096.f));
 		mix(static_cast<uint64_t>(material.ior * 4096.f));
+		mix(static_cast<uint64_t>(material.roughness * 4096.f));
+		mix(static_cast<uint64_t>(material.metallic * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.x * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.y * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.z * 4096.f));
@@ -104,7 +110,10 @@ DrawObject& Batcher::batchFor(const SFE::RenderMeshData& meshData, const SFE::Co
 		obj.fragmentShader = material.fragmentShader.empty() ? SFE::ComponentsModule::DefaultGBufferFS : material.fragmentShader;
 		obj.opacity = material.opacity;
 		obj.ior = material.ior;
+		obj.roughness = material.roughness;
+		obj.metallic = material.metallic;
 		obj.tint = material.tint;
+		obj.materialHash = key.materialHash;
 		obj.entities.reserve(256);
 		obj.matrices.reserve(64);
 		mLastKey = key;
@@ -132,7 +141,10 @@ DrawObject& Batcher::batchForGlass(const SFE::RenderMeshData& meshData, const SF
 		obj.fragmentShader = material.fragmentShader.empty() ? SFE::ComponentsModule::DefaultGBufferFS : material.fragmentShader;
 		obj.opacity = material.opacity;
 		obj.ior = material.ior;
+		obj.roughness = material.roughness;
+		obj.metallic = material.metallic;
 		obj.tint = material.tint;
+		obj.materialHash = key.materialHash;
 		obj.entities.reserve(256);
 		obj.matrices.reserve(64);
 		mLastKey = key;
@@ -188,6 +200,23 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 	}
 
 	auto rhi = SFE::Engine::instance()->rhi();
+	const uint32_t slot = rhi->frameInFlight() % mGpuFrames;
+	batcherBuffer = mBatcherBuffer[slot];
+
+	if (entityCount > mInstanceCapacity) {
+		mInstanceCapacity = entityCount + entityCount / 2 + 1024;
+		SFE::Render::BufferDesc desc;
+		desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
+		desc.usage = SFE::Render::BufferUsage::Storage;
+		desc.cpuAccess = SFE::Render::CpuAccess::Write;
+		for (uint32_t i = 0; i < mGpuFrames; ++i) {
+			mBatcherBuffer[i] = rhi->createBuffer(desc);
+		}
+		batcherBuffer = mBatcherBuffer[slot];
+	}
+
+	auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
+	const auto frameSet = renderSystem ? renderSystem->frameSetHandle() : SFE::Render::DescriptorSetHandle{};
 
 	if (bindResources) {
 		auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
@@ -203,93 +232,160 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 			mDefaultGray = mDefaultBlack;
 		}
 
-		std::vector<SFE::Render::WriteDescriptor> writes {
-		{
-			.set = setHandle,
-			.binding = SFE::DIFFUSE,
-			.type = SFE::Render::DescriptorType::CombinedImageSampler,
-			.images{ {defaultTex->texture, defaultTex->sampler} }
-		},
-		{
-			.set = setHandle,
-			.binding = SFE::NORMALS,
-			.type = SFE::Render::DescriptorType::CombinedImageSampler,
-			.images{ {defaultNormal->texture, defaultNormal->sampler} }
-		},
-		{
-			.set = setHandle,
-			.binding = SFE::SPECULAR,
-			.type = SFE::Render::DescriptorType::CombinedImageSampler,
-			.images{ {mDefaultBlack, defaultTex->sampler} }
-		},
-		{
-			.set = setHandle,
-			.binding = SFE::ROUGHNESS,
-			.type = SFE::Render::DescriptorType::CombinedImageSampler,
-			.images{ {mDefaultGray, defaultTex->sampler} }
-		},
-		{
-			.set = setHandle,
-			.binding = SFE::METALLIC,
-			.type = SFE::Render::DescriptorType::CombinedImageSampler,
-			.images{ {mDefaultBlack, defaultTex->sampler} }
-		},
-		};
-
-		for (auto i = 0; i < objs.materialData.materialsCount; i++) {
-			const auto& mat = objs.materialData.material[i];
-			if (!mat.texture) {
-				continue;
+		SFE::Render::DescriptorSetHandle materialSet = setHandle;
+		if (mMaterialLayout) {
+			auto& cached = mCachedMaterialSets[objs.materialHash];
+			if (!cached) {
+				cached = rhi->allocateDescriptorSet(mMaterialLayout);
+				std::vector<SFE::Render::WriteDescriptor> writes {
+				{
+					.set = cached,
+					.binding = SFE::DIFFUSE,
+					.type = SFE::Render::DescriptorType::CombinedImageSampler,
+					.images{ {defaultTex->texture, defaultTex->sampler} }
+				},
+				{
+					.set = cached,
+					.binding = SFE::NORMALS,
+					.type = SFE::Render::DescriptorType::CombinedImageSampler,
+					.images{ {defaultNormal->texture, defaultNormal->sampler} }
+				},
+				{
+					.set = cached,
+					.binding = SFE::SPECULAR,
+					.type = SFE::Render::DescriptorType::CombinedImageSampler,
+					.images{ {mDefaultBlack, defaultTex->sampler} }
+				},
+				{
+					.set = cached,
+					.binding = SFE::ROUGHNESS,
+					.type = SFE::Render::DescriptorType::CombinedImageSampler,
+					.images{ {mDefaultGray, defaultTex->sampler} }
+				},
+				{
+					.set = cached,
+					.binding = SFE::METALLIC,
+					.type = SFE::Render::DescriptorType::CombinedImageSampler,
+					.images{ {mDefaultBlack, defaultTex->sampler} }
+				},
+				{
+					.set = cached,
+					.binding = SFE::SUBSURFACE,
+					.type = SFE::Render::DescriptorType::CombinedImageSampler,
+					.images{ {mDefaultBlack, defaultTex->sampler} }
+				},
+				};
+				for (auto i = 0; i < objs.materialData.materialsCount; i++) {
+					const auto& mat = objs.materialData.material[i];
+					if (!mat.texture) {
+						continue;
+					}
+					writes.push_back(SFE::Render::WriteDescriptor{
+						.set = cached,
+						.binding = static_cast<uint32_t>(mat.slot),
+						.type = SFE::Render::DescriptorType::CombinedImageSampler,
+						.images{ {mat.texture, defaultTex->sampler} }
+						});
+				}
+				rhi->updateDescriptorSets(writes);
 			}
-			writes.push_back(SFE::Render::WriteDescriptor{
+			materialSet = cached;
+		}
+		else if (setHandle) {
+			std::vector<SFE::Render::WriteDescriptor> writes {
+			{
 				.set = setHandle,
-				.binding = static_cast<uint32_t>(mat.slot),
+				.binding = SFE::DIFFUSE,
 				.type = SFE::Render::DescriptorType::CombinedImageSampler,
-				.images{ {mat.texture, defaultTex->sampler} }
-				});
+				.images{ {defaultTex->texture, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::NORMALS,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {defaultNormal->texture, defaultNormal->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::SPECULAR,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {mDefaultBlack, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::ROUGHNESS,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {mDefaultGray, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::METALLIC,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {mDefaultBlack, defaultTex->sampler} }
+			},
+			{
+				.set = setHandle,
+				.binding = SFE::SUBSURFACE,
+				.type = SFE::Render::DescriptorType::CombinedImageSampler,
+				.images{ {mDefaultBlack, defaultTex->sampler} }
+			},
+			};
+			for (auto i = 0; i < objs.materialData.materialsCount; i++) {
+				const auto& mat = objs.materialData.material[i];
+				if (!mat.texture) {
+					continue;
+				}
+				writes.push_back(SFE::Render::WriteDescriptor{
+					.set = setHandle,
+					.binding = static_cast<uint32_t>(mat.slot),
+					.type = SFE::Render::DescriptorType::CombinedImageSampler,
+					.images{ {mat.texture, defaultTex->sampler} }
+					});
+			}
+			rhi->updateDescriptorSets(writes);
 		}
 
-		auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
-		const auto frameSet = renderSystem ? renderSystem->frameSetHandle() : SFE::Render::DescriptorSetHandle{};
-		if (frameSet) {
-			writes.push_back(SFE::Render::WriteDescriptor{
+		if (frameSet && batcherBuffer && mBoundFrameSsbo.id != batcherBuffer.id) {
+			rhi->updateDescriptorSets({ {
 				.set = frameSet,
 				.binding = 3,
 				.type = SFE::Render::DescriptorType::StorageBuffer,
 				.buffers{ {batcherBuffer} }
-			});
+			} });
+			mBoundFrameSsbo = batcherBuffer;
 		}
-
-		rhi->updateDescriptorSets(writes);
-
-		SFE::Render::PipelineHandle pipeline{};
-		if (getPipeline) {
-			pipeline = getPipeline(objs.vertexShader, objs.fragmentShader);
-			if (pipeline) {
-				rhi->cmdBindPipeline(cmd, pipeline);
+		setHandle = materialSet;
+	}
+	else if (setHandle && batcherBuffer && (mBoundPassSsboSet.id != setHandle.id || mBoundPassSsbo.id != batcherBuffer.id)) {
+		rhi->updateDescriptorSets({
+			{
+				.set = setHandle,
+				.binding = 3,
+				.type = SFE::Render::DescriptorType::StorageBuffer,
+				.buffers{ {batcherBuffer} }
 			}
-		}
-		if (beforeDraw) {
-			beforeDraw(cmd, objs);
-		}
-
-		const bool vulkanGeometry = rhi->supportsGeometryPass() && !rhi->supportsFullPipeline();
-		if (vulkanGeometry && pipeline && frameSet && setHandle) {
-			const SFE::Render::DescriptorSetHandle sets[] = { frameSet, setHandle };
-			rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
-		}
-		else {
-			rhi->cmdBindDescriptorSets(cmd, {}, 0, &setHandle, 1);
-		}
+		});
+		mBoundPassSsboSet = setHandle;
+		mBoundPassSsbo = batcherBuffer;
 	}
 
-	if (entityCount > mInstanceCapacity) {
-		mInstanceCapacity = entityCount + entityCount / 2 + 1024;
-		SFE::Render::BufferDesc desc;
-		desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
-		desc.usage = SFE::Render::BufferUsage::Storage;
-		desc.cpuAccess = SFE::Render::CpuAccess::Write;
-		batcherBuffer = rhi->createBuffer(desc);
+	SFE::Render::PipelineHandle pipeline{};
+	if (getPipeline) {
+		pipeline = getPipeline(objs.vertexShader, objs.fragmentShader);
+		if (pipeline) {
+			rhi->cmdBindPipeline(cmd, pipeline);
+		}
+	}
+	if (beforeDraw) {
+		beforeDraw(cmd, objs);
+	}
+
+	if (bindResources && pipeline && frameSet && setHandle) {
+		const SFE::Render::DescriptorSetHandle sets[] = { frameSet, setHandle };
+		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+	}
+	else if (setHandle) {
+		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &setHandle, 1);
 	}
 
 	rhi->cmdUpdateBuffer(cmd, batcherBuffer, 0, sizeof(ecss::EntityId) * entityCount, entityIds);
@@ -313,12 +409,12 @@ void Batcher::flushEntity(SFE::Render::CommandListHandle cmd, SFE::Render::Descr
 	flushEntitiesInternal(cmd, setHandle, obj, &entity, 1, getPipeline, beforeDraw, bindResources);
 }
 
-void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw, const std::vector<DrawObject*>* ordered) {
+void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw, const std::vector<DrawObject*>* ordered, bool bindResources) {
 	FUNCTION_BENCHMARK_NAMED(Batcher_flushAll);
 	if (ordered) {
 		for (DrawObject* objs : *ordered) {
 			if (objs && !objs->entities.empty()) {
-				flushEntitiesInternal(cmd, setHandle, *objs, objs->entities.data(), objs->entities.size(), getPipeline, beforeDraw);
+				flushEntitiesInternal(cmd, setHandle, *objs, objs->entities.data(), objs->entities.size(), getPipeline, beforeDraw, bindResources);
 			}
 		}
 		return;
@@ -326,7 +422,7 @@ void Batcher::flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::Descript
 	for (auto& drawObjects : drawList) {
 		auto& objs = drawObjects.second;
 		if (!objs.entities.empty()) {
-			flushEntitiesInternal(cmd, setHandle, objs, objs.entities.data(), objs.entities.size(), getPipeline, beforeDraw);
+			flushEntitiesInternal(cmd, setHandle, objs, objs.entities.data(), objs.entities.size(), getPipeline, beforeDraw, bindResources);
 		}
 	}
 }

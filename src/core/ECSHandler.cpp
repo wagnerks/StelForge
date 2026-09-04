@@ -980,13 +980,19 @@ void ECSHandler::initSystems() {
 	//mDrawRegistry[1].registerArray<SFE::ComponentsModule::TransformMatComp, MeshComponent, SFE::ComponentsModule::ArmatureBonesComponent>();
 
 	mSystemManager.createSystem<SFE::SystemsModule::LODSystem>();
-
+	SFE::Engine::reproTrace("init Transform");
 	mSystemManager.createSystem<SFE::SystemsModule::TransformSystem>();
+	SFE::Engine::reproTrace("init OcTree");
 	mSystemManager.createSystem<SFE::SystemsModule::OcTreeSystem>();
+	SFE::Engine::reproTrace("init AABB");
 	mSystemManager.createSystem<SFE::SystemsModule::AABBSystem>();
+	SFE::Engine::reproTrace("init Camera");
 	mSystemManager.createSystem<SFE::SystemsModule::CameraSystem>();
+	SFE::Engine::reproTrace("init Chunks");
 	mSystemManager.createSystem<SFE::SystemsModule::ChunksSystem>();
+	SFE::Engine::reproTrace("init Render");
 	mSystemManager.createSystem<SFE::SystemsModule::RenderSystem>();
+	SFE::Engine::reproTrace("init Render ok");
 
 	//mSystemManager.createSystem<SFE::SystemsModule::Physics>();
 	//mSystemManager.createSystem<SFE::SystemsModule::ActionSystem>();
@@ -994,10 +1000,22 @@ void ECSHandler::initSystems() {
 	//mSystemManager.createSystem<SFE::SystemsModule::SkeletalAnimationSystem>();
 
 
-	mSystemManager.addTickSystems<SFE::SystemsModule::WorldTimeSystem>(1);
-	mSystemManager.addTickSystems<SFE::SystemsModule::SkeletalAnimationSystem>(24);
-	mSystemManager.addTickSystems<SFE::SystemsModule::CameraSystem>(256);
+	// Tick systems advance off their own wall-clock threads, so the pose at frame N depends on
+	// how fast that run happened to be. A capture has to be reproducible and comparable across
+	// backends, so it holds the scene still instead. AnimationComputePass runs its own clock and
+	// is frozen separately.
+	if (!SFE::Engine::instance()->capturingFrame()) {
+		mSystemManager.addTickSystems<SFE::SystemsModule::WorldTimeSystem>(1);
+		mSystemManager.addTickSystems<SFE::SystemsModule::SkeletalAnimationSystem>(24);
+	}
 
+	mSystemManager.addRootSystems<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::RenderSystem>();
 
-	mSystemManager.addRootSystems<SFE::SystemsModule::RenderSystem>();
+	if (auto chunks = mSystemManager.getSystem<SFE::SystemsModule::ChunksSystem>()) {
+		if (auto cam = mSystemManager.getSystem<SFE::SystemsModule::CameraSystem>()) {
+			SFE::Engine::reproTrace("init chunks load");
+			chunks->updateAsync({ cam->getCurrentCamera() });
+			SFE::Engine::reproTrace("init chunks load ok");
+		}
+	}
 }

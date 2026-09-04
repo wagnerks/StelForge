@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include <array>
+#include <initializer_list>
 #include <queue>
 #include <unordered_map>
+#include <vector>
 
 #include "containersModule/Singleton.h"
 #include "ecss/Types.h"
@@ -39,13 +41,18 @@ namespace SFE::SystemsModule {
 	};
 
 	struct TaskWorker {
-		TaskWorker(std::initializer_list<TaskType> types = {}) {
-			for (auto type : types) {
+		TaskWorker(std::initializer_list<TaskType> types = {}) : mTaskTypes(types) {}
+
+		void bindWorkers() {
+			for (auto type : mTaskTypes) {
 				TasksManager::instance()->addWorker(this, type);
 			}
 		}
 
 		virtual ~TaskWorker() = default;
 		virtual void notify(Task task) = 0;
+
+	private:
+		std::vector<TaskType> mTaskTypes;
 	};
 }

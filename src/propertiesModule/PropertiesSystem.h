@@ -3,6 +3,7 @@
 #include <vector>
 #include <json/value.h>
 
+#include "SceneComponents.h"
 #include "TypeName.h"
 #include "core/ECSHandler.h"
 #include "mathModule/Forward.h"
@@ -19,12 +20,15 @@ namespace SFE::PropertiesModule {
 		static Json::Value serializeEntity(const ecss::EntityId entity);
 
 		static void bindRenderable(ecss::EntityId entity);
-		static void spawnDefaultScene();
+		static ecss::EntityId spawnDefaultScene();
 		static void spawnSphereGrid(int chunkX, int chunkZ, float chunkSize, float spacing);
 		static Json::Value serializeEntities(const std::vector<ecss::EntityId>& entities);
 		static Json::Value serializeWorldSnapshot(const Json::Value& request);
 		static std::vector<ecss::EntityId> loadEntities(const Json::Value& root);
 
+		/// @brief Read one named component out of a "Properties" object, whatever phase it is
+		///        registered for. For callers holding a file of their own; a scene load goes
+		///        through ComponentRegistry.
 		template<class T>
 		static void deserializeProperty(const ecss::EntityId entity, const Json::Value& properties);
 
@@ -38,9 +42,9 @@ namespace SFE::PropertiesModule {
 		if (!ECSHandler::registry().contains(entity)) {
 			return;
 		}
-		auto name = TypeName<T>::name().data();
+		const auto name = TypeName<T>::name().data();
 		if (properties.isMember(name)) {
-			ECSHandler::registry().addComponent<T>(entity, entity)->deserialize(properties[name]);
+			ComponentSerializer<T>::load(entity, properties[name]);
 		}
 	}
 
@@ -50,10 +54,9 @@ namespace SFE::PropertiesModule {
 			return;
 		}
 
-		if (auto component = ECSHandler::registry().pinComponent<T>(entity)) {
-			component->serialize(properties[TypeName<T>::name().data()]);
+		if (auto component = ECSHandler::registry().pinComponent<const T>(entity)) {
+			ComponentSerializer<T>::save(*component, properties[TypeName<T>::name().data()]);
 		}
-
 	}
 
 	namespace JsonUtils {

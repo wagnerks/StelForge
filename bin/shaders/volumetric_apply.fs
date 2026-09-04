@@ -1,10 +1,10 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) out vec4 FragColor;
+layout(location = 0) in vec2 TexCoords;
 
-out vec4 FragColor;
-in vec2 TexCoords;
-
-layout(binding = 0) uniform sampler2D sceneHdr;
-layout(binding = 1) uniform sampler2D volumeLight;
+layout(SFE_SET(0, 0)) uniform sampler2D sceneHdr;
+layout(SFE_SET(0, 1)) uniform sampler2D volumeLight;
 
 void main() {
     vec3 scene = texture(sceneHdr, TexCoords).rgb;

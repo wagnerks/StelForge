@@ -14,9 +14,11 @@ namespace SFE {
 		}
 
 		inline static void terminate() {
-			auto instance = mInstance;
+			// Delete first so instance() still returns this during ~T. Nulling
+			// beforehand made Engine::instance() construct a second Engine (or
+			// return null rhi) from TextureHandler / pass teardown.
+			delete mInstance;
 			mInstance = nullptr;
-			delete instance;
 		}
 
 		inline static bool isAlive() {

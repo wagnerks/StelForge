@@ -23,22 +23,11 @@ void DoFPass::init(SystemsModule::RenderData&) {
 	nearS.magFilter = SFE::Render::FilterMode::Nearest;
 	mNearest = rhi->createSampler(nearS);
 
-	SFE::Render::GraphicsPipelineDesc pipelineDesc;
-	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(SFE::Vertex2D)), SFE::Render::VertexInputRate::PerVertex);
-	pipelineDesc.layout.attributes.emplace_back(0, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, position)), false);
-	pipelineDesc.layout.attributes.emplace_back(1, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, texCoords)), false);
-	pipelineDesc.topology = SFE::Render::PrimitiveTopology::Triangles;
-	pipelineDesc.cullMode = SFE::Render::CullMode::None;
-	pipelineDesc.depthStencilState.depthTest = false;
-	pipelineDesc.depthStencilState.depthWrite = false;
-	pipelineDesc.shaders.vertex = rhi->createShaderModule({ SFE::Render::ShaderStage::Vertex, "dof vs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.vs") });
-	pipelineDesc.shaders.fragment = rhi->createShaderModule({ SFE::Render::ShaderStage::Fragment, "dof fs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/dof.fs") });
-	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
 	SFE::Render::RenderPassDesc rpDesc;
 	rpDesc.colorAttachmentCount = 1;
 	rpDesc.colorAttachments[0].loadOp = SFE::Render::AttachmentLoadOp::Clear;
 	rpDesc.colorAttachments[0].storeOp = SFE::Render::AttachmentStoreOp::Store;
+	rpDesc.colorAttachments[0].format = SFE::Render::TextureFormat::RGBA16F;
 	mRenderPass = rhi->createRenderPass(rpDesc);
 
 	SFE::Render::TextureDesc colorDesc;
@@ -50,6 +39,7 @@ void DoFPass::init(SystemsModule::RenderData&) {
 	SFE::Render::FramebufferDesc fb;
 	fb.width = w;
 	fb.height = h;
+	fb.renderPass = mRenderPass;
 	fb.colorAttachments = { { mColor } };
 	mFbo = rhi->createFramebuffer(fb);
 
@@ -67,6 +57,20 @@ void DoFPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
+
+	SFE::Render::GraphicsPipelineDesc pipelineDesc;
+	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(SFE::Vertex2D)), SFE::Render::VertexInputRate::PerVertex);
+	pipelineDesc.layout.attributes.emplace_back(0, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, position)), false);
+	pipelineDesc.layout.attributes.emplace_back(1, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, texCoords)), false);
+	pipelineDesc.topology = SFE::Render::PrimitiveTopology::Triangles;
+	pipelineDesc.cullMode = SFE::Render::CullMode::None;
+	pipelineDesc.depthStencilState.depthTest = false;
+	pipelineDesc.depthStencilState.depthWrite = false;
+	pipelineDesc.renderPass = mRenderPass;
+	pipelineDesc.descriptorSetLayouts = { mLayout };
+	pipelineDesc.shaders.vertex = rhi->loadShader(SFE::Render::ShaderStage::Vertex, "shaders/deferred_shading.vs");
+	pipelineDesc.shaders.fragment = rhi->loadShader(SFE::Render::ShaderStage::Fragment, "shaders/dof.fs");
+	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
 }
 
 void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::CommandListHandle cmd) {

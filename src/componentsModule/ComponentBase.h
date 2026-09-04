@@ -3,11 +3,18 @@
 
 
 namespace ecss {
-	//todo components should be trivial if possible
+	/**
+	 * @brief Carries the id of the entity a component belongs to.
+	 *
+	 * Deliberately has no virtual destructor. Nothing in the engine ever holds or deletes a
+	 * component through a ComponentInterface*, so the vtable bought nothing -- and it cost
+	 * every derived component its triviality, which costs its whole array the memmove paths
+	 * in ecss (SectorLayoutMeta::initData). Keep it that way: a virtual function here is paid
+	 * for by every component that inherits it.
+	 */
 	class ComponentInterface {
 	public:
 		ComponentInterface(SectorId ownerId) : mOwnerId(ownerId) {};
-		virtual ~ComponentInterface() = default;
 
 		inline SectorId getEntityId() const { return mOwnerId; };
 		inline void setOwnerId(SectorId ownerId) { mOwnerId = ownerId; };

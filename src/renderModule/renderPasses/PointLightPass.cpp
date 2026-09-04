@@ -95,13 +95,22 @@ void PointLightPass::prepare() {
 	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
 	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mNextCameraPos]() mutable {
 		FUNCTION_BENCHMARK;
+		struct ReadyGuard {
+			RenderPassData* data = nullptr;
+			~ReadyGuard() { if (data) { data->markReady(); } }
+		} ready{ curPassData };
+
+		auto* renderSys = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : SystemsModule::RenderSystem::WorldReadGuard{};
+		if (renderSys && !worldLock) {
+			return;
+		}
 
 		curPassData->getBatcher().clear();
 
 		std::vector<Math::Mat4> matrices;
 		collectLights(camFrustum, camPos, matrices, nullptr);
 		if (matrices.empty()) {
-			curPassData->markReady();
 			return;
 		}
 
@@ -120,15 +129,15 @@ void PointLightPass::prepare() {
 		auto addMeshes = [&](auto&& viewObjs) {
 			auto& batcher = curPassData->getBatcher();
 			for (auto [ent, transform, meshComp, matComp] : viewObjs) {
-				if (!meshComp || (matComp && matComp->transparent)) {
+				if (!meshComp) {
 					continue;
 				}
-				for (const auto& mesh : meshComp->meshGraph) {
-					if (!mesh.value.vertexBuffer) {
-						continue;
+				meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
+					if (mat && mat->transparent) {
+						return;
 					}
-					batcher.addToDrawList(mesh.value, matComp, ent);
-				}
+					batcher.addToDrawList(mesh, mat, ent);
+				});
 			}
 		};
 
@@ -139,16 +148,18 @@ void PointLightPass::prepare() {
 		else {
 			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
 		}
-
-		curPassData->markReady();
 	});
 }
 
-void PointLightPass::init(SystemsModule::RenderData& renderDataHandle) {
-	if (mInited) {
+void PointLightPass::init(SystemsModule::RenderData&) {
+	mInited = true;
+}
+
+void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
+	if (mGpuReady) {
 		return;
 	}
-	mInited = true;
+	mGpuReady = true;
 
 	auto* rhi = Engine::instance()->rhi();
 
@@ -170,9 +181,18 @@ void PointLightPass::init(SystemsModule::RenderData& renderDataHandle) {
 	samplerDesc.compareOp = CompareOp::LessEqual;
 	mLightDepthMapsSampler = rhi->createSampler(samplerDesc);
 
+	RenderPassDesc rpDesc;
+	rpDesc.hasDepthStencil = true;
+	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
+	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+	rpDesc.depthAttachment.clearDepth = 1.f;
+	rpDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT32;
+	renderPass = rhi->createRenderPass(rpDesc);
+
 	FramebufferDesc fbDesc;
 	fbDesc.width = shadowResolution;
 	fbDesc.height = shadowResolution;
+	fbDesc.renderPass = renderPass;
 	FramebufferAttachmentDesc depthAtt;
 	depthAtt.texture = mLightDepthMaps;
 	depthAtt.mipLevel = 0;
@@ -187,30 +207,29 @@ void PointLightPass::init(SystemsModule::RenderData& renderDataHandle) {
 	bufDesc.debugName = "PointLightPass_MatricesUBO";
 	mMatricesUBO = rhi->createBuffer(bufDesc);
 
-	ShaderModuleDesc shaderVDesc;
-	shaderVDesc.stage = ShaderStage::Vertex;
-	shaderVDesc.name = "PointLightPass_Vertex";
-	shaderVDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/cascadeShadowMap.vs");
-
-	ShaderModuleDesc shaderGDesc;
-	shaderGDesc.stage = ShaderStage::Geometry;
-	shaderGDesc.name = "PointLightPass_Geometry";
-	shaderGDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/pointLightMap.gs");
-
-	ShaderModuleDesc shaderFDesc;
-	shaderFDesc.stage = ShaderStage::Fragment;
-	shaderFDesc.name = "PointLightPass_Fragment";
-	shaderFDesc.source = ShaderModule::ShaderBase::loadShaderCode("shaders/pointLightMap.fs");
+	Render::DescriptorSetLayoutDesc layoutDesc;
+	layoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
+	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	mSetLayout = rhi->createDescriptorSetLayout(layoutDesc);
+	mSet = rhi->allocateDescriptorSet(mSetLayout);
 
 	GraphicsPipelineDesc pipelineDesc;
 	pipelineDesc.depthStencilState.depthTest = true;
 	pipelineDesc.depthStencilState.depthWrite = true;
 	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
-	pipelineDesc.cullMode = CullMode::Front;
+	// Front-face culling stores the far side of thin casters (paws, tail) and
+	// lifts the contact shadow off the ground. Sample both faces; closest depth wins.
+	pipelineDesc.cullMode = CullMode::None;
 	pipelineDesc.frontFace = FrontFace::CounterClockWise;
-	pipelineDesc.shaders.vertex = rhi->createShaderModule(shaderVDesc);
-	pipelineDesc.shaders.geometry = rhi->createShaderModule(shaderGDesc);
-	pipelineDesc.shaders.fragment = rhi->createShaderModule(shaderFDesc);
+	pipelineDesc.renderPass = renderPass;
+	pipelineDesc.descriptorSetLayouts = { mSetLayout };
+	pipelineDesc.pushConstantSize = sizeof(PointShadowPush);
+	pipelineDesc.pushConstantStages = ShaderStage::Geometry | ShaderStage::Fragment;
+	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/cascadeShadowMap.vs");
+	pipelineDesc.shaders.geometry = rhi->loadShader(ShaderStage::Geometry, "shaders/pointLightMap.gs");
+	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/pointLightMap.fs");
 
 	Render::VertexLayoutDesc vaoDesc;
 	vaoDesc.bindings.push_back({ 0, sizeof(SFE::Vertex3D), Render::VertexInputRate::PerVertex });
@@ -224,35 +243,16 @@ void PointLightPass::init(SystemsModule::RenderData& renderDataHandle) {
 	pipelineDesc.layout = vaoDesc;
 	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
 
-	RenderPassDesc rpDesc;
-	rpDesc.hasDepthStencil = true;
-	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
-	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
-	rpDesc.depthAttachment.clearDepth = 1.f;
-	renderPass = rhi->createRenderPass(rpDesc);
-
-	Render::DescriptorSetLayoutDesc layoutDesc;
-	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
-	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	mSetLayout = rhi->createDescriptorSetLayout(layoutDesc);
-	mSet = rhi->allocateDescriptorSet(mSetLayout);
-
 	rhi->updateDescriptorSets({
 		{
 			.set = mSet,
-			.binding = 3,
+			.binding = 11,
 			.type = Render::DescriptorType::UniformBuffer,
 			.buffers{ {mMatricesUBO} }
 		}
 	});
 
 	data.matricesUBO = mMatricesUBO;
-	publish(renderDataHandle);
 }
 
 void PointLightPass::publish(SystemsModule::RenderData& renderDataHandle) {
@@ -268,25 +268,23 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 
 	FUNCTION_BENCHMARK;
 
-	{
-		FUNCTION_BENCHMARK_NAMED(_wait_lock);
-		getContainer().getCurrentPassData()->waitReady();
-	}
-
-	const auto curPassData = getContainer().getCurrentPassData();
-	getContainer().rotate();
-	prepare();
-
 	std::vector<Math::Mat4> matrices;
 	collectLights(renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, matrices, &data.shadowEntities);
-
-	publish(renderDataHandle);
-
 	if (matrices.empty()) {
+		publish(renderDataHandle);
 		return;
 	}
 
+	ensureGpu(renderDataHandle);
+
 	auto* rhi = Engine::instance()->rhi();
+	RenderPassData* curPassData = getContainer().getCurrentPassData();
+	curPassData->waitReady();
+	getContainer().rotate();
+	prepare();
+
+	publish(renderDataHandle);
+
 	rhi->updateBuffer(mMatricesUBO, 0, matrices.size() * sizeof(Math::Mat4), matrices.data());
 
 	if (renderDataHandle.transformsSSBO) {
@@ -325,13 +323,6 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 			Engine::instance()->rhi()->cmdPushConstants(drawCmd, pipeline, SFE::Render::ShaderStage::Geometry | SFE::Render::ShaderStage::Fragment, &pc, sizeof(pc));
 		});
 	rhi->cmdEndRenderPass(cmd);
-
-	rhi->cmdPipelineBarrier(cmd, {
-		.srcStage = PipelineStage::LateFragmentTests,
-		.dstStage = PipelineStage::FragmentShader,
-		.srcAccess = AccessMask::DepthStencilAttachmentWrite,
-		.dstAccess = AccessMask::ShaderRead
-	});
 }
 
 }

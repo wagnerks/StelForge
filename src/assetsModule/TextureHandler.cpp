@@ -5,6 +5,7 @@
 #include <string>
 
 #include "AssetsManager.h"
+#include "core/FileSystem.h"
 #include "renderModule/GraphicsBackend.h"
 #include "core/Engine.h"
 #include "multithreading/ThreadPool.h"
@@ -25,7 +26,8 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	stbi_set_flip_vertically_on_load(flip);
 
 	int texWidth, texHeight, nrChannels;
-	auto data = stbi_load(path.data(), &texWidth, &texHeight, &nrChannels, 4);
+	const auto resolved = SFE::FileSystem::resolve(path).string();
+	auto data = stbi_load(resolved.c_str(), &texWidth, &texHeight, &nrChannels, 4);
 	if (!data) {
 		SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
 		stbi_image_free(data);
@@ -40,12 +42,18 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	desc.dimension = SFE::Render::TextureDimension::Tex2D;
 
 	SFE::Render::SamplerDesc samplerDesc;
-	samplerDesc.minFilter = SFE::Render::FilterMode::LinearMipmapLinear;
+	samplerDesc.minFilter = SFE::Render::FilterMode::Linear;
 	samplerDesc.magFilter = SFE::Render::FilterMode::Linear;
 	samplerDesc.addressU = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressV = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressW = SFE::Render::AddressMode::Repeat;
-	samplerDesc.maxAnisotropy = 16.f;
+	if (SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::Vulkan) {
+		samplerDesc.maxAnisotropy = 1.f;
+	}
+	else {
+		samplerDesc.minFilter = SFE::Render::FilterMode::LinearMipmapLinear;
+		samplerDesc.maxAnisotropy = 16.f;
+	}
 
 
 	if (SFE::Engine::isMainThread() || SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::Vulkan) {
@@ -113,7 +121,8 @@ Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) 
 	int w, h;
 	int width, height, nrChannels;
 	for (unsigned int i = 0; i < faces.size(); i++) {
-		data.push_back(stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0));
+		const auto resolved = SFE::FileSystem::resolve(faces[i]).string();
+		data.push_back(stbi_load(resolved.c_str(), &width, &height, &nrChannels, 0));
 		w = std::max(w, width);
 		h = std::max(h, height);
 	}
@@ -122,9 +131,10 @@ Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) 
 	desc.height = static_cast<uint32_t>(h);
 
 	for (unsigned int i = 0; i < faces.size(); i++) {
-		auto data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+		const auto resolved = SFE::FileSystem::resolve(faces[i]).string();
+		auto data = stbi_load(resolved.c_str(), &width, &height, &nrChannels, 0);
 		if (!data) {
-			SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", faces[i].c_str());
+			SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", resolved.c_str());
 			stbi_image_free(data);
 			continue;
 		}

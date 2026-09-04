@@ -1,7 +1,9 @@
 ﻿#pragma once
 
+#include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "windowsModule/Window.h"
 #include "core/FileSystem.h"
@@ -34,7 +36,12 @@ namespace SFE::Render {
         }
 
         void clear() const {
-            Engine::instance()->rhi()->destroyTexture(mAtlasTex);
+            if (!SFE::Singleton<SFE::Engine>::isAlive()) {
+                return;
+            }
+            if (auto* rhi = Engine::instance()->rhi()) {
+                rhi->destroyTexture(mAtlasTex);
+            }
     	}
 
         const GlyphInfo& getGlyphData(char c) const {
@@ -57,13 +64,18 @@ namespace SFE::Render {
             }
 
             FT_Face face;
-            if (FT_New_Face(ft, path.data(), 0, &face)) {
-                LogsModule::Logger::LOG_FATAL(false, "FREETYPE: Failed to load font %s", path.data());
+            const auto fontPath = FileSystem::resolve(path).string();
+            if (FT_New_Face(ft, fontPath.c_str(), 0, &face)) {
+                LogsModule::Logger::LOG_FATAL(false, "FREETYPE: Failed to load font %s", fontPath.c_str());
                 return;
             }
 
             if (!mFontPath.empty()) {
-				Engine::instance()->rhi()->destroyTexture(mAtlasTex);
+                if (SFE::Singleton<SFE::Engine>::isAlive()) {
+                    if (auto* rhi = Engine::instance()->rhi()) {
+                        rhi->destroyTexture(mAtlasTex);
+                    }
+                }
                 mAtlasTex = {};
                 mGlyphs.clear();
             }
@@ -77,6 +89,7 @@ namespace SFE::Render {
 			tDesc.width = atlasSize;
 			tDesc.height = mAtlasHeight;
 			tDesc.format = TextureFormat::R8;
+			tDesc.usage = TextureUsage::Sampled | TextureUsage::TransferDst;
             mAtlasTex = Engine::instance()->rhi()->createTexture(tDesc);
 
 			SamplerDesc samplerDesc;
@@ -140,6 +153,10 @@ namespace SFE::Render {
             static int offset = 15;
 
             int x = 2, y = 2;
+            if (mAtlasHeight < 1) {
+                mAtlasHeight = 1;
+            }
+            std::vector<unsigned char> pixels(static_cast<size_t>(atlasSize) * mAtlasHeight, 0);
 
             FT_UInt index = 0;
             FT_ULong c = FT_Get_First_Char(face, &index);
@@ -160,7 +177,19 @@ namespace SFE::Render {
                 glyphSize.x = std::max(static_cast<float>(face->glyph->bitmap.width), glyphSize.x);
                 glyphSize.y = std::max(static_cast<float>(face->glyph->bitmap.rows), glyphSize.y);
 
-                Engine::instance()->rhi()->updateTexture(mAtlasTex, x, y, face->glyph->bitmap.width, face->glyph->bitmap.rows, TextureFormat::R8, face->glyph->bitmap.buffer);
+                const uint32_t gw = face->glyph->bitmap.width;
+                const uint32_t gh = face->glyph->bitmap.rows;
+                const unsigned char* src = face->glyph->bitmap.buffer;
+                const int pitch = face->glyph->bitmap.pitch;
+                if (src && gw > 0 && gh > 0 && pitch != 0 && y + gh <= mAtlasHeight && x + gw <= atlasSize) {
+                    const int absPitch = pitch < 0 ? -pitch : pitch;
+                    for (uint32_t row = 0; row < gh; ++row) {
+                        const unsigned char* rowSrc = pitch < 0
+                            ? src + static_cast<int>(gh - 1 - row) * absPitch
+                            : src + static_cast<int>(row) * absPitch;
+                        std::memcpy(pixels.data() + (y + row) * atlasSize + x, rowSrc, gw);
+                    }
+                }
                 
                 if (mGlyphs.size() <= c) {
                     mGlyphs.resize(c + 1);
@@ -180,6 +209,7 @@ namespace SFE::Render {
 
                 c = FT_Get_Next_Char(face, c, &index);
             }
+            Engine::instance()->rhi()->updateTexture(mAtlasTex, 0, 0, atlasSize, mAtlasHeight, TextureFormat::R8, pixels.data());
         }
     };
 
@@ -284,6 +314,9 @@ namespace SFE::Render {
         }
 
         void renderText(CommandListHandle cmd, std::string text, float x, float y, float scale, Math::Vec3 color, Font* font) const {
+            if (!textRenderPipeline || !font || text.empty()) {
+                return;
+            }
             const float semiW = Engine::instance()->getWindow()->getScreenData().width * 0.5f;
             const float semiH = Engine::instance()->getWindow()->getScreenData().height * 0.5f;
 
@@ -291,12 +324,14 @@ namespace SFE::Render {
 
             int rowH = 0;
             float curX = x;
+            int glyphCount = 0;
             for (int i = 0; i < text.size(); i++) {
                 const auto& ch = font->getGlyphData(text[i]);
                 if (text[i] == '\n') {
                     y -= font->glyphSize.y;
                     curX = x;
                     rowH = 0;
+                    continue;
                 }
                 const float xpos = curX + ch.bearing.x * scale;
                 const float ypos = y - (ch.size.y - ch.bearing.y) * scale;
@@ -315,18 +350,21 @@ namespace SFE::Render {
                      startX,     endY,        ch.texCoords.first.x, ch.texCoords.first.y,
                      startX,     startY,      ch.texCoords.first.x, ch.texCoords.second.y,
                      endX,       startY,      ch.texCoords.second.x, ch.texCoords.second.y,
-                     
+
 
                      startX,    endY,       ch.texCoords.first.x, ch.texCoords.first.y,
                      endX,      startY,     ch.texCoords.second.x, ch.texCoords.second.y,
                      endX,      endY,       ch.texCoords.second.x, ch.texCoords.first.y,
-                     
+
                 };
 
-                Engine::instance()->rhi()->cmdUpdateBuffer(cmd, VBO, i * sizeof(vertices), sizeof(vertices), vertices);
+                Engine::instance()->rhi()->updateBuffer(VBO, glyphCount * sizeof(vertices), sizeof(vertices), vertices);
+                ++glyphCount;
 
-                // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-                curX += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels)) 
+                curX += (ch.advance >> 6) * scale;
+            }
+            if (glyphCount == 0) {
+                return;
             }
 
 			auto* rhi = Engine::instance()->rhi();
@@ -340,8 +378,12 @@ namespace SFE::Render {
 			rhi->cmdBindDescriptorSets(cmd, textRenderPipeline, 0, &texSet, 1);
 			rhi->cmdBindVertexBuffer(cmd, 0, VBO, 0);
 			rhi->cmdPushConstants(cmd, textRenderPipeline, ShaderStage::Fragment, &color, sizeof(Math::Vec3));
-			rhi->cmdDraw(cmd, static_cast<int>(text.size()) * 6);
+			rhi->cmdDraw(cmd, glyphCount * 6);
         }
+
+		void bindRenderPass(RenderPassHandle rp) {
+			createTextPipeline(rp);
+		}
 
         void init() override {
 			auto* rhi = Engine::instance()->rhi();
@@ -353,26 +395,11 @@ namespace SFE::Render {
 			vboDesc.debugName = "TextRenderer VBO";
 			VBO = rhi->createBuffer(vboDesc, nullptr);
 
-			VertexLayoutDesc layoutDesc;
-			layoutDesc.bindings.push_back({ 0, 4 * sizeof(float), VertexInputRate::PerVertex });
-			layoutDesc.attributes.push_back({0, 0, VertexFormat::Float4, 0, false }); // pos.xy, tex.xy packed
-
-			GraphicsPipelineDesc pipelineDesc;
-			pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "Text Vertex Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.vs") });
-			pipelineDesc.shaders.fragment = rhi->createShaderModule({ ShaderStage::Fragment, "Text Fragment Shader", ShaderModule::ShaderBase::loadShaderCode("shaders/text.fs") });
-			pipelineDesc.layout = layoutDesc;
-			pipelineDesc.topology = PrimitiveTopology::Triangles;
-			pipelineDesc.cullMode = CullMode::None;
-			pipelineDesc.frontFace = FrontFace::CounterClockWise;
-			pipelineDesc.fillMode = PolygonFillMode::Fill;
-			pipelineDesc.depthStencilState = { false, false, CompareOp::Less };
-			pipelineDesc.blend = { true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha };
-			textRenderPipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
 			DescriptorSetLayoutDesc texLayoutDesc;
 			texLayoutDesc.bindings.emplace_back(24, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 			texSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
 			texSet = rhi->allocateDescriptorSet(texSetLayout);
+			createTextPipeline({});
         }
         inline static char msgBuf[2048];
         template <typename... Args>
@@ -384,6 +411,33 @@ namespace SFE::Render {
         ~TextRenderer() override {}
 
 	private:
+		void createTextPipeline(RenderPassHandle rp) {
+			auto* rhi = Engine::instance()->rhi();
+			if (textRenderPipeline) {
+				rhi->destroyGraphicsPipeline(textRenderPipeline);
+				textRenderPipeline = {};
+			}
+
+			VertexLayoutDesc layoutDesc;
+			layoutDesc.bindings.push_back({ 0, 4 * sizeof(float), VertexInputRate::PerVertex });
+			layoutDesc.attributes.push_back({0, 0, VertexFormat::Float4, 0, false });
+
+			GraphicsPipelineDesc pipelineDesc;
+			pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/text.vs");
+			pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/text.fs");
+			pipelineDesc.layout = layoutDesc;
+			pipelineDesc.topology = PrimitiveTopology::Triangles;
+			pipelineDesc.cullMode = CullMode::None;
+			pipelineDesc.frontFace = FrontFace::CounterClockWise;
+			pipelineDesc.fillMode = PolygonFillMode::Fill;
+			pipelineDesc.depthStencilState = { false, false, CompareOp::Less };
+			pipelineDesc.blend = { true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha };
+			pipelineDesc.pushConstantSize = 16u;
+			pipelineDesc.pushConstantStages = ShaderStage::Fragment;
+			pipelineDesc.descriptorSetLayouts = { texSetLayout };
+			pipelineDesc.renderPass = rp;
+			textRenderPipeline = rhi->createGraphicsPipeline(pipelineDesc);
+		}
 
 		PipelineHandle textRenderPipeline;
         BufferHandle VBO;

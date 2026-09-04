@@ -12,7 +12,8 @@
 using namespace SFE::Render::RenderPasses;
 
 namespace {
-	SFE::Render::PipelineHandle makeFs(SFE::Render::RenderHardwareInterface* rhi, const char* vsName, const char* fsName, const std::string& fs) {
+	SFE::Render::PipelineHandle makeFs(SFE::Render::RenderHardwareInterface* rhi, SFE::Render::RenderPassHandle renderPass,
+		SFE::Render::DescriptorSetLayoutHandle layout, const char* vsPath, const char* fsPath) {
 		SFE::Render::GraphicsPipelineDesc pipelineDesc;
 		pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(SFE::Vertex2D)), SFE::Render::VertexInputRate::PerVertex);
 		pipelineDesc.layout.attributes.emplace_back(0, 0, SFE::Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex2D, position)), false);
@@ -21,8 +22,10 @@ namespace {
 		pipelineDesc.cullMode = SFE::Render::CullMode::None;
 		pipelineDesc.depthStencilState.depthTest = false;
 		pipelineDesc.depthStencilState.depthWrite = false;
-		pipelineDesc.shaders.vertex = rhi->createShaderModule({ SFE::Render::ShaderStage::Vertex, vsName, SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.vs") });
-		pipelineDesc.shaders.fragment = rhi->createShaderModule({ SFE::Render::ShaderStage::Fragment, fsName, fs });
+		pipelineDesc.renderPass = renderPass;
+		pipelineDesc.descriptorSetLayouts = { layout };
+		pipelineDesc.shaders.vertex = rhi->loadShader(SFE::Render::ShaderStage::Vertex, vsPath);
+		pipelineDesc.shaders.fragment = rhi->loadShader(SFE::Render::ShaderStage::Fragment, fsPath);
 		return rhi->createGraphicsPipeline(pipelineDesc);
 	}
 }
@@ -41,13 +44,11 @@ void VolumetricPass::init(SystemsModule::RenderData&) {
 	nearS.magFilter = SFE::Render::FilterMode::Nearest;
 	mNearest = rhi->createSampler(nearS);
 
-	mMarchPipeline = makeFs(rhi, "vol vs", "vol fs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/volumetric.fs"));
-	mApplyPipeline = makeFs(rhi, "vol apply vs", "vol apply fs", SFE::ShaderModule::ShaderBase::loadShaderCode("shaders/volumetric_apply.fs"));
-
 	SFE::Render::RenderPassDesc rpDesc;
 	rpDesc.colorAttachmentCount = 1;
 	rpDesc.colorAttachments[0].loadOp = SFE::Render::AttachmentLoadOp::Clear;
 	rpDesc.colorAttachments[0].storeOp = SFE::Render::AttachmentStoreOp::Store;
+	rpDesc.colorAttachments[0].format = SFE::Render::TextureFormat::RGBA16F;
 	mRenderPass = rhi->createRenderPass(rpDesc);
 
 	SFE::Render::TextureDesc halfDesc;
@@ -59,6 +60,7 @@ void VolumetricPass::init(SystemsModule::RenderData&) {
 	SFE::Render::FramebufferDesc halfFb;
 	halfFb.width = halfDesc.width;
 	halfFb.height = halfDesc.height;
+	halfFb.renderPass = mRenderPass;
 	halfFb.colorAttachments = { { mHalfTex } };
 	mHalfFbo = rhi->createFramebuffer(halfFb);
 
@@ -71,6 +73,7 @@ void VolumetricPass::init(SystemsModule::RenderData&) {
 	SFE::Render::FramebufferDesc fb;
 	fb.width = w;
 	fb.height = h;
+	fb.renderPass = mRenderPass;
 	fb.colorAttachments = { { mColor } };
 	mFbo = rhi->createFramebuffer(fb);
 
@@ -96,6 +99,9 @@ void VolumetricPass::init(SystemsModule::RenderData&) {
 	applyLayout.bindings.emplace_back(1, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	mApplyLayout = rhi->createDescriptorSetLayout(applyLayout);
 	mApplySet = rhi->allocateDescriptorSet(mApplyLayout);
+
+	mMarchPipeline = makeFs(rhi, mRenderPass, mMarchLayout, "shaders/deferred_shading.vs", "shaders/volumetric.fs");
+	mApplyPipeline = makeFs(rhi, mRenderPass, mApplyLayout, "shaders/deferred_shading.vs", "shaders/volumetric_apply.fs");
 }
 
 void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::CommandListHandle cmd) {

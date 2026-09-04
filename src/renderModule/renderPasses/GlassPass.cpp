@@ -5,6 +5,8 @@
 #include <limits>
 
 #include "assetsModule/shaderModule/ShaderBase.h"
+#include "assetsModule/TextureHandler.h"
+#include "assetsModule/modelModule/Material.h"
 #include "assetsModule/modelModule/Vertex.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/MaterialComponent.h"
@@ -37,34 +39,50 @@ void GlassPass::prepare() {
 	auto& renderData = renderSys->getRenderData();
 	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, curPassData, camFrustum = renderData.mNextCamFrustum]() mutable {
 		FUNCTION_BENCHMARK;
+		struct ReadyGuard {
+			RenderPassData* data = nullptr;
+			~ReadyGuard() { if (data) { data->markReady(); } }
+		} ready{ curPassData };
+		auto* renderSys = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
+		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : SFE::SystemsModule::RenderSystem::WorldReadGuard{};
+		if (renderSys && !worldLock) {
+			return;
+		}
 		curPassData->getBatcher().clear();
 
 		ecss::Ranges<ecss::EntityId> entities;
 		{
 			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			entities = octreeSys->collectVisibleRanges(camFrustum);
+			if (octreeSys) {
+				entities = octreeSys->collectVisibleRanges(camFrustum);
+			}
 		}
 
 		auto& batcher = curPassData->getBatcher();
 		auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
 		auto addMeshes = [&](auto&& viewObjs) {
 			for (auto [ent, transform, meshComp, matComp] : viewObjs) {
-				if (!meshComp || !transform || !matComp || !matComp->transparent) {
+				if (!meshComp || !transform) {
 					continue;
 				}
-				for (const auto& mesh : meshComp->meshGraph) {
-					batcher.addToDrawListGlass(mesh.value, *matComp, ent);
-				}
+				meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
+					if (!mat || !mat->transparent) {
+						return;
+					}
+					batcher.addToDrawListGlass(mesh, *mat, ent);
+				});
 			}
 		};
 		const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-		if (entities.empty() && octreeSys->empty()) {
+		if (entities.empty() || !octreeSys || octreeSys->empty()) {
 			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
 		}
 		else {
 			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
+			if (batcher.drawList.empty()) {
+				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
+			}
 		}
-		curPassData->markReady();
 	});
 }
 
@@ -98,44 +116,15 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	copyFb.colorAttachments = { { mSceneCopy } };
 	mSceneCopyFbo = rhi->createFramebuffer(copyFb);
 
-	GraphicsPipelineDesc pipelineDesc;
-	Render::VertexLayoutDesc& layout = pipelineDesc.layout;
-	layout.bindings.push_back({ 0, sizeof(Vertex3D), Render::VertexInputRate::PerVertex });
-	layout.attributes.push_back({ 0, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, position)), true });
-	layout.attributes.push_back({ 1, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, normal)), true });
-	layout.attributes.push_back({ 2, 0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex3D, texCoords)), true });
-	layout.attributes.push_back({ 3, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, tangent)), true });
-	layout.attributes.push_back({ 4, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, biTangent)), true });
-	layout.attributes.push_back({ 5, 0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false });
-	layout.attributes.push_back({ 6, 0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
-	pipelineDesc.topology = PrimitiveTopology::Triangles;
-	pipelineDesc.cullMode = CullMode::Back;
-	pipelineDesc.frontFace = FrontFace::CounterClockWise;
-	pipelineDesc.depthStencilState.depthTest = true;
-	pipelineDesc.depthStencilState.depthWrite = false;
-	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
-	pipelineDesc.blend.enabled = true;
-	pipelineDesc.blend.srcColor = BlendFactor::SrcAlpha;
-	pipelineDesc.blend.dstColor = BlendFactor::OneMinusSrcAlpha;
-	pipelineDesc.shaders.vertex = rhi->createShaderModule({
-		ShaderStage::Vertex,
-		"glass.vs",
-		ShaderModule::ShaderBase::loadShaderCode("shaders/g_buffer.vs")
-	});
-	pipelineDesc.shaders.fragment = rhi->createShaderModule({
-		ShaderStage::Fragment,
-		"glass.fs",
-		ShaderModule::ShaderBase::loadShaderCode("shaders/glass.fs")
-	});
-	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
 	RenderPassDesc rpDesc;
 	rpDesc.colorAttachmentCount = 1;
 	rpDesc.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
 	rpDesc.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
+	rpDesc.colorAttachments[0].format = TextureFormat::RGBA16F;
 	rpDesc.hasDepthStencil = true;
 	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Load;
 	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+	rpDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT24;
 	mRenderPass = rhi->createRenderPass(rpDesc);
 
 	BufferDesc uboDesc;
@@ -147,20 +136,41 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
 
 	DescriptorSetLayoutDesc layoutDesc;
-	layoutDesc.bindings.emplace_back(1, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(2, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(3, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(4, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(5, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(6, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(12, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(13, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(14, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(3, DescriptorType::StorageBuffer, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(4, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(1, DescriptorType::StorageBuffer, ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(2, DescriptorType::StorageBuffer, ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(3, DescriptorType::StorageBuffer, ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBuffer, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
+
+	GraphicsPipelineDesc pipelineDesc;
+	Render::VertexLayoutDesc& layout = pipelineDesc.layout;
+	layout.bindings.push_back({ 0, sizeof(Vertex3D), Render::VertexInputRate::PerVertex });
+	layout.attributes.push_back({ 0, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, position)), true });
+	layout.attributes.push_back({ 1, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, normal)), true });
+	layout.attributes.push_back({ 2, 0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex3D, texCoords)), true });
+	layout.attributes.push_back({ 3, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, tangent)), true });
+	layout.attributes.push_back({ 4, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, biTangent)), true });
+	layout.attributes.push_back({ 5, 0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false });
+	layout.attributes.push_back({ 6, 0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
+	pipelineDesc.topology = PrimitiveTopology::Triangles;
+	pipelineDesc.cullMode = CullMode::None;
+	pipelineDesc.frontFace = FrontFace::CounterClockWise;
+	pipelineDesc.depthStencilState.depthTest = true;
+	pipelineDesc.depthStencilState.depthWrite = false;
+	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::LessEqual;
+	pipelineDesc.blend.enabled = true;
+	pipelineDesc.blend.srcColor = BlendFactor::One;
+	pipelineDesc.blend.dstColor = BlendFactor::OneMinusSrcAlpha;
+	pipelineDesc.renderPass = mRenderPass;
+	pipelineDesc.descriptorSetLayouts = { mLayout };
+	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/g_buffer.vs");
+	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/glass.fs");
+	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
 }
 
 void GlassPass::ensureTargets(SystemsModule::RenderData& renderDataHandle) {
@@ -181,6 +191,7 @@ void GlassPass::ensureTargets(SystemsModule::RenderData& renderDataHandle) {
 	FramebufferDesc glassFb;
 	glassFb.width = w;
 	glassFb.height = h;
+	glassFb.renderPass = mRenderPass;
 	glassFb.colorAttachments = { { finalTex } };
 	glassFb.depthStencilAttachment = { .texture = depthTex };
 	mGlassFbo = rhi->createFramebuffer(glassFb);
@@ -191,12 +202,9 @@ void GlassPass::ensureTargets(SystemsModule::RenderData& renderDataHandle) {
 void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK;
 
-	{
-		const auto curPassData = getContainer().getCurrentPassData();
-		curPassData->waitReady();
-	}
-
+	auto* rhi = Engine::instance()->rhi();
 	const auto curPassData = getContainer().getCurrentPassData();
+	curPassData->waitReady();
 	getContainer().rotate();
 	prepare();
 
@@ -210,7 +218,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		return;
 	}
 
-	auto* rhi = Engine::instance()->rhi();
 	auto& frame = renderDataHandle.frame;
 
 	mParams.viewPosX = renderDataHandle.mCameraPos.x;
@@ -274,6 +281,22 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		w.binding = 5;
 		w.type = DescriptorType::UniformBuffer;
 		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
+		writes.push_back(std::move(w));
+	}
+	if (renderDataHandle.transformsSSBO) {
+		WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 1;
+		w.type = DescriptorType::StorageBuffer;
+		w.buffers.push_back({ renderDataHandle.transformsSSBO });
+		writes.push_back(std::move(w));
+	}
+	if (renderDataHandle.bonesSSBO) {
+		WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 2;
+		w.type = DescriptorType::StorageBuffer;
+		w.buffers.push_back({ renderDataHandle.bonesSSBO });
 		writes.push_back(std::move(w));
 	}
 	if (frame.texture(FrameId::IblBrdf)) {
@@ -343,10 +366,29 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	auto beforeDraw = [this, rhi](Render::CommandListHandle drawCmd, const DrawObject& o) {
 		mParams.ior = o.ior > 1.f ? o.ior : 1.52f;
 		mParams.opacity = o.opacity > 0.f ? o.opacity : 0.22f;
-		mParams.tintX = 1.f;
-		mParams.tintY = 1.f;
-		mParams.tintZ = 1.f;
+		mParams.tintX = o.tint.x;
+		mParams.tintY = o.tint.y;
+		mParams.tintZ = o.tint.z;
 		rhi->cmdUpdateBuffer(drawCmd, mParamsUBO, mParams);
+
+		auto* white = AssetsModule::TextureHandler::loadTexture("white.png");
+		if (!white) {
+			return;
+		}
+		Render::TextureHandle diff = white->texture;
+		for (uint8_t i = 0; i < o.materialData.materialsCount; ++i) {
+			const auto& mat = o.materialData.material[i];
+			if (mat.slot == SFE::DIFFUSE && mat.texture) {
+				diff = mat.texture;
+				break;
+			}
+		}
+		WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 4;
+		w.type = DescriptorType::CombinedImageSampler;
+		w.images.push_back({ diff, white->sampler });
+		rhi->updateDescriptorSets({ std::move(w) });
 	};
 
 	auto getPipeline = [this](const std::string&, const std::string&) {
@@ -356,7 +398,7 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	rhi->cmdBlit(cmd, srcFbo, mSceneCopyFbo, BlitMask::Color, BlitFilter::Nearest);
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 
-	curPassData->getBatcher().flushAll(cmd, mSet, getPipeline, beforeDraw, &ordered);
+	curPassData->getBatcher().flushAll(cmd, mSet, getPipeline, beforeDraw, &ordered, false);
 
 	rhi->cmdEndRenderPass(cmd);
 }

@@ -12,25 +12,32 @@ namespace ecss {
 		
 		void update(float_t dt);
 		
+		// mSystemsMap is indexed BY type id, never by creation order. SystemTypeCounter hands
+		// out ids lazily on first touch, so a getSystem<X>() from inside another system's
+		// constructor claims X's id early and the two orders diverge for good -- which used to
+		// make createSystem<T>() hand back an unrelated system and skip constructing T.
 		template <class T>
 		T* getSystem() {
-			if (mSystemsMap.size() > SystemTypeCounter::type<T>()) {
-				return static_cast<T*>(mSystemsMap[SystemTypeCounter::type<T>()]);
-			}
-
-			return nullptr;
+			const size_t index = SystemTypeCounter::type<T>();
+			return index < mSystemsMap.size() ? static_cast<T*>(mSystemsMap[index]) : nullptr;
 		}
 
 		template <class T, class... ARGS>
 		T* createSystem(ARGS&&... systemArgs) {
-			auto system = getSystem<T>();
-			if (system) {
-				return system;
+			const size_t index = SystemTypeCounter::type<T>();
+			if (index < mSystemsMap.size() && mSystemsMap[index]) {
+				return static_cast<T*>(mSystemsMap[index]);
 			}
 
-			system = new T(std::forward<ARGS>(systemArgs)...);
-			ecss::SystemTypeCounter::type<T>();
-			mSystemsMap.push_back(system);
+			auto system = new T(std::forward<ARGS>(systemArgs)...);
+			system->bindWorkers();
+
+			// The constructor above may have created further systems, so claim the slot only
+			// once it has returned.
+			if (mSystemsMap.size() <= index) {
+				mSystemsMap.resize(index + 1, nullptr);
+			}
+			mSystemsMap[index] = system;
 
 			return system;
 		}

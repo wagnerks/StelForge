@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -44,6 +45,7 @@ namespace SFE::Render
 		GLenum frontFaceGL;
 		GLenum fillModeGL;
 		GLenum depthFuncGL;
+		uint32_t patchControlPoints = 0;
 
 		bool  depthTestEnabled = true;
 		bool  depthWriteEnabled = true;
@@ -91,8 +93,13 @@ namespace SFE::Render
 	struct CmdPushConstants { std::vector<uint8_t> data; };
 	struct CmdDraw { uint32_t vertexCount = 0, instanceCount = 1, firstVertex = 0, firstInstance = 0; };
 	struct CmdDrawIndexed { uint32_t indexCount = 0, instanceCount = 1, firstIndex = 0; int32_t vertexOffset = 0; uint32_t firstInstance = 0; };
+	struct CmdDrawIndirect { BufferHandle buffer; size_t offset = 0; uint32_t drawCount = 1; uint32_t stride = 16; };
+	struct CmdDrawIndexedIndirect { BufferHandle buffer; size_t offset = 0; uint32_t drawCount = 1; uint32_t stride = 20; };
+	struct CmdSetPolygonFillMode { PolygonFillMode mode = PolygonFillMode::Fill; };
 	struct CmdDispatch { uint32_t groupCountX = 1, groupCountY = 1, groupCountZ = 1; };
 	struct CmdBlit { FramebufferHandle src; FramebufferHandle dst; BlitMask mask = BlitMask::Color; BlitFilter filter = BlitFilter::Nearest; };
+	struct CmdSetScissor { int32_t x = 0, y = 0; uint32_t width = 0, height = 0; };
+	struct CmdHostCallback { std::function<void()> callback; };
 	struct CmdUpdateBuffer { BufferHandle handle; size_t offset = 0; std::vector<uint8_t> data; };
 	struct CmdPipelineBarrier { PipelineBarrier barrier; };
 
@@ -106,8 +113,13 @@ namespace SFE::Render
 		CmdPushConstants,
 		CmdDraw,
 		CmdDrawIndexed,
+		CmdDrawIndirect,
+		CmdDrawIndexedIndirect,
 		CmdDispatch,
 		CmdBlit,
+		CmdSetScissor,
+		CmdSetPolygonFillMode,
+		CmdHostCallback,
 		CmdUpdateBuffer,
 		CmdPipelineBarrier
 	>;
@@ -125,6 +137,7 @@ namespace SFE::Render
 	public:
 		void init() override;
 		void cleanup() override;
+		void waitIdle() override;
 
 		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) override;
 		void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) override;
@@ -225,6 +238,9 @@ namespace SFE::Render
 		int mGpuQueryWrite = 0;
 		bool mGpuQueriesReady = false;
 		double mLastGpuMs = 0.0;
+		TextureHandle m_presentBlitTexture{};
+		GLuint m_presentReadGlFbo = 0;
+		uint32_t m_presentReadTexId = UINT32_MAX;
 
 		TextureHandle mDisplayTex[2]{};
 		FramebufferHandle mDisplayFbo[2]{};
@@ -251,6 +267,7 @@ namespace SFE::Render
 		GLuint m_prevFramebuffer = 0; // для сохранения/восстановления FBO в begin/endRenderPass
 		GLuint m_pushConstantUBO = 0; // constant buffer for push constants emulation
 		GLuint m_pushConstantPos = 15; // binding point for push constants emulation
+		int m_currentPassHeight = 0;
 
 		GLenum toGLBufferTarget(BufferUsage usage) const;
 		GLenum toGLAccessFlags(CpuAccess access) const;
@@ -267,9 +284,12 @@ namespace SFE::Render
 		void execBindIndexBuffer(BufferHandle handle, IndexType type, uint32_t offset);
 		void execDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
 		void execDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
+		void execDrawIndirect(BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride);
+		void execDrawIndexedIndirect(BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride);
 		void execDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 		void execPushConstants(const void* data, uint32_t size);
 		void execBlit(FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter);
+		void execSetScissor(int32_t x, int32_t y, uint32_t width, uint32_t height);
 		void execBindDescriptorSets(const std::vector<GLDescriptorBindingData>& bindings);
 		void execUpdateBuffer(BufferHandle handle, size_t offset, size_t size, const void* data);
 		void execPipelineBarrier(const PipelineBarrier& barrier);
@@ -282,10 +302,13 @@ namespace SFE::Render
 		void endCommandList(CommandListHandle cmd) override;
 		void submit(const CommandListHandle* lists, uint32_t count) override;
 		void present() override;
+		void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) override;
 		double lastGpuMs() const override { return mLastGpuMs; }
 		void publishDisplay(FramebufferHandle src) override;
 		uint64_t editorViewNativeId() override;
 		bool capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) override;
+		bool readbackTexture(TextureHandle tex, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer = 0) override;
+		TextureHandle presentSourceTexture() const override { return m_presentBlitTexture; }
 		void cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo) override;
 		void cmdEndRenderPass(CommandListHandle cmd) override;
 		void cmdBindPipeline(CommandListHandle cmd, PipelineHandle pipeline) override;
@@ -293,9 +316,14 @@ namespace SFE::Render
 		void cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset) override;
 		void cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
 		void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) override;
+		void cmdDrawIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride) override;
+		void cmdDrawIndexedIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride) override;
 		void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) override;
 		void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, ShaderStage stages, const void* data,	uint32_t size) override;
 		void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter) override;
+		void cmdSetScissor(CommandListHandle cmd, int32_t x, int32_t y, uint32_t width, uint32_t height) override;
+		void cmdSetPolygonFillMode(CommandListHandle cmd, PolygonFillMode mode) override;
+		void cmdHostCallback(CommandListHandle cmd, std::function<void()> callback) override;
 		void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) override;
 		void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) override;
 

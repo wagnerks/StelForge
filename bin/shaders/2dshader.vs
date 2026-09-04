@@ -1,13 +1,14 @@
-#version 330 core
-layout (location = 0) in vec2 vertex; // <vec2 pos, vec2 tex>
-out vec2 TexCoords;
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) in vec2 vertex;
+layout(location = 0) out vec2 TexCoords;
 
-layout (std140, binding = 1) uniform DrawData {
+layout(SFE_SET(0, 1), std140) uniform DrawData {
     mat4 projection;
 } dd;
 
 void main()
 {
-    //gl_Position = dd.projection * vec4(vertex.xy, 0.0, 1.0);
+    TexCoords = vertex * 0.5 + 0.5;
     gl_Position = vec4(vertex.xy, 0.0, 1.0);
 }

@@ -1,20 +1,22 @@
-#version 430 core
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) in vec3 FragPos;
+layout(location = 1) in vec2 TexCoords;
+layout(location = 2) in mat3 TBN;
 
-in highp vec3 FragPos;
-in mat3 TBN;
+layout(location = 0) out vec4 FragColor;
 
-out vec4 FragColor;
+layout(SFE_SET(0, 6)) uniform sampler2D sceneCopy;
+layout(SFE_SET(0, 13)) uniform samplerCube prefilterMap;
+layout(SFE_SET(0, 4)) uniform sampler2D albedoMap;
 
-layout (binding = 6) uniform sampler2D sceneCopy;
-layout (binding = 13) uniform samplerCube prefilterMap;
-
-layout(std140, binding = 5) uniform SharedMatrices {
+layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
     mat4 PV;
 } matrices;
 
-layout(std140, binding = 15) uniform PushConstants {
+layout(SFE_SET(0, 15), std140) uniform PushConstants {
     vec3 viewPos;
     float ior;
     vec2 resolution;
@@ -70,23 +72,18 @@ vec2 toUv(vec3 worldPos, out float clipW) {
 
 vec3 envColor(vec3 dir) {
     vec3 d = normalize(dir);
-    vec3 ground = vec3(0.12, 0.13, 0.14);
-    vec3 horizon = vec3(0.55, 0.52, 0.48);
-    vec3 zenith = vec3(0.22, 0.38, 0.72);
-    float h = d.y;
-    vec3 col = mix(ground, horizon, smoothstep(-0.25, 0.1, h));
-    col = mix(col, zenith, smoothstep(0.0, 0.75, h));
-    col *= 1.4;
+    vec3 cube = textureLod(prefilterMap, d, 0.0).rgb;
 
     vec3 L = normalize(-params.lightDir);
     if (dot(params.lightDir, params.lightDir) < 1e-4) {
         L = normalize(vec3(0.35, 0.8, 0.25));
     }
-    float sun = pow(max(dot(d, L), 0.0), 256.0);
-    col += params.lightColor * sun * 4.0;
-
-    vec3 cube = textureLod(prefilterMap, d, 0.0).rgb;
-    return max(col, cube * 1.2);
+    vec3 sunCol = params.lightColor;
+    if (dot(sunCol, sunCol) < 1e-6) {
+        sunCol = vec3(1.0, 0.96, 0.88);
+    }
+    float sun = pow(max(dot(d, L), 0.0), 64.0);
+    return cube + sunCol * sun * 8.0;
 }
 
 vec3 sampleScene(vec2 uv) {
@@ -134,7 +131,17 @@ vec3 screenReflect(vec3 origin, vec3 dir, vec3 fallback) {
 }
 
 void main() {
-    vec3 N = normalize(TBN[2]);
+    vec3 Ns = cross(dFdx(FragPos), dFdy(FragPos));
+    vec3 Nv = TBN[2];
+    vec3 N = (dot(Nv, Nv) > 1e-4) ? normalize(Nv) : vec3(0.0);
+    if (dot(Ns, Ns) > 1e-12) {
+        Ns = normalize(Ns);
+        if (dot(N, N) < 0.5) {
+            N = Ns;
+        } else {
+            N = normalize(N + Ns);
+        }
+    }
     vec3 V = normalize(params.viewPos - FragPos);
     if (dot(N, V) < 0.0) {
         N = -N;
@@ -151,8 +158,9 @@ void main() {
     // opacity drives colored absorption inside the volume, not surface alpha.
     float density = clamp(params.opacity, 0.02, 1.0);
     float path = spherePathFactor(N, V);
-    vec3 tint = max(glassTintFromPos(FragPos), vec3(0.04));
-    vec3 absorb = (vec3(1.0) - tint) * density * 5.0 + vec3(0.02);
+    vec3 albedo = pow(max(texture(albedoMap, TexCoords).rgb, vec3(0.0)), vec3(2.2));
+    vec3 tint = max(params.tint * max(albedo, vec3(0.02)), vec3(0.02));
+    vec3 absorb = (vec3(1.0) - tint) * density * 5.0 + vec3(0.015);
 
     float roughness = clamp(params.roughness, 0.01, 0.12);
     float f0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
@@ -174,28 +182,34 @@ void main() {
     }
     trans *= exp(-absorb * path * 2.2);
 
-    vec3 envR = envColor(R);
-    vec3 ssR = screenReflect(FragPos, R, envR);
-    vec3 cubeR = textureLod(prefilterMap, R, roughness * 2.0).rgb;
-    vec3 refl = mix(envR, ssR, 0.72);
-    refl = max(refl, cubeR * 0.85);
-    refl *= exp(-absorb * (1.0 - path) * 0.35);
-
     vec3 L = normalize(-params.lightDir);
     if (dot(params.lightDir, params.lightDir) < 1e-4) {
         L = normalize(vec3(0.35, 0.8, 0.25));
     }
+    vec3 sunCol = params.lightColor;
+    if (dot(sunCol, sunCol) < 1e-6) {
+        sunCol = vec3(1.0, 0.96, 0.88);
+    }
+
+    vec3 envR = envColor(R);
+    vec3 ssR = screenReflect(FragPos, R, envR);
+    vec3 cubeR = textureLod(prefilterMap, R, roughness * 2.0).rgb;
+    vec3 refl = mix(envR, ssR, 0.18);
+    refl = max(refl, cubeR * 0.85);
+    float envSun = pow(max(dot(normalize(R), L), 0.0), 48.0);
+    refl += sunCol * envSun * 6.0;
+
     vec3 H = normalize(V + L);
-    float a = max(roughness * roughness, 0.001);
     float nh = max(dot(N, H), 0.0);
-    float denom = nh * nh * (a - 1.0) + 1.0;
-    float spec = a / max(3.14159265 * denom * denom, 1e-4);
-    vec3 sun = params.lightColor * spec * max(dot(N, L), 0.0) * 2.5;
+    float nDotL = max(dot(N, L), 0.0);
+    // Wide + hot core: a GGX needle is subpixel on small meshes and dies in TAA.
+    float spec = (pow(nh, 16.0) * 6.0 + pow(nh, 64.0) * 10.0) * nDotL;
+    vec3 highlight = sunCol * spec + sunCol * envSun * 4.0;
 
-    vec3 color = mix(trans, refl, F) + sun * F;
-    color = max(color, vec3(0.0));
-
-    // Solid glass shell: color carries volume; alpha only for compositing layers.
-    float alpha = clamp(mix(0.94, 0.99, F.x), 0.92, 1.0);
+    vec3 base = mix(trans, refl, F);
+    float alpha = mix(0.70, 0.92, F.x);
+    alpha = max(alpha, density * 0.75);
+    alpha = max(alpha, clamp(spec * 0.4, 0.0, 1.0));
+    vec3 color = max(base * alpha + highlight, vec3(0.0));
     FragColor = vec4(color, alpha);
 }

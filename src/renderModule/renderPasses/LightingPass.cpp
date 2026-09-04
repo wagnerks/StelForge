@@ -1,5 +1,6 @@
-﻿#include "LightingPass.h"
+#include "LightingPass.h"
 #include <algorithm>
+#include <cmath>
 #include "assetsModule/TextureHandler.h"
 #include "renderModule/IblBaker.h"
 #include "renderModule/Utils.h"
@@ -9,6 +10,8 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
+#include "core/Engine.h"
+#include "logsModule/logger.h"
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 #include "systemsModule/SystemsPriority.h"
@@ -26,23 +29,12 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	
 	auto* rhi = Engine::instance()->rhi();
 
-	// Описываем набор текстур, которые используются в deferred_shading.fs
 	Render::DescriptorSetLayoutDesc texLayoutDesc;
 	texLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-
-	texLayoutDesc.bindings.emplace_back(0, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(9, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(10, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	texLayoutDesc.bindings.emplace_back(15, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-
 	texLayoutDesc.bindings.emplace_back(6, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(8, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
@@ -50,11 +42,58 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	texLayoutDesc.bindings.emplace_back(13, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(14, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
-
 	mTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
 	mTexSet = rhi->allocateDescriptorSet(mTexSetLayout);
 
+	Render::DescriptorSetLayoutDesc uboLayoutDesc;
+	uboLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(9, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(10, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(15, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	mUboSetLayout = rhi->createDescriptorSetLayout(uboLayoutDesc);
+	mUboSet = rhi->allocateDescriptorSet(mUboSetLayout);
+
 	mTexSetInitialized = true;
+
+	RenderPassDesc rpDesc;
+	rpDesc.colorAttachmentCount = 1;
+	rpDesc.colorAttachments[0] = {
+		.loadOp = AttachmentLoadOp::Clear,
+		.storeOp = AttachmentStoreOp::Store,
+		.clearColor = Math::Vec4{0.f, 0.f, 0.f, 1.f},
+		.format = TextureFormat::RGBA16F,
+	};
+
+	renderPass = rhi->createRenderPass(rpDesc);
+
+	FramebufferDesc fbDesc;
+	fbDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	fbDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+	fbDesc.renderPass = renderPass;
+
+	TextureDesc litDesc;
+	litDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
+	litDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
+	litDesc.format = TextureFormat::RGBA16F;
+	litDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+	mPresentTex[0] = rhi->createTexture(litDesc);
+	mPresentTex[1] = rhi->createTexture(litDesc);
+
+	for (int i = 0; i < 2; ++i) {
+		FramebufferDesc presentFb = fbDesc;
+		presentFb.colorAttachments = { { mPresentTex[i] } };
+		mPresentFbo[i] = rhi->createFramebuffer(presentFb);
+	}
+	{
+		SamplerDesc presentSamp;
+		presentSamp.minFilter = FilterMode::Linear;
+		presentSamp.magFilter = FilterMode::Linear;
+		mPresentSampler = rhi->createSampler(presentSamp);
+	}
+	renderDataHandle.frame.set(FrameId::Lit, { .texture = mPresentTex[0], .sampler = mPresentSampler });
+	renderDataHandle.frame.set(FrameId::Final, { .texture = mPresentTex[0], .sampler = mPresentSampler, .framebuffer = mPresentFbo[0] });
 
 	GraphicsPipelineDesc pipelineDesc{};
 	Render::VertexLayoutDesc& layout = pipelineDesc.layout;
@@ -62,55 +101,15 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, position)), false);
 	layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex2D, texCoords)), false);
 
-	pipelineDesc.shaders.vertex = rhi->createShaderModule({ ShaderStage::Vertex, "deferred shading vs", ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.vs") });
-	pipelineDesc.shaders.fragment = rhi->createShaderModule({ShaderStage::Fragment, "deferred shading fs", ShaderModule::ShaderBase::loadShaderCode("shaders/deferred_shading.fs")});
 	pipelineDesc.topology = PrimitiveTopology::Triangles;
 	pipelineDesc.cullMode = CullMode::None;
 	pipelineDesc.depthStencilState.depthTest = false;
 	pipelineDesc.depthStencilState.depthWrite = false;
+	pipelineDesc.renderPass = renderPass;
+	pipelineDesc.descriptorSetLayouts = { mTexSetLayout, mUboSetLayout };
+	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/deferred_shading.vs");
+	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/deferred_shading.fs");
 	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
-	FramebufferDesc fbDesc;
-	fbDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
-	fbDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
-
-	TextureDesc litDesc;
-	litDesc.width = Engine::instance()->getWindow()->getScreenData().renderW;
-	litDesc.height = Engine::instance()->getWindow()->getScreenData().renderH;
-	litDesc.format = TextureFormat::RGBA16F;
-	litDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
-	mLitTexture = rhi->createTexture(litDesc);
-	mPresentTex[0] = rhi->createTexture(litDesc);
-	mPresentTex[1] = rhi->createTexture(litDesc);
-
-	fbDesc.colorAttachments.push_back({ mLitTexture });
-	fbDesc.depthStencilAttachment = {.texture = renderDataHandle.frame.texture(FrameId::GBufferDepth) };
-	lightingFBO = rhi->createFramebuffer(fbDesc);
-
-	for (int i = 0; i < 2; ++i) {
-		FramebufferDesc presentFb = fbDesc;
-		presentFb.depthStencilAttachment.reset();
-		presentFb.colorAttachments = { { mPresentTex[i] } };
-		mPresentFbo[i] = rhi->createFramebuffer(presentFb);
-	}
-	renderDataHandle.frame.set(FrameId::Lit, { .texture = mLitTexture });
-	renderDataHandle.frame.set(FrameId::Final, { .texture = mPresentTex[0] });
-
-	RenderPassDesc rpDesc;
-	rpDesc.colorAttachmentCount = 1;
-	rpDesc.colorAttachments[0] = {
-		.loadOp = AttachmentLoadOp::Clear,
-		.storeOp = AttachmentStoreOp::Store,
-		.clearColor = Math::Vec4{0.f, 0.f, 0.f, 1.f}
-	};
-	rpDesc.depthAttachment =  {
-		.loadOp = AttachmentLoadOp::Load,
-		.storeOp = AttachmentStoreOp::Store,
-		.clearDepth = 1.f,
-		.clearStencil = 0,
-	};
-
-	renderPass = rhi->createRenderPass(rpDesc);
 
 	BufferDesc plubodesc;
 	plubodesc.usage = BufferUsage::Uniform;
@@ -138,33 +137,41 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	lmDesc.debugName = "LightingPass_LightSpaceMatrices";
 	lightMatricesUBO = rhi->createBuffer(lmDesc);
 
-	std::vector<Render::WriteDescriptor> writes{ {
-		.set = mTexSet,
-		.binding = 10,
-		.type = Render::DescriptorType::UniformBuffer,
-		.buffers{ {pointLightsUBO} }
-	},
-	{
-		.set = mTexSet,
-		.binding = 9,
-		.type = Render::DescriptorType::UniformBuffer,
-		.buffers{ {cascadedShadowsUBO} }
-	},
-	{
-		.set = mTexSet,
-		.binding = 15,
-		.type = Render::DescriptorType::UniformBuffer,
-		.buffers{ {pushConstantsUBO} }
-	},
-	{
-		.set = mTexSet,
-		.binding = 11,
-		.type = Render::DescriptorType::UniformBuffer,
-		.buffers{ {lightMatricesUBO} }
-	} };
+	std::vector<Render::WriteDescriptor> writes = {
+		{ .set = mUboSet, .binding = 10, .type = Render::DescriptorType::UniformBuffer, .buffers{ {pointLightsUBO} } },
+		{ .set = mUboSet, .binding = 9, .type = Render::DescriptorType::UniformBuffer, .buffers{ {cascadedShadowsUBO} } },
+		{ .set = mUboSet, .binding = 15, .type = Render::DescriptorType::UniformBuffer, .buffers{ {pushConstantsUBO} } },
+		{ .set = mUboSet, .binding = 11, .type = Render::DescriptorType::UniformBuffer, .buffers{ {lightMatricesUBO} } },
+	};
 
 	rhi->updateDescriptorSets(writes);
 
+	{
+		TextureDesc dummyShadow;
+		dummyShadow.width = 1;
+		dummyShadow.height = 1;
+		dummyShadow.depth = 6;
+		dummyShadow.dimension = TextureDimension::Array;
+		dummyShadow.format = TextureFormat::DEPTH_COMPONENT32;
+		dummyShadow.usage = TextureUsage::Sampled;
+		mDummyPointShadow = rhi->createTexture(dummyShadow);
+		SamplerDesc dummySamp;
+		dummySamp.minFilter = FilterMode::Nearest;
+		dummySamp.magFilter = FilterMode::Nearest;
+		dummySamp.addressU = AddressMode::ClampToEdge;
+		dummySamp.addressV = AddressMode::ClampToEdge;
+		dummySamp.addressW = AddressMode::ClampToEdge;
+		dummySamp.compareOp = CompareOp::LessEqual;
+		mDummyPointShadowSampler = rhi->createSampler(dummySamp);
+		rhi->updateDescriptorSets({
+			{ mTexSet, 7, DescriptorType::CombinedImageSampler, {}, {{ mDummyPointShadow, mDummyPointShadowSampler }} },
+			{ mUboSet, 3, DescriptorType::UniformBuffer, {{ lightMatricesUBO }} },
+		});
+		mBoundPointShadow = { mDummyPointShadow, mDummyPointShadowSampler };
+		mBoundPointMat = lightMatricesUBO;
+	}
+
+	mIbl = {};
 	mIbl = SFE::Render::bakeIbl(rhi);
 	if (mIbl.irradiance && mIbl.prefilter && mIbl.brdfLut) {
 		std::vector<Render::WriteDescriptor> iblWrites{ {
@@ -258,8 +265,12 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 
 			const float invRes = 1.f / (std::max)(1.f, csm->resolution.x);
 			cascadeRenderData.cascade.x = invRes;
-			cascadeRenderData.cascade.y = (std::max)(cascade.texelSize.x, invRes * 10.f);
-			cascadeRenderData.cascade.z = cascade.bias;
+			cascadeRenderData.cascade.y = (std::max)(cascade.texelSize.x, invRes);
+			// bias is authored in depth units. That means very different world distances per
+			// cascade (worldPerTexel and depthRange differ by ~40x between the near and far one),
+			// which is worth revisiting -- but converting it to texel-relative units changes the
+			// picture on both backends, so it is not a standalone fix.
+			cascadeRenderData.cascade.z = std::isfinite(cascade.bias) ? cascade.bias : 0.f;
 			cascadeRenderData.cascade.w = static_cast<float>(cascade.samples);
 		}
 
@@ -271,14 +282,20 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 			splitAt(1), splitAt(2), splitAt(3), splitAt(4)
 		};
 		cascadedShadowData.cascadeSplits2 = {
-			splitAt(5), splitAt(6), 1.0e6f, 1.0e6f
+			splitAt(5), splitAt(6), 1.0e6f,
+			ECSHandler::getSystem<SystemsModule::RenderSystem>()->isShadowsDebugData() ? 1.f : 0.f
 		};
 
 		rhi->updateBuffer(cascadedShadowsUBO, cascadedShadowData);
 
 		const auto& mats = csm->lightSpaceMatrices;
 		if (!mats.empty()) {
-			rhi->updateBuffer(lightMatricesUBO, 0, mats.size() * sizeof(Math::Mat4), mats.data());
+			Math::Mat4 packed[6]{};
+			const size_t n = (std::min)(mats.size(), size_t{6});
+			for (size_t i = 0; i < 6; ++i) {
+				packed[i] = mats[i < n ? i : n - 1];
+			}
+			rhi->updateBuffer(lightMatricesUBO, 0, sizeof(packed), packed);
 		}
 	}
 
@@ -288,10 +305,20 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	drawData.viewPosX = renderDataHandle.mCameraPos.x;
 	drawData.viewPosY = renderDataHandle.mCameraPos.y;
 	drawData.viewPosZ = renderDataHandle.mCameraPos.z;
+	drawData.viewDirX = renderDataHandle.mViewDir.x;
+	drawData.viewDirY = renderDataHandle.mViewDir.y;
+	drawData.viewDirZ = renderDataHandle.mViewDir.z;
+	drawData.iblStrength = renderDataHandle.graphics.iblStrength;
+	drawData.shadowAmbient = renderDataHandle.graphics.shadowAmbient;
+	drawData.padLook0 = renderDataHandle.graphics.sssWrap;
+	drawData.padLook1 = renderDataHandle.graphics.sssStrength;
+	drawData.debugTerm = static_cast<float>(Engine::instance()->lightingDebugTerm());
 	rhi->updateBuffer(pushConstantsUBO, drawData);
 
+	const int write = 1 - mPresentShow;
+
 	RenderPassBeginInfo beginInfo;
-	beginInfo.framebuffer = lightingFBO;
+	beginInfo.framebuffer = mPresentFbo[write];
 	beginInfo.renderPass = renderPass;
 	beginInfo.width = Engine::instance()->getWindow()->getScreenData().renderW;
 	beginInfo.height = Engine::instance()->getWindow()->getScreenData().renderH;
@@ -299,199 +326,107 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, pipeline);
 	updateTextures(renderDataHandle, cmd);
-	rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Fragment, &drawData, sizeof(drawData));
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 
-	const int write = 1 - mPresentShow;
-	rhi->cmdBlit(cmd, lightingFBO, mPresentFbo[write], BlitMask::Color, BlitFilter::Nearest);
 	mPresentShow = write;
-	renderDataHandle.frame.set(FrameId::Lit, { .texture = mLitTexture });
-	renderDataHandle.frame.set(FrameId::Final, { .texture = mPresentTex[1 - write] });
+	renderDataHandle.frame.set(FrameId::Lit, { .texture = mPresentTex[write], .sampler = mPresentSampler });
+	renderDataHandle.frame.set(FrameId::Final, { .texture = mPresentTex[write], .sampler = mPresentSampler, .framebuffer = mPresentFbo[write] });
 }
 
 void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd)
 {
 	auto rhi = Engine::instance()->rhi();
+	const auto uboSet = mUboSet;
 
 	std::vector<Render::WriteDescriptor> writes;
 	auto& frame = renderDataHandle.frame;
 	const auto* point = frame.data<PointShadowFrame>(FrameId::PointShadow);
 	const auto* csm = frame.data<CsmFrame>(FrameId::Csm);
 
-	// gPosition (binding 0)
-	{
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 0;
-		w.type = Render::DescriptorType::CombinedImageSampler;
-		w.images.push_back({
-			frame.texture(FrameId::GBufferPosition),
-			frame.sampler(FrameId::GBufferPosition)
-			});
-		writes.push_back(std::move(w));
-	}
-
-	if (lightMatricesUBO) {
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 11;
-		w.type = Render::DescriptorType::UniformBuffer;
-		w.buffers.push_back({ lightMatricesUBO });
-		writes.push_back(std::move(w));
-	}
-
-	// gNormal (binding 1)
-	{
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 1;
-		w.type = Render::DescriptorType::CombinedImageSampler;
-		w.images.push_back({
-			frame.texture(FrameId::GBufferNormal),
-			frame.sampler(FrameId::GBufferNormal)
-			});
-		writes.push_back(std::move(w));
-	}
-
-	// gAlbedoSpec (binding 2)
-	{
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 2;
-		w.type = Render::DescriptorType::CombinedImageSampler;
-		w.images.push_back({
-			frame.texture(FrameId::GBufferAlbedo),
-			frame.sampler(FrameId::GBufferAlbedo)
-			});
-		writes.push_back(std::move(w));
-	}
-
-	// ssao (binding 3)
-	{
-		Render::TextureHandle ssaoTex{};
-		Render::SamplerHandle ssaoSampler{};
-
-		ssaoTex = frame.texture(FrameId::SsaoBlur);
-		ssaoSampler = frame.sampler(FrameId::SsaoBlur);
-
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 3;
-		w.type = Render::DescriptorType::CombinedImageSampler;
-		w.images.push_back({ ssaoTex, ssaoSampler });
-		writes.push_back(std::move(w));
-	}
-
-	if (point && point->matricesUBO) {
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 3;
-		w.type = Render::DescriptorType::UniformBuffer;
-		w.buffers.push_back({ point->matricesUBO });
-		writes.push_back(std::move(w));
-	}
-
-	{
-		const auto shadowTex = frame.texture(FrameId::ShadowPoint);
-		const auto shadowSampler = frame.sampler(FrameId::ShadowPoint);
-		if (shadowTex && shadowSampler) {
-			Render::WriteDescriptor w{};
-			w.set = mTexSet;
-			w.binding = 7;
-			w.type = Render::DescriptorType::CombinedImageSampler;
-			w.images.push_back({ shadowTex, shadowSampler });
-			writes.push_back(std::move(w));
+	auto addImage = [&](uint32_t binding, TextureHandle tex, SamplerHandle samp, BoundImage& prev) {
+		if (tex.id == prev.texture.id && samp.id == prev.sampler.id) {
+			return;
 		}
-	}
+		prev.texture = tex;
+		prev.sampler = samp;
+		if (!tex) {
+			return;
+		}
+		writes.push_back({
+			.set = mTexSet,
+			.binding = binding,
+			.type = Render::DescriptorType::CombinedImageSampler,
+			.images{ {tex, samp} }
+		});
+	};
+	auto addBuffer = [&](uint32_t binding, BufferHandle buf, BufferHandle& prev) {
+		if (buf.id == prev.id) {
+			return;
+		}
+		prev = buf;
+		if (!buf) {
+			return;
+		}
+		writes.push_back({
+			.set = uboSet,
+			.binding = binding,
+			.type = Render::DescriptorType::UniformBuffer,
+			.buffers{ {buf} }
+		});
+	};
 
-	// gOutlines (binding 5)
+	addImage(0, frame.texture(FrameId::GBufferPosition), frame.sampler(FrameId::GBufferPosition), mBoundGPos);
+	addBuffer(11, lightMatricesUBO, mBoundLightMat);
+	addImage(1, frame.texture(FrameId::GBufferNormal), frame.sampler(FrameId::GBufferNormal), mBoundGNormal);
+	addImage(2, frame.texture(FrameId::GBufferAlbedo), frame.sampler(FrameId::GBufferAlbedo), mBoundGAlbedo);
+
 	{
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 5;
-		w.type = Render::DescriptorType::CombinedImageSampler;
-		w.images.push_back({
-			frame.texture(FrameId::GBufferOutlines),
-			frame.sampler(FrameId::GBufferOutlines)
-			});
-		writes.push_back(std::move(w));
+		Render::TextureHandle ssaoTex = frame.texture(FrameId::SsaoBlur);
+		Render::SamplerHandle ssaoSampler = frame.sampler(FrameId::SsaoBlur);
+		if (!ssaoTex) {
+			if (const auto* white = AssetsModule::TextureHandler::instance()->loadTexture("white.png")) {
+				ssaoTex = white->texture;
+				ssaoSampler = white->sampler;
+			}
+		}
+		addImage(3, ssaoTex, ssaoSampler, mBoundSsao);
 	}
 
-	// Cascaded shadow map: comparison (PCF) + raw depth (PCSS blockers)
+	if (point) {
+		addBuffer(3, point->matricesUBO, mBoundPointMat);
+	}
+	addImage(7, frame.texture(FrameId::ShadowPoint), frame.sampler(FrameId::ShadowPoint), mBoundPointShadow);
+
+	{
+		Render::TextureHandle outlinesTex = frame.texture(FrameId::GBufferOutlines);
+		Render::SamplerHandle outlinesSampler = frame.sampler(FrameId::GBufferOutlines);
+		if (!outlinesTex) {
+			if (const auto* white = AssetsModule::TextureHandler::instance()->loadTexture("white.png")) {
+				outlinesTex = white->texture;
+				outlinesSampler = white->sampler;
+			}
+		}
+		addImage(5, outlinesTex, outlinesSampler, mBoundOutlines);
+	}
+
 	if (csm) {
-		{
-			Render::WriteDescriptor w{};
-			w.set = mTexSet;
-			w.binding = 8;
-			w.type = Render::DescriptorType::CombinedImageSampler;
-			w.images.push_back({
-				frame.texture(FrameId::ShadowCsm),
-				frame.sampler(FrameId::ShadowCsm)
-				});
-			writes.push_back(std::move(w));
-		}
-		{
-			Render::WriteDescriptor w{};
-			w.set = mTexSet;
-			w.binding = 6;
-			w.type = Render::DescriptorType::CombinedImageSampler;
-			w.images.push_back({
-				frame.texture(FrameId::ShadowCsmDepth),
-				frame.sampler(FrameId::ShadowCsmDepth)
-				});
-			writes.push_back(std::move(w));
-		}
+		addImage(8, frame.texture(FrameId::ShadowCsm), frame.sampler(FrameId::ShadowCsm), mBoundCsm);
+		addImage(6, frame.texture(FrameId::ShadowCsmDepth), frame.sampler(FrameId::ShadowCsmDepth), mBoundCsmDepth);
 	}
 
-	{
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 15;
-		w.type = Render::DescriptorType::UniformBuffer;
-		w.buffers.push_back({ pushConstantsUBO });
-		writes.push_back(std::move(w));
-	}
-
-	if (renderDataHandle.cameraMatricesUBO) {
-		Render::WriteDescriptor w{};
-		w.set = mTexSet;
-		w.binding = 5;
-		w.type = Render::DescriptorType::UniformBuffer;
-		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
-		writes.push_back(std::move(w));
-	}
+	addBuffer(15, pushConstantsUBO, mBoundPc);
+	addBuffer(5, renderDataHandle.cameraMatricesUBO, mBoundCam);
 
 	if (mIbl.irradiance && mIbl.prefilter && mIbl.brdfLut) {
-		{
-			Render::WriteDescriptor w{};
-			w.set = mTexSet;
-			w.binding = 12;
-			w.type = Render::DescriptorType::CombinedImageSampler;
-			w.images.push_back({ mIbl.irradiance, mIbl.irradianceSampler });
-			writes.push_back(std::move(w));
-		}
-		{
-			Render::WriteDescriptor w{};
-			w.set = mTexSet;
-			w.binding = 13;
-			w.type = Render::DescriptorType::CombinedImageSampler;
-			w.images.push_back({ mIbl.prefilter, mIbl.prefilterSampler });
-			writes.push_back(std::move(w));
-		}
-		{
-			Render::WriteDescriptor w{};
-			w.set = mTexSet;
-			w.binding = 14;
-			w.type = Render::DescriptorType::CombinedImageSampler;
-			w.images.push_back({ mIbl.brdfLut, mIbl.lutSampler });
-			writes.push_back(std::move(w));
-		}
+		addImage(12, mIbl.irradiance, mIbl.irradianceSampler, mBoundIblIrr);
+		addImage(13, mIbl.prefilter, mIbl.prefilterSampler, mBoundIblPref);
+		addImage(14, mIbl.brdfLut, mIbl.lutSampler, mBoundIblLut);
 	}
 
-	// Обновляем дескрипторы
 	if (!writes.empty()) {
 		rhi->updateDescriptorSets(writes);
 	}
-	rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &mTexSet, 1);
+	Render::DescriptorSetHandle sets[2] = { mTexSet, mUboSet };
+	rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
 }

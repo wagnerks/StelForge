@@ -67,14 +67,9 @@ namespace SFE::ComponentsModule {
 	}
 
 	TreeComponent::~TreeComponent() {
-		if (const auto parent = ECSHandler::registry().pinComponent<TreeComponent>(mParentEntity)) {
-			parent->removeChildEntityForce(getEntityId());
-		}
-
-		for (const auto child : mChildrenEntities) {
-			if (auto childNode = ECSHandler::registry().pinComponent<TreeComponent>(child)) {
-				childNode->setParent(ecss::INVALID_ID);
-			}
-		}
+		// Runs under the Tree array write lock (destroyEntity / destroyEntities).
+		// pinComponent on this array would spin on the odd structural epoch forever.
+		mParentEntity = ecss::INVALID_ID;
+		mChildrenEntities.clear();
 	}
 }

@@ -1,6 +1,7 @@
 ﻿#include "Engine.h"
 
 #include <chrono>
+#include <cstdio>
 #include <thread>
 
 #include <GLFW/glfw3.h>
@@ -46,19 +47,23 @@ namespace SFE {
 			glfwMakeContextCurrent(mWindow->getWindow());
 		}
 		if (mRHI) {
+			reproTrace("initThread rhi");
 			mRHI->init();
+			reproTrace("initThread rhi ok");
 		}
 		if (mRHI && mRHI->supportsFullPipeline()) {
 			ThreadPool::instance()->ensureLoadingContext();
 		}
+		reproTrace("initThread core");
 		mCore.init();
+		reproTrace("initThread core ok");
 
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
 			if (type != CoreModule::InputEventType::PRESS) {
 				return;
 			}
 
-			if (key == CoreModule::InputKey::KEY_ESCAPE) {
+			if (key == CoreModule::InputKey::KEY_ESCAPE && mPresentToScreen) {
 				glfwSetWindowShouldClose(getMainWindow(), true);
 			}
 		};
@@ -93,9 +98,9 @@ namespace SFE {
 		if (!checkNeedClose()) {
 			return;
 		}
-		
+
 		updateDelta();
-		
+
 		mCore.update(mDeltaTime);
 	
 		glfwPollEvents();
@@ -114,7 +119,12 @@ namespace SFE {
 	}
 
 	void Engine::updateDelta() {
-		const auto currentFrame = static_cast<float>(glfwGetTime());
+		// A capture steps at a fixed rate: wall-clock deltas make everything time-dependent
+		// (TAA history, volumetrics) land differently on a faster or slower run, which would
+		// show up as a backend difference when it is only a timing difference.
+		const auto currentFrame = mCapturingFrame
+			? mLastFrame + 1.f / 60.f
+			: static_cast<float>(glfwGetTime());
 		mDeltaTime = currentFrame - mLastFrame;
 		mLastFrame = currentFrame;
 
@@ -132,6 +142,14 @@ namespace SFE {
 	}
 
 	bool Engine::checkNeedClose() {
+		if (!mWindow || !mWindow->getWindow()) {
+			mAlive = false;
+			return false;
+		}
+		if (!mPresentToScreen) {
+			mAlive = true;
+			return true;
+		}
 		mAlive = !mWindow->isClosing();
 		return mAlive;
 	}
@@ -163,6 +181,13 @@ namespace SFE {
 	}
 
 	Engine::~Engine() {
+		if (mRHI) {
+			if (mWindow && mWindow->getWindow() && activeGraphicsBackend() == GraphicsBackend::OpenGL) {
+				glfwMakeContextCurrent(mWindow->getWindow());
+			}
+			mRHI->waitIdle();
+		}
+		mCore.shutdown();
 		if (ThreadPool::isAlive()) {
 			ThreadPool::instance()->shutdown();
 		}

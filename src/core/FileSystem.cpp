@@ -6,26 +6,102 @@
 #include <filesystem>
 #include <fstream>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 #include "logsModule/logger.h"
 
 namespace SFE {
+	void FileSystem::setRoot(std::string_view path) {
+		if (path.empty()) {
+			sRoot.clear();
+			return;
+		}
+		std::error_code ec;
+		auto p = std::filesystem::path(std::string(path));
+		if (!p.is_absolute()) {
+			p = std::filesystem::absolute(p, ec);
+		}
+		sRoot = p.lexically_normal();
+	}
+
+	const std::filesystem::path& FileSystem::root() {
+		return sRoot;
+	}
+
+	std::filesystem::path FileSystem::resolve(std::string_view path) {
+		const auto p = std::filesystem::path(std::string(path));
+		if (p.empty() || p.is_absolute() || sRoot.empty()) {
+			return p;
+		}
+		return (sRoot / p).lexically_normal();
+	}
+
+	std::filesystem::path FileSystem::executableDir() {
+#ifdef _WIN32
+		char buf[MAX_PATH]{};
+		GetModuleFileNameA(nullptr, buf, MAX_PATH);
+		return std::filesystem::path(buf).parent_path();
+#else
+		return std::filesystem::current_path();
+#endif
+	}
+
+	std::filesystem::path FileSystem::guessContentRoot(std::string_view exeDir) {
+		namespace fs = std::filesystem;
+		const fs::path dir = exeDir.empty() ? executableDir() : fs::path(std::string(exeDir));
+		auto hasAssets = [](const fs::path& p) {
+			std::error_code ec;
+			return fs::exists(p / "shaders", ec) || fs::exists(p / "models", ec);
+		};
+		auto probe = [&](const fs::path& p) -> fs::path {
+			if (hasAssets(p)) {
+				return p;
+			}
+			if (hasAssets(p / "bin")) {
+				return p / "bin";
+			}
+			if (hasAssets(p / "engine" / "bin")) {
+				return p / "engine" / "bin";
+			}
+			return {};
+		};
+		if (const auto found = probe(dir); !found.empty()) {
+			return found;
+		}
+		auto p = dir;
+		for (int i = 0; i < 6; ++i) {
+			const auto parent = p.parent_path();
+			if (parent == p) {
+				break;
+			}
+			p = parent;
+			if (const auto found = probe(p); !found.empty()) {
+				return found;
+			}
+		}
+		return dir / "bin";
+	}
+
 	bool FileSystem::isFileExists(std::string_view path) {
-		return std::filesystem::exists(path);
+		return std::filesystem::exists(resolve(path));
 	}
 
 	bool FileSystem::createDirectories(std::string_view path) {
 		std::error_code ec;
-		std::filesystem::create_directories(path, ec);
+		std::filesystem::create_directories(resolve(path), ec);
 		return !ec;
 	}
 
 	bool FileSystem::readFile(std::string_view path, std::string& file) {
-		std::ifstream inputFile;
-
-		inputFile.open(path.data());
+		const auto resolved = resolve(path).string();
+		std::ifstream inputFile(resolved);
 		if (!inputFile.is_open()) {
-			LogsModule::Logger::LOG_ERROR("FileSystem::FILE_NOT_SUCCESSFULLY_READ: %s", path);
+			LogsModule::Logger::LOG_ERROR("FileSystem::FILE_NOT_SUCCESSFULLY_READ: %s", resolved.c_str());
 			return false;
 		}
 
@@ -34,31 +110,26 @@ namespace SFE {
 			file += line + "\n";
 		}
 
-		inputFile.close();
-
 		return true;
 	}
 
 	bool FileSystem::writeFile(std::string_view path, std::string& file) {
-		std::ofstream outputFile;
-
-		outputFile.open(path.data());
+		const auto resolved = resolve(path).string();
+		std::ofstream outputFile(resolved);
 		if (!outputFile.is_open()) {
-			LogsModule::Logger::LOG_ERROR("FileSystem::FILE_NOT_SUCCESSFULLY_WRITE: %s", path);
+			LogsModule::Logger::LOG_ERROR("FileSystem::FILE_NOT_SUCCESSFULLY_WRITE: %s", resolved.c_str());
 			return false;
 		}
 
-		outputFile.write(file.c_str(), file.size());
-		outputFile.close();
-
+		outputFile.write(file.c_str(), static_cast<std::streamsize>(file.size()));
 		return true;
 	}
 
 	bool FileSystem::readJson(std::string_view path, Json::Value& root, bool withComments) {
-		std::ifstream ifs;
-		ifs.open(path.data());
+		const auto resolved = resolve(path).string();
+		std::ifstream ifs(resolved);
 		if (!ifs.is_open()) {
-			LogsModule::Logger::LOG_ERROR("FileSystem::readJson can not open file: %s", path.data());
+			LogsModule::Logger::LOG_ERROR("FileSystem::readJson can not open file: %s", resolved.c_str());
 			return false;
 		}
 
@@ -67,8 +138,6 @@ namespace SFE {
 
 		static JSONCPP_STRING errs;
 		const bool success = parseFromStream(builder, ifs, &root, &errs);
-
-		ifs.close();
 
 		if (!success) {
 			LogsModule::Logger::LOG_ERROR("FileSystem::readJson %s", errs.c_str());
@@ -79,10 +148,10 @@ namespace SFE {
 	}
 
 	bool FileSystem::writeJson(std::string_view path, const Json::Value& root) {
-		std::ofstream ofs;
-		ofs.open(path.data());
+		const auto resolved = resolve(path).string();
+		std::ofstream ofs(resolved);
 		if (!ofs.is_open()) {
-			LogsModule::Logger::LOG_ERROR("FileSystem::writeJson can not open file: %s", path.data());
+			LogsModule::Logger::LOG_ERROR("FileSystem::writeJson can not open file: %s", resolved.c_str());
 			return false;
 		}
 
@@ -90,9 +159,6 @@ namespace SFE {
 		static const std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
 
 		writer->write(root, &ofs);
-
-		ofs.close();
-
 		return true;
 	}
 
@@ -103,4 +169,3 @@ namespace SFE {
 		return json;
 	}
 }
-

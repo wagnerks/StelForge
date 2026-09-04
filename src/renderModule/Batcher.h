@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "assetsModule/modelModule/Mesh.h"
+#include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "containersModule/Vector.h"
@@ -36,7 +37,10 @@ struct DrawObject {
 	std::string fragmentShader = SFE::ComponentsModule::DefaultGBufferFS;
 	float opacity = 1.f;
 	float ior = 1.5f;
+	float roughness = 0.5f;
+	float metallic = 0.f;
 	SFE::Math::Vec3 tint{ 1.f, 1.f, 1.f };
+	uint64_t materialHash = 0;
 
 	struct Matrices {
 		SFE::Math::Mat4* transform;
@@ -60,14 +64,17 @@ public:
 	void addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent& material, ecss::EntityId id);
 	void addToDrawListGlass(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent& material, ecss::EntityId id);
 	void sort(const SFE::Math::Vec3& viewPos = {});
-	void flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline = {}, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw = {}, const std::vector<DrawObject*>* ordered = nullptr);
+	void flushAll(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline = {}, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw = {}, const std::vector<DrawObject*>* ordered = nullptr, bool bindResources = true);
 	void flushEntity(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, DrawObject& obj, ecss::EntityId entity, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline = {}, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw = {}, bool bindResources = true);
 	void clear();
+	void setMaterialLayout(SFE::Render::DescriptorSetLayoutHandle layout) { mMaterialLayout = layout; }
 
 	std::unordered_map<DrawBatchKey, DrawObject, DrawBatchKeyHash> drawList;
 
 	SFE::Render::BufferHandle batcherBuffer;
-	static inline SFE::Math::Mat4 mBones[100]{ SFE::Math::Mat4(1.f) };
+	SFE::Render::BufferHandle mBatcherBuffer[2]{};
+	uint32_t mGpuFrames = 1;
+	static inline SFE::Math::Mat4 mBones[SFE::ComponentsModule::kMaxArmatureBones]{ SFE::Math::Mat4(1.f) };
 
 private:
 	void flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Render::DescriptorSetHandle setHandle, DrawObject& obj, const ecss::EntityId* entityIds, size_t entityCount, const std::function<SFE::Render::PipelineHandle(const std::string&, const std::string&)>& getPipeline, const std::function<void(SFE::Render::CommandListHandle, const DrawObject&)>& beforeDraw, bool bindResources = true);
@@ -79,4 +86,9 @@ private:
 	size_t mInstanceCapacity = 0;
 	SFE::Render::TextureHandle mDefaultBlack{};
 	SFE::Render::TextureHandle mDefaultGray{};
+	SFE::Render::DescriptorSetLayoutHandle mMaterialLayout{};
+	std::unordered_map<uint64_t, SFE::Render::DescriptorSetHandle> mCachedMaterialSets;
+	SFE::Render::BufferHandle mBoundFrameSsbo{};
+	SFE::Render::DescriptorSetHandle mBoundPassSsboSet{};
+	SFE::Render::BufferHandle mBoundPassSsbo{};
 };

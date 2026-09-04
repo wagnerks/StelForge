@@ -27,6 +27,13 @@ namespace SFE::Render::RenderPasses {
 	void DebugPass::init(SystemsModule::RenderData&) {
 		auto rhi = Engine::instance()->rhi();
 
+		RenderPassDesc rpd;
+		rpd.colorAttachmentCount = 1;
+		rpd.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
+		rpd.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
+		rpd.colorAttachments[0].format = TextureFormat::RGBA8;
+		debugRenderPass = rhi->createRenderPass(rpd);
+
 		BufferDesc lineBufDesc;
 		mLinesCapacity = 65536 * sizeof(Math::Vec3);
 		lineBufDesc.size = mLinesCapacity;
@@ -78,19 +85,9 @@ namespace SFE::Render::RenderPasses {
 			false
 			});
 
-		ShaderModuleDesc triangleVS;
-		triangleVS.stage = ShaderStage::Vertex;
-		triangleVS.name = "Debug Triangle VS";
-		triangleVS.source = ShaderModule::ShaderBase::loadShaderCode("shaders/simpleColoredTriangle.vs");
-
-		ShaderModuleDesc triangleFS;
-		triangleFS.stage = ShaderStage::Fragment;
-		triangleFS.name = "Debug Triangle FS";
-		triangleFS.source = ShaderModule::ShaderBase::loadShaderCode("shaders/simpleColoredTriangle.fs");
-
 		GraphicsPipelineDesc debugPipelineDesc{};
-		debugPipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(triangleVS);
-		debugPipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(triangleFS);
+		debugPipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/simpleColoredTriangle.vs");
+		debugPipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/simpleColoredTriangle.fs");
 		debugPipelineDesc.topology = PrimitiveTopology::Triangles;
 		debugPipelineDesc.cullMode = CullMode::None;
 		debugPipelineDesc.frontFace = FrontFace::CounterClockWise;
@@ -102,15 +99,14 @@ namespace SFE::Render::RenderPasses {
 		debugPipelineDesc.blend.srcColor = BlendFactor::SrcAlpha;
 		debugPipelineDesc.blend.dstColor = BlendFactor::OneMinusSrcAlpha;
 		debugPipelineDesc.layout = triLayout;
+		debugPipelineDesc.renderPass = debugRenderPass;
+		debugPipelineDesc.pushConstantSize = sizeof(DrawDataTriangles);
+		debugPipelineDesc.pushConstantStages = ShaderStage::Vertex | ShaderStage::Fragment;
 		trianglesPipeline = rhi->createGraphicsPipeline(debugPipelineDesc);
 
 		GraphicsPipelineDesc linePipelineDesc;
-		linePipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(ShaderModuleDesc{
-			ShaderStage::Vertex, "Debug Lines VS", ShaderModule::ShaderBase::loadShaderCode("shaders/xyzLines.vs")});
-
-		linePipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(ShaderModuleDesc{
-			ShaderStage::Fragment, "Debug Lines FS", ShaderModule::ShaderBase::loadShaderCode("shaders/colored_lines.fs")});
-
+		linePipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/xyzLines.vs");
+		linePipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/colored_lines.fs");
 		linePipelineDesc.layout = lineLayout;
 		linePipelineDesc.topology = PrimitiveTopology::Lines;
 		linePipelineDesc.cullMode = CullMode::None;
@@ -120,13 +116,10 @@ namespace SFE::Render::RenderPasses {
 		linePipelineDesc.depthStencilState.depthWrite = false;
 		linePipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
 		linePipelineDesc.blend.enabled = false;
+		linePipelineDesc.renderPass = debugRenderPass;
+		linePipelineDesc.pushConstantSize = sizeof(DrawDataLines);
+		linePipelineDesc.pushConstantStages = ShaderStage::Vertex | ShaderStage::Fragment;
 		linesPipeline = rhi->createGraphicsPipeline(linePipelineDesc);
-
-		RenderPassDesc rpd;
-		rpd.colorAttachmentCount = 1;
-		rpd.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
-		rpd.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
-		debugRenderPass = rhi->createRenderPass(rpd);
 	}
 
 	DebugPass::~DebugPass() {}
@@ -152,6 +145,11 @@ namespace SFE::Render::RenderPasses {
 		auto* rhi = Engine::instance()->rhi();
 		auto fb = renderDataHandle.frame.framebuffer(FrameId::Final);
 		auto* dbg = SystemsModule::RenderDebugInfo::instance();
+		if (!fb || (Utils::renderTriangles.empty() && Utils::renderVertices.empty())) {
+			Utils::renderTriangles.clear();
+			Utils::renderVertices.clear();
+			return;
+		}
 
 		RenderPassBeginInfo rpBeginInfo;
 		rpBeginInfo.renderPass = debugRenderPass;
@@ -202,9 +200,6 @@ namespace SFE::Render::RenderPasses {
 		}
 
 		rhi->cmdEndRenderPass(cmd);
-		if (fb && Engine::instance()->presentToScreen()) {
-			rhi->cmdBlit(cmd, fb, rhi->getBackbufferFramebuffer(), BlitMask::Color, BlitFilter::Nearest);
-		}
 	}
 
 	PipelineHandle DebugPass::getTrianglePipeline(bool blend, bool depthTest, bool cull, std::pair<BlendFactor, BlendFactor> blendFactors)
@@ -217,10 +212,12 @@ namespace SFE::Render::RenderPasses {
 
 		if (!trianglesPipelinesCache.contains(desc)) {
 			GraphicsPipelineDesc debugPipelineDesc{};
-			debugPipelineDesc.shaders.vertex = Engine::instance()->rhi()->createShaderModule(ShaderModuleDesc{
-				ShaderStage::Vertex, "Debug Triangle VS", ShaderModule::ShaderBase::loadShaderCode("shaders/simpleColoredTriangle.vs") });
-			debugPipelineDesc.shaders.fragment = Engine::instance()->rhi()->createShaderModule(ShaderModuleDesc{
-				ShaderStage::Fragment, "Debug Triangle FS", ShaderModule::ShaderBase::loadShaderCode("shaders/simpleColoredTriangle.fs") });
+			auto* rhi = Engine::instance()->rhi();
+			debugPipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/simpleColoredTriangle.vs");
+			debugPipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/simpleColoredTriangle.fs");
+			debugPipelineDesc.renderPass = debugRenderPass;
+			debugPipelineDesc.pushConstantSize = sizeof(DrawDataTriangles);
+			debugPipelineDesc.pushConstantStages = ShaderStage::Vertex | ShaderStage::Fragment;
 
 			debugPipelineDesc.topology = PrimitiveTopology::Triangles;
 			debugPipelineDesc.cullMode = cull ? CullMode::Back : CullMode::None;
@@ -258,7 +255,7 @@ namespace SFE::Render::RenderPasses {
 				true                          // normalized = true
 				});
 
-			trianglesPipelinesCache[desc] = Engine::instance()->rhi()->createGraphicsPipeline(debugPipelineDesc);
+			trianglesPipelinesCache[desc] = rhi->createGraphicsPipeline(debugPipelineDesc);
 		}
 
 		return trianglesPipelinesCache[desc];

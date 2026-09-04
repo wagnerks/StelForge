@@ -1,12 +1,13 @@
-#version 330 core
-in vec2 TexCoords;
-out vec4 color;
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) in vec2 TexCoords;
+layout(location = 0) out vec4 color;
 
-layout (std140, binding = 15) uniform PushConstants {
+SFE_PUSH_BLOCK PushConstants {
     vec4 drawColor;
 } pc;
 
 void main()
-{    
+{
     color = pc.drawColor;
 }

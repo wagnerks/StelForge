@@ -1,5 +1,6 @@
 ﻿#include "CameraSystem.h"
 
+#include <algorithm>
 #include <GLFW/glfw3.h>
 
 #include "OcTreeSystem.h"
@@ -17,37 +18,71 @@ namespace SFE::SystemsModule {
 		mDefaultCamera = ECSHandler::registry().takeEntity();
 
 		auto transform = ECSHandler::registry().addComponent<TransformComponent>(mDefaultCamera, mDefaultCamera);
-		transform->setPos({ 0.f, 200.f, 400.f });
-		transform->setRotate({ -20.f, 0.f, 0.0f });
+		transform->setPos({ 0.f, 2.2f, 6.5f });
+		transform->setRotate({ -18.f, 0.f, 0.0f });
 		transform->reloadTransform();
 		ECSHandler::registry().addComponent<CameraComponent>(mDefaultCamera, 45.f, aspect, Engine::instance()->getWindow()->getScreenData().near, Engine::instance()->getWindow()->getScreenData().far)->updateFrustum(transform->getViewMatrix());
 		initKeyEvents();
 	}
 
+	bool CameraSystem::keyDown(CoreModule::InputKey key) const {
+		const int k = static_cast<int>(key);
+		if (k < 0 || k >= kKeyCount) {
+			return false;
+		}
+		return mPressed[static_cast<size_t>(k)].load(std::memory_order_relaxed);
+	}
+
+	void CameraSystem::setKeyDown(CoreModule::InputKey key, bool down) {
+		const int k = static_cast<int>(key);
+		if (k < 0 || k >= kKeyCount) {
+			return;
+		}
+		mPressed[static_cast<size_t>(k)].store(down, std::memory_order_relaxed);
+	}
+
 	void CameraSystem::update(float_t dt) {
 		auto cam = getCurrentCamera();
-		if (isPressed[CoreModule::InputKey::KEY_W]) {
+		if (sReproFly.load(std::memory_order_relaxed)) {
+			movementSpeed = 300.f;
+			processKeyboard(cam, FORWARD, dt);
+			processKeyboard(cam, RIGHT, dt);
+			return;
+		}
+		if (keyDown(CoreModule::InputKey::KEY_W)) {
 			processKeyboard(cam, FORWARD, dt);
 		}
-		if (isPressed[CoreModule::InputKey::KEY_S]) {
+		if (keyDown(CoreModule::InputKey::KEY_S)) {
 			processKeyboard(cam, BACKWARD, dt);
 		}
-		if (isPressed[CoreModule::InputKey::KEY_A]) {
+		if (keyDown(CoreModule::InputKey::KEY_A)) {
 			processKeyboard(cam, LEFT, dt);
 		}
-		if (isPressed[CoreModule::InputKey::KEY_D]) {
+		if (keyDown(CoreModule::InputKey::KEY_D)) {
 			processKeyboard(cam, RIGHT, dt);
 		}
-		if (isPressed[CoreModule::InputKey::KEY_SPACE]) {
+		if (keyDown(CoreModule::InputKey::KEY_SPACE)) {
 			processKeyboard(cam, TOP, dt);
 		}
-		if (isPressed[CoreModule::InputKey::KEY_LEFT_SHIFT]) {
+		if (keyDown(CoreModule::InputKey::KEY_LEFT_SHIFT)) {
 			processKeyboard(cam, BOTTOM, dt);
 		}
 	}
 
 	void CameraSystem::setCurrentCamera(ecss::EntityId camera) {
 		mCurrentCamera = camera;
+	}
+
+	void CameraSystem::refreshMouseLook() {
+		GLFWwindow* glfwWindow = Engine::instance()->getMainWindow();
+		const bool want = mmbLook.load(std::memory_order_relaxed) || altLook.load(std::memory_order_relaxed);
+		if (want == processMouse) {
+			return;
+		}
+		processMouse = want;
+		if (glfwWindow) {
+			glfwSetInputMode(glfwWindow, GLFW_CURSOR, want ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+		}
 	}
 
 	ecss::EntityId CameraSystem::getCurrentCamera() const {
@@ -61,10 +96,19 @@ namespace SFE::SystemsModule {
 	void CameraSystem::initKeyEvents() {
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
 			if (type == SFE::CoreModule::InputEventType::PRESS) {
-				isPressed[key] = true;
+				setKeyDown(key, true);
 			}
 			else if (type == SFE::CoreModule::InputEventType::RELEASE) {
-				isPressed[key] = false;
+				setKeyDown(key, false);
+			}
+			if (key == CoreModule::InputKey::KEY_LEFT_ALT || key == CoreModule::InputKey::KEY_RIGHT_ALT) {
+				if (type == CoreModule::InputEventType::PRESS && lmbDown.load(std::memory_order_relaxed)) {
+					altLook.store(true, std::memory_order_relaxed);
+				}
+				if (type == CoreModule::InputEventType::RELEASE) {
+					altLook.store(false, std::memory_order_relaxed);
+				}
+				refreshMouseLook();
 			}
 		};
 
@@ -73,14 +117,24 @@ namespace SFE::SystemsModule {
 			if (!glfwWindow) {
 				return;
 			}
-			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::PRESS) {
-				processMouse = true;
-				glfwSetInputMode(glfwWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			const bool press = action == CoreModule::InputEventType::PRESS;
+			const bool release = action == CoreModule::InputEventType::RELEASE;
+			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_LEFT) {
+				lmbDown.store(press, std::memory_order_relaxed);
+				if (press && (keyDown(CoreModule::InputKey::KEY_LEFT_ALT) || keyDown(CoreModule::InputKey::KEY_RIGHT_ALT))) {
+					altLook.store(true, std::memory_order_relaxed);
+				}
+				if (release) {
+					altLook.store(false, std::memory_order_relaxed);
+				}
 			}
-			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE && action == CoreModule::InputEventType::RELEASE) {
-				processMouse = false;
-				glfwSetInputMode(glfwWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			if (btn == CoreModule::MouseButton::MOUSE_BUTTON_MIDDLE) {
+				mmbLook.store(press, std::memory_order_relaxed);
+				if (release) {
+					mmbLook.store(false, std::memory_order_relaxed);
+				}
 			}
+			refreshMouseLook();
 		};
 
 		onMouseEvent = [this](Math::DVec2 mPos, Math::DVec2 mouseOffset) {
@@ -97,41 +151,57 @@ namespace SFE::SystemsModule {
 			return;
 		}
 
-		auto tc = ECSHandler::registry().pinComponent<TransformComponent>(camera);
+		Math::Mat4 viewMatrix{};
+		bool moved = false;
+		{
+			auto tc = ECSHandler::registry().pinComponent<TransformComponent>(camera);
+			if (!tc) {
+				return;
+			}
 
-		const float velocity = movementSpeed * deltaTime;
+			const float velocity = movementSpeed * deltaTime;
 
-		Math::Vec3 dif = {};
-		if (direction == FORWARD) {
-			dif += tc->getForward() * velocity;
+			Math::Vec3 dif = {};
+			if (direction == FORWARD) {
+				dif += tc->getForward() * velocity;
+			}
+
+			if (direction == BACKWARD) {
+				dif -= tc->getForward() * velocity;
+			}
+
+			if (direction == LEFT) {
+				dif -= tc->getRight() * velocity;
+			}
+
+			if (direction == RIGHT) {
+				dif += tc->getRight() * velocity;
+			}
+
+			if (direction == TOP) {
+				dif += Math::Vec3{0.f, 1.f, 0.f} *velocity;
+			}
+
+			if (direction == BOTTOM) {
+				dif -= Math::Vec3{0.f, 1.f, 0.f} *velocity;
+			}
+
+			if (dif != Math::Vec3{}) {
+				tc->setPos(tc->getPos() + dif);
+				tc->reloadTransform();
+				viewMatrix = tc->getViewMatrix();
+				moved = true;
+			}
 		}
 
-		if (direction == BACKWARD) {
-			dif -= tc->getForward() * velocity;
+		if (!moved) {
+			return;
 		}
 
-		if (direction == LEFT) {
-			dif -= tc->getRight() * velocity;
+		if (auto cameraComp = ECSHandler::registry().pinComponent<CameraComponent>(camera)) {
+			cameraComp->updateFrustum(viewMatrix);
 		}
-
-		if (direction == RIGHT) {
-			dif += tc->getRight() * velocity;
-		}
-
-		if (direction == TOP) {
-			dif += Math::Vec3{0.f, 1.f, 0.f} *velocity;
-		}
-
-		if (direction == BOTTOM) {
-			dif -= Math::Vec3{0.f, 1.f, 0.f} *velocity;
-		}
-
-		if (dif != Math::Vec3{}) {
-			tc->setPos(tc->getPos() + dif);
-			tc->reloadTransform();
-			ECSHandler::registry().pinComponent<CameraComponent>(camera)->updateFrustum(tc->getViewMatrix());
-			TasksManager::instance()->notify({ camera, CAMERA_UPDATED });
-		}
+		TasksManager::instance()->notify({ camera, CAMERA_UPDATED });
 	}
 
 
@@ -141,32 +211,49 @@ namespace SFE::SystemsModule {
 		}
 		xoffset *= mouseSensitivity;
 		yoffset *= mouseSensitivity;
-		auto tc = ECSHandler::registry().pinComponent<TransformComponent>(getCurrentCamera());
-		if (!tc) {
-			return;
+		const auto camera = getCurrentCamera();
+		Math::Mat4 viewMatrix{};
+		{
+			auto tc = ECSHandler::registry().pinComponent<TransformComponent>(camera);
+			if (!tc) {
+				return;
+			}
+			auto Pitch = tc->getRotate().x;
+			auto Yaw = tc->getRotate().y;
+			Yaw -= xoffset;
+
+			Pitch += yoffset;
+
+			if (constrainPitch) {
+				Pitch = (std::min)((std::max)(Pitch, -90.f), 90.f);
+			}
+
+			tc->setRotate({ Pitch, Yaw, 0.f });
+			tc->reloadTransform();
+			viewMatrix = tc->getViewMatrix();
 		}
-		auto Pitch = tc->getRotate().x;
-		auto Yaw = tc->getRotate().y;
-		Yaw -= xoffset;
-
-		Pitch += yoffset;
-
-		if (constrainPitch) {
-			Pitch = std::min(std::max(Pitch, -90.f), 90.f);
+		if (auto cameraComp = ECSHandler::registry().pinComponent<CameraComponent>(camera)) {
+			cameraComp->updateFrustum(viewMatrix);
 		}
-
-		tc->setRotate({ Pitch, Yaw, 0.f });
-		tc->reloadTransform();
-		ECSHandler::registry().pinComponent<CameraComponent>(getCurrentCamera())->updateFrustum(tc->getViewMatrix());
 	}
 
 	void CameraSystem::processMouseScroll(float yoffset) {
-		auto cameraComp = ECSHandler::registry().pinComponent<CameraComponent>(getCurrentCamera());
+		const auto camera = getCurrentCamera();
+		Math::Mat4 viewMatrix{};
+		{
+			auto tc = ECSHandler::registry().pinComponent<TransformComponent>(camera);
+			if (!tc) {
+				return;
+			}
+			viewMatrix = tc->getViewMatrix();
+		}
+		auto cameraComp = ECSHandler::registry().pinComponent<CameraComponent>(camera);
+		if (!cameraComp) {
+			return;
+		}
 		auto fov = cameraComp->getProjection().getFOV();
 		fov -= yoffset;
-		
-		cameraComp->getProjection().setFOV(std::min(std::max(1.f, fov), 90.f));
-
-		cameraComp->updateFrustum(ECSHandler::registry().pinComponent<TransformComponent>(getCurrentCamera())->getViewMatrix());
+		cameraComp->getProjection().setFOV((std::min)((std::max)(1.f, fov), 90.f));
+		cameraComp->updateFrustum(viewMatrix);
 	}
 }

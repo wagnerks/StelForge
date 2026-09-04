@@ -1,11 +1,12 @@
-#version 430 core
-out vec4 FragColor;
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) out vec4 FragColor;
 
-in vec3 fragPos;
-in vec3 normal;
-in vec4 fragColor;
+layout(location = 0) in vec3 fragPos;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec4 fragColor;
 
-layout(std140, binding = 15) uniform PushConstants {
+SFE_PUSH_BLOCK Push {
     vec4 viewPos;
     mat4 PVM;
 } pc;

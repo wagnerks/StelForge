@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <string>
 #include <vector>
 
 #include "Material.h"
@@ -25,6 +26,7 @@ namespace SFE {
 		Material material;
 		Math::Mat4 transform;
 		FrustumModule::AABB aabb;
+		std::string nodeName;
 	};
 
 	using MeshObject3D = MeshObject<Vertex3D>;

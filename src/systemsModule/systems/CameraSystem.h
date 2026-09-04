@@ -1,5 +1,8 @@
 ﻿#pragma once
 
+#include <array>
+#include <atomic>
+
 #include "core/InputHandler.h"
 #include "systemsModule/SystemBase.h"
 
@@ -28,14 +31,23 @@ namespace SFE::SystemsModule {
 		bool processMouse = false;
 		float movementSpeed = 100.f;
 		float mouseSensitivity = 0.1f;
+		inline static std::atomic<bool> sReproFly{ false };
 	
 	private:
 		void initKeyEvents();
+		void refreshMouseLook();
 		void processKeyboard(ecss::EntityId camera, CameraMovement direction, float deltaTime);
+		bool keyDown(CoreModule::InputKey key) const;
+		void setKeyDown(CoreModule::InputKey key, bool down);
+
 		ecss::EntityId mCurrentCamera = ecss::INVALID_ID;
 
 		ecss::EntityId mDefaultCamera = ecss::INVALID_ID;
 
-		std::map<CoreModule::InputKey, bool> isPressed;
+		static constexpr int kKeyCount = 512;
+		std::array<std::atomic<bool>, kKeyCount> mPressed{};
+		std::atomic<bool> mmbLook{ false };
+		std::atomic<bool> altLook{ false };
+		std::atomic<bool> lmbDown{ false };
 	};
 }

@@ -1,66 +1,27 @@
 ﻿#pragma once
 
-#include <shared_mutex>
-
 #include "mathModule/Forward.h"
 #include "mathModule/Quaternion.h"
 
 #include "componentsModule/ComponentBase.h"
-#include "propertiesModule/Serializable.h"
 
 namespace SFE::ComponentsModule {
-	class TransformComponent : public ecss::ComponentInterface, public PropertiesModule::Serializable {
+	/**
+	 * @brief Position, rotation and scale of one entity.
+	 *
+	 * Trivially copyable, and worth keeping that way: this is the component every frame walks,
+	 * so it is the one whose array benefits most from ecss relocating sectors with a memmove
+	 * instead of a move constructor per element.
+	 *
+	 * Values are not synchronised. The component used to hold a shared_mutex, but every getter
+	 * handed out a reference that outlived the lock, so it never provided the guarantee it
+	 * looked like it did. Order reads against writes the way ecss intends -- claim the type for
+	 * the duration of a system with `registry.access<Read<TransformComponent>>()` -- rather
+	 * than per component.
+	 */
+	class TransformComponent : public ecss::ComponentInterface {
 	public:
-		TransformComponent(const TransformComponent& other)
-			: ecss::ComponentInterface(other),
-			  PropertiesModule::Serializable(other),
-			  mDirty(other.mDirty),
-			  mRotateQuaternion(other.mRotateQuaternion),
-			  mTransform(other.mTransform),
-			  mPos(other.mPos),
-			  mScale(other.mScale),
-			  mRotate(other.mRotate) {}
-
-		TransformComponent& operator=(const TransformComponent& other) {
-			if (this == &other)
-				return *this;
-			ecss::ComponentInterface::operator =(other);
-			PropertiesModule::Serializable::operator =(other);
-			mDirty = other.mDirty;
-			mRotateQuaternion = other.mRotateQuaternion;
-			mTransform = other.mTransform;
-			mPos = other.mPos;
-			mScale = other.mScale;
-			mRotate = other.mRotate;
-			return *this;
-		}
-
-		TransformComponent(TransformComponent&& other) noexcept
-			: ecss::ComponentInterface(std::move(other)),
-			  PropertiesModule::Serializable(std::move(other)),
-			  mDirty(other.mDirty),
-			  mRotateQuaternion(std::move(other.mRotateQuaternion)),
-		      mTransform(std::move(other.mTransform)),
-			  mPos(std::move(other.mPos)),
-			  mScale(std::move(other.mScale)),
-			  mRotate(std::move(other.mRotate)){}
-
-		TransformComponent& operator=(TransformComponent&& other) noexcept {
-			if (this == &other)
-				return *this;
-			ecss::ComponentInterface::operator =(std::move(other));
-			PropertiesModule::Serializable::operator =(std::move(other));
-			mDirty = other.mDirty;
-			mTransform = std::move(other.mTransform);
-			mRotateQuaternion = std::move(other.mRotateQuaternion);
-			mPos = std::move(other.mPos);
-			mScale = std::move(other.mScale);
-			mRotate = std::move(other.mRotate);
-			return *this;
-		}
-
 		TransformComponent(ecss::SectorId id) : ComponentInterface(id) { markDirty(); };
-		~TransformComponent() override;
 
 		const Math::Vec3& getPos(bool global = false) const;
 		void setX(float x);
@@ -101,9 +62,6 @@ namespace SFE::ComponentsModule {
 		void markDirty();
 		bool isDirty() const;
 
-		void deserialize(const Json::Value& data) override;
-		void serialize(Json::Value& data) override;
-
 	private:
 		bool mDirty = false;
 
@@ -112,9 +70,7 @@ namespace SFE::ComponentsModule {
 
 		Math::Vec3 mPos = {0.f};
 		Math::Vec3 mScale = { 1.f };
-		Math::Vec3 mRotate = { 0.f }; 
-		
-		mutable std::shared_mutex mtx;
+		Math::Vec3 mRotate = { 0.f };
 	};
 
 	struct TransformMatComp {

@@ -1,5 +1,8 @@
-﻿#pragma once
+#pragma once
+#include <chrono>
+#include <cstdio>
 #include <future>
+#include <thread>
 #include <vector>
 #include <atomic>
 
@@ -39,13 +42,31 @@ namespace SFE::Render {
 		}
 
 		void waitReady() {
-			auto status = mStatus.load(std::memory_order_acquire);
-			while (status != RenderPreparingStatus::READY) {
+			const auto t0 = std::chrono::steady_clock::now();
+			bool stalled = false;
+			for (;;) {
+				const auto status = mStatus.load(std::memory_order_acquire);
+				if (status == RenderPreparingStatus::READY) {
+					return;
+				}
+				if (!stalled && std::chrono::steady_clock::now() - t0 > std::chrono::seconds(2)) {
+					stalled = true;
+					if (FILE* f = nullptr; fopen_s(&f, "hang.trace", "a") == 0 && f) {
+						std::fprintf(f, "waitReady stalled status=%d\n", static_cast<int>(status));
+						std::fflush(f);
+						std::fclose(f);
+					}
+				}
 				if (SFE::ThreadPool::isAlive()) {
 					SFE::ThreadPool::instance()->syncUpdate();
 				}
-				mStatus.wait(status, std::memory_order_acquire);
-				status = mStatus.load(std::memory_order_acquire);
+				std::this_thread::yield();
+			}
+		}
+
+		void setMaterialLayout(DescriptorSetLayoutHandle layout) {
+			for (auto& batcher : mBatchers) {
+				batcher.setMaterialLayout(layout);
 			}
 		}
 
@@ -58,6 +79,9 @@ namespace SFE::Render {
 		virtual ~RenderPass() = default;
 		virtual void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) = 0;
 		virtual void init(SystemsModule::RenderData& renderDataHandle) {}
+		virtual bool isPrepared() const { return true; }
+		virtual bool isAllSlotsReady() const { return true; }
+		virtual void prepare() {}
 		void setPriority(size_t priority);
 		size_t getPriority() const;
 
@@ -91,6 +115,9 @@ namespace SFE::Render {
 		}
 
 		void rotate() {
+			if (passData.empty()) {
+				return;
+			}
 			if (cur == passData.size() - 1) {
 				cur = 0;
 			}
@@ -100,7 +127,27 @@ namespace SFE::Render {
 		}
 
 		RenderPassData* getCurrentPassData() const {
+			if (passData.empty() || cur >= passData.size()) {
+				return nullptr;
+			}
 			return passData[cur];
+		}
+
+		bool allSlotsReady() const {
+			for (auto* data : passData) {
+				if (data && data->mStatus.load(std::memory_order_acquire) != RenderPreparingStatus::READY) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		void setMaterialLayout(DescriptorSetLayoutHandle layout) {
+			for (auto* data : passData) {
+				if (data) {
+					data->setMaterialLayout(layout);
+				}
+			}
 		}
 
 		
@@ -113,8 +160,15 @@ namespace SFE::Render {
 	class RenderPassWithData : public RenderPass {
 	public:
 		std::shared_future<void> currentLock;
-		
-		virtual void prepare() {}
+
+		bool isPrepared() const override {
+			auto* data = mData.getCurrentPassData();
+			return !data || data->mStatus.load(std::memory_order_acquire) == RenderPreparingStatus::READY;
+		}
+
+		bool isAllSlotsReady() const override {
+			return mData.allSlotsReady();
+		}
 
 		RenderPassDataContainer& getContainer() { return mData; }
 

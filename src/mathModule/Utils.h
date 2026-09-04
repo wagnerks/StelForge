@@ -125,6 +125,27 @@ namespace SFE::Math {
 		return result;
 	}
 
+	// Vulkan / D3D-style clip space: depth in [0, 1], same handedness as perspectiveRH_NO.
+	template<typename T>
+	Matrix<T, 4, 4> perspectiveRH_ZO(T fovy, T aspect, T zNear, T zFar) {
+		assert(abs(aspect - std::numeric_limits<T>::epsilon()) > static_cast<T>(0));
+
+		T const tanHalfFovy = tan(fovy / static_cast<T>(2));
+
+		Matrix<T, 4, 4> result{ static_cast<T>(0) };
+		result[0][0] = static_cast<T>(1) / (aspect * tanHalfFovy);
+		result[1][1] = static_cast<T>(1) / (tanHalfFovy);
+		result[2][2] = zFar / (zNear - zFar);
+		result[2][3] = -static_cast<T>(1);
+		result[3][2] = (zNear * zFar) / (zNear - zFar);
+		return result;
+	}
+
+	template<typename T>
+	void applyVulkanPerspectiveClipSpace(Matrix<T, 4, 4>& projection) {
+		projection[1][1] *= -static_cast<T>(1);
+	}
+
 	template<typename T>
 	Matrix<T, 4, 4> orthoRH_NO(T left, T right, T bottom, T top, T zNear, T zFar) {
 		Matrix<T, 4, 4> result{1};
@@ -134,6 +155,18 @@ namespace SFE::Math {
 		result[3][0] = -(right + left) / (right - left);
 		result[3][1] = -(top + bottom) / (top - bottom);
 		result[3][2] = -(zFar + zNear) / (zFar - zNear);
+		return result;
+	}
+
+	template<typename T>
+	Matrix<T, 4, 4> orthoRH_ZO(T left, T right, T bottom, T top, T zNear, T zFar) {
+		Matrix<T, 4, 4> result{ static_cast<T>(1) };
+		result[0][0] = static_cast<T>(2) / (right - left);
+		result[1][1] = static_cast<T>(2) / (top - bottom);
+		result[2][2] = static_cast<T>(1) / (zNear - zFar);
+		result[3][0] = -(right + left) / (right - left);
+		result[3][1] = -(top + bottom) / (top - bottom);
+		result[3][2] = zNear / (zNear - zFar);
 		return result;
 	}
 

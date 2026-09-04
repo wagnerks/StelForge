@@ -40,6 +40,7 @@ namespace SFE::Render::RenderPasses {
 
 		Render::DescriptorSetLayoutHandle mTexSetLayout{};
 		Render::DescriptorSetHandle       mTexSet{};
+		Render::RenderPassHandle          mRenderPass{};
 
 		BufferHandle drawDataUBO;
 	};

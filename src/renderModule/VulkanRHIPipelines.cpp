@@ -1,20 +1,24 @@
 #include "VulkanRHI.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <fstream>
 #include <vector>
 
 #include "VulkanRHIVkUtil.h"
+#include "core/Engine.h"
 #include "core/FileSystem.h"
 #include "logsModule/logger.h"
+#include "renderModule/SpirvCompiler.h"
 
 using namespace SFE::Render::VulkanVkUtil;
 
 namespace SFE::Render {
 	namespace {
-		std::vector<uint32_t> loadSpirvBytes(const std::string& name) {
-			const std::string path = "shaders/vulkan/" + name + ".spv";
+		std::vector<uint32_t> loadSpirvBytes(const std::string& name, ShaderStage stage) {
+			ensureSpirvUpToDate(stage, name);
+			const std::string path = FileSystem::resolve("shaders/vulkan/" + name + ".spv").string();
 			std::ifstream file(path, std::ios::binary | std::ios::ate);
 			if (!file) {
 				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: SPIR-V not found: %s", path.c_str());
@@ -32,6 +36,10 @@ namespace SFE::Render {
 		}
 
 		VkShaderModule createVkShaderModule(VkDevice device, const std::vector<uint32_t>& code) {
+			if (code.empty()) {
+				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: empty SPIR-V");
+				return VK_NULL_HANDLE;
+			}
 			VkShaderModuleCreateInfo createInfo{};
 			createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 			createInfo.codeSize = code.size() * sizeof(uint32_t);
@@ -49,6 +57,383 @@ namespace SFE::Render {
 		m_presentBlitSampler = sampler;
 	}
 
+	bool VulkanRHI::readbackTexture(TextureHandle handle, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer) {
+		auto* source = getLive(m_textures, handle.id);
+		if (!source) {
+			return false;
+		}
+		width = static_cast<int>(source->desc.width);
+		height = static_cast<int>(source->desc.height);
+		if (width <= 0 || height <= 0) {
+			return false;
+		}
+
+		const bool isDepth = (aspectMaskForFormat(toVkFormat(source->desc.format)) & VK_IMAGE_ASPECT_DEPTH_BIT) != 0;
+
+		// Pass outputs come in many formats (RGBA16F and friends). Blit through a scratch RGBA8
+		// image so one copy path serves all of them and the bytes match what OpenGL hands back.
+		// Depth is copied straight out instead: it cannot be blitted into a colour image.
+		TextureHandle scratchHandle{};
+		VkTextureResource* tex = source;
+		if (!isDepth && source->desc.format != TextureFormat::RGBA8) {
+			TextureDesc scratchDesc;
+			scratchDesc.width = source->desc.width;
+			scratchDesc.height = source->desc.height;
+			scratchDesc.format = TextureFormat::RGBA8;
+			scratchDesc.usage = TextureUsage::Sampled | TextureUsage::TransferSrc | TextureUsage::TransferDst;
+			scratchHandle = createTexture(scratchDesc, nullptr);
+			auto* scratch = getLive(m_textures, scratchHandle.id);
+			if (!scratch) {
+				return false;
+			}
+			executeImmediate([&](VkCommandBuffer cmd) {
+				blitTextureToTexture(cmd, *source, *scratch);
+			});
+			tex = getLive(m_textures, scratchHandle.id);
+			if (!tex) {
+				return false;
+			}
+		}
+
+		const VkDeviceSize byteSize = static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) * 4u;
+		VkBuffer staging = VK_NULL_HANDLE;
+		VmaAllocation stagingAlloc = VK_NULL_HANDLE;
+		VmaAllocationInfo mappedInfo{};
+		{
+			VkBufferCreateInfo bufferInfo{};
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = byteSize;
+			bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			VmaAllocationCreateInfo allocInfo{};
+			allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+			allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+			if (vmaCreateBuffer(m_allocator, &bufferInfo, &allocInfo, &staging, &stagingAlloc, &mappedInfo) != VK_SUCCESS) {
+				if (scratchHandle) {
+					destroyTexture(scratchHandle);
+				}
+				return false;
+			}
+		}
+
+		const VkImageLayout restore = tex->layout;
+		executeImmediate([&](VkCommandBuffer cmd) {
+			ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+			VkBufferImageCopy region{};
+			region.imageSubresource.aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+			region.imageSubresource.mipLevel = 0;
+			region.imageSubresource.baseArrayLayer = layer;
+			region.imageSubresource.layerCount = 1;
+			region.imageOffset = { 0, 0, 0 };
+			region.imageExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+			vkCmdCopyImageToBuffer(cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &region);
+			ensureTextureLayout(cmd, *tex, restore != VK_IMAGE_LAYOUT_UNDEFINED ? restore : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		});
+
+		if (!mappedInfo.pMappedData) {
+			destroyStagingBuffer(staging, stagingAlloc);
+			if (scratchHandle) {
+				destroyTexture(scratchHandle);
+			}
+			return false;
+		}
+		vmaInvalidateAllocation(m_allocator, stagingAlloc, 0, VK_WHOLE_SIZE);
+
+		// The engine feeds Vulkan an OpenGL-convention projection (+Y up) and never flips the
+		// viewport, so image row 0 holds the BOTTOM of the picture here, exactly as glReadPixels
+		// does. Flip so callers always get rows in display order.
+		const size_t rowBytes = static_cast<size_t>(width) * 4u;
+		rgba.resize(static_cast<size_t>(byteSize));
+		if (isDepth) {
+			// D32 float. Packed the same way as the OpenGL path: 16 bits across R and G
+			// (R = high byte), B kept as a greyscale preview. 8 bits cannot resolve a far
+			// cascade, where the whole scene sits in the last fraction of the range.
+			const auto* depth = static_cast<const float*>(mappedInfo.pMappedData);
+			for (int y = 0; y < height; ++y) {
+				const size_t srcRow = static_cast<size_t>(height - 1 - y) * static_cast<size_t>(width);
+				for (int x = 0; x < width; ++x) {
+					const float d = std::clamp(depth[srcRow + static_cast<size_t>(x)], 0.f, 1.f);
+					const auto q = static_cast<uint32_t>(d * 65535.f + 0.5f);
+					uint8_t* out = rgba.data() + rowBytes * static_cast<size_t>(y) + static_cast<size_t>(x) * 4u;
+					out[0] = static_cast<uint8_t>(q >> 8);
+					out[1] = static_cast<uint8_t>(q & 0xFF);
+					out[2] = static_cast<uint8_t>(q >> 8);
+					out[3] = 255;
+				}
+			}
+		}
+		else {
+			const auto* src = static_cast<const uint8_t*>(mappedInfo.pMappedData);
+			for (int y = 0; y < height; ++y) {
+				std::memcpy(rgba.data() + rowBytes * static_cast<size_t>(y),
+					src + rowBytes * static_cast<size_t>(height - 1 - y),
+					rowBytes);
+			}
+		}
+		destroyStagingBuffer(staging, stagingAlloc);
+		if (scratchHandle) {
+			destroyTexture(scratchHandle);
+		}
+		return true;
+	}
+
+	void VulkanRHI::beginFrame() {
+		waitForInFlightFrame();
+	}
+
+	bool VulkanRHI::supportsRenderPass(const char* name) const {
+		if (!name) {
+			return false;
+		}
+		if (supportsFullPipeline()) {
+			return true;
+		}
+		return std::strcmp(name, "AnimationCompute") == 0
+			|| std::strcmp(name, "CascadedShadow") == 0
+			|| std::strcmp(name, "PointLight") == 0
+			|| std::strcmp(name, "Geometry") == 0
+			|| std::strcmp(name, "SSAO") == 0
+			|| std::strcmp(name, "Lighting") == 0
+			|| std::strcmp(name, "Sheen") == 0
+			|| std::strcmp(name, "SSS") == 0
+			|| std::strcmp(name, "ContactGI") == 0
+			|| std::strcmp(name, "SSR") == 0
+			|| std::strcmp(name, "Glass") == 0
+			|| std::strcmp(name, "Volumetric") == 0
+			|| std::strcmp(name, "TAA") == 0
+			|| std::strcmp(name, "DoF") == 0
+			|| std::strcmp(name, "Final") == 0
+			|| std::strcmp(name, "Debug") == 0
+			|| std::strcmp(name, "TextOverlay") == 0
+			|| std::strcmp(name, "ImGui") == 0;
+	}
+
+	void VulkanRHI::blitTextureToTexture(VkCommandBuffer cmd, VkTextureResource& src, VkTextureResource& dst) {
+		ensureTextureLayout(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		ensureTextureLayout(cmd, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		VkImageBlit blit{};
+		blit.srcSubresource.aspectMask = aspectMaskForFormat(src.format);
+		blit.srcSubresource.mipLevel = 0;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.layerCount = 1;
+		blit.srcOffsets[0] = { 0, 0, 0 };
+		blit.srcOffsets[1] = {
+			static_cast<int32_t>((std::max)(1u, src.desc.width)),
+			static_cast<int32_t>((std::max)(1u, src.desc.height)),
+			1
+		};
+		blit.dstSubresource.aspectMask = aspectMaskForFormat(dst.format);
+		blit.dstSubresource.mipLevel = 0;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.layerCount = 1;
+		blit.dstOffsets[0] = { 0, 0, 0 };
+		blit.dstOffsets[1] = {
+			static_cast<int32_t>((std::max)(1u, dst.desc.width)),
+			static_cast<int32_t>((std::max)(1u, dst.desc.height)),
+			1
+		};
+		vkCmdBlitImage(cmd, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			dst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
+		ensureTextureLayout(cmd, src, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		ensureTextureLayout(cmd, dst, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+
+	void VulkanRHI::blitToSwapchain(VkCommandBuffer cmd, VkTextureResource& src) {
+		if (!m_swapchainAcquired || m_acquiredImageIndex >= m_swapchainImages.size() || !src.image) {
+			return;
+		}
+		if (!m_swapchainTransferDst || src.format != m_swapchainFormat) {
+			return;
+		}
+
+		ensureTextureLayout(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		auto& layout = m_swapchainLayouts[m_acquiredImageIndex];
+		transitionImageLayout(cmd, m_swapchainImages[m_acquiredImageIndex], m_swapchainFormat,
+			layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+		VkImageBlit blit{};
+		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.layerCount = 1;
+		blit.srcOffsets[1] = {
+			static_cast<int32_t>((std::max)(1u, src.desc.width)),
+			static_cast<int32_t>((std::max)(1u, src.desc.height)),
+			1
+		};
+		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.dstSubresource.layerCount = 1;
+		const int32_t dstW = static_cast<int32_t>((std::max)(1u, m_swapchainExtent.width));
+		const int32_t dstH = static_cast<int32_t>((std::max)(1u, m_swapchainExtent.height));
+		blit.dstOffsets[0] = { 0, dstH, 0 };
+		blit.dstOffsets[1] = { dstW, 0, 1 };
+		vkCmdBlitImage(cmd, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			m_swapchainImages[m_acquiredImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blit, VK_FILTER_NEAREST);
+		ensureTextureLayout(cmd, src, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		m_swapchainBlitted = true;
+	}
+
+	void VulkanRHI::ensureBackbufferHandle() {
+		if (auto* fb = m_backbufferHandle ? getLive(m_framebuffers, m_backbufferHandle.id) : nullptr) {
+			fb->swapchainTarget = true;
+			fb->desc.width = m_swapchainExtent.width;
+			fb->desc.height = m_swapchainExtent.height;
+			return;
+		}
+		VkFramebufferResource fb{};
+		fb.live = true;
+		fb.swapchainTarget = true;
+		fb.desc.width = m_swapchainExtent.width;
+		fb.desc.height = m_swapchainExtent.height;
+		m_backbufferHandle.id = storeResource(m_framebuffers, m_freeFramebuffers, std::move(fb));
+	}
+
+	void VulkanRHI::ensureDisplayTextures(const uint32_t width, const uint32_t height) {
+		if (m_displayTex[0] && m_displayW == static_cast<int>(width) && m_displayH == static_cast<int>(height)) {
+			return;
+		}
+		for (auto& tex : m_displayTex) {
+			if (tex) {
+				destroyTexture(tex);
+				tex = {};
+			}
+		}
+		TextureDesc desc;
+		desc.width = width;
+		desc.height = height;
+		desc.format = TextureFormat::RGBA8;
+		desc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled | TextureUsage::TransferSrc | TextureUsage::TransferDst;
+		for (auto& tex : m_displayTex) {
+			tex = createTexture(desc, nullptr);
+		}
+		if (!m_displaySampler) {
+			SamplerDesc samplerDesc;
+			samplerDesc.minFilter = FilterMode::Linear;
+			samplerDesc.magFilter = FilterMode::Linear;
+			m_displaySampler = createSampler(samplerDesc);
+		}
+		m_displayW = static_cast<int>(width);
+		m_displayH = static_cast<int>(height);
+		m_displayWrite = 0;
+		m_displayPublished.store(-1, std::memory_order_release);
+	}
+
+	void VulkanRHI::publishDisplay(const FramebufferHandle src) {
+		TextureHandle srcHandle{};
+		uint32_t w = 0;
+		uint32_t h = 0;
+		if (src) {
+			const auto* srcFb = getLive(m_framebuffers, src.id);
+			if (!srcFb || srcFb->desc.colorAttachments.empty()) {
+				return;
+			}
+			srcHandle = srcFb->desc.colorAttachments[0].texture;
+			w = srcFb->desc.width;
+			h = srcFb->desc.height;
+		}
+		else {
+			srcHandle = m_presentBlitTexture;
+		}
+		auto* srcTex = getLive(m_textures, srcHandle.id);
+		if (!srcTex) {
+			return;
+		}
+		if (w == 0) w = srcTex->desc.width;
+		if (h == 0) h = srcTex->desc.height;
+		w = (std::max)(1u, w);
+		h = (std::max)(1u, h);
+		ensureDisplayTextures(w, h);
+
+		const int slot = m_displayWrite;
+		auto* dstTex = getLive(m_textures, m_displayTex[slot].id);
+		if (!dstTex) {
+			return;
+		}
+
+		if (m_inlineDisplayBlit) {
+			return;
+		}
+
+		if (m_hasPendingScene && m_sceneFence != VK_NULL_HANDLE) {
+			vkWaitForFences(m_device, 1, &m_sceneFence, VK_TRUE, UINT64_MAX);
+			vkResetFences(m_device, 1, &m_sceneFence);
+			m_hasPendingScene = false;
+		}
+
+		executeImmediate([&](VkCommandBuffer cmd) {
+			blitTextureToTexture(cmd, *srcTex, *dstTex);
+		});
+
+		setPresentBlitSource(m_displayTex[slot], m_displaySampler ? m_displaySampler : m_presentBlitSampler);
+		m_displayPublished.store(slot, std::memory_order_release);
+		m_displayWrite = 1 - slot;
+	}
+
+	uint64_t VulkanRHI::editorViewNativeId() {
+		const int slot = m_displayPublished.load(std::memory_order_acquire);
+		if (slot < 0 || slot > 1 || !m_displayTex[slot]) {
+			return 0;
+		}
+		return getNativeTextureId(m_displayTex[slot]);
+	}
+
+	bool VulkanRHI::capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) {
+		const int slot = m_displayPublished.load(std::memory_order_acquire);
+		if (slot < 0 || slot > 1 || m_displayW <= 0 || m_displayH <= 0 || !m_displayTex[slot]) {
+			return false;
+		}
+		auto* tex = getLive(m_textures, m_displayTex[slot].id);
+		if (!tex) {
+			return false;
+		}
+
+		width = m_displayW;
+		height = m_displayH;
+		const VkDeviceSize byteSize = static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) * 4u;
+		VkBuffer staging = VK_NULL_HANDLE;
+		VmaAllocation stagingAlloc = VK_NULL_HANDLE;
+		VmaAllocationInfo mappedInfo{};
+		{
+			VkBufferCreateInfo bufferInfo{};
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = byteSize;
+			bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			VmaAllocationCreateInfo allocInfo{};
+			allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+			allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+			if (vmaCreateBuffer(m_allocator, &bufferInfo, &allocInfo, &staging, &stagingAlloc, &mappedInfo) != VK_SUCCESS) {
+				return false;
+			}
+		}
+
+		executeImmediate([&](VkCommandBuffer cmd) {
+			ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+			VkBufferImageCopy region{};
+			region.bufferOffset = 0;
+			region.bufferRowLength = 0;
+			region.bufferImageHeight = 0;
+			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.imageSubresource.mipLevel = 0;
+			region.imageSubresource.baseArrayLayer = 0;
+			region.imageSubresource.layerCount = 1;
+			region.imageOffset = { 0, 0, 0 };
+			region.imageExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+			vkCmdCopyImageToBuffer(cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &region);
+			ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		});
+
+		if (!mappedInfo.pMappedData) {
+			destroyStagingBuffer(staging, stagingAlloc);
+			return false;
+		}
+		vmaInvalidateAllocation(m_allocator, stagingAlloc, 0, VK_WHOLE_SIZE);
+		rgba.resize(static_cast<size_t>(byteSize));
+		std::memcpy(rgba.data(), mappedInfo.pMappedData, static_cast<size_t>(byteSize));
+		destroyStagingBuffer(staging, stagingAlloc);
+		return true;
+	}
+
 	void VulkanRHI::createSceneCommandPool() {
 		VkCommandPoolCreateInfo poolInfo{};
 		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -63,11 +448,25 @@ namespace SFE::Render {
 		if (vkCreateFence(m_device, &fenceInfo, nullptr, &m_sceneFence) != VK_SUCCESS) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create scene fence");
 		}
+		if (vkCreateFence(m_device, &fenceInfo, nullptr, &m_uploadFence) != VK_SUCCESS) {
+			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create upload fence");
+		}
+
+		VkCommandBufferAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.commandPool = m_sceneCommandPool;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocInfo.commandBufferCount = 2;
+		if (vkAllocateCommandBuffers(m_device, &allocInfo, m_sceneCmds) != VK_SUCCESS) {
+			m_sceneCmds[0] = VK_NULL_HANDLE;
+			m_sceneCmds[1] = VK_NULL_HANDLE;
+			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to allocate scene command buffers");
+		}
 	}
 
 	void VulkanRHI::createBlitPipeline() {
-		const auto vertCode = loadSpirvBytes("blit.vs");
-		const auto fragCode = loadSpirvBytes("blit.fs");
+		const auto vertCode = loadSpirvBytes("blit.vs", ShaderStage::Vertex);
+		const auto fragCode = loadSpirvBytes("blit.fs", ShaderStage::Fragment);
 		const VkShaderModule vertModule = createVkShaderModule(m_device, vertCode);
 		const VkShaderModule fragModule = createVkShaderModule(m_device, fragCode);
 
@@ -172,7 +571,7 @@ namespace SFE::Render {
 		pipelineInfo.renderPass = m_swapchainRenderPass;
 		pipelineInfo.subpass = 0;
 
-		if (vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_blitPipeline) != VK_SUCCESS) {
+		if (vkCreateGraphicsPipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &m_blitPipeline) != VK_SUCCESS) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: blit pipeline creation failed");
 		}
 
@@ -203,6 +602,55 @@ namespace SFE::Render {
 	void VulkanRHI::recordPresentBlit(const VkCommandBuffer cmd, const uint32_t imageIndex) {
 		auto* tex = getLive(m_textures, m_presentBlitTexture.id);
 		if (!tex || !tex->view) {
+			VkRenderPassBeginInfo renderPassInfo{};
+			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			renderPassInfo.renderPass = m_swapchainRenderPass;
+			renderPassInfo.framebuffer = m_swapchainFramebuffers[imageIndex];
+			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.extent = m_swapchainExtent;
+			VkClearValue clearValue{};
+			clearValue.color = { { 0.05f, 0.08f, 0.22f, 1.f } };
+			renderPassInfo.clearValueCount = 1;
+			renderPassInfo.pClearValues = &clearValue;
+			vkCmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdEndRenderPass(cmd);
+			return;
+		}
+
+		const bool blitCompatible = m_swapchainTransferDst
+			&& imageIndex < m_swapchainImages.size()
+			&& tex->image
+			&& tex->format == m_swapchainFormat;
+		if (blitCompatible) {
+			ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+			transitionImageLayout(cmd, m_swapchainImages[imageIndex], m_swapchainFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+			VkImageBlit blit{};
+			blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.srcSubresource.layerCount = 1;
+			blit.srcOffsets[1] = {
+				static_cast<int32_t>((std::max)(1u, tex->desc.width)),
+				static_cast<int32_t>((std::max)(1u, tex->desc.height)),
+				1
+			};
+			blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.dstSubresource.layerCount = 1;
+			const int32_t dstW = static_cast<int32_t>((std::max)(1u, m_swapchainExtent.width));
+			const int32_t dstH = static_cast<int32_t>((std::max)(1u, m_swapchainExtent.height));
+			blit.dstOffsets[0] = { 0, dstH, 0 };
+			blit.dstOffsets[1] = { dstW, 0, 1 };
+			vkCmdBlitImage(cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				m_swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1, &blit, VK_FILTER_NEAREST);
+			transitionImageLayout(cmd, m_swapchainImages[imageIndex], m_swapchainFormat,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			return;
+		}
+
+		ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		if (m_blitPipeline == VK_NULL_HANDLE || m_blitDescriptorSet == VK_NULL_HANDLE) {
 			VkRenderPassBeginInfo renderPassInfo{};
 			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 			renderPassInfo.renderPass = m_swapchainRenderPass;
@@ -263,12 +711,130 @@ namespace SFE::Render {
 		vkCmdEndRenderPass(cmd);
 	}
 
+	void VulkanRHI::expandSetLayouts(const std::vector<DescriptorSetLayoutHandle>& handles, std::vector<VkDescriptorSetLayout>& out) const {
+		out.clear();
+		out.reserve(handles.size() * 2);
+		for (const auto layoutHandle : handles) {
+			const auto* layout = getLive(m_descriptorSetLayouts, layoutHandle.id);
+			if (!layout) {
+				continue;
+			}
+			out.push_back(layout->layout);
+			if (layout->split && layout->bufferLayout != VK_NULL_HANDLE) {
+				out.push_back(layout->bufferLayout);
+			}
+		}
+	}
+
+	uint32_t VulkanRHI::inferFramebufferLayers(const FramebufferDesc& desc) const {
+		auto layersOf = [this](const TextureHandle handle) -> uint32_t {
+			const auto* tex = getLive(m_textures, handle.id);
+			if (!tex) {
+				return 1u;
+			}
+			if (tex->desc.dimension == TextureDimension::Array) {
+				return (std::max)(1u, static_cast<uint32_t>(tex->desc.depth));
+			}
+			if (tex->desc.dimension == TextureDimension::Cube) {
+				return 6u;
+			}
+			return 1u;
+		};
+
+		uint32_t layers = (std::max)(1u, desc.layers);
+		for (const auto& color : desc.colorAttachments) {
+			layers = (std::max)(layers, layersOf(color.texture));
+		}
+		if (desc.depthStencilAttachment.has_value()) {
+			layers = (std::max)(layers, layersOf(desc.depthStencilAttachment->texture));
+		}
+		return layers;
+	}
+
+	bool VulkanRHI::realizeFramebuffer(VkFramebufferResource& resource, VkRenderPass vkPass) {
+		if (resource.swapchainTarget) {
+			return false;
+		}
+		if (resource.framebuffer != VK_NULL_HANDLE) {
+			return true;
+		}
+		if (vkPass == VK_NULL_HANDLE) {
+			return false;
+		}
+
+		std::vector<VkImageView> attachments;
+		attachments.reserve(resource.desc.colorAttachments.size() + 1);
+		for (const auto& color : resource.desc.colorAttachments) {
+			const auto* tex = getLive(m_textures, color.texture.id);
+			if (!tex || !tex->view) {
+				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid color attachment texture");
+				return false;
+			}
+			attachments.push_back(tex->view);
+		}
+		if (resource.desc.depthStencilAttachment.has_value()) {
+			const auto* tex = getLive(m_textures, resource.desc.depthStencilAttachment->texture.id);
+			if (!tex || !tex->view) {
+				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid depth attachment texture");
+				return false;
+			}
+			attachments.push_back(tex->view);
+		}
+
+		VkFramebufferCreateInfo framebufferInfo{};
+		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		framebufferInfo.renderPass = vkPass;
+		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		framebufferInfo.pAttachments = attachments.data();
+		framebufferInfo.width = (std::max)(1u, resource.desc.width);
+		framebufferInfo.height = (std::max)(1u, resource.desc.height);
+		framebufferInfo.layers = inferFramebufferLayers(resource.desc);
+
+		if (vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &resource.framebuffer) != VK_SUCCESS) {
+			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateFramebuffer failed");
+			return false;
+		}
+		resource.vkRenderPass = vkPass;
+		return true;
+	}
+
+	RenderPassHandle VulkanRHI::synthesizeGraphicsRenderPass(const GraphicsPipelineDesc& desc) {
+		RenderPassDesc rpDesc;
+		const bool depthOnly = desc.depthStencilState.depthTest && desc.depthStencilState.depthWrite
+			&& desc.cullMode == CullMode::Front && !desc.blend.enabled;
+		if (depthOnly) {
+			rpDesc.hasDepthStencil = true;
+			rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
+			rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+			rpDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT32;
+		}
+		else {
+			rpDesc.colorAttachmentCount = 1;
+			rpDesc.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
+			rpDesc.colorAttachments[0].storeOp = AttachmentStoreOp::Store;
+			rpDesc.colorAttachments[0].format = TextureFormat::RGBA8;
+			if (desc.depthStencilState.depthTest) {
+				rpDesc.hasDepthStencil = true;
+				rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Load;
+				rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+				rpDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT24;
+			}
+		}
+		rpDesc.sampleCount = desc.sampleCount;
+		return createRenderPass(rpDesc);
+	}
+
 	ShaderModuleHandle VulkanRHI::createShaderModule(const ShaderModuleDesc& desc) {
 		std::string spvName = desc.name;
 		if (const auto pos = spvName.find_last_of("/\\"); pos != std::string::npos) {
 			spvName = spvName.substr(pos + 1);
 		}
-		const auto code = loadSpirvBytes(spvName);
+		if (const auto it = m_shaderByName.find(spvName); it != m_shaderByName.end()) {
+			if (getLive(m_shaders, it->second.id)) {
+				return it->second;
+			}
+		}
+		const auto code = loadSpirvBytes(spvName, desc.stage);
 		VkShaderModuleResource resource{};
 		resource.module = createVkShaderModule(m_device, code);
 		resource.desc = desc;
@@ -276,6 +842,7 @@ namespace SFE::Render {
 
 		ShaderModuleHandle handle{};
 		handle.id = storeResource(m_shaders, m_freeShaders, std::move(resource));
+		m_shaderByName[spvName] = handle;
 		return handle;
 	}
 
@@ -298,12 +865,14 @@ namespace SFE::Render {
 			const auto& src = desc.colorAttachments[i];
 			VkAttachmentDescription attachment{};
 			attachment.format = toVkFormat(src.format);
-			attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+			attachment.samples = toVkSampleCount(desc.sampleCount);
 			attachment.loadOp = toVkLoadOp(src.loadOp);
 			attachment.storeOp = toVkStoreOp(src.storeOp);
 			attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			attachment.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			attachment.initialLayout = src.loadOp == AttachmentLoadOp::Load
+				? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+				: VK_IMAGE_LAYOUT_UNDEFINED;
 			attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			attachments.push_back(attachment);
 
@@ -318,13 +887,15 @@ namespace SFE::Render {
 		if (desc.hasDepthStencil) {
 			VkAttachmentDescription depthAttachment{};
 			depthAttachment.format = toVkFormat(desc.depthAttachment.format);
-			depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+			depthAttachment.samples = toVkSampleCount(desc.sampleCount);
 			depthAttachment.loadOp = toVkLoadOp(desc.depthAttachment.loadOp);
 			depthAttachment.storeOp = toVkStoreOp(desc.depthAttachment.storeOp);
 			depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			depthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-			depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			depthAttachment.initialLayout = desc.depthAttachment.loadOp == AttachmentLoadOp::Load
+				? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+				: VK_IMAGE_LAYOUT_UNDEFINED;
+			depthAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			depthRef.attachment = desc.colorAttachmentCount;
 			depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 			attachments.push_back(depthAttachment);
@@ -337,13 +908,29 @@ namespace SFE::Render {
 		subpass.pColorAttachments = colorRefs.empty() ? nullptr : colorRefs.data();
 		subpass.pDepthStencilAttachment = depthRefPtr;
 
-		VkSubpassDependency dependency{};
-		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-		dependency.dstSubpass = 0;
-		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.srcAccessMask = 0;
-		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		std::array<VkSubpassDependency, 2> dependencies{};
+		// Same dependency masks for Load and Clear so overlay RPs (Load on Final)
+		// stay compatible with the framebuffer created from the Clear pass.
+		dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+		dependencies[0].dstSubpass = 0;
+		dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+			| VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+			| VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+		dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+			| VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+			| VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+
+		dependencies[1].srcSubpass = 0;
+		dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+		dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+			| VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
 		VkRenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -351,8 +938,8 @@ namespace SFE::Render {
 		renderPassInfo.pAttachments = attachments.data();
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpass;
-		renderPassInfo.dependencyCount = 1;
-		renderPassInfo.pDependencies = &dependency;
+		renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+		renderPassInfo.pDependencies = dependencies.data();
 
 		VkRenderPassResource resource{};
 		resource.desc = desc;
@@ -376,45 +963,15 @@ namespace SFE::Render {
 	}
 
 	FramebufferHandle VulkanRHI::createFramebuffer(const FramebufferDesc& desc) {
-		const auto* pass = getLive(m_renderPasses, desc.renderPass.id);
-		if (!pass) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: createFramebuffer requires valid renderPass");
-			return {};
-		}
-
-		std::vector<VkImageView> attachments;
-		attachments.reserve(desc.colorAttachments.size() + 1);
-		for (const auto& color : desc.colorAttachments) {
-			const auto* tex = getLive(m_textures, color.texture.id);
-			if (!tex || !tex->view) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid color attachment texture");
-				return {};
-			}
-			attachments.push_back(tex->view);
-		}
-		if (desc.depthStencilAttachment.has_value()) {
-			const auto* tex = getLive(m_textures, desc.depthStencilAttachment->texture.id);
-			if (!tex || !tex->view) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid depth attachment texture");
-				return {};
-			}
-			attachments.push_back(tex->view);
-		}
-
-		VkFramebufferCreateInfo framebufferInfo{};
-		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		framebufferInfo.renderPass = pass->renderPass;
-		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-		framebufferInfo.pAttachments = attachments.data();
-		framebufferInfo.width = std::max(1u, desc.width);
-		framebufferInfo.height = std::max(1u, desc.height);
-		framebufferInfo.layers = 1;
-
 		VkFramebufferResource resource{};
 		resource.desc = desc;
+		resource.desc.layers = inferFramebufferLayers(desc);
 		resource.live = true;
-		if (vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &resource.framebuffer) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateFramebuffer failed");
+
+		if (const auto* pass = getLive(m_renderPasses, desc.renderPass.id)) {
+			if (!realizeFramebuffer(resource, pass->renderPass)) {
+				return {};
+			}
 		}
 
 		FramebufferHandle handle{};
@@ -427,38 +984,43 @@ namespace SFE::Render {
 			if (fb->framebuffer != VK_NULL_HANDLE) {
 				vkDestroyFramebuffer(m_device, fb->framebuffer, nullptr);
 			}
+			if (fb->ownedRenderPass) {
+				destroyRenderPass(fb->ownedRenderPass);
+			}
 			recycleResource(m_framebuffers, m_freeFramebuffers, framebuffer.id);
 		}
 	}
 
 	FramebufferHandle VulkanRHI::getBackbufferFramebuffer() {
-		return FramebufferHandle{ 0 };
+		return m_backbufferHandle;
 	}
 
 	PipelineHandle VulkanRHI::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
 		const auto* vert = getLive(m_shaders, desc.shaders.vertex.id);
 		const auto* frag = getLive(m_shaders, desc.shaders.fragment.id);
+		const auto* geom = desc.shaders.geometry.id != UINT32_MAX ? getLive(m_shaders, desc.shaders.geometry.id) : nullptr;
+		const auto* tessCtrl = desc.shaders.tessControl.id != UINT32_MAX ? getLive(m_shaders, desc.shaders.tessControl.id) : nullptr;
+		const auto* tessEval = desc.shaders.tessEval.id != UINT32_MAX ? getLive(m_shaders, desc.shaders.tessEval.id) : nullptr;
 		if (!vert || !frag) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: createGraphicsPipeline requires vertex/fragment shaders");
 			return {};
 		}
 
-		const auto* renderPass = getLive(m_renderPasses, desc.renderPass.id);
+		GraphicsPipelineDesc local = desc;
+		RenderPassHandle ownedRp{};
+		const auto* renderPass = getLive(m_renderPasses, local.renderPass.id);
+		if (!renderPass) {
+			ownedRp = synthesizeGraphicsRenderPass(local);
+			local.renderPass = ownedRp;
+			renderPass = getLive(m_renderPasses, local.renderPass.id);
+		}
 		if (!renderPass) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: createGraphicsPipeline requires renderPass");
 			return {};
 		}
 
 		std::vector<VkDescriptorSetLayout> setLayouts;
-		setLayouts.reserve(desc.descriptorSetLayouts.size());
-		for (const auto layoutHandle : desc.descriptorSetLayouts) {
-			const auto* layout = getLive(m_descriptorSetLayouts, layoutHandle.id);
-			if (!layout) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid descriptor set layout in pipeline");
-				return {};
-			}
-			setLayouts.push_back(layout->layout);
-		}
+		expandSetLayouts(local.descriptorSetLayouts, setLayouts);
 
 		VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 		{
@@ -476,6 +1038,9 @@ namespace SFE::Render {
 			layoutInfo.pushConstantRangeCount = desc.pushConstantSize > 0 ? 1u : 0u;
 			layoutInfo.pPushConstantRanges = desc.pushConstantSize > 0 ? &pushRange : nullptr;
 			if (vkCreatePipelineLayout(m_device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+				if (ownedRp) {
+					destroyRenderPass(ownedRp);
+				}
 				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: pipeline layout creation failed");
 				return {};
 			}
@@ -507,7 +1072,12 @@ namespace SFE::Render {
 
 		VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputAssembly.topology = toVkTopology(desc.topology);
+		const bool useTess = tessEval != nullptr;
+		inputAssembly.topology = useTess ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : toVkTopology(desc.topology);
+
+		VkPipelineTessellationStateCreateInfo tessellation{};
+		tessellation.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
+		tessellation.patchControlPoints = (std::max)(1u, desc.patchControlPoints);
 
 		VkPipelineViewportStateCreateInfo viewportState{};
 		viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -522,7 +1092,7 @@ namespace SFE::Render {
 		rasterizer.lineWidth = 1.f;
 
 		VkPipelineMultisampleStateCreateInfo multisampling{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-		multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+		multisampling.rasterizationSamples = toVkSampleCount(renderPass->desc.sampleCount);
 
 		VkPipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -532,15 +1102,24 @@ namespace SFE::Render {
 
 		VkPipelineColorBlendAttachmentState blendAttachment{};
 		blendAttachment.blendEnable = toVkBool(desc.blend.enabled);
+		blendAttachment.srcColorBlendFactor = toVkBlendFactor(desc.blend.srcColor);
+		blendAttachment.dstColorBlendFactor = toVkBlendFactor(desc.blend.dstColor);
+		blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+		blendAttachment.srcAlphaBlendFactor = toVkBlendFactor(desc.blend.srcColor);
+		blendAttachment.dstAlphaBlendFactor = toVkBlendFactor(desc.blend.dstColor);
+		blendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 		blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-		const uint32_t colorAttachmentCount = (std::max)(1u, renderPass->desc.colorAttachmentCount);
-		std::vector<VkPipelineColorBlendAttachmentState> blendAttachments(colorAttachmentCount, blendAttachment);
+		// Must match the render pass subpass (0 for depth-only CSM). Forcing 1 breaks
+		// vkCreateGraphicsPipelines / produces a pipeline that cannot draw into layered depth FBOs.
+		const uint32_t colorAttachmentCount = renderPass->desc.colorAttachmentCount;
+		std::vector<VkPipelineColorBlendAttachmentState> blendAttachments(
+			colorAttachmentCount, blendAttachment);
 
 		VkPipelineColorBlendStateCreateInfo colorBlending{};
 		colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 		colorBlending.attachmentCount = colorAttachmentCount;
-		colorBlending.pAttachments = blendAttachments.data();
+		colorBlending.pAttachments = colorAttachmentCount ? blendAttachments.data() : nullptr;
 
 		const std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 		VkPipelineDynamicStateCreateInfo dynamicState{};
@@ -548,22 +1127,56 @@ namespace SFE::Render {
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
 		dynamicState.pDynamicStates = dynamicStates.data();
 
-		VkPipelineShaderStageCreateInfo stages[2]{};
-		stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-		stages[0].module = vert->module;
-		stages[0].pName = "main";
-		stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-		stages[1].module = frag->module;
-		stages[1].pName = "main";
+		std::vector<VkPipelineShaderStageCreateInfo> stages;
+		stages.reserve(5u);
+		{
+			VkPipelineShaderStageCreateInfo stage{};
+			stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+			stage.module = vert->module;
+			stage.pName = "main";
+			stages.push_back(stage);
+		}
+		if (tessCtrl) {
+			VkPipelineShaderStageCreateInfo stage{};
+			stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stage.stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+			stage.module = tessCtrl->module;
+			stage.pName = "main";
+			stages.push_back(stage);
+		}
+		if (tessEval) {
+			VkPipelineShaderStageCreateInfo stage{};
+			stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stage.stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+			stage.module = tessEval->module;
+			stage.pName = "main";
+			stages.push_back(stage);
+		}
+		if (geom) {
+			VkPipelineShaderStageCreateInfo stage{};
+			stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stage.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+			stage.module = geom->module;
+			stage.pName = "main";
+			stages.push_back(stage);
+		}
+		{
+			VkPipelineShaderStageCreateInfo stage{};
+			stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+			stage.module = frag->module;
+			stage.pName = "main";
+			stages.push_back(stage);
+		}
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineInfo.stageCount = 2;
-		pipelineInfo.pStages = stages;
+		pipelineInfo.stageCount = static_cast<uint32_t>(stages.size());
+		pipelineInfo.pStages = stages.data();
 		pipelineInfo.pVertexInputState = &vertexInput;
 		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pTessellationState = useTess ? &tessellation : nullptr;
 		pipelineInfo.pViewportState = &viewportState;
 		pipelineInfo.pRasterizationState = &rasterizer;
 		pipelineInfo.pMultisampleState = &multisampling;
@@ -575,11 +1188,15 @@ namespace SFE::Render {
 		pipelineInfo.subpass = desc.subpassIndex;
 
 		VkGraphicsPipelineResource resource{};
-		resource.desc = desc;
+		resource.desc = local;
+		resource.ownedRenderPass = ownedRp;
 		resource.layout = pipelineLayout;
 		resource.live = true;
-		if (vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &resource.pipeline) != VK_SUCCESS) {
+		if (vkCreateGraphicsPipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &resource.pipeline) != VK_SUCCESS) {
 			vkDestroyPipelineLayout(m_device, pipelineLayout, nullptr);
+			if (ownedRp) {
+				destroyRenderPass(ownedRp);
+			}
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateGraphicsPipelines failed for %s", vert->desc.name.c_str());
 			return {};
 		}
@@ -597,15 +1214,7 @@ namespace SFE::Render {
 		}
 
 		std::vector<VkDescriptorSetLayout> setLayouts;
-		setLayouts.reserve(desc.descriptorSetLayouts.size());
-		for (const auto layoutHandle : desc.descriptorSetLayouts) {
-			const auto* layout = getLive(m_descriptorSetLayouts, layoutHandle.id);
-			if (!layout) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid descriptor set layout in compute pipeline");
-				return {};
-			}
-			setLayouts.push_back(layout->layout);
-		}
+		expandSetLayouts(desc.descriptorSetLayouts, setLayouts);
 
 		VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 		{
@@ -635,7 +1244,7 @@ namespace SFE::Render {
 		resource.layout = pipelineLayout;
 		resource.isCompute = true;
 		resource.live = true;
-		if (vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &resource.pipeline) != VK_SUCCESS) {
+		if (vkCreateComputePipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &resource.pipeline) != VK_SUCCESS) {
 			vkDestroyPipelineLayout(m_device, pipelineLayout, nullptr);
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateComputePipelines failed");
 			return {};
@@ -654,6 +1263,9 @@ namespace SFE::Render {
 			if (gp->layout != VK_NULL_HANDLE) {
 				vkDestroyPipelineLayout(m_device, gp->layout, nullptr);
 			}
+			if (gp->ownedRenderPass) {
+				destroyRenderPass(gp->ownedRenderPass);
+			}
 			recycleResource(m_pipelines, m_freePipelines, pipeline.id);
 		}
 	}
@@ -661,10 +1273,29 @@ namespace SFE::Render {
 	void VulkanRHI::cmdBeginRenderPass(const CommandListHandle cmd, const RenderPassBeginInfo& beginInfo) {
 		auto* list = getLive(m_commandLists, cmd.id);
 		const auto* pass = getLive(m_renderPasses, beginInfo.renderPass.id);
-		const auto* fb = getLive(m_framebuffers, beginInfo.framebuffer.id);
-		if (!list || !pass || !fb) {
+		auto* fb = getLive(m_framebuffers, beginInfo.framebuffer.id);
+		if (!list || !pass || !fb || fb->swapchainTarget) {
 			return;
 		}
+		if (!fb->framebuffer && !realizeFramebuffer(*fb, pass->renderPass)) {
+			return;
+		}
+
+		for (uint32_t i = 0; i < fb->desc.colorAttachments.size(); ++i) {
+			if (auto* tex = getLive(m_textures, fb->desc.colorAttachments[i].texture.id)) {
+				if (i < pass->desc.colorAttachmentCount && pass->desc.colorAttachments[i].loadOp == AttachmentLoadOp::Load) {
+					ensureTextureLayout(list->cmd, *tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				}
+			}
+		}
+		if (fb->desc.depthStencilAttachment.has_value()) {
+			if (auto* tex = getLive(m_textures, fb->desc.depthStencilAttachment->texture.id)) {
+				if (pass->desc.hasDepthStencil && pass->desc.depthAttachment.loadOp == AttachmentLoadOp::Load) {
+					ensureTextureLayout(list->cmd, *tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				}
+			}
+		}
+		list->activeFramebuffer = beginInfo.framebuffer;
 
 		std::vector<VkClearValue> clearValues;
 		clearValues.reserve(pass->desc.colorAttachmentCount + (pass->desc.hasDepthStencil ? 1u : 0u));
@@ -687,8 +1318,8 @@ namespace SFE::Render {
 		rpBegin.framebuffer = fb->framebuffer;
 		rpBegin.renderArea.offset = { beginInfo.x, beginInfo.y };
 		rpBegin.renderArea.extent = {
-			static_cast<uint32_t>(std::max(1, beginInfo.width)),
-			static_cast<uint32_t>(std::max(1, beginInfo.height))
+			static_cast<uint32_t>((std::max)(1, beginInfo.width)),
+			static_cast<uint32_t>((std::max)(1, beginInfo.height))
 		};
 		rpBegin.clearValueCount = static_cast<uint32_t>(clearValues.size());
 		rpBegin.pClearValues = clearValues.empty() ? nullptr : clearValues.data();
@@ -697,22 +1328,53 @@ namespace SFE::Render {
 		VkViewport viewport{};
 		viewport.x = static_cast<float>(beginInfo.x);
 		viewport.y = static_cast<float>(beginInfo.y);
-		viewport.width = static_cast<float>(std::max(1, beginInfo.width));
-		viewport.height = static_cast<float>(std::max(1, beginInfo.height));
+		viewport.width = static_cast<float>((std::max)(1, beginInfo.width));
+		viewport.height = static_cast<float>((std::max)(1, beginInfo.height));
 		viewport.minDepth = 0.f;
 		viewport.maxDepth = 1.f;
 		VkRect2D scissor{
 			{ beginInfo.x, beginInfo.y },
-			{ static_cast<uint32_t>(std::max(1, beginInfo.width)), static_cast<uint32_t>(std::max(1, beginInfo.height)) }
+			{ static_cast<uint32_t>((std::max)(1, beginInfo.width)), static_cast<uint32_t>((std::max)(1, beginInfo.height)) }
 		};
 		vkCmdSetViewport(list->cmd, 0, 1, &viewport);
 		vkCmdSetScissor(list->cmd, 0, 1, &scissor);
 	}
 
-	void VulkanRHI::cmdEndRenderPass(const CommandListHandle cmd) {
-		if (auto* list = getLive(m_commandLists, cmd.id)) {
-			vkCmdEndRenderPass(list->cmd);
+	void VulkanRHI::cmdSetScissor(const CommandListHandle cmd, const int32_t x, const int32_t y, const uint32_t width, const uint32_t height) {
+		auto* list = getLive(m_commandLists, cmd.id);
+		if (!list || !list->recording || list->cmd == VK_NULL_HANDLE) {
+			return;
 		}
+		VkRect2D scissor{};
+		scissor.offset.x = (std::max)(0, x);
+		scissor.offset.y = (std::max)(0, y);
+		scissor.extent.width = width;
+		scissor.extent.height = height;
+		vkCmdSetScissor(list->cmd, 0, 1, &scissor);
+	}
+
+	void VulkanRHI::cmdEndRenderPass(const CommandListHandle cmd) {
+		auto* list = getLive(m_commandLists, cmd.id);
+		if (!list || !list->recording || !list->activeFramebuffer) {
+			return;
+		}
+		vkCmdEndRenderPass(list->cmd);
+
+		// Match createRenderPass finalLayout (SHADER_READ_ONLY) without extra barriers —
+		// the render pass itself performed the transition.
+		if (auto* fb = getLive(m_framebuffers, list->activeFramebuffer.id)) {
+			for (const auto& color : fb->desc.colorAttachments) {
+				if (auto* tex = getLive(m_textures, color.texture.id)) {
+					tex->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				}
+			}
+			if (fb->desc.depthStencilAttachment.has_value()) {
+				if (auto* tex = getLive(m_textures, fb->desc.depthStencilAttachment->texture.id)) {
+					tex->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				}
+			}
+		}
+		list->activeFramebuffer = {};
 	}
 
 	void VulkanRHI::cmdBindPipeline(const CommandListHandle cmd, const PipelineHandle pipeline) {
@@ -768,15 +1430,16 @@ namespace SFE::Render {
 		}
 
 		std::vector<VkDescriptorSet> vkSets;
-		vkSets.reserve(setCount);
+		vkSets.reserve(setCount * 2);
 		for (uint32_t i = 0; i < setCount; ++i) {
 			const auto* set = getLive(m_descriptorSets, sets[i].id);
-			if (set) {
-				vkSets.push_back(set->set);
+			if (!set) {
+				return;
 			}
-		}
-		if (vkSets.size() != setCount) {
-			return;
+			vkSets.push_back(set->set);
+			if (set->bufferSet != VK_NULL_HANDLE) {
+				vkSets.push_back(set->bufferSet);
+			}
 		}
 		if (layout == VK_NULL_HANDLE || list->cmd == VK_NULL_HANDLE || !list->recording) {
 			return;
@@ -793,22 +1456,130 @@ namespace SFE::Render {
 		}
 		vkCmdPushConstants(list->cmd, gp->layout, toVkShaderStage(stages), 0, size, data);
 	}
-	void VulkanRHI::cmdDraw(const CommandListHandle cmd, const uint32_t vertexCount, const uint32_t instanceCount, const uint32_t firstVertex, const uint32_t) {
+	void VulkanRHI::cmdDraw(const CommandListHandle cmd, const uint32_t vertexCount, const uint32_t instanceCount, const uint32_t firstVertex, const uint32_t firstInstance) {
 		if (auto* list = getLive(m_commandLists, cmd.id)) {
-			vkCmdDraw(list->cmd, vertexCount, instanceCount, firstVertex, 0);
+			vkCmdDraw(list->cmd, vertexCount, instanceCount, firstVertex, firstInstance);
 		}
 	}
 	void VulkanRHI::cmdDrawIndexed(const CommandListHandle cmd, const uint32_t indexCount, const uint32_t instanceCount,
-		const uint32_t firstIndex, const int32_t vertexOffset, const uint32_t)
+		const uint32_t firstIndex, const int32_t vertexOffset, const uint32_t firstInstance)
 	{
 		if (auto* list = getLive(m_commandLists, cmd.id)) {
-			vkCmdDrawIndexed(list->cmd, indexCount, instanceCount, firstIndex, vertexOffset, 0);
+			vkCmdDrawIndexed(list->cmd, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 		}
+	}
+
+	void VulkanRHI::cmdDrawIndirect(const CommandListHandle cmd, const BufferHandle buffer, const size_t offset,
+		const uint32_t drawCount, const uint32_t stride)
+	{
+		auto* list = getLive(m_commandLists, cmd.id);
+		const auto* buf = getLive(m_buffers, buffer.id);
+		if (!list || !buf || drawCount == 0) {
+			return;
+		}
+		vkCmdDrawIndirect(list->cmd, buf->buffer, offset, drawCount, stride ? stride : 16u);
+	}
+
+	void VulkanRHI::cmdDrawIndexedIndirect(const CommandListHandle cmd, const BufferHandle buffer, const size_t offset,
+		const uint32_t drawCount, const uint32_t stride)
+	{
+		auto* list = getLive(m_commandLists, cmd.id);
+		const auto* buf = getLive(m_buffers, buffer.id);
+		if (!list || !buf || drawCount == 0) {
+			return;
+		}
+		vkCmdDrawIndexedIndirect(list->cmd, buf->buffer, offset, drawCount, stride ? stride : 20u);
+	}
+
+	void VulkanRHI::cmdSetPolygonFillMode(const CommandListHandle, const PolygonFillMode) {
+		// Rasterizer fill is baked into the PSO. fillModeNonSolid is enabled so Line pipelines work.
+	}
+
+	void VulkanRHI::cmdHostCallback(const CommandListHandle, std::function<void()>) {
+		// Host callbacks are GL-only (run at submit). Running them while recording a VkCommandBuffer
+		// would interleave CPU GL/ImGui work into the Vulkan frame.
 	}
 	void VulkanRHI::cmdDispatch(const CommandListHandle cmd, const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) {
 		if (auto* list = getLive(m_commandLists, cmd.id)) {
 			vkCmdDispatch(list->cmd, groupCountX, groupCountY, groupCountZ);
 		}
 	}
-	void VulkanRHI::cmdBlit(const CommandListHandle, const FramebufferHandle, const FramebufferHandle, const BlitMask, const BlitFilter) {}
+	void VulkanRHI::cmdBlit(const CommandListHandle cmd, const FramebufferHandle src, const FramebufferHandle dst,
+		const BlitMask mask, const BlitFilter filter)
+	{
+		auto* list = getLive(m_commandLists, cmd.id);
+		const auto* srcFb = getLive(m_framebuffers, src.id);
+		if (!list || !list->recording || !srcFb) {
+			return;
+		}
+
+		auto* dstFb = dst ? getLive(m_framebuffers, dst.id) : nullptr;
+		if (!dstFb || dstFb->swapchainTarget) {
+			if ((mask & BlitMask::Color) && !srcFb->desc.colorAttachments.empty()) {
+				if (auto* srcTex = getLive(m_textures, srcFb->desc.colorAttachments[0].texture.id)) {
+					if (m_swapchainTransferDst) {
+						blitToSwapchain(list->cmd, *srcTex);
+					}
+					else {
+						setPresentBlitSource(srcFb->desc.colorAttachments[0].texture, m_presentBlitSampler);
+					}
+					m_presentBlitTexture = srcFb->desc.colorAttachments[0].texture;
+				}
+			}
+			return;
+		}
+
+		const VkFilter vkFilter = filter == BlitFilter::Linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+
+		auto blitAttachment = [&](TextureHandle srcTexHandle, TextureHandle dstTexHandle, VkImageAspectFlags aspect) {
+			auto* srcTex = getLive(m_textures, srcTexHandle.id);
+			auto* dstTex = getLive(m_textures, dstTexHandle.id);
+			if (!srcTex || !dstTex) {
+				return;
+			}
+			ensureTextureLayout(list->cmd, *srcTex, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+			ensureTextureLayout(list->cmd, *dstTex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+			VkImageBlit blit{};
+			blit.srcSubresource.aspectMask = aspect;
+			blit.srcSubresource.mipLevel = 0;
+			blit.srcSubresource.baseArrayLayer = 0;
+			blit.srcSubresource.layerCount = 1;
+			blit.srcOffsets[0] = { 0, 0, 0 };
+			blit.srcOffsets[1] = {
+				static_cast<int32_t>((std::max)(1u, srcFb->desc.width)),
+				static_cast<int32_t>((std::max)(1u, srcFb->desc.height)),
+				1
+			};
+			blit.dstSubresource.aspectMask = aspect;
+			blit.dstSubresource.mipLevel = 0;
+			blit.dstSubresource.baseArrayLayer = 0;
+			blit.dstSubresource.layerCount = 1;
+			blit.dstOffsets[0] = { 0, 0, 0 };
+			blit.dstOffsets[1] = {
+				static_cast<int32_t>((std::max)(1u, dstFb->desc.width)),
+				static_cast<int32_t>((std::max)(1u, dstFb->desc.height)),
+				1
+			};
+
+			vkCmdBlitImage(list->cmd,
+				srcTex->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				dstTex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1, &blit, vkFilter);
+
+			ensureTextureLayout(list->cmd, *srcTex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			ensureTextureLayout(list->cmd, *dstTex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		};
+
+		if ((mask & BlitMask::Color) && !srcFb->desc.colorAttachments.empty() && !dstFb->desc.colorAttachments.empty()) {
+			blitAttachment(srcFb->desc.colorAttachments[0].texture, dstFb->desc.colorAttachments[0].texture, VK_IMAGE_ASPECT_COLOR_BIT);
+		}
+		if ((mask & BlitMask::Depth)
+			&& srcFb->desc.depthStencilAttachment.has_value()
+			&& dstFb->desc.depthStencilAttachment.has_value()) {
+			blitAttachment(srcFb->desc.depthStencilAttachment->texture,
+				dstFb->desc.depthStencilAttachment->texture,
+				VK_IMAGE_ASPECT_DEPTH_BIT);
+		}
+	}
 }

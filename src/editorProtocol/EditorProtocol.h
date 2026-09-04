@@ -20,6 +20,7 @@ namespace SFE::EditorProtocol {
 		Input = 7,
 		GetWorldSnapshot = 8,
 		WorldSnapshot = 9,
+		SetGraphics = 10,
 		Error = 255,
 	};
 

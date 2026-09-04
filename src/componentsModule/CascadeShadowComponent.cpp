@@ -6,7 +6,12 @@
 #include "CameraComponent.h"
 #include "TransformComponent.h"
 #include "core/ECSHandler.h"
+#include "core/Engine.h"
+#include "mathModule/MatrixOperations.h"
+#include "mathModule/Utils.h"
+#include "renderModule/GraphicsBackend.h"
 #include "systemsModule/systems/CameraSystem.h"
+#include "windowsModule/Window.h"
 
 
 namespace SFE::ComponentsModule {
@@ -41,73 +46,12 @@ namespace SFE::ComponentsModule {
 	}
 
 	void CascadeShadowComponent::calculateLightSpaceMatrices(const MathModule::PerspectiveProjection& projection, const Math::Mat4& view) {
-		if (!mLightMatricesCache.empty()) {
-			return;
-		}
-
 		updateCascades(projection);
 		updateLightSpaceMatrices(view);
 	}
 
 	const std::vector<Math::Mat4>& CascadeShadowComponent::getLightSpaceMatrices() const {
-		if (!mLightMatricesCache.empty()) {
-			return mLightMatricesCache;
-		}
 		return mLightSpaceMatrices;
-	}
-
-	void CascadeShadowComponent::serialize(Json::Value& data) {
-		data["cascaded_levels"] = Json::arrayValue;
-
-		for (auto level : shadowCascadeLevels) {
-			data["cascaded_levels"].append(level);
-		}
-
-		data["resolution"] = Json::arrayValue;
-		data["resolution"].append(resolution.x);
-		data["resolution"].append(resolution.y);
-
-		data["cascades"] = Json::arrayValue;
-
-		for (auto& cascade : cascades) {
-			Json::Value cascadeData = Json::objectValue;
-			cascadeData["bias"] = cascade.bias;
-			cascadeData["samples"] = cascade.samples;
-
-			cascadeData["texel_size"].append(cascade.texelSize.x);
-			cascadeData["texel_size"].append(cascade.texelSize.y);
-
-			cascadeData["z_mult"].append(cascade.zMult.x);
-			cascadeData["z_mult"].append(cascade.zMult.y);
-
-			data["cascades"].append(cascadeData);
-		}
-		data["shadow_intensity"] = shadowIntensity;
-	}
-
-	void CascadeShadowComponent::deserialize(const Json::Value& data) {
-		shadowCascadeLevels.clear();
-		for (auto level : data["cascaded_levels"]) {
-			shadowCascadeLevels.emplace_back(level.asFloat());
-		}
-
-		resolution = { data["resolution"][0].asFloat(), data["resolution"][1].asFloat() };
-
-		auto cam = ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera();
-		auto& cameraProjection = ECSHandler::registry().pinComponent<const CameraComponent>(cam)->getProjection();
-
-		updateCascades(cameraProjection);
-		int i = 0;
-		for (auto& cascade : cascades) {
-			auto& cascadeData = data["cascades"][i++];
-			cascade.bias = cascadeData["bias"].asFloat();
-			cascade.samples = cascadeData["samples"].asInt();
-
-			cascade.texelSize = { cascadeData["texel_size"][0].asFloat(), cascadeData["texel_size"][1].asFloat() };
-			cascade.zMult = { cascadeData["z_mult"][0].asFloat(), cascadeData["z_mult"][1].asFloat() };
-		}
-
-		shadowIntensity = data["shadow_intensity"].asFloat();
 	}
 
 	void CascadeShadowComponent::updateCascades(const MathModule::PerspectiveProjection& cameraProjection) {
@@ -124,39 +68,67 @@ namespace SFE::ComponentsModule {
 		}
 
 		shadowCascadeLevels.front() = cameraProjection.getNear();
-		shadowCascadeLevels.back() = Engine::instance()->getWindow()->getScreenData().far;
+		const float camFar = Engine::instance()->getWindow()->getScreenData().far;
+		const float shadowFar = camFar * 0.7f;
+		shadowCascadeLevels.back() = shadowFar;
+
+		const float nearZ = (std::max)(shadowCascadeLevels.front(), 1e-3f);
+		const size_t cascadeCount = shadowCascadeLevels.size() - 1;
+		if (cascadeCount >= 2) {
+			constexpr float lambda = 0.9f;
+			for (size_t i = 1; i < cascadeCount; ++i) {
+				const float t = static_cast<float>(i) / static_cast<float>(cascadeCount);
+				const float logS = nearZ * std::pow(shadowFar / nearZ, t);
+				const float uniS = nearZ + (shadowFar - nearZ) * t;
+				shadowCascadeLevels[i] = logS * lambda + uniS * (1.f - lambda);
+			}
+		}
 
 		auto fov = cameraProjection.getFOV();
 		auto aspect = cameraProjection.getAspect();
 
 		cascades.resize(shadowCascadeLevels.size() - 1);
 
+		const float cascadeNear = shadowCascadeLevels.front();
 		for (size_t i = 1; i < shadowCascadeLevels.size(); ++i) {
-			cascades[i - 1].viewProjection = { fov, aspect, shadowCascadeLevels[i - 1], shadowCascadeLevels[i] };
+			cascades[i - 1].viewProjection = {
+				fov, aspect, cascadeNear, shadowCascadeLevels[i]
+			};
 		}
 
 	}
 
 	void CascadeShadowComponent::updateLightSpaceMatrices(const Math::Mat4& cameraView) {
 		mLightSpaceMatrices.clear();
+		if (cascades.empty()) {
+			return;
+		}
+
+		auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(getEntityId());
+		if (!tc) {
+			return;
+		}
+
+		const auto s = Math::normalize(tc->getRight());
+		const auto u = Math::normalize(tc->getUp());
+		const auto f = Math::normalize(tc->getForward());
 
 		for (auto& shadowCascade : cascades) {
-			const auto corners = getFrustumCornersWorldSpace(shadowCascade.viewProjection.getProjectionsMatrix(), cameraView);
+			const auto fitPts = getFrustumCornersWorldSpace(
+				shadowCascade.viewProjection.getProjectionsMatrix(), cameraView);
 
-			Math::Vec4 frustumCenter = corners[0];
-			for (size_t i = 1u; i < 8; i++) {
-				frustumCenter += corners[i];
+			Math::Vec3 center(0.f);
+			for (const auto& p : fitPts) {
+				center.x += p.x;
+				center.y += p.y;
+				center.z += p.z;
 			}
-			frustumCenter /= 8.f;
+			const float invN = 1.f / static_cast<float>(fitPts.size());
+			center.x *= invN;
+			center.y *= invN;
+			center.z *= invN;
 
-			auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(getEntityId());
-
-			auto s = Math::normalize(tc->getRight());
-			auto u = Math::normalize(tc->getUp());
-			auto f = Math::normalize(tc->getForward());
-
-			auto eye = Math::Vec3(frustumCenter) - f;
-
+			const Math::Vec3 eye = center - f;
 			Math::Mat4 lightView(1);
 			lightView[0][0] = s.x;
 			lightView[1][0] = s.y;
@@ -170,16 +142,15 @@ namespace SFE::ComponentsModule {
 			lightView[3][0] = -Math::dot(s, eye);
 			lightView[3][1] = -Math::dot(u, eye);
 			lightView[3][2] = Math::dot(f, eye);
-			
-			auto projViewMatrix = getLightSpaceMatrix(corners, lightView, shadowCascade.zMult.x, shadowCascade.zMult.y, resolution.x);
 
+			Math::Mat4 cullingMatrix;
+			auto projViewMatrix = getLightSpaceMatrix(fitPts, lightView, shadowCascade.zMult.x, shadowCascade.zMult.y, resolution.x, &cullingMatrix, &shadowCascade.depthRange, &shadowCascade.worldPerTexel);
 			mLightSpaceMatrices.push_back(projViewMatrix);
-
-			shadowCascade.frustum = SFE::FrustumModule::createFrustum(projViewMatrix);
+			shadowCascade.frustum = SFE::FrustumModule::createFrustum(cullingMatrix);
 		}
 	}
 
-	SFE::Math::Mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier, float farMultiplier, float mapSize) {
+	SFE::Math::Mat4 CascadeShadowComponent::getLightSpaceMatrix(const std::vector<SFE::Math::Vec4>& corners, const SFE::Math::Mat4& lightView, float nearMultiplier, float farMultiplier, float mapSize, SFE::Math::Mat4* cullingMatrix, float* depthRange, float* worldPerTexelOut) {
 		Math::Vec4 transform = lightView * corners[0];
 		auto minX = transform.x;
 		auto maxX = transform.x;
@@ -219,6 +190,7 @@ namespace SFE::ComponentsModule {
 			worldPerTexel = 1e-6f;
 		}
 		radius = std::ceil(radius / worldPerTexel) * worldPerTexel;
+		radius *= 1.15f;
 
 		minX = cx - radius;
 		maxX = cx + radius;
@@ -239,9 +211,24 @@ namespace SFE::ComponentsModule {
 		minZ -= zNearPad;
 		maxZ += zFarPad;
 
-		auto ortho = SFE::MathModule::OrthoProjection({ minX, minY }, { maxX, maxY }, minZ, maxZ);
+		if (depthRange) {
+			*depthRange = (std::max)(maxZ - minZ, 1e-4f);
+		}
+		if (worldPerTexelOut) {
+			*worldPerTexelOut = worldPerTexel;
+		}
 
-		return ortho.getProjectionsMatrix() * lightView;
+		// Both backends get the [-1,1] convention, which is what OpenGL's depth buffer expects.
+		// Vulkan stores clip z as-is, so its shadow map holds different values for the same
+		// geometry and worldToShadowUv()'s remap overshoots its reference depth by (1-z)/2.
+		// Switching Vulkan to orthoRH_ZO does align the two -- and measurably makes the picture
+		// worse, because that overshoot is what currently produces any distant shadow at all.
+		// The real defect is downstream, in the depth comparison; do not align these in isolation.
+		const auto ortho = Math::orthoRH_NO(minX, maxX, minY, maxY, minZ, maxZ);
+		if (cullingMatrix) {
+			*cullingMatrix = ortho * lightView;
+		}
+		return ortho * lightView;
 	}
 
 	const std::vector<Math::Mat4>& CascadeShadowComponent::getCacheLightSpaceMatrices() {

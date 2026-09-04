@@ -69,20 +69,3 @@ void ModelComponent::setModel(std::vector<AssetsModule::Model::LOD>* data) {
 	mModel = data;
 }
 
-void ModelComponent::serialize(Json::Value& data) {
-	data["ModelPath"] = mPath;
-}
-
-void ModelComponent::deserialize(const Json::Value& data) {
-	AssetsModule::Model* model = nullptr;
-	if (data.isMember("ModelPath")) {
-		mPath = data["ModelPath"].asString();
-		model = AssetsModule::ModelLoader::instance()->load(mPath);
-	}
-
-	if (model) {
-		boneMatrices = model->getDefaultBoneMatrices();
-		armature = model->getArmature();
-		addMeshData(model->getLODs());
-	}
-}

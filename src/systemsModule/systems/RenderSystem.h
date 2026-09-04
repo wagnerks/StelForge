@@ -1,7 +1,11 @@
 ﻿#pragma once
 
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <shared_mutex>
+#include <thread>
 #include <vector>
-#include <chrono> // added for CPU timing
 
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "componentsModule/ArmatureComponent.h"
@@ -35,31 +39,49 @@ namespace SFE::SystemsModule {
 	struct GraphicsSettings {
 		bool ssao = true;
 		bool ssr = true;
-		bool volumetric = true;
+		bool volumetric = false;
 		bool taa = true;
-		bool dof = true;
+		bool dof = false;
 		bool bloom = true;
+		bool sheen = true;
+		bool sss = true;
+		bool contactGi = false;
 
 		float ssrDistance = 12.f;
 
-		float volumetricDensity = 0.022f;
-		float volumetricIntensity = 2.4f;
+		float volumetricDensity = 0.008f;
+		float volumetricIntensity = 0.8f;
 		float volumetricAnisotropy = 0.68f;
 		float volumetricDistance = 70.f;
 
-		float taaBlend = 0.92f;
+		float taaBlend = 0.72f;
 
 		float dofFocus = 18.f;
 		float dofRange = 28.f;
 		float dofBlur = 3.5f;
 
-		float bloomStrength = 0.62f;
-		float exposure = 0.92f;
-		float vignette = 0.14f;
-		float chromaticAberration = 0.0028f;
+		float bloomStrength = 0.12f;
+		float exposure = 1.12f;
+		float vignette = 0.08f;
+		float chromaticAberration = 0.f;
 
-		float fogStart = 0.45f;
+		float fogStart = 0.82f;
 		float glassRoughness = 0.02f;
+
+		float sheenStrength = 0.85f;
+		float rimStrength = 0.7f;
+		float sssWrap = 0.85f;
+		float sssStrength = 0.65f;
+		float sssRadius = 2.8f;
+		float contactStrength = 0.55f;
+		float contactDistance = 8.f;
+		float contactThickness = 0.12f;
+		float giStrength = 0.12f;
+		float giRadius = 0.45f;
+
+		float sunIntensity = 3.2f;
+		float iblStrength = 1.f;
+		float shadowAmbient = 0.42f;
 	};
 
 	struct RenderData {
@@ -139,6 +161,86 @@ namespace SFE::SystemsModule {
 
 		void prepareDataForNextFrame();
 		void syncVulkanGpuFrameData();
+		bool allPassesReady() const;
+
+		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
+		// waits for in-flight readers — never blocks new prepares behind a waiting exclusive
+		// (that deadlocks waitReady).
+		class WorldReadGuard {
+		public:
+			WorldReadGuard() = default;
+			~WorldReadGuard() { reset(); }
+			WorldReadGuard(WorldReadGuard&& other) noexcept : mSys(other.mSys) { other.mSys = nullptr; }
+			WorldReadGuard& operator=(WorldReadGuard&& other) noexcept {
+				if (this != &other) {
+					reset();
+					mSys = other.mSys;
+					other.mSys = nullptr;
+				}
+				return *this;
+			}
+			WorldReadGuard(const WorldReadGuard&) = delete;
+			WorldReadGuard& operator=(const WorldReadGuard&) = delete;
+			explicit operator bool() const noexcept { return mSys != nullptr; }
+		private:
+			friend class RenderSystem;
+			explicit WorldReadGuard(RenderSystem* sys) : mSys(sys) {}
+			void reset() {
+				if (mSys) {
+					mSys->mWorldReaders.fetch_sub(1, std::memory_order_acq_rel);
+					mSys = nullptr;
+				}
+			}
+			RenderSystem* mSys = nullptr;
+		};
+
+		class WorldMutateGuard {
+		public:
+			WorldMutateGuard() = default;
+			~WorldMutateGuard() { reset(); }
+			WorldMutateGuard(WorldMutateGuard&& other) noexcept : mSys(other.mSys) { other.mSys = nullptr; }
+			WorldMutateGuard& operator=(WorldMutateGuard&& other) noexcept {
+				if (this != &other) {
+					reset();
+					mSys = other.mSys;
+					other.mSys = nullptr;
+				}
+				return *this;
+			}
+			WorldMutateGuard(const WorldMutateGuard&) = delete;
+			WorldMutateGuard& operator=(const WorldMutateGuard&) = delete;
+			explicit operator bool() const noexcept { return mSys != nullptr; }
+		private:
+			friend class RenderSystem;
+			explicit WorldMutateGuard(RenderSystem* sys) : mSys(sys) {}
+			void reset() {
+				if (mSys) {
+					mSys->mWorldMutating.store(false, std::memory_order_release);
+					mSys = nullptr;
+				}
+			}
+			RenderSystem* mSys = nullptr;
+		};
+
+		WorldReadGuard tryLockWorldRead() {
+			if (mWorldMutating.load(std::memory_order_acquire)) {
+				return {};
+			}
+			mWorldReaders.fetch_add(1, std::memory_order_acq_rel);
+			if (mWorldMutating.load(std::memory_order_acquire)) {
+				mWorldReaders.fetch_sub(1, std::memory_order_acq_rel);
+				return {};
+			}
+			return WorldReadGuard{ this };
+		}
+
+		WorldMutateGuard lockWorldMutate() {
+			mWorldMutating.store(true, std::memory_order_release);
+			while (mWorldReaders.load(std::memory_order_acquire) != 0) {
+				std::this_thread::yield();
+			}
+			return WorldMutateGuard{ this };
+		}
 
 		bool isShadowsDebugData() const {
 			return mShadowsDebugDataDraw;
@@ -189,6 +291,8 @@ namespace SFE::SystemsModule {
 		void renderFrame();
 		bool shouldRunPass(size_t passIndex) const;
 		void ensureGpuCapacity(ecss::EntityId id);
+		void bindGpuFrame();
+		void createGpuFrameResources(uint32_t slot, size_t transformCount);
 
 		template<typename T>
 		void markDirtyImpl(ecss::EntityId id) {
@@ -201,6 +305,8 @@ namespace SFE::SystemsModule {
 		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dirties;
 		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> removed;
 		std::shared_mutex dirtiesMutex;
+		std::atomic<int> mWorldReaders{ 0 };
+		std::atomic<bool> mWorldMutating{ false };
 
 		// GPU/CPU profiling data
 		unsigned int mGpuTimeQueries[2] {0,0};
@@ -210,11 +316,19 @@ namespace SFE::SystemsModule {
 		double mLastCpuFrameMs = 0.0; // duration of last RenderSystem::update body
 
 		RenderData mRenderData;
+		int mRenderedFrames = 0; // drives the one-shot per-pass dump
 		std::vector<Render::RenderPass*> mRenderPasses;
 		std::vector<const char*> mPassNames;
 		std::shared_future<void> updateLock;
 
 		Render::BufferHandle cameraMatricesUBO;
+
+		static constexpr uint32_t kMaxGpuFrames = 2;
+		uint32_t mGpuFrames = 1;
+		Render::BufferHandle mCameraUbo[kMaxGpuFrames]{};
+		Render::BufferHandle mTransforms[kMaxGpuFrames]{};
+		Render::BufferHandle mBones[kMaxGpuFrames]{};
+		Render::DescriptorSetHandle mFrameSet[kMaxGpuFrames]{};
 
 		Render::BufferHandle transforms;
 		Render::BufferHandle bones;

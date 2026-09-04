@@ -20,10 +20,11 @@
 #include "propertiesModule/PropertiesSystem.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/OcTreeSystem.h"
+#include "systemsModule/systems/RenderSystem.h"
 
 namespace {
 	constexpr const char* kSceneVersionPath = "world/scene_version";
-	constexpr int kDefaultSceneVersion = 1;
+	constexpr int kDefaultSceneVersion = 9;
 
 	int readSceneVersion() {
 		std::string text;
@@ -47,10 +48,11 @@ namespace {
 	bool hasSavedChunks() {
 		namespace fs = std::filesystem;
 		std::error_code ec;
-		if (!fs::exists("world/chunks", ec)) {
+		const fs::path dir = SFE::FileSystem::resolve("world/chunks");
+		if (!fs::exists(dir, ec)) {
 			return false;
 		}
-		for (const auto& entry : fs::directory_iterator("world/chunks", ec)) {
+		for (const auto& entry : fs::directory_iterator(dir, ec)) {
 			if (entry.path().extension() == ".json") {
 				return true;
 			}
@@ -61,7 +63,7 @@ namespace {
 	bool hasPopulatedChunks() {
 		namespace fs = std::filesystem;
 		std::error_code ec;
-		const fs::path dir = "world/chunks";
+		const fs::path dir = SFE::FileSystem::resolve("world/chunks");
 		if (!fs::exists(dir, ec)) {
 			return false;
 		}
@@ -80,7 +82,7 @@ namespace {
 	void clearSavedChunks() {
 		namespace fs = std::filesystem;
 		std::error_code ec;
-		const fs::path dir = "world/chunks";
+		const fs::path dir = SFE::FileSystem::resolve("world/chunks");
 		if (!fs::exists(dir, ec)) {
 			return;
 		}
@@ -101,15 +103,6 @@ namespace SFE::SystemsModule {
 				seedIfEmpty();
 			}
 		}
-		ThreadPool::instance()->addTask([this] {
-			if (Engine::instance()->rhi() && !Engine::instance()->rhi()->supportsFullPipeline()
-				&& !Engine::instance()->rhi()->supportsGeometryPass()) {
-				return;
-			}
-			if (auto camSys = ECSHandler::getSystem<CameraSystem>()) {
-				updateAsync({ camSys->getCurrentCamera() });
-			}
-		});
 	}
 
 	ChunksSystem::~ChunksSystem() {
@@ -139,16 +132,17 @@ namespace SFE::SystemsModule {
 	}
 
 	bool ChunksSystem::isWorldEntity(ecss::EntityId id) const {
-		if (!ECSHandler::registry().pinComponent<const ModelComponent>(id)) {
+		auto& reg = ECSHandler::registry();
+		if (!reg.hasComponent<ModelComponent>(id)) {
 			return false;
 		}
-		if (ECSHandler::registry().pinComponent<const CameraComponent>(id)) {
+		if (reg.hasComponent<CameraComponent>(id)) {
 			return false;
 		}
-		if (ECSHandler::registry().pinComponent<const CascadeShadowComponent>(id)) {
+		if (reg.hasComponent<CascadeShadowComponent>(id)) {
 			return false;
 		}
-		if (auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(id)) {
+		if (auto tree = reg.pinComponent<const TreeComponent>(id)) {
 			if (tree->getParent() != ecss::INVALID_ID) {
 				return false;
 			}
@@ -157,16 +151,30 @@ namespace SFE::SystemsModule {
 	}
 
 	std::vector<ecss::EntityId> ChunksSystem::entitiesInChunk(const Chunk& chunk) const {
-		std::vector<ecss::EntityId> ids;
+		std::vector<std::pair<ecss::EntityId, Math::Vec3>> candidates;
 		for (const auto& [id, model, transform] : ECSHandler::registry().view<const ModelComponent, const TransformComponent>()) {
+			if (!transform) {
+				continue;
+			}
+			candidates.emplace_back(id, transform->getPos(true));
+		}
+		std::vector<ecss::EntityId> ids;
+		for (const auto& [id, pos] : candidates) {
 			if (!isWorldEntity(id)) {
 				continue;
 			}
-			if (chunkOf(transform->getPos(true)) == chunk) {
+			if (chunkOf(pos) == chunk) {
 				ids.push_back(id);
 			}
 		}
-		return ids;
+		std::vector<ecss::EntityId> withChildren = ids;
+		for (auto id : ids) {
+			if (auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(id)) {
+				auto nodes = tree->getAllNodes();
+				withChildren.insert(withChildren.end(), nodes.begin(), nodes.end());
+			}
+		}
+		return withChildren;
 	}
 
 	void ChunksSystem::seedIfEmpty() {
@@ -187,7 +195,7 @@ namespace SFE::SystemsModule {
 		writeSceneVersion(kDefaultSceneVersion);
 		std::vector<Chunk> spawned;
 		for (const auto& [id, model, transform] : ECSHandler::registry().view<const ModelComponent, const TransformComponent>()) {
-			if (!isWorldEntity(id)) {
+			if (!transform || !isWorldEntity(id)) {
 				continue;
 			}
 			const auto c = chunkOf(transform->getPos(true));
@@ -225,8 +233,15 @@ namespace SFE::SystemsModule {
 	}
 
 	void ChunksSystem::unloadChunk(const Chunk& chunk) {
+		auto ids = detachChunk(chunk);
+		if (!ids.empty()) {
+			ECSHandler::registry().destroyEntities(ids);
+		}
+	}
+
+	std::vector<ecss::EntityId> ChunksSystem::detachChunk(const Chunk& chunk) {
 		if (!debugData.mClear) {
-			return;
+			return {};
 		}
 		auto ids = entitiesInChunk(chunk);
 		if (!debugData.proceduralSpheres) {
@@ -236,16 +251,21 @@ namespace SFE::SystemsModule {
 
 		auto octreeSys = ECSHandler::getSystem<OcTreeSystem>();
 		for (auto id : ids) {
-			if (auto octreeComp = ECSHandler::registry().pinComponent<OcTreeComponent>(id)) {
-				for (const auto& parent : octreeComp->parents) {
-					if (auto* tree = octreeSys ? octreeSys->getOctree(parent.pos) : nullptr) {
-						auto lock = tree->writeLock();
-						tree->erase(id, parent.node);
-					}
+			std::vector<OcTreeComponent::ParentTree> parents;
+			{
+				auto octreeComp = ECSHandler::registry().pinComponent<OcTreeComponent>(id);
+				if (octreeComp) {
+					parents = octreeComp->parents;
+				}
+			}
+			for (const auto& parent : parents) {
+				if (auto* tree = octreeSys ? octreeSys->getOctree(parent.pos) : nullptr) {
+					auto lock = tree->writeLock();
+					tree->erase(id, parent.node);
 				}
 			}
 		}
-		ECSHandler::registry().destroyEntities(ids);
+		return ids;
 	}
 
 	void ChunksSystem::saveLoaded() {
@@ -272,13 +292,17 @@ namespace SFE::SystemsModule {
 		}
 
 		auto curCam = entitiesToProcess.front();
-		auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(curCam);
-		if (!transform) {
-			mBusy = false;
-			return;
+		Math::Vec3 camPos;
+		{
+			auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(curCam);
+			if (!transform) {
+				mBusy = false;
+				return;
+			}
+			camPos = transform->getPos(true);
 		}
 
-		const auto camChunk = chunkOf(transform->getPos(true));
+		const auto camChunk = chunkOf(camPos);
 		std::vector<Chunk> loaded;
 		{
 			std::lock_guard lock(mMutex);
@@ -307,13 +331,24 @@ namespace SFE::SystemsModule {
 			}
 		}
 
+		if (toLoad.empty() && toUnload.empty()) {
+			mBusy = false;
+			return;
+		}
+
+		RenderSystem::WorldMutateGuard worldLock;
+		if (!Engine::isMainThread()) {
+			if (auto renderSys = ECSHandler::getSystem<RenderSystem>()) {
+				worldLock = renderSys->lockWorldMutate();
+			}
+		}
+
 		for (const auto& c : toUnload) {
 			unloadChunk(c);
 		}
 		for (const auto& c : toLoad) {
 			loadChunk(c);
 		}
-
 		{
 			std::lock_guard lock(mMutex);
 			mChunks = std::move(wanted);

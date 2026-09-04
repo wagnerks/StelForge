@@ -226,8 +226,25 @@ namespace SFE::FrustumModule {
 		using BoundingVolume::isOnFrustum;
 
 		AABB() = default;
-		AABB(const Math::Vec3& min, const Math::Vec3& max) : BoundingVolume{ (max + min) * 0.5f}, extents{ max.x - center.x, max.y - center.y, max.z - center.z } {}
+		AABB(const Math::Vec3& min, const Math::Vec3& max) : BoundingVolume{ (max + min) * 0.5f } {
+			const auto e = (max - min) * 0.5f;
+			extents = { std::abs(e.x), std::abs(e.y), std::abs(e.z) };
+		}
 		AABB(const Math::Vec3& inCenter, float iI, float iJ, float iK) : BoundingVolume{ inCenter }, extents({ iI, iJ, iK }){}
+
+		AABB transformedBy(const Math::Mat4& m) const {
+			const Math::Vec3 r{ m[0] * extents.x };
+			const Math::Vec3 u{ m[1] * extents.y };
+			const Math::Vec3 f{ m[2] * extents.z };
+			AABB out;
+			out.center = m * Math::Vec4{ center, 1.f };
+			out.extents = {
+				std::abs(r.x) + std::abs(u.x) + std::abs(f.x),
+				std::abs(r.y) + std::abs(u.y) + std::abs(f.y),
+				std::abs(r.z) + std::abs(u.z) + std::abs(f.z)
+			};
+			return out;
+		}
 
 		inline bool isOnOrForwardPlan(const Plane& plan) const final { return isOnOrForwardPlan(plan, center, extents); }
 

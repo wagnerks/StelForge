@@ -340,6 +340,7 @@ namespace SFE::Render
 		case PrimitiveTopology::LineLoop:    return GL_LINE_LOOP;
 		case PrimitiveTopology::Points:   return GL_POINTS;
 		case PrimitiveTopology::TriangleStrip:   return GL_TRIANGLE_STRIP;
+		case PrimitiveTopology::Patches: return GL_PATCHES;
 		case PrimitiveTopology::Triangles:
 		default:                          return GL_TRIANGLES;
 		}
@@ -547,8 +548,10 @@ namespace SFE::Render
 
 	void OpenGLRHI::execEndRenderPass()
 	{
+		glDisable(GL_SCISSOR_TEST);
 		glBindFramebuffer(GL_FRAMEBUFFER, m_prevFramebuffer);
 		m_prevFramebuffer = 0;
+		m_currentPassHeight = 0;
 	}
 
 	void OpenGLRHI::cmdBindPipeline(CommandListHandle cmd, PipelineHandle pipeline)
@@ -582,6 +585,11 @@ namespace SFE::Render
 
 		// polygon mode
 		glPolygonMode(GL_FRONT_AND_BACK, gp.fillModeGL);
+
+		if (gp.patchControlPoints > 0) {
+			glPatchParameteri(GL_PATCH_VERTICES, static_cast<GLint>(gp.patchControlPoints));
+			m_currentPrimitive = GL_PATCHES;
+		}
 
 		// cull
 		if (gp.cullModeGL == 0) {
@@ -703,6 +711,27 @@ namespace SFE::Render
 		}
 	}
 
+	void OpenGLRHI::cmdDrawIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride)
+	{
+		if (GLCommandList* list = recordingList(cmd)) {
+			list->commands.emplace_back(CmdDrawIndirect{ buffer, offset, drawCount, stride });
+		}
+	}
+
+	void OpenGLRHI::cmdDrawIndexedIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride)
+	{
+		if (GLCommandList* list = recordingList(cmd)) {
+			list->commands.emplace_back(CmdDrawIndexedIndirect{ buffer, offset, drawCount, stride });
+		}
+	}
+
+	void OpenGLRHI::cmdSetPolygonFillMode(CommandListHandle cmd, PolygonFillMode mode)
+	{
+		if (GLCommandList* list = recordingList(cmd)) {
+			list->commands.emplace_back(CmdSetPolygonFillMode{ mode });
+		}
+	}
+
 	void OpenGLRHI::execDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
 	{
 		if (indexCount == 0 || instanceCount == 0) {
@@ -734,6 +763,40 @@ namespace SFE::Render
 				static_cast<GLsizei>(instanceCount),
 				vertexOffset
 			);
+		}
+	}
+
+	void OpenGLRHI::execDrawIndirect(BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride)
+	{
+		const GLBuffer* buf = getLive(m_buffers, buffer.id);
+		if (!buf || drawCount == 0) {
+			return;
+		}
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, buf->id);
+		if (drawCount == 1) {
+			glDrawArraysIndirect(m_currentPrimitive, reinterpret_cast<const void*>(offset));
+		}
+		else {
+			glMultiDrawArraysIndirect(m_currentPrimitive, reinterpret_cast<const void*>(offset),
+				static_cast<GLsizei>(drawCount), static_cast<GLsizei>(stride ? stride : 16u));
+		}
+	}
+
+	void OpenGLRHI::execDrawIndexedIndirect(BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride)
+	{
+		const GLBuffer* buf = getLive(m_buffers, buffer.id);
+		if (!buf || drawCount == 0) {
+			return;
+		}
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, buf->id);
+		if (drawCount == 1) {
+			glDrawElementsIndirect(m_currentPrimitive, ToGLIndexType(m_currentIndexType),
+				reinterpret_cast<const void*>(offset));
+		}
+		else {
+			glMultiDrawElementsIndirect(m_currentPrimitive, ToGLIndexType(m_currentIndexType),
+				reinterpret_cast<const void*>(offset), static_cast<GLsizei>(drawCount),
+				static_cast<GLsizei>(stride ? stride : 20u));
 		}
 	}
 
@@ -820,11 +883,29 @@ namespace SFE::Render
 			else if constexpr (std::is_same_v<T, CmdDrawIndexed>) {
 				execDrawIndexed(recorded.indexCount, recorded.instanceCount, recorded.firstIndex, recorded.vertexOffset, recorded.firstInstance);
 			}
+			else if constexpr (std::is_same_v<T, CmdDrawIndirect>) {
+				execDrawIndirect(recorded.buffer, recorded.offset, recorded.drawCount, recorded.stride);
+			}
+			else if constexpr (std::is_same_v<T, CmdDrawIndexedIndirect>) {
+				execDrawIndexedIndirect(recorded.buffer, recorded.offset, recorded.drawCount, recorded.stride);
+			}
 			else if constexpr (std::is_same_v<T, CmdDispatch>) {
 				execDispatch(recorded.groupCountX, recorded.groupCountY, recorded.groupCountZ);
 			}
 			else if constexpr (std::is_same_v<T, CmdBlit>) {
 				execBlit(recorded.src, recorded.dst, recorded.mask, recorded.filter);
+			}
+			else if constexpr (std::is_same_v<T, CmdSetScissor>) {
+				execSetScissor(recorded.x, recorded.y, recorded.width, recorded.height);
+			}
+			else if constexpr (std::is_same_v<T, CmdSetPolygonFillMode>) {
+				glPolygonMode(GL_FRONT_AND_BACK, ToGLFillMode(recorded.mode));
+			}
+			else if constexpr (std::is_same_v<T, CmdHostCallback>) {
+				if (recorded.callback) {
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+					recorded.callback();
+				}
 			}
 			else if constexpr (std::is_same_v<T, CmdUpdateBuffer>) {
 				execUpdateBuffer(recorded.handle, recorded.offset, recorded.data.size(), recorded.data.data());
@@ -876,11 +957,117 @@ namespace SFE::Render
 		}
 	}
 
+	void OpenGLRHI::setPresentBlitSource(TextureHandle texture, SamplerHandle)
+	{
+		m_presentBlitTexture = texture;
+	}
+
+	bool OpenGLRHI::readbackTexture(TextureHandle handle, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer)
+	{
+		const GLTexture* tex = getLive(textures, handle.id);
+		if (!tex) {
+			return false;
+		}
+		const bool isArray = tex->desc.dimension == TextureDimension::Array;
+		if (!isArray && tex->desc.dimension != TextureDimension::Tex2D) {
+			return false; // cube reads would need a face convention; no pass outputs one
+		}
+		width = static_cast<int>(tex->desc.width);
+		height = static_cast<int>(tex->desc.height);
+		if (width <= 0 || height <= 0) {
+			return false;
+		}
+
+		// One-shot resources: capture is a diagnostic path, not a per-frame one.
+		GLuint fbo = 0;
+		glGenFramebuffers(1, &fbo);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+		const GLenum attachment = ToGLAttachmentFormat(tex->desc.format);
+		const bool isDepth = attachment != GL_COLOR_ATTACHMENT0;
+		if (isArray) {
+			glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, attachment, tex->id, 0, static_cast<GLint>(layer));
+		}
+		else {
+			glFramebufferTexture2D(GL_READ_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex->id, 0);
+		}
+		if (isDepth) {
+			glReadBuffer(GL_NONE);
+			glDrawBuffer(GL_NONE);
+		}
+
+		std::vector<uint8_t> bottomUp;
+		const bool complete = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+		if (complete) {
+			glFinish();
+			bottomUp.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u);
+			glPixelStorei(GL_PACK_ALIGNMENT, 1);
+			if (isDepth) {
+				// Depth needs more than 8 bits to be useful: a far cascade packs its whole scene
+				// into the last fraction of the range, where an 8-bit grey collapses everything to
+				// 255. Pack 16 bits across R and G (R = high byte), keep B as a greyscale preview.
+				std::vector<float> depth(static_cast<size_t>(width) * static_cast<size_t>(height));
+				glReadPixels(0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, depth.data());
+				for (size_t i = 0; i < depth.size(); ++i) {
+					const auto q = static_cast<uint32_t>(std::clamp(depth[i], 0.f, 1.f) * 65535.f + 0.5f);
+					bottomUp[i * 4 + 0] = static_cast<uint8_t>(q >> 8);
+					bottomUp[i * 4 + 1] = static_cast<uint8_t>(q & 0xFF);
+					bottomUp[i * 4 + 2] = static_cast<uint8_t>(q >> 8);
+					bottomUp[i * 4 + 3] = 255;
+				}
+			}
+			else {
+				glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, bottomUp.data());
+			}
+		}
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+		glDeleteFramebuffers(1, &fbo);
+		if (!complete) {
+			return false;
+		}
+
+		// glReadPixels starts at the bottom-left; Vulkan hands back top-down. Normalise here so
+		// the two backends' captures can be diffed directly.
+		const size_t rowBytes = static_cast<size_t>(width) * 4u;
+		rgba.resize(bottomUp.size());
+		for (int y = 0; y < height; ++y) {
+			std::memcpy(rgba.data() + rowBytes * static_cast<size_t>(y),
+				bottomUp.data() + rowBytes * static_cast<size_t>(height - 1 - y),
+				rowBytes);
+		}
+		return true;
+	}
+
 	void OpenGLRHI::present()
 	{
 		auto* window = Engine::instance()->getWindow();
 		if (!window) {
 			return;
+		}
+		if (Engine::instance()->presentToScreen() && window->isVisible() && m_presentBlitTexture) {
+			glDisable(GL_SCISSOR_TEST);
+			const GLTexture* tex = getLive(textures, m_presentBlitTexture.id);
+			if (tex) {
+				if (m_presentReadGlFbo == 0) {
+					glGenFramebuffers(1, &m_presentReadGlFbo);
+				}
+				if (m_presentReadGlFbo != 0 && m_presentReadTexId != m_presentBlitTexture.id) {
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, m_presentReadGlFbo);
+					glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex->id, 0);
+					m_presentReadTexId = m_presentBlitTexture.id;
+				}
+				const auto& screen = window->getScreenData();
+				const int dstW = screen.backbufferW > 0 ? screen.backbufferW : screen.renderW;
+				const int dstH = screen.backbufferH > 0 ? screen.backbufferH : screen.renderH;
+				const int srcW = static_cast<int>(tex->desc.width);
+				const int srcH = static_cast<int>(tex->desc.height);
+				if (srcW > 0 && srcH > 0 && dstW > 0 && dstH > 0 && m_presentReadGlFbo != 0) {
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, m_presentReadGlFbo);
+					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+					glBlitFramebuffer(0, 0, srcW, srcH, 0, 0, dstW, dstH, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				}
+			}
 		}
 		glFlush();
 		if (Engine::instance()->presentToScreen() && window->isVisible()) {
@@ -1221,6 +1408,8 @@ namespace SFE::Render
 
 		glViewport(x, y, w, h);
 		glDepthRange(0.f, 1.f);
+		m_currentPassHeight = h;
+		glDisable(GL_SCISSOR_TEST);
 
 		// --- Clear color attachments (если loadOp == Clear) ---
 		for (uint32_t i = 0; i < rp.desc.colorAttachmentCount; ++i)
@@ -1442,6 +1631,38 @@ namespace SFE::Render
 				break;
 			}
 		}
+
+		// TEMP DIAG -- remove
+		{
+			bool hasShadowBinding = false;
+			for (const auto& b : bindings) {
+				if (b.type == DescriptorType::CombinedImageSampler && b.binding == 8 && !b.images.empty()) {
+					hasShadowBinding = true;
+					break;
+				}
+			}
+			static int diagOnce = 0;
+			if (hasShadowBinding && diagOnce < 2) {
+				++diagOnce;
+				for (const int unit : { 6, 8 }) {
+					GLint samplerId = 0, texId = 0, cmpMode = -1, cmpFunc = -1, texCmpMode = -1;
+					glGetIntegeri_v(GL_SAMPLER_BINDING, unit, &samplerId);
+					glActiveTexture(GL_TEXTURE0 + unit);
+					glGetIntegerv(GL_TEXTURE_BINDING_2D_ARRAY, &texId);
+					if (samplerId) {
+						glGetSamplerParameteriv(samplerId, GL_TEXTURE_COMPARE_MODE, &cmpMode);
+						glGetSamplerParameteriv(samplerId, GL_TEXTURE_COMPARE_FUNC, &cmpFunc);
+					}
+					if (texId) {
+						glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, &texCmpMode);
+					}
+					SFE::LogsModule::Logger::LOG_ERROR(
+						"DIAG unit %d: tex=%d sampler=%d cmpMode=0x%X cmpFunc=0x%X texCmpMode=0x%X (want mode 0x%X func 0x%X)",
+						unit, texId, samplerId, cmpMode, cmpFunc, texCmpMode,
+						static_cast<int>(GL_COMPARE_REF_TO_TEXTURE), static_cast<int>(GL_LEQUAL));
+				}
+			}
+		}
 	}
 
 	FramebufferHandle OpenGLRHI::getBackbufferFramebuffer()
@@ -1510,6 +1731,7 @@ namespace SFE::Render
 		bindUniformBlock("cascadedShadowBlock", 9);
 		bindUniformBlock("pointLightsBlock", 10);
 		bindUniformBlock("SharedMatrices", 5);
+		bindUniformBlock("DrawData", 1);
 		bindUniformBlock("PushConstants", 15);
 
 		{
@@ -1537,6 +1759,8 @@ namespace SFE::Render
 			setSampler("sceneCopy", 6);
 			setSampler("bloomColor", 1);
 			setSampler("sceneHdr", 0);
+			setSampler("worldPos", 1);
+			setSampler("sheenNormal", 3);
 			setSampler("volumeLight", 1);
 			setSampler("historyColor", 1);
 			glUseProgram(0);
@@ -1566,6 +1790,10 @@ namespace SFE::Render
 		gp.cullModeGL = ToGLCullMode(desc.cullMode);
 		gp.frontFaceGL = ToGLFrontFace(desc.frontFace);
 		gp.fillModeGL = ToGLFillMode(desc.fillMode);
+		if (desc.shaders.tessEval.id != UINT32_MAX) {
+			gp.patchControlPoints = (std::max)(1u, desc.patchControlPoints);
+			gp.primitiveGL = GL_PATCHES;
+		}
 
 		gp.depthTestEnabled = desc.depthStencilState.depthTest;
 		gp.depthWriteEnabled = desc.depthStencilState.depthWrite;
@@ -1715,8 +1943,12 @@ namespace SFE::Render
 		GLenum severity, GLsizei length,
 		const GLchar* message, const void* userParam)
 	{
-		// тут свой логгер
-		SFE::LogsModule::Logger::LOG_ERROR("GL DEBUG: %s", message); 
+		// Notifications are chatty driver bookkeeping ("buffer will use VIDEO memory"), and this
+		// logger routes errors to sfe_fatal.log -- only report things worth reading.
+		if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
+			return;
+		}
+		SFE::LogsModule::Logger::LOG_ERROR("GL DEBUG: %s", message);
 	}
 
 	void InitGLDebug()
@@ -1738,11 +1970,14 @@ namespace SFE::Render
 			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize render without context, forgot to call createWindow?");
 			return;
 		}
-		//InitGLDebug();
-
 		glfwMakeContextCurrent(window->getWindow());
 		LogsModule::Logger::LOG_FATAL(gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)), "Failed to initialize GLAD");
 		m_inited = true;
+
+		// Off by default: GL_DEBUG_OUTPUT_SYNCHRONOUS costs real frame time. Uncomment to get
+		// driver diagnostics. It must stay below GLAD -- the entry points are null until then,
+		// which is why calling it any earlier crashed on the first glEnable.
+		//InitGLDebug();
 
 
 		glViewport(0, 0, window->getScreenData().renderW, window->getScreenData().renderH);
@@ -1752,6 +1987,13 @@ namespace SFE::Render
 		glDepthFunc(GL_LESS);
 		glClearDepth(1.f);
 		glGenQueries(2, mGpuTimeQueries);
+	}
+
+	void OpenGLRHI::waitIdle()
+	{
+		if (m_inited) {
+			glFinish();
+		}
 	}
 
 	void OpenGLRHI::cleanup()
@@ -1787,6 +2029,11 @@ namespace SFE::Render
 				if (fb.live && fb.id != 0) {
 					glDeleteFramebuffers(1, &fb.id);
 				}
+			}
+			if (m_presentReadGlFbo != 0) {
+				glDeleteFramebuffers(1, &m_presentReadGlFbo);
+				m_presentReadGlFbo = 0;
+				m_presentReadTexId = UINT32_MAX;
 			}
 			for (auto& tex : textures) {
 				if (tex.live && tex.id != 0) {
@@ -1869,7 +2116,9 @@ namespace SFE::Render
 
 			switch (tex->desc.dimension) {
 				case TextureDimension::Tex2D:
-					glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, tex->id, static_cast<GLint>(att.mipLevel));
+					glFramebufferTexture2D(GL_FRAMEBUFFER, attachment,
+						tex->desc.sampleCount > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D,
+						tex->id, static_cast<GLint>(att.mipLevel));
 					break;
 				case TextureDimension::Tex3D:
 					SFE::LogsModule::Logger::LOG_FATAL(false, "Failed to create framebuffer object!");
@@ -1898,7 +2147,9 @@ namespace SFE::Render
 
 			switch (tex->desc.dimension) {
 			case TextureDimension::Tex2D:
-				glFramebufferTexture2D(GL_FRAMEBUFFER, ToGLAttachmentFormat(tex->desc.format), GL_TEXTURE_2D, tex->id, static_cast<GLint>(att.mipLevel));
+				glFramebufferTexture2D(GL_FRAMEBUFFER, ToGLAttachmentFormat(tex->desc.format),
+					tex->desc.sampleCount > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D,
+					tex->id, static_cast<GLint>(att.mipLevel));
 				break;
 			case TextureDimension::Array:
 			case TextureDimension::Tex3D:
@@ -2087,7 +2338,8 @@ namespace SFE::Render
 	{
 		GLuint tex;
 		
-		auto target = ToOpenglTargetType(desc.dimension);
+		const bool msaa = desc.sampleCount > 1 && desc.dimension == TextureDimension::Tex2D;
+		auto target = msaa ? GL_TEXTURE_2D_MULTISAMPLE : ToOpenglTargetType(desc.dimension);
 
 		glGenTextures(1, &tex);
 		glBindTexture(target, tex);
@@ -2095,7 +2347,15 @@ namespace SFE::Render
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 		glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
-		if (desc.dimension == TextureDimension::Tex2D) {
+		if (msaa) {
+			glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE,
+				static_cast<GLsizei>(desc.sampleCount),
+				ToGLInternalFormat(desc.format),
+				static_cast<GLsizei>(desc.width),
+				static_cast<GLsizei>(desc.height),
+				GL_TRUE);
+		}
+		else if (desc.dimension == TextureDimension::Tex2D) {
 			glTexImage2D(target,
 				0,
 				ToGLInternalFormat(desc.format),
@@ -2172,34 +2432,36 @@ namespace SFE::Render
 				data);
 		}
 
-		if (desc.format == TextureFormat::DEPTH24_STENCIL8 || desc.format == TextureFormat::DEPTH32F_STENCIL8)
+		if (!msaa && (desc.format == TextureFormat::DEPTH24_STENCIL8 || desc.format == TextureFormat::DEPTH32F_STENCIL8))
 		{
 			glTextureParameteri(tex, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
 		}
 
-		GLint maxLevel = desc.mipLevels > 0 ? static_cast<GLint>(desc.mipLevels - 1) : 0;
-		if (desc.dimension == TextureDimension::Tex2D && data && desc.mipLevels <= 1) {
-			uint32_t mw = desc.width;
-			uint32_t mh = desc.height;
-			int levels = 1;
-			while (mw > 1 || mh > 1) {
-				if (mw > 1) {
-					mw /= 2;
+		if (!msaa) {
+			GLint maxLevel = desc.mipLevels > 0 ? static_cast<GLint>(desc.mipLevels - 1) : 0;
+			if (desc.dimension == TextureDimension::Tex2D && data && desc.mipLevels <= 1) {
+				uint32_t mw = desc.width;
+				uint32_t mh = desc.height;
+				int levels = 1;
+				while (mw > 1 || mh > 1) {
+					if (mw > 1) {
+						mw /= 2;
+					}
+					if (mh > 1) {
+						mh /= 2;
+					}
+					++levels;
 				}
-				if (mh > 1) {
-					mh /= 2;
-				}
-				++levels;
+				maxLevel = levels - 1;
 			}
-			maxLevel = levels - 1;
+			glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
+			glTexParameteri(target, GL_TEXTURE_MIN_FILTER, maxLevel > 0 ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST);
+			glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 		}
-		glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
-		glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
-		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, maxLevel > 0 ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST);
-		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
 		glBindTexture(target, 0);
 
@@ -2361,6 +2623,26 @@ namespace SFE::Render
 		}
 	}
 
+	void OpenGLRHI::cmdSetScissor(CommandListHandle cmd, int32_t x, int32_t y, uint32_t width, uint32_t height)
+	{
+		if (GLCommandList* list = recordingList(cmd)) {
+			list->commands.emplace_back(CmdSetScissor{ x, y, width, height });
+		}
+	}
+
+	void OpenGLRHI::execSetScissor(int32_t x, int32_t y, uint32_t width, uint32_t height)
+	{
+		if (width == 0 || height == 0) {
+			glEnable(GL_SCISSOR_TEST);
+			glScissor(0, 0, 0, 0);
+			return;
+		}
+		const int fbH = m_currentPassHeight > 0 ? m_currentPassHeight : 1;
+		const int glY = fbH - y - static_cast<int>(height);
+		glEnable(GL_SCISSOR_TEST);
+		glScissor(x, glY, static_cast<int>(width), static_cast<int>(height));
+	}
+
 	void OpenGLRHI::execBlit(FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter)
 	{
 		auto resolveFb = [this](FramebufferHandle handle, int& w, int& h) -> GLuint {
@@ -2395,6 +2677,13 @@ namespace SFE::Render
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstId);
 		glBlitFramebuffer(0, 0, srcW, srcH, 0, 0, dstW, dstH, ToGLMask(mask), ToGLFilter(filter));
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
+	void OpenGLRHI::cmdHostCallback(CommandListHandle cmd, std::function<void()> callback)
+	{
+		if (GLCommandList* list = recordingList(cmd)) {
+			list->commands.emplace_back(CmdHostCallback{ std::move(callback) });
+		}
 	}
 
 	static GLbitfield ToGLMemoryBarrier(AccessMask access)

@@ -1,36 +1,55 @@
-#version 430 core
-layout (location = 0) out highp vec4 gPosition;
-layout (location = 1) out vec4 gNormal;
-layout (location = 2) out vec4 gAlbedoSpec;
+#version 450 core
+#include "sfe.glsl"
+layout(location = 0) in vec3 FragPos;
+layout(location = 1) in vec2 TexCoords;
+layout(location = 2) in mat3 TBN;
 
-layout (binding = 1) uniform sampler2D texture_diffuse1;
-layout (binding = 2) uniform sampler2D normalMap;
-layout (binding = 3) uniform sampler2D texture_specular1;
-layout (binding = 4) uniform sampler2D texture_roughness;
-layout (binding = 5) uniform sampler2D texture_metallic;
+layout(location = 0) out vec4 gPosition;
+layout(location = 1) out vec4 gNormal;
+layout(location = 2) out vec4 gAlbedoSpec;
 
-in vec2 TexCoords;
-in highp vec3 FragPos;
-in vec3 Normal;
-in mat3 TBN;
+layout(SFE_SET(1, 1)) uniform sampler2D texture_diffuse1;
+layout(SFE_SET(1, 2)) uniform sampler2D normalMap;
+layout(SFE_SET(1, 3)) uniform sampler2D texture_specular1;
+layout(SFE_SET(1, 4)) uniform sampler2D texture_roughness;
+layout(SFE_SET(1, 5)) uniform sampler2D texture_metallic;
+layout(SFE_SET(1, 6)) uniform sampler2D texture_subsurface;
 
-void main()
-{
+SFE_PUSH_BLOCK PushConstants {
+    float matRoughness;
+    float matMetallic;
+    float pad0;
+    float pad1;
+} pc;
+
+void main() {
+    vec4 diff = texture(texture_diffuse1, TexCoords);
+
     gPosition.rgb = FragPos;
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 
-    vec3 normal = texture(normalMap, TexCoords).rgb;
-    gNormal.xyz = normalize(TBN * normalize(normal * 2.0 - 1.0));
+    vec3 nSample = texture(normalMap, TexCoords).rgb;
+    vec3 Nw;
+    if (dot(nSample, nSample) < 0.02) {
+        Nw = normalize(TBN[2]);
+    } else {
+        vec3 nts = nSample * 2.0 - 1.0;
+        Nw = normalize(TBN * nts);
+    }
+    float sss = texture(texture_subsurface, TexCoords).r;
+    if (sss < 0.001) {
+        sss = texture(texture_subsurface, TexCoords).a;
+    }
+    gNormal.xyz = Nw * (1.0 - 0.5 * clamp(sss, 0.0, 1.0));
 
-    vec3 albedoSrgb = texture(texture_diffuse1, TexCoords).rgb;
-    gAlbedoSpec.rgb = pow(albedoSrgb, vec3(2.2));
+    gAlbedoSpec.rgb = pow(diff.rgb, vec3(2.2));
 
     float spec = texture(texture_specular1, TexCoords).r;
     float roughMap = texture(texture_roughness, TexCoords).g;
     if (roughMap < 0.001) {
         roughMap = texture(texture_roughness, TexCoords).r;
     }
-    float roughness = 0.5;
+    float roughness = pc.matRoughness;
     if (roughMap > 0.001) {
         roughness = roughMap;
     } else if (spec > 0.001) {
@@ -39,6 +58,9 @@ void main()
     float metallic = texture(texture_metallic, TexCoords).b;
     if (metallic < 0.001) {
         metallic = texture(texture_metallic, TexCoords).r;
+    }
+    if (metallic < 0.001) {
+        metallic = pc.matMetallic;
     }
 
     gAlbedoSpec.a = clamp(roughness, 0.04, 1.0);

@@ -1,13 +1,14 @@
 #include "IblBaker.h"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
 namespace SFE::Render {
 	namespace {
-		constexpr int kEnvSize = 32;
+		constexpr int kEnvSize = 64;
 		constexpr int kIrrSize = 16;
-		constexpr int kPreSize = 32;
+		constexpr int kPreSize = 64;
 		constexpr int kPreMips = 5;
 		constexpr int kLutSize = 128;
 		constexpr int kSamples = 32;
@@ -85,15 +86,26 @@ namespace SFE::Render {
 		}
 
 		F3 skyColor(F3 dir) {
-			const float h = dir.y;
-			const F3 zenith{ 0.20f, 0.38f, 0.78f };
-			const F3 horizon{ 0.72f, 0.62f, 0.48f };
-			const F3 ground{ 0.10f, 0.09f, 0.08f };
-			const float tHorizon = h * 0.5f + 0.5f;
-			F3 col = add(mul(ground, 1.f - tHorizon), mul(horizon, tHorizon));
-			const float tZenith = h > 0.f ? h : 0.f;
-			col = add(mul(col, 1.f - tZenith), mul(zenith, tZenith));
-			return mul(col, 0.9f);
+			dir = norm(dir);
+			const float up = dir.y * 0.5f + 0.5f;
+			F3 col{
+				0.16f + 0.08f * up,
+				0.16f + 0.09f * up,
+				0.17f + 0.11f * up
+			};
+			if (dir.y < -0.15f) {
+				col = { 0.10f, 0.095f, 0.09f };
+			}
+
+			auto addArea = [&](F3 lightDir, float sharpness, float intensity, F3 color) {
+				const float w = std::pow((std::max)(0.f, dot3(dir, norm(lightDir))), sharpness);
+				col = add(col, mul(color, w * intensity));
+			};
+			// Studio key / fill / rim — bright enough for dielectric catchlights.
+			addArea({ 0.42f, 0.78f, 0.48f }, 28.f, 22.f, { 1.f, 0.97f, 0.92f });
+			addArea({ -0.62f, 0.38f, 0.35f }, 14.f, 5.5f, { 0.65f, 0.75f, 1.f });
+			addArea({ -0.15f, 0.22f, -0.96f }, 22.f, 10.f, { 1.f, 0.94f, 0.86f });
+			return col;
 		}
 
 		F3 sampleEnv(const std::vector<float>& env, F3 dir) {
@@ -166,10 +178,8 @@ namespace SFE::Render {
 		}
 
 		void uploadCube(RenderHardwareInterface* rhi, TextureHandle tex, int size, int mip, const std::vector<float>& faces) {
-			const int texel = size * size * 4;
-			for (int face = 0; face < 6; ++face) {
-				rhi->updateCubeFace(tex, static_cast<uint32_t>(face), static_cast<uint32_t>(mip), faces.data() + face * texel);
-			}
+			const size_t faceBytes = static_cast<size_t>(size) * static_cast<size_t>(size) * 4u * sizeof(float);
+			rhi->updateCubeMip(tex, static_cast<uint32_t>(mip), faces.data(), faceBytes);
 		}
 	}
 

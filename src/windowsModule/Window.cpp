@@ -87,6 +87,7 @@ namespace SFE::Render {
 		hints.apply();
 		//glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 		mNoApi = hints.ints.contains(CLIENT_API) && hints.ints.at(CLIENT_API) == GLFW_NO_API;
+		mTitle = title;
 		mWindow = glfwCreateWindow(w, h, title.c_str(), nullptr, share);
 		if (!mWindow) {
 			LogsModule::Logger::LOG_FATAL(false, "Failed to create glfw window \"%s\"", title.c_str());
@@ -175,9 +176,12 @@ namespace SFE::Render {
 		});
 
 		glfwSetWindowCloseCallback(mWindow, [](GLFWwindow* window) {
+			if (!glfwGetWindowAttrib(window, GLFW_VISIBLE)) {
+				glfwSetWindowShouldClose(window, GLFW_FALSE);
+				return;
+			}
 			if (windows.contains(window)) {
 				if (const auto win = windows[window]) {
-					windows.erase(window);
 					if (win->onCloseCallback) {
 						win->onCloseCallback();
 					}

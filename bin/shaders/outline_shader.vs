@@ -19,7 +19,7 @@ layout(std430, binding = 2) buffer bonesMatrices
 {
     mat4 bones[][100];
 };
-const int MAX_BONES = 100;
+const int MAX_BONES = 256;
 const int MAX_BONE_INFLUENCE = 4;
 
 void main()

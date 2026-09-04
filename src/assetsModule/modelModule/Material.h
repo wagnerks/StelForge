@@ -9,7 +9,8 @@ namespace SFE {
 		NORMALS,
 		SPECULAR,
 		ROUGHNESS,
-		METALLIC
+		METALLIC,
+		SUBSURFACE
 	};
 
 	struct MaterialTexture {
@@ -32,7 +33,10 @@ namespace SFE {
 
 		std::unordered_map<MaterialType, MaterialTexture> materialTextures;
 		bool transparent = false;
+		bool alphaCutout = false;
 		float opacity = 1.f;
 		float ior = 1.5f;
+		float roughness = 0.5f;
+		float metallic = 0.f;
 	};
 }
