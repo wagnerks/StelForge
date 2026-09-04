@@ -8,6 +8,6 @@ initThread ok
 initRender ok
 loop cfg backend=OpenGL present=1 visible=1 shouldClose=0 alive=1
 entering loop
-loop exit frames=5160 shouldClose=1
+loop exit frames=1000 shouldClose=1
 before terminate
 after terminate

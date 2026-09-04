@@ -17,9 +17,7 @@ void main() {
     for (int light = 0; light < count; ++light) {
         int layer = light * 6 + gl_InvocationID;
         for (int i = 0; i < 3; ++i) {
-            vec4 clip = lightSpaceMatrices[layer] * gl_in[i].gl_Position;
-            clip.z = (clip.z + clip.w) * 0.5;
-            gl_Position = clip;
+            gl_Position = lightSpaceMatrices[layer] * gl_in[i].gl_Position;
             gl_Layer = layer;
             EmitVertex();
         }

@@ -15,9 +15,7 @@ SFE_PUSH_BLOCK PushConstants {
 void main() {
     int layer = clamp(params.cascadeLayer, 0, 5);
     for (int i = 0; i < 3; ++i) {
-        vec4 clip = lightSpaceMatrices[layer] * gl_in[i].gl_Position;
-        clip.z = (clip.z + clip.w) * 0.5;
-        gl_Position = clip;
+        gl_Position = lightSpaceMatrices[layer] * gl_in[i].gl_Position;
         gl_Layer = layer;
         EmitVertex();
     }

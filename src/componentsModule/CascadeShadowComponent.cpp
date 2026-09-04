@@ -218,12 +218,7 @@ namespace SFE::ComponentsModule {
 			*worldPerTexelOut = worldPerTexel;
 		}
 
-		// Both backends get the [-1,1] convention, which is what OpenGL's depth buffer expects.
-		// Vulkan stores clip z as-is, so its shadow map holds different values for the same
-		// geometry and worldToShadowUv()'s remap overshoots its reference depth by (1-z)/2.
-		// Switching Vulkan to orthoRH_ZO does align the two -- and measurably makes the picture
-		// worse, because that overshoot is what currently produces any distant shadow at all.
-		// The real defect is downstream, in the depth comparison; do not align these in isolation.
+		// OpenGL clip Z [-1, 1]. Vulkan RHI matches it via VK_EXT_depth_clip_control.
 		const auto ortho = Math::orthoRH_NO(minX, maxX, minY, maxY, minZ, maxZ);
 		if (cullingMatrix) {
 			*cullingMatrix = ortho * lightView;

@@ -302,8 +302,12 @@ void CascadedShadowPass::initRender() {
 	pipelineDesc.depthStencilState.depthWrite = true;
 	pipelineDesc.depthStencilState.depthCompareOp = CompareOp::Less;
 	pipelineDesc.cullMode = CullMode::Front;
-	// Match GeometryPass winding; Vulkan RHI inverts CCW because the viewport is not Y-flipped.
-	pipelineDesc.frontFace = FrontFace::CounterClockWise;
+	// Vulkan RHI inverts winding (viewport is not Y-flipped). Light ortho is not Y-flipped
+	// either, so a shared CCW frontFace would make GL write back faces and VK front faces.
+	// Keep Vulkan as-is (front faces); flip GL so both write the same casters.
+	pipelineDesc.frontFace = rhi->backend() == GraphicsBackend::Vulkan
+		? FrontFace::CounterClockWise
+		: FrontFace::ClockWise;
 	pipelineDesc.renderPass = renderPass;
 	pipelineDesc.descriptorSetLayouts = { shadowsLayoutHandle };
 	pipelineDesc.pushConstantSize = 16u;

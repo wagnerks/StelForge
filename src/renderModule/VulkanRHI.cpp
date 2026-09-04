@@ -147,7 +147,7 @@ namespace SFE::Render {
 			vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
 			std::vector<VkExtensionProperties> available(count);
 			vkEnumerateDeviceExtensionProperties(device, nullptr, &count, available.data());
-			for (const char* required : { VK_KHR_SWAPCHAIN_EXTENSION_NAME }) {
+			for (const char* required : { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DEPTH_CLIP_CONTROL_EXTENSION_NAME }) {
 				bool found = false;
 				for (const auto& ext : available) {
 					if (std::strcmp(ext.extensionName, required) == 0) {
@@ -573,25 +573,44 @@ namespace SFE::Render {
 			deviceFeatures.multiDrawIndirect = VK_TRUE;
 		}
 
+		VkPhysicalDeviceDepthClipControlFeaturesEXT depthClipControl{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_CONTROL_FEATURES_EXT
+		};
 		VkPhysicalDeviceHostQueryResetFeatures hostQueryReset{
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES
 		};
+		hostQueryReset.pNext = &depthClipControl;
 		VkPhysicalDeviceFeatures2 features2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 		features2.pNext = &hostQueryReset;
 		vkGetPhysicalDeviceFeatures2(m_physicalDevice, &features2);
 
-		const char* deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+		if (!depthClipControl.depthClipControl) {
+			LogsModule::Logger::LOG_FATAL(false,
+				"VulkanRHI: VK_EXT_depth_clip_control required so shaders keep OpenGL clip Z [-1, 1]");
+		}
+
+		const char* deviceExtensions[] = {
+			VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+			VK_EXT_DEPTH_CLIP_CONTROL_EXTENSION_NAME
+		};
 		VkDeviceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 		createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 		createInfo.pQueueCreateInfos = queueCreateInfos.data();
 		createInfo.pEnabledFeatures = &deviceFeatures;
-		createInfo.enabledExtensionCount = 1;
+		createInfo.enabledExtensionCount = 2;
 		createInfo.ppEnabledExtensionNames = deviceExtensions;
+
+		depthClipControl.depthClipControl = VK_TRUE;
+		depthClipControl.pNext = nullptr;
+		m_negativeOneToOneDepth = true;
 		if (hostQueryReset.hostQueryReset) {
-			hostQueryReset.pNext = nullptr;
+			hostQueryReset.pNext = &depthClipControl;
 			createInfo.pNext = &hostQueryReset;
 			m_hostQueryReset = true;
+		}
+		else {
+			createInfo.pNext = &depthClipControl;
 		}
 
 		if (vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device) != VK_SUCCESS) {

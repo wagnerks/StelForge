@@ -290,6 +290,7 @@ namespace SFE::Render
 		bool m_samplerAnisotropy = false;
 		bool m_fillModeNonSolid = false;
 		bool m_hostQueryReset = false;
+		bool m_negativeOneToOneDepth = false;
 		uint32_t m_currentFrame = 0;
 
 		VkInstance m_instance = VK_NULL_HANDLE;
