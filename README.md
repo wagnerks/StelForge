@@ -1,7 +1,4 @@
-# 🌌 Stellar Forge Engine (aka STELFORGE ENGINE // SFE)
-
-![logo](https://github.com/user-attachments/assets/ffc7df08-5f86-4f00-b4c7-d3d97fef0a91)
-> A fast, modern game engine — forged among the stars.
+> A fast, modern game engine.
 ---
 
 ### 🧪 Disclaimer
