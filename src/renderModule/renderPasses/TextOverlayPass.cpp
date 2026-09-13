@@ -15,12 +15,6 @@ namespace SFE::Render::RenderPasses {
 		auto* rhi = Engine::instance()->rhi();
 		mFont = FontsRegistry::instance()->getFont("fonts/DroidSans.ttf", 22);
 
-		// Vulkan draws FPS inside FinalPass (same RP as tonemap). A second begin after Final
-		// invalidates the scene command buffer.
-		if (!rhi->supportsFullPipeline()) {
-			return;
-		}
-
 		RenderPassDesc rpd;
 		rpd.colorAttachmentCount = 1;
 		rpd.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
@@ -33,9 +27,6 @@ namespace SFE::Render::RenderPasses {
 	void TextOverlayPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd)
 	{
 		auto* rhi = Engine::instance()->rhi();
-		if (!rhi->supportsFullPipeline()) {
-			return;
-		}
 		if (!mFont || !mRenderPass) {
 			return;
 		}

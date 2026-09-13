@@ -24,9 +24,4 @@ namespace SFE::Render {
 			updateCubeFace(tex, face, mip, bytes + face * faceBytes);
 		}
 	}
-
-	bool RenderHardwareInterface::supportsRenderPass(const char* name) const {
-		(void)name;
-		return supportsFullPipeline();
-	}
 }

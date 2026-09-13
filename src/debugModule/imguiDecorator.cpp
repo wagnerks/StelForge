@@ -1,4 +1,7 @@
 ﻿#include "imguiDecorator.h"
+#include "core/Engine.h"
+
+#include <cfloat>
 
 #include <GLFW/glfw3.h>
 
@@ -15,6 +18,10 @@ namespace SFE::Debug {
 
 		IMGUI_CHECKVERSION();
 		context = ImGui::CreateContext();
+		// A capture must not depend on the window layout the previous run left in imgui.ini.
+		if (Engine::instance() && Engine::instance()->capturingFrame()) {
+			ImGui::GetIO().IniFilename = nullptr;
+		}
 
 		if (viewports) {
 			ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable | ImGuiConfigFlags_DockingEnable;
@@ -24,6 +31,17 @@ namespace SFE::Debug {
 
 		ImGui_ImplGlfw_InitForOpenGL(window, true);
 		ImGui_ImplOpenGL3_Init("#version 330");
+	}
+
+	void freezeImGuiForCapture() {
+		if (!Engine::instance() || !Engine::instance()->capturingFrame()) {
+			return;
+		}
+		// The GLFW backend feeds a wall-clock delta and the live mouse, so window fits, fades and hover
+		// highlights would differ on every run.
+		auto& io = ImGui::GetIO();
+		io.DeltaTime = 1.f / 60.f;
+		io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
 	}
 
 	void applyDefaultImGuiStyle() {
@@ -126,6 +144,7 @@ namespace SFE::Debug {
 
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
+		freezeImGuiForCapture();
 		ImGui::NewFrame();
 	}
 

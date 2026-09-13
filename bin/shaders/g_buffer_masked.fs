@@ -3,6 +3,7 @@
 layout(location = 0) in vec3 FragPos;
 layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in mat3 TBN;
+layout(location = 5) in vec2 TexCoords1;
 
 layout(location = 0) out vec4 gPosition;
 layout(location = 1) out vec4 gNormal;
@@ -13,52 +14,79 @@ layout(SFE_SET(1, 2)) uniform sampler2D normalMap;
 layout(SFE_SET(1, 3)) uniform sampler2D texture_specular1;
 layout(SFE_SET(1, 4)) uniform sampler2D texture_roughness;
 layout(SFE_SET(1, 5)) uniform sampler2D texture_metallic;
+layout(SFE_SET(1, 6)) uniform sampler2D texture_subsurface;
 
 SFE_PUSH_BLOCK PushConstants {
     float matRoughness;
     float matMetallic;
-    float pad0;
-    float pad1;
+    float mapMask;
+    float alphaCutoff;
+    float uvSel;
+    float specFactor;
+    float clearcoat;
+    float clearcoatRough;
 } pc;
 
+vec2 uvOf(uint bit) {
+    return ((uint(pc.uvSel + 0.5) & bit) != 0u) ? TexCoords1 : TexCoords;
+}
+
 void main() {
-    vec4 diff = texture(texture_diffuse1, TexCoords, -0.75);
-    if (diff.a < 0.4) {
+    uint maps = uint(pc.mapMask + 0.5);
+    vec2 uvDiff = uvOf(1u);
+    vec2 uvNrm = uvOf(2u);
+    vec2 uvSpec = uvOf(4u);
+    vec2 uvRough = uvOf(8u);
+    vec2 uvMetal = uvOf(16u);
+    vec2 uvSss = uvOf(32u);
+
+    float cutoff = pc.alphaCutoff > 0.0 ? pc.alphaCutoff : 0.4;
+    float mask = textureLod(texture_diffuse1, uvDiff, 0.0).a;
+    if ((maps & 8u) != 0u && mask > 0.99) {
+        mask = max(textureLod(texture_specular1, uvSpec, 0.0).r, textureLod(texture_roughness, uvRough, 0.0).g);
+    }
+    uint uvBits = uint(pc.uvSel + 0.5);
+    if ((uvBits & 1u) == 0u && (uvBits & 6u) != 0u) {
+        mask = min(mask, textureLod(texture_diffuse1, TexCoords1, 0.0).a);
+    }
+    if (cutoff > 1.0) {
+        float cov = clamp(cutoff - 1.0, 0.05, 1.0);
+        mask = min(mask, cov);
+        precise vec2 ditherKey = uvDiff * 311.0 + FragPos.xy * 17.0;
+        float d = sfeHash12(ditherKey);
+        if (mask < d) {
+            discard;
+        }
+    } else if (mask < cutoff) {
         discard;
     }
+    vec4 diff = textureLod(texture_diffuse1, uvDiff, 0.0);
+    diff.rgb = sfeMaskedAlbedo(texture_diffuse1, uvDiff);
 
     gPosition.rgb = FragPos;
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 
-    vec3 nSample = texture(normalMap, TexCoords).rgb;
-    if (dot(nSample, nSample) < 0.02) {
-        gNormal.xyz = normalize(TBN[2]);
-    } else {
-        vec3 nts = nSample * 2.0 - 1.0;
-        gNormal.xyz = normalize(TBN * nts);
-    }
+    vec3 geomN = normalize(TBN[2]);
+    float sss = 0.0;
+    gNormal.xyz = geomN;
 
     gAlbedoSpec.rgb = pow(diff.rgb, vec3(2.2));
 
-    float spec = texture(texture_specular1, TexCoords).r;
-    float roughMap = texture(texture_roughness, TexCoords).g;
-    if (roughMap < 0.001) {
-        roughMap = texture(texture_roughness, TexCoords).r;
-    }
     float roughness = pc.matRoughness;
-    if (roughMap > 0.001) {
-        roughness = roughMap;
-    } else if (spec > 0.001) {
-        roughness = 1.0 - spec;
+    if ((maps & 1u) != 0u) {
+        roughness = texture(texture_roughness, uvRough).g;
+    } else if ((maps & 4u) != 0u) {
+        roughness = 1.0 - texture(texture_specular1, uvSpec).r;
     }
-    float metallic = texture(texture_metallic, TexCoords).b;
-    if (metallic < 0.001) {
-        metallic = texture(texture_metallic, TexCoords).r;
+    roughness = max(roughness, 0.78);
+    float metallic = 0.0;
+
+    float specF = pc.specFactor;
+    if ((maps & 1u) != 0u && (maps & 4u) != 0u) {
+        specF *= texture(texture_specular1, uvSpec).r;
     }
-    if (metallic < 0.001) {
-        metallic = pc.matMetallic;
-    }
+    specF = min(specF, 0.18);
 
     gAlbedoSpec.a = clamp(roughness, 0.04, 1.0);
-    gPosition.a = clamp(metallic, 0.0, 1.0);
+    gPosition.a = sfePackGBufferPbr(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(pc.clearcoat, 0.0, 1.0), clamp(pc.clearcoatRough, 0.04, 1.0));
 }

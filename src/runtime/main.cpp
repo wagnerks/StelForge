@@ -252,6 +252,7 @@ int main(int argc, char** argv)
 	crashLog("createWindow ok");
 	engine->setPresentToScreen(visibleWindow);
 	engine->setCapturingFrame(!capturePath.empty());
+	SFE::ThreadPool::instance()->setRenderTasksInline(!capturePath.empty());
 	engine->setCaptureFrame(captureFrame);
 	engine->setLightingDebugTerm(lightingDebugTerm);
 	engine->setTemporalAccumulation(temporalAccumulation);
@@ -341,6 +342,14 @@ int main(int argc, char** argv)
 	const auto reproStart = std::chrono::steady_clock::now();
 	int frames = 0;
 	while (engine->isAlive()) {
+		if (!capturePath.empty()) {
+			SFE::ThreadPool::instance()->waitIdle();
+			// No frame overlaps the previous one on the GPU: with frames in flight, per-frame data written
+			// for this frame could land while the last one is still reading it.
+			if (auto* rhi = engine->rhi()) {
+				rhi->waitIdle();
+			}
+		}
 		engine->update();
 		heartbeat.store(++frames, std::memory_order_relaxed);
 

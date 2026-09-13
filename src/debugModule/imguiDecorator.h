@@ -5,6 +5,8 @@ struct GLFWwindow;
 
 namespace SFE::Debug {
 	void applyDefaultImGuiStyle();
+	// Call between the platform backend's NewFrame and ImGui::NewFrame.
+	void freezeImGuiForCapture();
 
 	class ImGuiDecorator {
 	public:

@@ -1,4 +1,4 @@
-#include "VulkanRHI.h"
+﻿#include "VulkanRHI.h"
 
 #include <algorithm>
 #include <array>
@@ -82,8 +82,10 @@ namespace SFE::Render {
 			scratchDesc.format = TextureFormat::RGBA8;
 			scratchDesc.usage = TextureUsage::Sampled | TextureUsage::TransferSrc | TextureUsage::TransferDst;
 			scratchHandle = createTexture(scratchDesc, nullptr);
+			// createTexture can grow m_textures, which invalidates every pointer into it.
+			source = getLive(m_textures, handle.id);
 			auto* scratch = getLive(m_textures, scratchHandle.id);
-			if (!scratch) {
+			if (!source || !scratch) {
 				return false;
 			}
 			executeImmediate([&](VkCommandBuffer cmd) {
@@ -179,33 +181,6 @@ namespace SFE::Render {
 
 	void VulkanRHI::beginFrame() {
 		waitForInFlightFrame();
-	}
-
-	bool VulkanRHI::supportsRenderPass(const char* name) const {
-		if (!name) {
-			return false;
-		}
-		if (supportsFullPipeline()) {
-			return true;
-		}
-		return std::strcmp(name, "AnimationCompute") == 0
-			|| std::strcmp(name, "CascadedShadow") == 0
-			|| std::strcmp(name, "PointLight") == 0
-			|| std::strcmp(name, "Geometry") == 0
-			|| std::strcmp(name, "SSAO") == 0
-			|| std::strcmp(name, "Lighting") == 0
-			|| std::strcmp(name, "Sheen") == 0
-			|| std::strcmp(name, "SSS") == 0
-			|| std::strcmp(name, "ContactGI") == 0
-			|| std::strcmp(name, "SSR") == 0
-			|| std::strcmp(name, "Glass") == 0
-			|| std::strcmp(name, "Volumetric") == 0
-			|| std::strcmp(name, "TAA") == 0
-			|| std::strcmp(name, "DoF") == 0
-			|| std::strcmp(name, "Final") == 0
-			|| std::strcmp(name, "Debug") == 0
-			|| std::strcmp(name, "TextOverlay") == 0
-			|| std::strcmp(name, "ImGui") == 0;
 	}
 
 	void VulkanRHI::blitTextureToTexture(VkCommandBuffer cmd, VkTextureResource& src, VkTextureResource& dst) {
@@ -343,10 +318,12 @@ namespace SFE::Render {
 		w = (std::max)(1u, w);
 		h = (std::max)(1u, h);
 		ensureDisplayTextures(w, h);
+		// It can create the display textures, which invalidates every pointer into m_textures.
+		srcTex = getLive(m_textures, srcHandle.id);
 
 		const int slot = m_displayWrite;
 		auto* dstTex = getLive(m_textures, m_displayTex[slot].id);
-		if (!dstTex) {
+		if (!srcTex || !dstTex) {
 			return;
 		}
 
@@ -354,11 +331,7 @@ namespace SFE::Render {
 			return;
 		}
 
-		if (m_hasPendingScene && m_sceneFence != VK_NULL_HANDLE) {
-			vkWaitForFences(m_device, 1, &m_sceneFence, VK_TRUE, UINT64_MAX);
-			vkResetFences(m_device, 1, &m_sceneFence);
-			m_hasPendingScene = false;
-		}
+		finishPendingScene();
 
 		executeImmediate([&](VkCommandBuffer cmd) {
 			blitTextureToTexture(cmd, *srcTex, *dstTex);
@@ -506,9 +479,10 @@ namespace SFE::Render {
 		VkDescriptorSetAllocateInfo allocInfo{};
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		allocInfo.descriptorPool = m_descriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &m_blitSetLayout;
-		if (vkAllocateDescriptorSets(m_device, &allocInfo, &m_blitDescriptorSet) != VK_SUCCESS) {
+		const VkDescriptorSetLayout blitLayouts[kMaxFramesInFlight] = { m_blitSetLayout, m_blitSetLayout };
+		allocInfo.descriptorSetCount = kMaxFramesInFlight;
+		allocInfo.pSetLayouts = blitLayouts;
+		if (vkAllocateDescriptorSets(m_device, &allocInfo, m_blitDescriptorSets) != VK_SUCCESS) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: blit descriptor set allocation failed");
 		}
 
@@ -596,7 +570,9 @@ namespace SFE::Render {
 			vkDestroySampler(m_device, m_blitDefaultSampler, nullptr);
 			m_blitDefaultSampler = VK_NULL_HANDLE;
 		}
-		m_blitDescriptorSet = VK_NULL_HANDLE;
+		for (auto& set : m_blitDescriptorSets) {
+			set = VK_NULL_HANDLE;
+		}
 	}
 
 	void VulkanRHI::recordPresentBlit(const VkCommandBuffer cmd, const uint32_t imageIndex) {
@@ -650,7 +626,8 @@ namespace SFE::Render {
 
 		ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		if (m_blitPipeline == VK_NULL_HANDLE || m_blitDescriptorSet == VK_NULL_HANDLE) {
+		const VkDescriptorSet blitSet = m_blitDescriptorSets[m_currentFrame];
+		if (m_blitPipeline == VK_NULL_HANDLE || blitSet == VK_NULL_HANDLE) {
 			VkRenderPassBeginInfo renderPassInfo{};
 			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 			renderPassInfo.renderPass = m_swapchainRenderPass;
@@ -676,7 +653,7 @@ namespace SFE::Render {
 
 		VkWriteDescriptorSet write{};
 		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		write.dstSet = m_blitDescriptorSet;
+		write.dstSet = blitSet;
 		write.dstBinding = 0;
 		write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		write.descriptorCount = 1;
@@ -706,7 +683,7 @@ namespace SFE::Render {
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_blitPipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_blitPipelineLayout, 0, 1, &m_blitDescriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_blitPipelineLayout, 0, 1, &blitSet, 0, nullptr);
 		vkCmdDraw(cmd, 3, 1, 0, 0);
 		vkCmdEndRenderPass(cmd);
 	}
@@ -720,9 +697,6 @@ namespace SFE::Render {
 				continue;
 			}
 			out.push_back(layout->layout);
-			if (layout->split && layout->bufferLayout != VK_NULL_HANDLE) {
-				out.push_back(layout->bufferLayout);
-			}
 		}
 	}
 
@@ -743,9 +717,12 @@ namespace SFE::Render {
 
 		uint32_t layers = (std::max)(1u, desc.layers);
 		for (const auto& color : desc.colorAttachments) {
+			if (color.layer != UINT32_MAX) {
+				continue;
+			}
 			layers = (std::max)(layers, layersOf(color.texture));
 		}
-		if (desc.depthStencilAttachment.has_value()) {
+		if (desc.depthStencilAttachment.has_value() && desc.depthStencilAttachment->layer == UINT32_MAX) {
 			layers = (std::max)(layers, layersOf(desc.depthStencilAttachment->texture));
 		}
 		return layers;
@@ -762,6 +739,32 @@ namespace SFE::Render {
 			return false;
 		}
 
+		// A texture's own view spans the whole array, so attaching it ignores a requested layer and
+		// every draw lands on layer 0. When an attachment pins a layer, give the framebuffer a view
+		// of just that slice; it is owned here and destroyed with the framebuffer.
+		auto viewFor = [this, &resource](const FramebufferAttachmentDesc& att, const VkTextureResource& tex) -> VkImageView {
+			if (att.layer == UINT32_MAX || tex.desc.dimension == TextureDimension::Tex2D) {
+				return tex.view;
+			}
+			VkImageViewCreateInfo viewInfo{};
+			viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewInfo.image = tex.image;
+			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewInfo.format = tex.format;
+			viewInfo.subresourceRange.aspectMask = aspectMaskForFormat(tex.format);
+			viewInfo.subresourceRange.baseMipLevel = att.mipLevel;
+			viewInfo.subresourceRange.levelCount = 1;
+			viewInfo.subresourceRange.baseArrayLayer = att.layer;
+			viewInfo.subresourceRange.layerCount = 1;
+			VkImageView view = VK_NULL_HANDLE;
+			if (vkCreateImageView(m_device, &viewInfo, nullptr, &view) != VK_SUCCESS) {
+				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateImageView failed for layer %u", att.layer);
+				return tex.view;
+			}
+			resource.ownedViews.push_back(view);
+			return view;
+		};
+
 		std::vector<VkImageView> attachments;
 		attachments.reserve(resource.desc.colorAttachments.size() + 1);
 		for (const auto& color : resource.desc.colorAttachments) {
@@ -770,7 +773,7 @@ namespace SFE::Render {
 				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid color attachment texture");
 				return false;
 			}
-			attachments.push_back(tex->view);
+			attachments.push_back(viewFor(color, *tex));
 		}
 		if (resource.desc.depthStencilAttachment.has_value()) {
 			const auto* tex = getLive(m_textures, resource.desc.depthStencilAttachment->texture.id);
@@ -778,7 +781,7 @@ namespace SFE::Render {
 				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid depth attachment texture");
 				return false;
 			}
-			attachments.push_back(tex->view);
+			attachments.push_back(viewFor(*resource.desc.depthStencilAttachment, *tex));
 		}
 
 		VkFramebufferCreateInfo framebufferInfo{};
@@ -824,13 +827,16 @@ namespace SFE::Render {
 		return createRenderPass(rpDesc);
 	}
 
+	static std::string spvNameOf(const std::string& name) {
+		const auto pos = name.find_last_of("/\\");
+		return pos == std::string::npos ? name : name.substr(pos + 1);
+	}
+
 	ShaderModuleHandle VulkanRHI::createShaderModule(const ShaderModuleDesc& desc) {
-		std::string spvName = desc.name;
-		if (const auto pos = spvName.find_last_of("/\\"); pos != std::string::npos) {
-			spvName = spvName.substr(pos + 1);
-		}
+		const std::string spvName = spvNameOf(desc.name);
 		if (const auto it = m_shaderByName.find(spvName); it != m_shaderByName.end()) {
-			if (getLive(m_shaders, it->second.id)) {
+			if (auto* shared = getLive(m_shaders, it->second.id)) {
+				++shared->refs;
 				return it->second;
 			}
 		}
@@ -838,6 +844,7 @@ namespace SFE::Render {
 		VkShaderModuleResource resource{};
 		resource.module = createVkShaderModule(m_device, code);
 		resource.desc = desc;
+		resource.refs = 1;
 		resource.live = true;
 
 		ShaderModuleHandle handle{};
@@ -847,12 +854,17 @@ namespace SFE::Render {
 	}
 
 	void VulkanRHI::destroyShaderModule(const ShaderModuleHandle handle) {
-		if (auto* shader = getLive(m_shaders, handle.id)) {
-			if (shader->module != VK_NULL_HANDLE) {
-				vkDestroyShaderModule(m_device, shader->module, nullptr);
-			}
-			recycleResource(m_shaders, m_freeShaders, handle.id);
+		auto* shader = getLive(m_shaders, handle.id);
+		if (!shader || --shader->refs > 0) {
+			return;
 		}
+		if (const auto it = m_shaderByName.find(spvNameOf(shader->desc.name)); it != m_shaderByName.end() && it->second.id == handle.id) {
+			m_shaderByName.erase(it);
+		}
+		if (shader->module != VK_NULL_HANDLE) {
+			vkDestroyShaderModule(m_device, shader->module, nullptr);
+		}
+		recycleResource(m_shaders, m_freeShaders, handle.id);
 	}
 
 	RenderPassHandle VulkanRHI::createRenderPass(const RenderPassDesc& desc) {
@@ -984,6 +996,10 @@ namespace SFE::Render {
 			if (fb->framebuffer != VK_NULL_HANDLE) {
 				vkDestroyFramebuffer(m_device, fb->framebuffer, nullptr);
 			}
+			for (VkImageView view : fb->ownedViews) {
+				vkDestroyImageView(m_device, view, nullptr);
+			}
+			fb->ownedViews.clear();
 			if (fb->ownedRenderPass) {
 				destroyRenderPass(fb->ownedRenderPass);
 			}
@@ -1280,7 +1296,12 @@ namespace SFE::Render {
 		auto* list = getLive(m_commandLists, cmd.id);
 		const auto* pass = getLive(m_renderPasses, beginInfo.renderPass.id);
 		auto* fb = getLive(m_framebuffers, beginInfo.framebuffer.id);
-		if (!list || !pass || !fb || fb->swapchainTarget) {
+		if (!list) {
+			return;
+		}
+		if (!pass || !fb || fb->swapchainTarget) {
+			LogsModule::Logger::LOG_ERROR("VulkanRHI: cmdBeginRenderPass rejected: %s",
+				fb && fb->swapchainTarget ? "the backbuffer cannot be a render pass target" : "invalid render pass or framebuffer");
 			return;
 		}
 		if (!fb->framebuffer && !realizeFramebuffer(*fb, pass->renderPass)) {
@@ -1302,6 +1323,8 @@ namespace SFE::Render {
 			}
 		}
 		list->activeFramebuffer = beginInfo.framebuffer;
+		list->passWidth = beginInfo.width;
+		list->passHeight = beginInfo.height;
 
 		std::vector<VkClearValue> clearValues;
 		clearValues.reserve(pass->desc.colorAttachmentCount + (pass->desc.hasDepthStencil ? 1u : 0u));
@@ -1351,11 +1374,30 @@ namespace SFE::Render {
 		if (!list || !list->recording || list->cmd == VK_NULL_HANDLE) {
 			return;
 		}
+		const int fbW = list->passWidth > 0 ? list->passWidth : 1;
+		const int fbH = list->passHeight > 0 ? list->passHeight : 1;
+		// Same Y flip as OpenGLRHI: clip is ImGui top-left, RT is +Y-up.
+		int x0 = x;
+		int y0 = fbH - y - static_cast<int>(height);
+		int x1 = x0 + static_cast<int>(width);
+		int y1 = y0 + static_cast<int>(height);
+		x0 = (std::max)(0, x0);
+		y0 = (std::max)(0, y0);
+		x1 = (std::min)(fbW, x1);
+		y1 = (std::min)(fbH, y1);
 		VkRect2D scissor{};
-		scissor.offset.x = (std::max)(0, x);
-		scissor.offset.y = (std::max)(0, y);
-		scissor.extent.width = width;
-		scissor.extent.height = height;
+		if (x1 > x0 && y1 > y0) {
+			scissor.offset.x = x0;
+			scissor.offset.y = y0;
+			scissor.extent.width = static_cast<uint32_t>(x1 - x0);
+			scissor.extent.height = static_cast<uint32_t>(y1 - y0);
+		} else {
+			// An empty rectangle rejects everything, which is what OpenGLRHI does for the same
+			// input. A 1x1 fallback here used to let the origin pixel through, so a scissor the
+			// caller meant as "draw nothing" drew one pixel on Vulkan and none on OpenGL.
+			scissor.offset = { 0, 0 };
+			scissor.extent = { 0, 0 };
+		}
 		vkCmdSetScissor(list->cmd, 0, 1, &scissor);
 	}
 
@@ -1381,6 +1423,8 @@ namespace SFE::Render {
 			}
 		}
 		list->activeFramebuffer = {};
+		list->passWidth = 0;
+		list->passHeight = 0;
 	}
 
 	void VulkanRHI::cmdBindPipeline(const CommandListHandle cmd, const PipelineHandle pipeline) {
@@ -1417,7 +1461,7 @@ namespace SFE::Render {
 	void VulkanRHI::cmdBindDescriptorSets(const CommandListHandle cmd, const PipelineHandle pipeline, const uint32_t firstSet,
 		const DescriptorSetHandle* sets, const uint32_t setCount)
 	{
-		const auto* list = getLive(m_commandLists, cmd.id);
+		auto* list = getLive(m_commandLists, cmd.id);
 		if (!list || !sets || setCount == 0) {
 			return;
 		}
@@ -1443,15 +1487,13 @@ namespace SFE::Render {
 				return;
 			}
 			vkSets.push_back(set->set);
-			if (set->bufferSet != VK_NULL_HANDLE) {
-				vkSets.push_back(set->bufferSet);
-			}
 		}
 		if (layout == VK_NULL_HANDLE || list->cmd == VK_NULL_HANDLE || !list->recording) {
 			return;
 		}
 		vkCmdBindDescriptorSets(list->cmd, bindPoint, layout, firstSet,
 			static_cast<uint32_t>(vkSets.size()), vkSets.data(), 0, nullptr);
+		list->boundSets.insert(list->boundSets.end(), vkSets.begin(), vkSets.end());
 	}
 
 	void VulkanRHI::cmdPushConstants(const CommandListHandle cmd, const PipelineHandle pipeline, const ShaderStage stages, const void* data, const uint32_t size) {
@@ -1462,15 +1504,28 @@ namespace SFE::Render {
 		}
 		vkCmdPushConstants(list->cmd, gp->layout, toVkShaderStage(stages), 0, size, data);
 	}
+	VkRecordedCommandList* VulkanRHI::listInPass(const CommandListHandle cmd, const char* command) {
+		auto* list = getLive(m_commandLists, cmd.id);
+		if (!list || !list->recording) {
+			return nullptr;
+		}
+		if (!list->activeFramebuffer) {
+			// A draw recorded outside a render pass faults in the driver instead of failing validation.
+			LogsModule::Logger::LOG_ERROR("VulkanRHI: %s outside a render pass, dropped", command);
+			return nullptr;
+		}
+		return list;
+	}
+
 	void VulkanRHI::cmdDraw(const CommandListHandle cmd, const uint32_t vertexCount, const uint32_t instanceCount, const uint32_t firstVertex, const uint32_t firstInstance) {
-		if (auto* list = getLive(m_commandLists, cmd.id)) {
+		if (auto* list = listInPass(cmd, "cmdDraw")) {
 			vkCmdDraw(list->cmd, vertexCount, instanceCount, firstVertex, firstInstance);
 		}
 	}
 	void VulkanRHI::cmdDrawIndexed(const CommandListHandle cmd, const uint32_t indexCount, const uint32_t instanceCount,
 		const uint32_t firstIndex, const int32_t vertexOffset, const uint32_t firstInstance)
 	{
-		if (auto* list = getLive(m_commandLists, cmd.id)) {
+		if (auto* list = listInPass(cmd, "cmdDrawIndexed")) {
 			vkCmdDrawIndexed(list->cmd, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 		}
 	}
@@ -1478,7 +1533,7 @@ namespace SFE::Render {
 	void VulkanRHI::cmdDrawIndirect(const CommandListHandle cmd, const BufferHandle buffer, const size_t offset,
 		const uint32_t drawCount, const uint32_t stride)
 	{
-		auto* list = getLive(m_commandLists, cmd.id);
+		auto* list = listInPass(cmd, "cmdDrawIndirect");
 		const auto* buf = getLive(m_buffers, buffer.id);
 		if (!list || !buf || drawCount == 0) {
 			return;
@@ -1489,7 +1544,7 @@ namespace SFE::Render {
 	void VulkanRHI::cmdDrawIndexedIndirect(const CommandListHandle cmd, const BufferHandle buffer, const size_t offset,
 		const uint32_t drawCount, const uint32_t stride)
 	{
-		auto* list = getLive(m_commandLists, cmd.id);
+		auto* list = listInPass(cmd, "cmdDrawIndexedIndirect");
 		const auto* buf = getLive(m_buffers, buffer.id);
 		if (!list || !buf || drawCount == 0) {
 			return;
@@ -1497,14 +1552,6 @@ namespace SFE::Render {
 		vkCmdDrawIndexedIndirect(list->cmd, buf->buffer, offset, drawCount, stride ? stride : 20u);
 	}
 
-	void VulkanRHI::cmdSetPolygonFillMode(const CommandListHandle, const PolygonFillMode) {
-		// Rasterizer fill is baked into the PSO. fillModeNonSolid is enabled so Line pipelines work.
-	}
-
-	void VulkanRHI::cmdHostCallback(const CommandListHandle, std::function<void()>) {
-		// Host callbacks are GL-only (run at submit). Running them while recording a VkCommandBuffer
-		// would interleave CPU GL/ImGui work into the Vulkan frame.
-	}
 	void VulkanRHI::cmdDispatch(const CommandListHandle cmd, const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) {
 		if (auto* list = getLive(m_commandLists, cmd.id)) {
 			vkCmdDispatch(list->cmd, groupCountX, groupCountY, groupCountZ);

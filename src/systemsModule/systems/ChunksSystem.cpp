@@ -24,7 +24,8 @@
 
 namespace {
 	constexpr const char* kSceneVersionPath = "world/scene_version";
-	constexpr int kDefaultSceneVersion = 9;
+	constexpr int kDefaultSceneVersion = 20;
+	constexpr float kVampireSpacing = 40.f;
 
 	int readSceneVersion() {
 		std::string text;
@@ -45,40 +46,6 @@ namespace {
 		SFE::FileSystem::writeFile(kSceneVersionPath, text);
 	}
 
-	bool hasSavedChunks() {
-		namespace fs = std::filesystem;
-		std::error_code ec;
-		const fs::path dir = SFE::FileSystem::resolve("world/chunks");
-		if (!fs::exists(dir, ec)) {
-			return false;
-		}
-		for (const auto& entry : fs::directory_iterator(dir, ec)) {
-			if (entry.path().extension() == ".json") {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool hasPopulatedChunks() {
-		namespace fs = std::filesystem;
-		std::error_code ec;
-		const fs::path dir = SFE::FileSystem::resolve("world/chunks");
-		if (!fs::exists(dir, ec)) {
-			return false;
-		}
-		for (const auto& entry : fs::directory_iterator(dir, ec)) {
-			if (entry.path().extension() != ".json") {
-				continue;
-			}
-			const auto json = SFE::FileSystem::readJson(entry.path().string());
-			if (json.isMember("entities") && json["entities"].isArray() && !json["entities"].empty()) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	void clearSavedChunks() {
 		namespace fs = std::filesystem;
 		std::error_code ec;
@@ -97,12 +64,28 @@ namespace {
 namespace SFE::SystemsModule {
 	ChunksSystem::ChunksSystem() : System({ SFE::SystemsModule::TaskType::CAMERA_UPDATED }) {
 		FileSystem::createDirectories("world/chunks");
-		if (!debugData.proceduralSpheres) {
-			if (Engine::instance()->rhi()
-				&& (Engine::instance()->rhi()->supportsFullPipeline() || Engine::instance()->rhi()->supportsGeometryPass())) {
-				seedIfEmpty();
+		seedIfEmpty();
+
+		if (!Engine::instance()->rhi()) {
+			return;
+		}
+
+		Math::Vec3 camPos{};
+		if (auto* cams = ECSHandler::getSystem<CameraSystem>()) {
+			if (auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(cams->getCurrentCamera())) {
+				camPos = transform->getPos(true);
 			}
 		}
+		const auto center = chunkOf(camPos);
+		auto wanted = wantedChunks(center);
+		for (const auto& c : wanted) {
+			loadChunk(c);
+		}
+		std::lock_guard lock(mMutex);
+		mCurrentChunk = center;
+		mHasCurrent = true;
+		mChunks = std::move(wanted);
+		debugData.loaded = static_cast<int>(mChunks.size());
 	}
 
 	ChunksSystem::~ChunksSystem() {
@@ -178,42 +161,11 @@ namespace SFE::SystemsModule {
 	}
 
 	void ChunksSystem::seedIfEmpty() {
-		const int savedVersion = readSceneVersion();
-		const bool hasChunkFile = hasPopulatedChunks();
-		if (hasChunkFile && savedVersion == kDefaultSceneVersion) {
+		if (readSceneVersion() == kDefaultSceneVersion) {
 			return;
 		}
-
 		clearSavedChunks();
-		{
-			std::lock_guard lock(mMutex);
-			mChunks.clear();
-			mHasCurrent = false;
-		}
-
-		PropertiesModule::PropertiesSystem::spawnDefaultScene();
 		writeSceneVersion(kDefaultSceneVersion);
-		std::vector<Chunk> spawned;
-		for (const auto& [id, model, transform] : ECSHandler::registry().view<const ModelComponent, const TransformComponent>()) {
-			if (!transform || !isWorldEntity(id)) {
-				continue;
-			}
-			const auto c = chunkOf(transform->getPos(true));
-			if (std::find(spawned.begin(), spawned.end(), c) == spawned.end()) {
-				spawned.push_back(c);
-			}
-		}
-		FileSystem::createDirectories("world/chunks");
-		for (const auto& c : spawned) {
-			FileSystem::writeJson(chunkPath(c), PropertiesModule::PropertiesSystem::serializeEntities(entitiesInChunk(c)));
-		}
-		std::lock_guard lock(mMutex);
-		for (const auto& c : spawned) {
-			if (std::find(mChunks.begin(), mChunks.end(), c) == mChunks.end()) {
-				mChunks.push_back(c);
-			}
-		}
-		debugData.loaded = static_cast<int>(mChunks.size());
 	}
 
 	void ChunksSystem::loadChunk(const Chunk& chunk) {
@@ -225,11 +177,8 @@ namespace SFE::SystemsModule {
 				chunk.x, chunk.z, CHUNK_SIZE, debugData.sphereSpacing);
 			return;
 		}
-		const auto path = chunkPath(chunk);
-		if (!FileSystem::isFileExists(path)) {
-			return;
-		}
-		PropertiesModule::PropertiesSystem::loadEntities(FileSystem::readJson(path));
+		PropertiesModule::PropertiesSystem::spawnVampireGrid(
+			chunk.x, chunk.z, CHUNK_SIZE, kVampireSpacing);
 	}
 
 	void ChunksSystem::unloadChunk(const Chunk& chunk) {
@@ -244,10 +193,6 @@ namespace SFE::SystemsModule {
 			return {};
 		}
 		auto ids = entitiesInChunk(chunk);
-		if (!debugData.proceduralSpheres) {
-			FileSystem::createDirectories("world/chunks");
-			FileSystem::writeJson(chunkPath(chunk), PropertiesModule::PropertiesSystem::serializeEntities(ids));
-		}
 
 		auto octreeSys = ECSHandler::getSystem<OcTreeSystem>();
 		for (auto id : ids) {
@@ -269,18 +214,6 @@ namespace SFE::SystemsModule {
 	}
 
 	void ChunksSystem::saveLoaded() {
-		if (debugData.proceduralSpheres) {
-			return;
-		}
-		std::vector<Chunk> loaded;
-		{
-			std::lock_guard lock(mMutex);
-			loaded = mChunks;
-		}
-		FileSystem::createDirectories("world/chunks");
-		for (const auto& chunk : loaded) {
-			FileSystem::writeJson(chunkPath(chunk), PropertiesModule::PropertiesSystem::serializeEntities(entitiesInChunk(chunk)));
-		}
 	}
 
 	void ChunksSystem::updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) {

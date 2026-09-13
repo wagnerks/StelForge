@@ -49,7 +49,10 @@ namespace SFE::Render::RenderPasses {
 		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
-		Render::PipelineHandle getGBufferPipeline(const std::string& vertexShader, const std::string& fragmentShader);
+		// The fill mode is part of the key: wireframe is a second pipeline, not a state change. The
+		// RHI has no dynamic polygon mode -- Vulkan bakes it into the PSO and cannot override it.
+		Render::PipelineHandle getGBufferPipeline(const std::string& vertexShader, const std::string& fragmentShader,
+			Render::PolygonFillMode fillMode = Render::PolygonFillMode::Fill);
 		void initGrid(Render::DescriptorSetLayoutHandle frameLayout);
 		void drawGrid(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
 

@@ -17,6 +17,7 @@ namespace SFE {
 		Render::TextureHandle texture;
 		int uniformSlot = 0;
 		MaterialType type = MaterialType::CUSTOM;
+		int uvSet = 0;
 	};
 
 	struct Material {
@@ -34,9 +35,17 @@ namespace SFE {
 		std::unordered_map<MaterialType, MaterialTexture> materialTextures;
 		bool transparent = false;
 		bool alphaCutout = false;
+		bool alphaFromMaps = false;
+		bool alphaDither = false;
+		bool hasDiffuseAlpha = false;
+		bool gltfPbr = false;
 		float opacity = 1.f;
 		float ior = 1.5f;
 		float roughness = 0.5f;
 		float metallic = 0.f;
+		float alphaCutoff = 0.f;
+		float specFactor = 1.f;
+		float clearcoat = 0.f;
+		float clearcoatRough = 0.04f;
 	};
 }

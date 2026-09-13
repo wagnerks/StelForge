@@ -43,10 +43,16 @@ namespace {
 			h *= 1099511628211ull;
 		};
 		mix(material.transparent ? 1ull : 0ull);
+		mix(material.alphaFromMaps ? 1ull : 0ull);
+		mix(material.alphaDither ? 1ull : 0ull);
 		mix(static_cast<uint64_t>(material.opacity * 4096.f));
 		mix(static_cast<uint64_t>(material.ior * 4096.f));
 		mix(static_cast<uint64_t>(material.roughness * 4096.f));
 		mix(static_cast<uint64_t>(material.metallic * 4096.f));
+		mix(static_cast<uint64_t>(material.alphaCutoff * 4096.f));
+		mix(static_cast<uint64_t>(material.specFactor * 4096.f));
+		mix(static_cast<uint64_t>(material.clearcoat * 4096.f));
+		mix(static_cast<uint64_t>(material.clearcoatRough * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.x * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.y * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.z * 4096.f));
@@ -54,6 +60,7 @@ namespace {
 		for (uint8_t i = 0; i < material.materials.materialsCount; ++i) {
 			const auto& slot = material.materials.material[i];
 			mix((static_cast<uint64_t>(slot.slot) << 32) | slot.texture.id);
+			mix(static_cast<uint64_t>(slot.uvSet));
 		}
 		if (material.vertexShader != SFE::ComponentsModule::DefaultGBufferVS) {
 			mix(std::hash<std::string>{}(material.vertexShader));
@@ -76,6 +83,7 @@ namespace {
 		for (uint8_t i = 0; i < material.materials.materialsCount; ++i) {
 			const auto& slot = material.materials.material[i];
 			mix((static_cast<uint64_t>(slot.slot) << 32) | slot.texture.id);
+			mix(static_cast<uint64_t>(slot.uvSet));
 		}
 		if (material.vertexShader != SFE::ComponentsModule::DefaultGBufferVS) {
 			mix(std::hash<std::string>{}(material.vertexShader));
@@ -112,6 +120,12 @@ DrawObject& Batcher::batchFor(const SFE::RenderMeshData& meshData, const SFE::Co
 		obj.ior = material.ior;
 		obj.roughness = material.roughness;
 		obj.metallic = material.metallic;
+		obj.alphaCutoff = material.alphaCutoff;
+		obj.specFactor = material.specFactor;
+		obj.clearcoat = material.clearcoat;
+		obj.clearcoatRough = material.clearcoatRough;
+		obj.alphaFromMaps = material.alphaFromMaps;
+		obj.alphaDither = material.alphaDither;
 		obj.tint = material.tint;
 		obj.materialHash = key.materialHash;
 		obj.entities.reserve(256);
@@ -143,6 +157,9 @@ DrawObject& Batcher::batchForGlass(const SFE::RenderMeshData& meshData, const SF
 		obj.ior = material.ior;
 		obj.roughness = material.roughness;
 		obj.metallic = material.metallic;
+		obj.specFactor = material.specFactor;
+		obj.clearcoat = material.clearcoat;
+		obj.clearcoatRough = material.clearcoatRough;
 		obj.tint = material.tint;
 		obj.materialHash = key.materialHash;
 		obj.entities.reserve(256);
@@ -203,8 +220,18 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 	const uint32_t slot = rhi->frameInFlight() % mGpuFrames;
 	batcherBuffer = mBatcherBuffer[slot];
 
-	if (entityCount > mInstanceCapacity) {
-		mInstanceCapacity = entityCount + entityCount / 2 + 1024;
+	auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
+	const int frame = renderSystem ? renderSystem->renderedFrames() : 0;
+	if (frame != mIdsFrame) {
+		mIdsFrame = frame;
+		mIdsOffset = 0;
+	}
+	const size_t idsOffset = mIdsOffset;
+	mIdsOffset += entityCount;
+
+	// Growing replaces the buffer; draws already recorded this frame keep the one they bound.
+	if (mIdsOffset > mInstanceCapacity) {
+		mInstanceCapacity = mIdsOffset + mIdsOffset / 2 + 1024;
 		SFE::Render::BufferDesc desc;
 		desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
 		desc.usage = SFE::Render::BufferUsage::Storage;
@@ -215,7 +242,6 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 		batcherBuffer = mBatcherBuffer[slot];
 	}
 
-	auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
 	const auto frameSet = renderSystem ? renderSystem->frameSetHandle() : SFE::Render::DescriptorSetHandle{};
 
 	if (bindResources) {
@@ -229,7 +255,8 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 			solidDesc.format = SFE::Render::TextureFormat::RGBA8;
 			const uint8_t blackPx[4] = { 0, 0, 0, 255 };
 			mDefaultBlack = rhi->createTexture(solidDesc, blackPx);
-			mDefaultGray = mDefaultBlack;
+			const uint8_t grayPx[4] = { 128, 128, 128, 255 };
+			mDefaultGray = rhi->createTexture(solidDesc, grayPx);
 		}
 
 		SFE::Render::DescriptorSetHandle materialSet = setHandle;
@@ -241,37 +268,31 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 				{
 					.set = cached,
 					.binding = SFE::DIFFUSE,
-					.type = SFE::Render::DescriptorType::CombinedImageSampler,
 					.images{ {defaultTex->texture, defaultTex->sampler} }
 				},
 				{
 					.set = cached,
 					.binding = SFE::NORMALS,
-					.type = SFE::Render::DescriptorType::CombinedImageSampler,
 					.images{ {defaultNormal->texture, defaultNormal->sampler} }
 				},
 				{
 					.set = cached,
 					.binding = SFE::SPECULAR,
-					.type = SFE::Render::DescriptorType::CombinedImageSampler,
 					.images{ {mDefaultBlack, defaultTex->sampler} }
 				},
 				{
 					.set = cached,
 					.binding = SFE::ROUGHNESS,
-					.type = SFE::Render::DescriptorType::CombinedImageSampler,
 					.images{ {mDefaultGray, defaultTex->sampler} }
 				},
 				{
 					.set = cached,
 					.binding = SFE::METALLIC,
-					.type = SFE::Render::DescriptorType::CombinedImageSampler,
 					.images{ {mDefaultBlack, defaultTex->sampler} }
 				},
 				{
 					.set = cached,
 					.binding = SFE::SUBSURFACE,
-					.type = SFE::Render::DescriptorType::CombinedImageSampler,
 					.images{ {mDefaultBlack, defaultTex->sampler} }
 				},
 				};
@@ -283,7 +304,6 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 					writes.push_back(SFE::Render::WriteDescriptor{
 						.set = cached,
 						.binding = static_cast<uint32_t>(mat.slot),
-						.type = SFE::Render::DescriptorType::CombinedImageSampler,
 						.images{ {mat.texture, defaultTex->sampler} }
 						});
 				}
@@ -296,37 +316,31 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 			{
 				.set = setHandle,
 				.binding = SFE::DIFFUSE,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
 				.images{ {defaultTex->texture, defaultTex->sampler} }
 			},
 			{
 				.set = setHandle,
 				.binding = SFE::NORMALS,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
 				.images{ {defaultNormal->texture, defaultNormal->sampler} }
 			},
 			{
 				.set = setHandle,
 				.binding = SFE::SPECULAR,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
 				.images{ {mDefaultBlack, defaultTex->sampler} }
 			},
 			{
 				.set = setHandle,
 				.binding = SFE::ROUGHNESS,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
 				.images{ {mDefaultGray, defaultTex->sampler} }
 			},
 			{
 				.set = setHandle,
 				.binding = SFE::METALLIC,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
 				.images{ {mDefaultBlack, defaultTex->sampler} }
 			},
 			{
 				.set = setHandle,
 				.binding = SFE::SUBSURFACE,
-				.type = SFE::Render::DescriptorType::CombinedImageSampler,
 				.images{ {mDefaultBlack, defaultTex->sampler} }
 			},
 			};
@@ -338,35 +352,32 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 				writes.push_back(SFE::Render::WriteDescriptor{
 					.set = setHandle,
 					.binding = static_cast<uint32_t>(mat.slot),
-					.type = SFE::Render::DescriptorType::CombinedImageSampler,
 					.images{ {mat.texture, defaultTex->sampler} }
 					});
 			}
 			rhi->updateDescriptorSets(writes);
 		}
 
-		if (frameSet && batcherBuffer && mBoundFrameSsbo.id != batcherBuffer.id) {
+		if (frameSet && batcherBuffer) {
 			rhi->updateDescriptorSets({ {
 				.set = frameSet,
 				.binding = 3,
-				.type = SFE::Render::DescriptorType::StorageBuffer,
 				.buffers{ {batcherBuffer} }
 			} });
-			mBoundFrameSsbo = batcherBuffer;
 		}
 		setHandle = materialSet;
 	}
-	else if (setHandle && batcherBuffer && (mBoundPassSsboSet.id != setHandle.id || mBoundPassSsbo.id != batcherBuffer.id)) {
+	// Written every time. Several batchers share one set, so a per-batcher record of "what I last wrote"
+	// went stale as soon as another batcher wrote the same binding. It only held on OpenGL, where one
+	// frame slot keeps the buffer handle constant; Vulkan alternates slots and so always rewrote it.
+	else if (setHandle && batcherBuffer) {
 		rhi->updateDescriptorSets({
 			{
 				.set = setHandle,
 				.binding = 3,
-				.type = SFE::Render::DescriptorType::StorageBuffer,
 				.buffers{ {batcherBuffer} }
 			}
 		});
-		mBoundPassSsboSet = setHandle;
-		mBoundPassSsbo = batcherBuffer;
 	}
 
 	SFE::Render::PipelineHandle pipeline{};
@@ -388,16 +399,16 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &setHandle, 1);
 	}
 
-	rhi->cmdUpdateBuffer(cmd, batcherBuffer, 0, sizeof(ecss::EntityId) * entityCount, entityIds);
+	rhi->cmdUpdateBuffer(cmd, batcherBuffer, sizeof(ecss::EntityId) * idsOffset, sizeof(ecss::EntityId) * entityCount, entityIds);
 
 	rhi->cmdBindVertexBuffer(cmd, 0, objs.meshData.vertexBuffer, objs.meshData.vertexOffsetBytes);
 	rhi->cmdBindIndexBuffer(cmd, objs.meshData.indexBuffer, objs.meshData.indexType, objs.meshData.indexOffsetBytes);
 	const auto instanceCount = static_cast<uint32_t>(entityCount);
 	if (objs.meshData.indexCount) {
-		rhi->cmdDrawIndexed(cmd, objs.meshData.indexCount, instanceCount, 0, 0, 0);
+		rhi->cmdDrawIndexed(cmd, objs.meshData.indexCount, instanceCount, 0, 0, static_cast<uint32_t>(idsOffset));
 	}
 	else {
-		rhi->cmdDraw(cmd, objs.meshData.vertexCount, instanceCount, 0, 0);
+		rhi->cmdDraw(cmd, objs.meshData.vertexCount, instanceCount, 0, static_cast<uint32_t>(idsOffset));
 	}
 
 	SFE::SystemsModule::RenderDebugInfo::instance()->objectsRendered += entityCount;

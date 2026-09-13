@@ -3,6 +3,7 @@
 layout(location = 0) in vec3 FragPos;
 layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in mat3 TBN;
+layout(location = 5) in vec2 TexCoords1;
 
 layout(location = 0) out vec4 FragColor;
 

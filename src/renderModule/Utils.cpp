@@ -8,9 +8,11 @@
 
 using namespace SFE::Render;
 
+// A LineStrip batch is never merged with an existing one: appending vertices to a strip joins the
+// last vertex of the old run to the first of the new, drawing a segment nobody asked for.
 std::vector<SFE::Math::Vec3>& Utils::getVerticesArray(const Math::Vec4& color, float thickness, PrimitiveTopology renderType) {
 	auto it = std::find_if(renderVertices.begin(), renderVertices.end(), [color, thickness, renderType](std::pair<LineData, std::vector<Math::Vec3>>& a) {
-		return a.first.color == color && std::fabs(a.first.thickness - thickness) <= std::numeric_limits<float>::epsilon() && a.first.renderType == renderType && renderType != PrimitiveTopology::LineLoop;
+		return a.first.color == color && std::fabs(a.first.thickness - thickness) <= std::numeric_limits<float>::epsilon() && a.first.renderType == renderType && renderType != PrimitiveTopology::LineStrip;
 	});
 
 	if (it != renderVertices.end()) {
@@ -299,8 +301,6 @@ void Utils::renderCircle(const Math::Vec3& pos, const Math::Quaternion<float>& q
 		
 		vertArray.push_back(transform * Math::Vec4{ x, y, 0.f, 1.f});
 	}
-
-	//add GL_LINE_LOOP
 }
 
 void Utils::renderCircleFilled(const Math::Vec3& pos, const Math::Quaternion<float>& quat, const Math::Mat4& scale, float radius, const Math::Vec4& color, int numSegments, float startAngle, float delta) {

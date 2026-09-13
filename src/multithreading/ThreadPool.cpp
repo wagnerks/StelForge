@@ -79,6 +79,15 @@ namespace SFE {
 		drainSync();
 	}
 
+	void ThreadPool::waitIdle() {
+		while (!mShuttingDown.load(std::memory_order_acquire)
+			&& !(mCommonWorkers.idle() && mRenderWorkers.idle() && mLoadingWorkers.idle())) {
+			syncUpdate();
+			std::this_thread::yield();
+		}
+		syncUpdate();
+	}
+
 	std::shared_future<void> ThreadPool::addTaskToSynchronization(std::function<void()>&& task) {
 		if (mShuttingDown.load(std::memory_order_acquire)) {
 			return {};

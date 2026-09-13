@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/Vertex.h"
 #include "mathModule/Projection.h"
 #include "mathModule/Utils.h"
@@ -35,7 +36,7 @@ namespace {
 	struct PointShadowPush {
 		int lightCount = 0;
 		float casterOpacity = 1.f;
-		float pad1 = 0.f;
+		float alphaCutoff = 0.f;
 		float pad2 = 0.f;
 	};
 }
@@ -212,6 +213,7 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	mSetLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mSetLayout);
 
@@ -240,6 +242,7 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 	vaoDesc.attributes.push_back({ 4, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, biTangent)), true });
 	vaoDesc.attributes.push_back({ 5, 0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, boneIDs)), false });
 	vaoDesc.attributes.push_back({ 6, 0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, weights)), false });
+	vaoDesc.attributes.push_back({ 7, 0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, texCoords1)), true });
 	pipelineDesc.layout = vaoDesc;
 	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
 
@@ -247,10 +250,18 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 		{
 			.set = mSet,
 			.binding = 11,
-			.type = Render::DescriptorType::UniformBuffer,
+			
 			.buffers{ {mMatricesUBO} }
 		}
 	});
+	if (auto* white = AssetsModule::TextureHandler::loadTexture("white.png")) {
+		rhi->updateDescriptorSets({ {
+			.set = mSet,
+			.binding = 4,
+			
+			.images{ {white->texture, white->sampler} }
+		} });
+	}
 
 	data.matricesUBO = mMatricesUBO;
 }
@@ -292,13 +303,13 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 			{
 				.set = mSet,
 				.binding = 1,
-				.type = Render::DescriptorType::StorageBuffer,
+				
 				.buffers{ {renderDataHandle.transformsSSBO} }
 			},
 			{
 				.set = mSet,
 				.binding = 2,
-				.type = Render::DescriptorType::StorageBuffer,
+				
 				.buffers{ {renderDataHandle.bonesSSBO} }
 			}
 		});
@@ -320,6 +331,18 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 			PointShadowPush pc;
 			pc.lightCount = lightCount;
 			pc.casterOpacity = (obj.opacity > 0.f && obj.opacity < 0.999f) ? obj.opacity : 1.f;
+			pc.alphaCutoff = obj.alphaFromMaps ? -0.18f : obj.cutoutCutoff();
+			if (auto* white = AssetsModule::TextureHandler::loadTexture("white.png")) {
+				auto diff = obj.alphaFromMaps ? obj.maskTexture() : obj.diffuseTexture();
+				if (!diff) {
+					diff = white->texture;
+				}
+				Engine::instance()->rhi()->updateDescriptorSets({ {
+					.set = mSet,
+					.binding = 4,
+					.images{ {diff, white->sampler} }
+				} });
+			}
 			Engine::instance()->rhi()->cmdPushConstants(drawCmd, pipeline, SFE::Render::ShaderStage::Geometry | SFE::Render::ShaderStage::Fragment, &pc, sizeof(pc));
 		});
 	rhi->cmdEndRenderPass(cmd);

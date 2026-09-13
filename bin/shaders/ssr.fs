@@ -68,7 +68,9 @@ void main() {
     vec4 albedoSample = texture(gAlbedoSpec, TexCoords);
     vec3 albedo = albedoSample.rgb;
     float roughness = clamp(albedoSample.a, 0.04, 1.0);
-    float metallic = clamp(posSample.a, 0.0, 1.0);
+    vec4 pbr = sfeGBufferPbr(posSample.a);
+    float metallic = pbr.x;
+    float specFactor = pbr.y;
     if (roughness > 0.72) {
         FragColor = lit;
         return;
@@ -83,7 +85,7 @@ void main() {
         return;
     }
 
-    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    vec3 F0 = mix(vec3(0.04 * specFactor), albedo, metallic);
     vec3 F = fresnelSchlick(NdotV, F0);
     float gloss = 1.0 - roughness;
     vec3 specW = F * (gloss * gloss);

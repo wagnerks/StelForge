@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cstdint>
 #include <functional>
@@ -53,15 +53,12 @@ namespace SFE::Render
 
 	struct VkDescriptorSetLayoutResource {
 		VkDescriptorSetLayout layout = VK_NULL_HANDLE;
-		VkDescriptorSetLayout bufferLayout = VK_NULL_HANDLE; // set 1 when image/buffer binding numbers collide
 		DescriptorSetLayoutDesc desc{};
-		bool split = false;
 		bool live = false;
 	};
 
 	struct VkDescriptorSetResource {
 		VkDescriptorSet set = VK_NULL_HANDLE;
-		VkDescriptorSet bufferSet = VK_NULL_HANDLE;
 		DescriptorSetLayoutHandle layoutHandle{};
 		bool live = false;
 	};
@@ -72,15 +69,20 @@ namespace SFE::Render
 		VkPipelineBindPoint boundBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		CommandListType type = CommandListType::Graphics;
 		FramebufferHandle activeFramebuffer{};
+		int passWidth = 0;
+		int passHeight = 0;
 		bool recording = false;
 		bool live = false;
 		bool submitted = false;
 		std::vector<PipelineBarrier> barriers;
+		std::vector<VkDescriptorSet> boundSets;
 	};
 
 	struct VkShaderModuleResource {
 		VkShaderModule module = VK_NULL_HANDLE;
 		ShaderModuleDesc desc{};
+		// Modules are shared per SPIR-V name; every create is one reference, every destroy drops one.
+		uint32_t refs = 0;
 		bool live = false;
 	};
 
@@ -105,6 +107,9 @@ namespace SFE::Render
 		VkRenderPass vkRenderPass = VK_NULL_HANDLE;
 		FramebufferDesc desc{};
 		RenderPassHandle ownedRenderPass{};
+		// Views onto a single array layer, created when an attachment pins one. The texture's own
+		// view covers the whole array, so rendering through it would ignore the requested layer.
+		std::vector<VkImageView> ownedViews;
 		bool swapchainTarget = false;
 		bool live = false;
 	};
@@ -116,9 +121,6 @@ namespace SFE::Render
 		~VulkanRHI() override;
 
 		GraphicsBackend backend() const override { return GraphicsBackend::Vulkan; }
-		bool supportsFullPipeline() const override { return true; }
-		bool supportsGpuResources() const override { return true; }
-		bool supportsRenderPass(const char* name) const override;
 		void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) override;
 		bool readbackTexture(TextureHandle tex, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer = 0) override;
 		TextureHandle presentSourceTexture() const override { return m_presentBlitTexture; }
@@ -170,11 +172,9 @@ namespace SFE::Render
 		void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY = 1, uint32_t groupCountZ = 1) override;
 		void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask = BlitMask::Color, BlitFilter filter = BlitFilter::Nearest) override;
 		void cmdSetScissor(CommandListHandle cmd, int32_t x, int32_t y, uint32_t width, uint32_t height) override;
-		void cmdSetPolygonFillMode(CommandListHandle cmd, PolygonFillMode mode) override;
-		void cmdHostCallback(CommandListHandle cmd, std::function<void()> callback) override;
 		void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) override;
 		void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) override;
-		void submit(const CommandListHandle* lists, uint32_t count) override;
+		void submit(CommandListHandle list) override;
 		void present() override;
 		double lastGpuMs() const override { return mLastGpuMs; }
 		void publishDisplay(FramebufferHandle src) override;
@@ -244,6 +244,7 @@ namespace SFE::Render
 		bool realizeFramebuffer(VkFramebufferResource& fb, VkRenderPass vkPass);
 		RenderPassHandle synthesizeGraphicsRenderPass(const GraphicsPipelineDesc& desc);
 		VkBuffer createStagingBuffer(size_t size, VmaAllocation& allocation, const void* data);
+		void copyThroughStaging(VkBuffer dst, size_t offset, size_t size, const void* data);
 		void destroyStagingBuffer(VkBuffer buffer, VmaAllocation allocation);
 		void createAllocator();
 		void destroyAllocator();
@@ -327,7 +328,8 @@ namespace SFE::Render
 		VkPipeline m_blitPipeline = VK_NULL_HANDLE;
 		VkPipelineLayout m_blitPipelineLayout = VK_NULL_HANDLE;
 		VkDescriptorSetLayout m_blitSetLayout = VK_NULL_HANDLE;
-		VkDescriptorSet m_blitDescriptorSet = VK_NULL_HANDLE;
+		// One per frame slot: the other slot's present can still be pending while this one is rewritten.
+		VkDescriptorSet m_blitDescriptorSets[2]{};
 		VkSampler m_blitDefaultSampler = VK_NULL_HANDLE;
 		TextureHandle m_presentBlitTexture{};
 		SamplerHandle m_presentBlitSampler{};
@@ -351,6 +353,11 @@ namespace SFE::Render
 		float m_timestampPeriod = 0.f;
 		uint32_t m_timestampValidBits = 0;
 		bool m_timestampPending[kMaxFramesInFlight]{};
+		// Sets replaced while still bound, freed once the frame that bound them has finished.
+		std::vector<VkDescriptorSet> m_retiredSets[kMaxFramesInFlight];
+		// Several lists can run in one frame; the frame keeps the first list's start and the last one's end.
+		bool m_timestampStartWritten[kMaxFramesInFlight]{};
+		bool m_timestampEndWritten[kMaxFramesInFlight]{};
 		double mLastGpuMs = 0.0;
 		VkBuffer m_uploadRing[kMaxFramesInFlight]{};
 		VmaAllocation m_uploadRingAlloc[kMaxFramesInFlight]{};
@@ -382,6 +389,11 @@ namespace SFE::Render
 		std::vector<VkDescriptorSetResource> m_descriptorSets;
 		std::vector<uint32_t> m_freeDescriptorSets;
 		std::vector<VkRecordedCommandList> m_commandLists;
+		CommandListHandle m_openCommandList{};
+		VkRecordedCommandList* listInPass(CommandListHandle cmd, const char* command);
+		void finishPendingScene();
+		bool boundInUnfinishedList(VkDescriptorSet set) const;
+		void detachBoundSet(VkDescriptorSetResource& set, const VkDescriptorSetLayoutResource& layout);
 		std::vector<uint32_t> m_freeCommandLists;
 		std::vector<VkShaderModuleResource> m_shaders;
 		std::vector<uint32_t> m_freeShaders;

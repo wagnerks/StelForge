@@ -2,6 +2,10 @@ cmake_minimum_required (VERSION 3.10)
 
 project ("StelForgeEngine")
 
+# ctest only walks subdirectories whose ancestors also have testing enabled, so the
+# root has to say so even though the suites themselves are declared further down.
+enable_testing()
+
 if(MSVC)
 	foreach(_lang C CXX)
 		string(REPLACE "/MDd" "/MD" CMAKE_${_lang}_FLAGS_DEBUG "${CMAKE_${_lang}_FLAGS_DEBUG}")

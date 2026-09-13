@@ -17,6 +17,7 @@
 #include "mathModule/VectorOperations.h"
 
 #include <algorithm>
+#include <vector>
 #include <cctype>
 #include <cmath>
 #include <filesystem>
@@ -32,6 +33,92 @@ namespace {
 			if (v.boneIDs[0] >= 0) {
 				return true;
 			}
+		}
+		return false;
+	}
+
+	std::string toLowerCopy(std::string s) {
+		std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+			return static_cast<char>(std::tolower(c));
+		});
+		return s;
+	}
+
+	bool looksLikeHair(const std::string& lowerName) {
+		static const char* kKeys[] = { "fur", "hair", "whisker", "eyelash", "feather" };
+		for (const char* key : kKeys) {
+			if (lowerName.find(key) != std::string::npos) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool looksLikeCutout(const std::string& lowerName) {
+		if (looksLikeHair(lowerName)) {
+			return true;
+		}
+		static const char* kKeys[] = { "leaf", "leaves", "grass", "foliage", "decal" };
+		for (const char* key : kKeys) {
+			if (lowerName.find(key) != std::string::npos) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool looksLikeGlass(const std::string& lowerName) {
+		return lowerName.find("glass") != std::string::npos
+			|| lowerName.find("window") != std::string::npos
+			|| lowerName.find("transparent") != std::string::npos
+			|| lowerName.find("water") != std::string::npos;
+	}
+
+	bool looksLikeEye(const std::string& lowerName) {
+		if (lowerName.find("eyelash") != std::string::npos
+			|| lowerName.find("eyelid") != std::string::npos
+			|| lowerName.find("eyebrow") != std::string::npos
+			|| lowerName.find("eyelbrow") != std::string::npos) {
+			return false;
+		}
+		return lowerName.find("eyeball") != std::string::npos
+			|| lowerName.find("iris") != std::string::npos
+			|| lowerName.find("cornea") != std::string::npos
+			|| lowerName.find("pupil") != std::string::npos
+			|| lowerName.find("sclera") != std::string::npos
+			|| lowerName.find("lens") != std::string::npos
+			|| lowerName.find("eye") != std::string::npos;
+	}
+
+	bool looksLikeMetalnessMap(const Texture* tex) {
+		if (!tex || !tex->isValid()) {
+			return false;
+		}
+		// Real metalness is ~0/1. Mid-gray "metal" sidecars are gloss/AO/cavity.
+		return tex->fgMean <= 0.12f || tex->fgMean >= 0.85f;
+	}
+
+	bool isCardMesh(const SFE::Mesh3D& mesh) {
+		if (mesh.vertices.size() < 3) {
+			return false;
+		}
+		SFE::Math::Vec3 mn(1e30f);
+		SFE::Math::Vec3 mx(-1e30f);
+		for (const auto& v : mesh.vertices) {
+			mn.x = (std::min)(mn.x, v.position.x);
+			mn.y = (std::min)(mn.y, v.position.y);
+			mn.z = (std::min)(mn.z, v.position.z);
+			mx.x = (std::max)(mx.x, v.position.x);
+			mx.y = (std::max)(mx.y, v.position.y);
+			mx.z = (std::max)(mx.z, v.position.z);
+		}
+		const float ex = mx.x - mn.x;
+		const float ey = mx.y - mn.y;
+		const float ez = mx.z - mn.z;
+		const float thin = (std::min)(ex, (std::min)(ey, ez));
+		const float wide = (std::max)(ex, (std::max)(ey, ez));
+		if (wide > 1e-5f && thin / wide < 0.045f) {
+			return true;
 		}
 		return false;
 	}
@@ -90,20 +177,6 @@ namespace {
 				for (auto& v : mesh.mesh.vertices) {
 					v.boneIDs[0] = static_cast<int>(chosen->id);
 					v.weights[0] = 1.f;
-				}
-			}
-
-			std::string nl = mesh.nodeName;
-			std::transform(nl.begin(), nl.end(), nl.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			const bool shellName = nl.find("cornea") != std::string::npos
-				|| nl.find("lens") != std::string::npos
-				|| nl.find("eyeball") != std::string::npos
-				|| nl.find("visor") != std::string::npos;
-			if (shellName && !mesh.material.alphaCutout) {
-				mesh.material.transparent = true;
-				mesh.material.opacity = 0.42f;
-				if (mesh.material.ior < 1.05f) {
-					mesh.material.ior = 1.4f;
 				}
 			}
 		}
@@ -206,7 +279,7 @@ std::tuple<SFE::Tree<SFE::MeshObject3D>, Armature> ModelLoader::loadModel(const 
 	SFE::Tree<SFE::MeshObject3D> meshes;
 	Armature armat;
 
-	processNode(scene->mRootNode, scene, directory, meshes, armat);
+	processNode(scene->mRootNode, scene, directory, std::filesystem::path(path).stem().string(), meshes, armat);
 	finalizeArmature(scene, armat);
 	bindUnskinnedMeshes(meshes, armat);
 
@@ -214,15 +287,15 @@ std::tuple<SFE::Tree<SFE::MeshObject3D>, Armature> ModelLoader::loadModel(const 
 }
 
 
-void ModelLoader::processNode(aiNode* node, const aiScene* scene, const std::string& directory, SFE::Tree<SFE::MeshObject3D>& meshes, Armature& armature) {
+void ModelLoader::processNode(aiNode* node, const aiScene* scene, const std::string& directory, const std::string& atlasStem, SFE::Tree<SFE::MeshObject3D>& meshes, Armature& armature) {
 	meshes.value.nodeName = node->mName.C_Str();
 	{
-		meshes.value.transform = assimpMatToMat4(node->mTransformation);
-
-		auto parent = meshes.parent;
-		while (parent) {
-			meshes.value.transform *= parent->value.transform;
-			parent = parent->parent;
+		const auto local = assimpMatToMat4(node->mTransformation);
+		if (meshes.parent) {
+			meshes.value.transform = meshes.parent->value.transform * local;
+		}
+		else {
+			meshes.value.transform = local;
 		}
 	}
 
@@ -234,12 +307,12 @@ void ModelLoader::processNode(aiNode* node, const aiScene* scene, const std::str
 			meshes.children.front().value.nodeName = meshes.value.nodeName;
 			dst = &meshes.children.front().value;
 		}
-		processMesh(scene->mMeshes[node->mMeshes[i]], scene, directory, *dst, armature);
+		processMesh(scene->mMeshes[node->mMeshes[i]], scene, directory, atlasStem, *dst, armature);
 	}
 
 	for (unsigned int i = 0; i < node->mNumChildren; i++) {
 		meshes.addChild({});
-		processNode(node->mChildren[i], scene, directory, meshes.children.front(), armature);
+		processNode(node->mChildren[i], scene, directory, atlasStem, meshes.children.front(), armature);
 	}
 }
 
@@ -359,91 +432,152 @@ void ModelLoader::finalizeArmature(const aiScene* scene, Armature& armature) {
 	armature.transform = SFE::Math::Mat4(1.f);
 }
 
-void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMaterial, const std::string& directory) {
-	auto bindFirst = [&material](SFE::MaterialType type, const std::vector<Texture*>& maps) {
+void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMaterial, const std::string& directory, const std::string& atlasStem, const std::string& meshName) {
+	bool diffuseHasAlpha = false;
+	bool diffuseCutoutAlpha = false;
+
+	aiString alphaMode;
+	const bool gltfPbr = assimpMaterial->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaMode) == AI_SUCCESS;
+	material.gltfPbr = gltfPbr;
+	const std::string am = alphaMode.C_Str();
+
+	auto onDiffuse = [&](const Texture* tex) {
+		if (!tex) {
+			return;
+		}
+		if (tex->hasAlpha) {
+			diffuseHasAlpha = true;
+		}
+		if (tex->hasCutoutAlpha) {
+			diffuseCutoutAlpha = true;
+		}
+	};
+
+	auto bindFirst = [&](SFE::MaterialType type, const std::vector<Texture*>& maps, aiTextureType uvType) {
 		if (maps.empty() || material.tryGetTexture(type)) {
 			return;
 		}
-		material[type] = SFE::MaterialTexture{ maps.front()->texture, type, type };
+		if (!gltfPbr && type == SFE::METALLIC && !looksLikeMetalnessMap(maps.front())) {
+			return;
+		}
+		int uv = 0;
+		assimpMaterial->Get(AI_MATKEY_UVWSRC(uvType, 0), uv);
+		material[type] = SFE::MaterialTexture{ maps.front()->texture, type, type, uv };
+		if (type == SFE::DIFFUSE) {
+			onDiffuse(maps.front());
+		}
 	};
 
-	auto tryFiles = [&material, &directory](SFE::MaterialType type, std::initializer_list<std::string> names) {
+	auto tryFiles = [&](SFE::MaterialType type, const std::vector<std::string>& names) {
 		if (material.tryGetTexture(type)) {
 			return;
 		}
 		for (const auto& name : names) {
+			if (name.empty()) {
+				continue;
+			}
 			const std::string path = directory + "/" + name;
 			if (!SFE::FileSystem::isFileExists(path)) {
 				continue;
 			}
 			auto* tex = TextureHandler::loadTexture(path);
 			if (tex && tex->isValid()) {
+				if (!gltfPbr && type == SFE::METALLIC && !looksLikeMetalnessMap(tex)) {
+					continue;
+				}
 				material[type] = SFE::MaterialTexture{ tex->texture, type, type };
+				if (type == SFE::DIFFUSE) {
+					onDiffuse(tex);
+				}
 				return;
 			}
 		}
 	};
 
-	auto diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE, directory);
+	auto sidecarNames = [](const std::string& prefix, std::initializer_list<const char*> suffixes) {
+		std::vector<std::string> out;
+		if (prefix.empty()) {
+			return out;
+		}
+		out.reserve(suffixes.size() * 2);
+		std::string us = prefix;
+		std::string sp = prefix;
+		std::replace(us.begin(), us.end(), ' ', '_');
+		std::replace(sp.begin(), sp.end(), '_', ' ');
+		for (const char* suffix : suffixes) {
+			out.push_back(prefix + suffix);
+			if (us != prefix) {
+				out.push_back(us + suffix);
+			}
+			if (sp != prefix && sp != us) {
+				out.push_back(sp + suffix);
+			}
+		}
+		return out;
+	};
+
+	auto tryPrefix = [&](const std::string& prefix) {
+		if (prefix.empty()) {
+			return;
+		}
+		tryFiles(SFE::DIFFUSE, sidecarNames(prefix, {
+			"_Base_Color.png", "_BaseColor.png", "_albedo.png", "_color.png", "_diffuse.png"
+		}));
+		tryFiles(SFE::NORMALS, sidecarNames(prefix, { "_Normal.png", "_Normal_OpenGL.png", "_normal.png" }));
+		tryFiles(SFE::ROUGHNESS, sidecarNames(prefix, { "_Roughness.png", "_rough.png" }));
+		tryFiles(SFE::METALLIC, sidecarNames(prefix, { "_Metallic.png", "_metal.png" }));
+		tryFiles(SFE::SPECULAR, sidecarNames(prefix, { "_Specular.png", "_spec.png" }));
+		tryFiles(SFE::SUBSURFACE, sidecarNames(prefix, { "_subsur.png", "_sss.png", "_subsurface.png" }));
+	};
+
+	aiTextureType diffuseType = aiTextureType_BASE_COLOR;
+	auto diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_BASE_COLOR, directory);
 	if (diffuseMaps.empty()) {
-		diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_BASE_COLOR, directory);
+		diffuseMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE, directory);
+		diffuseType = aiTextureType_DIFFUSE;
 	}
-	bindFirst(SFE::DIFFUSE, diffuseMaps);
+	bindFirst(SFE::DIFFUSE, diffuseMaps, diffuseType);
 
 	auto specularMaps = loadMaterialTextures(assimpMaterial, aiTextureType_SPECULAR, directory);
-	bindFirst(SFE::SPECULAR, specularMaps);
+	bindFirst(SFE::SPECULAR, specularMaps, aiTextureType_SPECULAR);
 
+	aiTextureType roughType = aiTextureType_DIFFUSE_ROUGHNESS;
+	aiTextureType metalType = aiTextureType_METALNESS;
 	auto roughnessMaps = loadMaterialTextures(assimpMaterial, aiTextureType_DIFFUSE_ROUGHNESS, directory);
 	auto metallicMaps = loadMaterialTextures(assimpMaterial, aiTextureType_METALNESS, directory);
 	auto packedMaps = loadMaterialTextures(assimpMaterial, aiTextureType_UNKNOWN, directory);
 	if (roughnessMaps.empty()) {
 		roughnessMaps = packedMaps;
+		roughType = aiTextureType_UNKNOWN;
 	}
 	if (metallicMaps.empty()) {
 		metallicMaps = packedMaps;
+		metalType = aiTextureType_UNKNOWN;
 	}
-	bindFirst(SFE::ROUGHNESS, roughnessMaps);
-	bindFirst(SFE::METALLIC, metallicMaps);
+	bindFirst(SFE::ROUGHNESS, roughnessMaps, roughType);
+	bindFirst(SFE::METALLIC, metallicMaps, metalType);
 
+	aiTextureType normalType = aiTextureType_NORMALS;
 	auto normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMALS, directory);
 	if (normalMaps.empty()) {
 		normalMaps = loadMaterialTextures(assimpMaterial, aiTextureType_NORMAL_CAMERA, directory);
+		normalType = aiTextureType_NORMAL_CAMERA;
 	}
-	bindFirst(SFE::NORMALS, normalMaps);
+	bindFirst(SFE::NORMALS, normalMaps, normalType);
+
+	auto opacityMaps = loadMaterialTextures(assimpMaterial, aiTextureType_OPACITY, directory);
+	if (!opacityMaps.empty() && opacityMaps.front()->hasAlpha) {
+		diffuseHasAlpha = true;
+	}
 
 	aiString matName;
 	assimpMaterial->Get(AI_MATKEY_NAME, matName);
-	std::string n = matName.C_Str();
-	std::string nUs = n;
-	std::string nSp = n;
-	std::replace(nUs.begin(), nUs.end(), ' ', '_');
-	std::replace(nSp.begin(), nSp.end(), '_', ' ');
-
-	tryFiles(SFE::DIFFUSE, {
-		n + "_Base_Color.png", n + "_BaseColor.png", n + "_albedo.png", n + "_color.png",
-		nUs + "_Base_Color.png", nUs + "_BaseColor.png", nUs + "_color.png",
-		nSp + "_Base_Color.png", nSp + "_BaseColor.png"
-	});
-	tryFiles(SFE::NORMALS, {
-		n + "_Normal.png", n + "_Normal_OpenGL.png", n + "_normal.png",
-		nUs + "_Normal.png", nUs + "_normal.png", nSp + "_Normal.png"
-	});
-	tryFiles(SFE::ROUGHNESS, {
-		n + "_Roughness.png", n + "_rough.png", nUs + "_Roughness.png", nUs + "_rough.png", nSp + "_Roughness.png"
-	});
-	tryFiles(SFE::METALLIC, {
-		n + "_Metallic.png", n + "_metal.png", nUs + "_Metallic.png", nUs + "_metal.png", nSp + "_Metallic.png"
-	});
-	tryFiles(SFE::SPECULAR, {
-		n + "_Specular.png", n + "_spec.png", nUs + "_Specular.png", nUs + "_spec.png", nSp + "_Specular.png"
-	});
-	{
-		const auto us = n.rfind('_');
-		const std::string atlas = (us != std::string::npos && us > 0) ? n.substr(0, us) : n;
-		tryFiles(SFE::SUBSURFACE, {
-			atlas + "_subsur.png", atlas + "_sss.png", atlas + "_subsurface.png",
-			n + "_subsur.png", nUs + "_subsur.png", n + "_sss.png"
-		});
+	const std::string n = matName.C_Str();
+	if (!gltfPbr) {
+		tryPrefix(n);
+		if (!atlasStem.empty() && toLowerCopy(atlasStem) != toLowerCopy(n)) {
+			tryPrefix(atlasStem);
+		}
 	}
 
 	float opacity = 1.f;
@@ -453,34 +587,93 @@ void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMa
 	float transmission = 0.f;
 	assimpMaterial->Get(AI_MATKEY_TRANSMISSION_FACTOR, transmission);
 
-	std::string nl = n;
-	std::transform(nl.begin(), nl.end(), nl.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	const bool nameGlass = nl.find("glass") != std::string::npos
-		|| nl.find("window") != std::string::npos
-		|| nl.find("transparent") != std::string::npos
-		|| nl.find("water") != std::string::npos;
-	const bool nameCutout = nl.find("fur") != std::string::npos
-		|| nl.find("hair") != std::string::npos
-		|| nl.find("whisker") != std::string::npos;
-
-	aiString alphaMode;
-	assimpMaterial->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaMode);
-	const std::string am = alphaMode.C_Str();
+	const std::string nl = toLowerCopy(n);
+	const std::string meshLower = toLowerCopy(meshName);
+	const bool nameGlass = !gltfPbr && (looksLikeGlass(nl) || looksLikeGlass(meshLower));
+	const bool nameHair = !gltfPbr && (looksLikeHair(nl) || looksLikeHair(meshLower));
+	const bool nameCutout = !gltfPbr && (nameHair || looksLikeCutout(nl) || looksLikeCutout(meshLower));
 
 	material.opacity = opacity;
 	material.ior = ior > 1.f ? ior : 1.5f;
-	float shininess = 0.f;
-	if (assimpMaterial->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS && shininess > 1.f) {
-		material.roughness = (std::max)(0.04f, (std::min)(1.f, std::sqrt(2.f / (shininess + 2.f))));
+	material.hasDiffuseAlpha = diffuseHasAlpha;
+
+	float roughFactor = 0.f;
+	const bool hasRoughFactor = assimpMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughFactor) == AI_SUCCESS;
+	if (hasRoughFactor) {
+		material.roughness = (std::max)(0.04f, (std::min)(1.f, roughFactor));
 	}
+	else if (!material.tryGetTexture(SFE::ROUGHNESS) && !material.tryGetTexture(SFE::DIFFUSE)) {
+		float shininess = 0.f;
+		if (assimpMaterial->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS && shininess > 1.f) {
+			material.roughness = (std::max)(0.04f, (std::min)(1.f, std::sqrt(2.f / (shininess + 2.f))));
+		}
+	}
+
 	float metalFactor = 0.f;
 	if (assimpMaterial->Get(AI_MATKEY_METALLIC_FACTOR, metalFactor) == AI_SUCCESS) {
 		material.metallic = (std::max)(0.f, (std::min)(1.f, metalFactor));
 	}
-	// FBX Phong often stores TransparencyFactor=1 as "unused", not glass.
-	material.transparent = nameGlass || transmission > 0.01f || (opacity > 0.05f && opacity < 0.99f)
-		|| am == "BLEND";
-	material.alphaCutout = !material.transparent && (am == "MASK" || nameCutout);
+
+	float specFactor = 1.f;
+	if (assimpMaterial->Get(AI_MATKEY_SPECULAR_FACTOR, specFactor) == AI_SUCCESS) {
+		material.specFactor = (std::max)(0.f, (std::min)(1.f, specFactor));
+	}
+
+	float cc = 0.f;
+	if (assimpMaterial->Get(AI_MATKEY_CLEARCOAT_FACTOR, cc) == AI_SUCCESS && cc > 0.01f) {
+		material.clearcoat = (std::max)(0.f, (std::min)(1.f, cc));
+		float ccRough = 0.04f;
+		assimpMaterial->Get(AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR, ccRough);
+		material.clearcoatRough = (std::max)(0.04f, (std::min)(1.f, ccRough));
+	}
+
+	if (gltfPbr) {
+		material.transparent = am == "BLEND";
+		material.alphaCutout = am == "MASK";
+		material.alphaFromMaps = false;
+		material.alphaDither = false;
+		float cutoff = 0.5f;
+		if (assimpMaterial->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff) == AI_SUCCESS) {
+			material.alphaCutoff = cutoff;
+		} else if (material.alphaCutout) {
+			material.alphaCutoff = 0.5f;
+		}
+		// Deferred has no general alpha blend. BLEND foliage/decals/windows would
+		// otherwise go through the glass IOR pass and lose their albedo.
+		if (material.transparent && transmission <= 0.01f) {
+			material.transparent = false;
+			material.alphaCutout = true;
+			material.opacity = 1.f;
+			if (material.alphaCutoff <= 0.f) {
+				material.alphaCutoff = 0.5f;
+			}
+		}
+	} else {
+		const bool maskMode = am == "MASK" || nameCutout || diffuseCutoutAlpha || !opacityMaps.empty();
+		const bool blendMode = am == "BLEND" || nameGlass || transmission > 0.01f
+			|| (opacity > 0.05f && opacity < 0.99f);
+		if (maskMode && !nameGlass && transmission <= 0.01f) {
+			material.transparent = false;
+			material.alphaCutout = true;
+			material.opacity = 1.f;
+			material.alphaFromMaps = !diffuseHasAlpha && !diffuseCutoutAlpha;
+			material.alphaDither = nameHair;
+		}
+		else {
+			material.transparent = blendMode;
+			material.alphaCutout = !material.transparent && (am == "MASK" || nameCutout);
+		}
+
+		if (nameHair) {
+			material.metallic = 0.f;
+			material.materialTextures.erase(SFE::METALLIC);
+			material.materialTextures.erase(SFE::ROUGHNESS);
+			if (!material.alphaFromMaps) {
+				material.materialTextures.erase(SFE::SPECULAR);
+			}
+			material.roughness = (std::max)(material.roughness, 0.9f);
+		}
+	}
 }
 
 void ModelLoader::readIndicesData(std::vector<unsigned>& indices, unsigned numFaces, aiFace* faces) {
@@ -509,6 +702,13 @@ void ModelLoader::readVerticesData(std::vector<SFE::Vertex3D>& vertices, unsigne
 		if (assimpMesh->mTextureCoords[0]) {
 			vertex.texCoords.x = assimpMesh->mTextureCoords[0][i].x;
 			vertex.texCoords.y = assimpMesh->mTextureCoords[0][i].y;
+		}
+		if (assimpMesh->mTextureCoords[1]) {
+			vertex.texCoords1.x = assimpMesh->mTextureCoords[1][i].x;
+			vertex.texCoords1.y = assimpMesh->mTextureCoords[1][i].y;
+		}
+		else {
+			vertex.texCoords1 = vertex.texCoords;
 		}
 
 		if (assimpMesh->mNormals) {
@@ -553,21 +753,77 @@ int ModelLoader::extractLodLevel(const std::string& meshName) {
 	return std::atoi(meshName.substr(i + 4, meshName.size() - i).c_str());
 }
 
-void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, const std::string& directory, SFE::MeshObject3D& meshObject, Armature& armature) {
+void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, const std::string& directory, const std::string& atlasStem, SFE::MeshObject3D& meshObject, Armature& armature) {
 	readVerticesData(meshObject.mesh.vertices, assimpMesh->mNumVertices, assimpMesh);
 	readIndicesData(meshObject.mesh.indices, assimpMesh->mNumFaces, assimpMesh->mFaces);
-	SFE::MeshUtils::generateTangents(&meshObject.mesh);
 	readBonesData(meshObject.mesh.vertices, assimpMesh, armature);
-	readMaterialData(meshObject.material, scene->mMaterials[assimpMesh->mMaterialIndex], directory);
+	std::string meshName = assimpMesh->mName.C_Str();
+	if (!meshObject.nodeName.empty()) {
+		meshName += " ";
+		meshName += meshObject.nodeName;
+	}
+	readMaterialData(meshObject.material, scene->mMaterials[assimpMesh->mMaterialIndex], directory, atlasStem, meshName);
+	int tangentUv = 0;
+	if (const auto* nrm = meshObject.material.tryGetTexture(SFE::NORMALS)) {
+		tangentUv = nrm->uvSet;
+	}
+	SFE::MeshUtils::generateTangents(&meshObject.mesh, tangentUv);
+	if (meshObject.material.gltfPbr) {
+		return;
+	}
+	const std::string meshLower = toLowerCopy(meshName);
+	if (looksLikeEye(meshLower)) {
+		meshObject.material.materialTextures.erase(SFE::NORMALS);
+		meshObject.material.materialTextures.erase(SFE::ROUGHNESS);
+		meshObject.material.materialTextures.erase(SFE::METALLIC);
+		meshObject.material.materialTextures.erase(SFE::SPECULAR);
+		meshObject.material.materialTextures.erase(SFE::SUBSURFACE);
+		meshObject.material.metallic = 0.f;
+		meshObject.material.roughness = 0.28f;
+		meshObject.material.transparent = false;
+		meshObject.material.alphaCutout = false;
+		meshObject.material.alphaFromMaps = false;
+		meshObject.material.alphaDither = false;
+	}
+	else if (isCardMesh(meshObject.mesh)) {
+		meshObject.material.transparent = false;
+		meshObject.material.alphaCutout = true;
+		meshObject.material.alphaDither = true;
+		if (!meshObject.material.hasDiffuseAlpha) {
+			meshObject.material.alphaFromMaps = true;
+		}
+		meshObject.material.metallic = 0.f;
+		meshObject.material.materialTextures.erase(SFE::METALLIC);
+		if (!meshObject.material.alphaFromMaps) {
+			meshObject.material.materialTextures.erase(SFE::ROUGHNESS);
+			meshObject.material.materialTextures.erase(SFE::SPECULAR);
+			meshObject.material.roughness = (std::max)(meshObject.material.roughness, 0.9f);
+		}
+	}
 }
 
 std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, const std::string& directory) {
 	std::vector<Texture*> textures;
+	auto* defaultTex = &TextureHandler::instance()->mDefaultTex;
+	auto tryLoad = [defaultTex](const std::string& path) -> Texture* {
+		if (path.empty() || !SFE::FileSystem::isFileExists(path)) {
+			return nullptr;
+		}
+		auto* tex = TextureHandler::loadTexture(path);
+		if (tex && tex != defaultTex && tex->isValid()) {
+			return tex;
+		}
+		return nullptr;
+	};
+
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 		aiString str;
 		mat->GetTexture(type, i, &str);
 
 		std::string raw = str.C_Str();
+		if (raw.empty() || raw[0] == '*') {
+			continue;
+		}
 		std::string filename = raw;
 		if (const auto pos = raw.find_last_of("/\\"); pos != std::string::npos) {
 			filename = raw.substr(pos + 1);
@@ -575,20 +831,15 @@ std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextu
 		std::string relative = raw;
 		std::replace(relative.begin(), relative.end(), '\\', '/');
 
-		Texture* tex = nullptr;
-		const std::string candidates[] = {
-			directory + "/" + filename,
-			directory + "/" + relative,
-		};
-		for (const auto& candidate : candidates) {
-			if (!SFE::FileSystem::isFileExists(candidate)) {
-				continue;
-			}
-			tex = TextureHandler::loadTexture(candidate);
-			if (tex && tex->isValid()) {
-				break;
-			}
-			tex = nullptr;
+		Texture* tex = tryLoad(raw);
+		if (!tex) {
+			tex = tryLoad(directory + "/" + filename);
+		}
+		if (!tex) {
+			tex = tryLoad(directory + "/" + relative);
+		}
+		if (!tex) {
+			tex = tryLoad(directory + "/textures/" + filename);
 		}
 		if (tex) {
 			textures.emplace_back(tex);

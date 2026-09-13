@@ -76,7 +76,6 @@ void SSRPass::init(SystemsModule::RenderData& renderDataHandle) {
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 3;
-		w.type = DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mParamsUBO });
 		initWrites.push_back(std::move(w));
 	}
@@ -115,7 +114,6 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 0;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ frame.texture(FrameId::GBufferPosition), frame.sampler(FrameId::GBufferPosition) });
 		writes.push_back(std::move(w));
 	}
@@ -123,7 +121,6 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ frame.texture(FrameId::GBufferNormal), frame.sampler(FrameId::GBufferNormal) });
 		writes.push_back(std::move(w));
 	}
@@ -131,7 +128,6 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 2;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ frame.texture(FrameId::GBufferAlbedo), frame.sampler(FrameId::GBufferAlbedo) });
 		writes.push_back(std::move(w));
 	}
@@ -139,7 +135,6 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 4;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ src, mSampler });
 		writes.push_back(std::move(w));
 	}
@@ -147,7 +142,6 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 3;
-		w.type = DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mParamsUBO });
 		writes.push_back(std::move(w));
 	}
@@ -155,7 +149,6 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 5;
-		w.type = DescriptorType::UniformBuffer;
 		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		writes.push_back(std::move(w));
 	}

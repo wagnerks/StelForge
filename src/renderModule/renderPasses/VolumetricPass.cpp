@@ -143,7 +143,6 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 0;
-		w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ pos, frame.sampler(SFE::Render::FrameId::GBufferPosition) ? frame.sampler(SFE::Render::FrameId::GBufferPosition) : mNearest });
 		marchWrites.push_back(std::move(w));
 	}
@@ -151,7 +150,6 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 8;
-		w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ shadow, frame.sampler(SFE::Render::FrameId::ShadowCsm) });
 		marchWrites.push_back(std::move(w));
 	}
@@ -159,7 +157,6 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 5;
-		w.type = SFE::Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		marchWrites.push_back(std::move(w));
 	}
@@ -167,7 +164,6 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 11;
-		w.type = SFE::Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mats });
 		marchWrites.push_back(std::move(w));
 	}
@@ -175,7 +171,6 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 15;
-		w.type = SFE::Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mParamsUBO });
 		marchWrites.push_back(std::move(w));
 	}
@@ -201,7 +196,6 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 			SFE::Render::WriteDescriptor w{};
 			w.set = mApplySet;
 			w.binding = 0;
-			w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 			w.images.push_back({ src, mLinear });
 			applyWrites.push_back(std::move(w));
 		}
@@ -209,7 +203,6 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 			SFE::Render::WriteDescriptor w{};
 			w.set = mApplySet;
 			w.binding = 1;
-			w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 			w.images.push_back({ mHalfTex, mLinear });
 			applyWrites.push_back(std::move(w));
 		}

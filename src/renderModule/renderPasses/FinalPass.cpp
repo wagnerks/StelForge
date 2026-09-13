@@ -129,7 +129,6 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mBloomSet;
 		w.binding = 0;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ src, mSampler });
 		rhi->updateDescriptorSets({ w });
 
@@ -151,7 +150,6 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 			WriteDescriptor w{};
 			w.set = mPostSet;
 			w.binding = 0;
-			w.type = DescriptorType::CombinedImageSampler;
 			w.images.push_back({ src, mSampler });
 			writes.push_back(std::move(w));
 		}
@@ -159,7 +157,6 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 			WriteDescriptor w{};
 			w.set = mPostSet;
 			w.binding = 1;
-			w.type = DescriptorType::CombinedImageSampler;
 			w.images.push_back({ mBloomTex, mSampler });
 			writes.push_back(std::move(w));
 		}
@@ -167,7 +164,6 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 			WriteDescriptor w{};
 			w.set = mPostSet;
 			w.binding = 15;
-			w.type = DescriptorType::UniformBuffer;
 			w.buffers.push_back({ mPostUBO });
 			writes.push_back(std::move(w));
 		}

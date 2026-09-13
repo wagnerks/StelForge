@@ -371,7 +371,7 @@ namespace SFE::Render {
 			rhi->updateDescriptorSets({ {
 				.set = texSet,
 				.binding = 24,
-				.type = DescriptorType::CombinedImageSampler,
+				
 				.images = { { font->getAtlasTex(), font->getAtlasTexSampler() } }
 			} });
 			rhi->cmdBindPipeline(cmd, textRenderPipeline);

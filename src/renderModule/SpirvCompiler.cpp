@@ -1,4 +1,4 @@
-#include "SpirvCompiler.h"
+﻿#include "SpirvCompiler.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -84,6 +84,12 @@ namespace SFE::Render {
 
 		void reportProgress(const int done, const int total, const std::string_view name) {
 			LogsModule::Logger::LOG_INFO("SPIR-V %d/%d %s", done, total, std::string(name).c_str());
+			// isAlive first: Singleton::instance() constructs on demand, so asking for the engine
+			// merely to put progress in a window title would build a whole engine behind anyone who
+			// compiles a shader without one. A test does exactly that.
+			if (!Singleton<Engine>::isAlive()) {
+				return;
+			}
 			auto* engine = Engine::instance();
 			auto* window = engine ? engine->getWindow() : nullptr;
 			GLFWwindow* glfw = window ? window->getWindow() : nullptr;
@@ -173,7 +179,7 @@ namespace SFE::Render {
 
 		reportProgress(1, 1, shaderFileName);
 		const bool ok = compileToSpv(stage, src, dst);
-		if (auto* window = Engine::instance()->getWindow()) {
+		if (auto* window = Singleton<Engine>::isAlive() ? Engine::instance()->getWindow() : nullptr) {
 			if (auto* glfw = window->getWindow()) {
 				glfwSetWindowTitle(glfw, window->title().c_str());
 			}
@@ -225,7 +231,7 @@ namespace SFE::Render {
 			reportProgress(done, total, job.name);
 			compileToSpv(job.stage, job.src, job.dst);
 		}
-		if (auto* window = Engine::instance()->getWindow()) {
+		if (auto* window = Singleton<Engine>::isAlive() ? Engine::instance()->getWindow() : nullptr) {
 			if (auto* glfw = window->getWindow()) {
 				glfwSetWindowTitle(glfw, window->title().c_str());
 			}

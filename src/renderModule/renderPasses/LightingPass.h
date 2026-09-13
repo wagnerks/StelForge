@@ -34,8 +34,12 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		struct CascadData {
-			// xy texelSize, z bias, w samples
+			// x 1/resolution, y world size of one texel, z depth bias, w samples
 			Math::Vec4 cascade;
+			// x light-space depth extent of the cascade, so the shader can turn a depth difference
+			// into a world distance; the rest is spare. std140 gives the array a 32 byte stride
+			// with two vec4s, which is what this struct is.
+			Math::Vec4 cascadeExtra;
 		};
 		struct CascadedShadowBlock {
 			Math::Vec4 direction_intensity; // xyz direction, w intensity

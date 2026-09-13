@@ -2,6 +2,7 @@
 
 #include <glad/glad.h>
 #include <stb_image.h>
+#include <algorithm>
 #include <string>
 
 #include "AssetsManager.h"
@@ -35,6 +36,28 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	}
 
 	texture = AssetsManager::instance()->createAsset<Texture>(path);
+	{
+		const int n = texWidth * texHeight;
+		double fgSum = 0.0;
+		int fgCount = 0;
+		int partialAlpha = 0;
+		for (int i = 0; i < n; ++i) {
+			const unsigned char* px = data + i * 4;
+			if (px[3] < 250) {
+				texture->hasAlpha = true;
+			}
+			if (px[3] > 8 && px[3] < 250) {
+				++partialAlpha;
+			}
+			const float m = (std::max)(px[0], (std::max)(px[1], px[2])) / 255.f;
+			if (m > 0.04f) {
+				fgSum += m;
+				++fgCount;
+			}
+		}
+		texture->hasCutoutAlpha = partialAlpha > static_cast<int>(n * 0.015);
+		texture->fgMean = fgCount > 0 ? static_cast<float>(fgSum / static_cast<double>(fgCount)) : 0.f;
+	}
 	SFE::Render::TextureDesc desc;
 	desc.width = static_cast<uint32_t>(texWidth);
 	desc.height = static_cast<uint32_t>(texHeight);
@@ -47,13 +70,7 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	samplerDesc.addressU = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressV = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressW = SFE::Render::AddressMode::Repeat;
-	if (SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::Vulkan) {
-		samplerDesc.maxAnisotropy = 1.f;
-	}
-	else {
-		samplerDesc.minFilter = SFE::Render::FilterMode::LinearMipmapLinear;
-		samplerDesc.maxAnisotropy = 16.f;
-	}
+	samplerDesc.maxAnisotropy = 1.f;
 
 
 	if (SFE::Engine::isMainThread() || SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::Vulkan) {

@@ -91,7 +91,11 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		return;
 	}
 
+	// Both unjittered. The shader needs the pair, not just the previous one: differencing them
+	// gives a true motion vector, so a still camera samples the history at the pixel centre
+	// instead of at this frame's jitter offset, which would feed the jitter back into it.
 	mParams.prevPV = renderDataHandle.prevPV;
+	mParams.curPV = renderDataHandle.current.PV;
 	mParams.blend = renderDataHandle.graphics.taaBlend;
 	mParams.reset = mHasHistory ? 0 : 1;
 	{
@@ -107,7 +111,6 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 0;
-		w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ src, mLinear });
 		writes.push_back(std::move(w));
 	}
@@ -115,7 +118,6 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ mHistory[hist], mLinear });
 		writes.push_back(std::move(w));
 	}
@@ -123,15 +125,17 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 2;
-		w.type = SFE::Render::DescriptorType::CombinedImageSampler;
-		w.images.push_back({ pos, frame.sampler(SFE::Render::FrameId::GBufferPosition) ? frame.sampler(SFE::Render::FrameId::GBufferPosition) : mNearest });
+		// Always nearest: world position must never be filtered. Across a depth discontinuity a
+		// linear tap blends foreground and background into a point that exists nowhere, which
+		// reprojects far off and pins the current weight high on exactly the silhouette pixels
+		// that need the history most.
+		w.images.push_back({ pos, mNearest });
 		writes.push_back(std::move(w));
 	}
 	{
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.type = SFE::Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mParamsUBO });
 		writes.push_back(std::move(w));
 	}

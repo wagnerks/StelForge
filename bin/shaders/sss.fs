@@ -25,8 +25,7 @@ const vec3 kW[7] = vec3[](
 );
 
 float skinMask(vec3 albedo, float metallic) {
-    float pink = clamp((albedo.r - albedo.g) * 8.0 + albedo.r * 0.25, 0.0, 1.0);
-    return (1.0 - metallic) * pink;
+    return sfeSkinSss(albedo, metallic);
 }
 
 void main() {
@@ -39,7 +38,8 @@ void main() {
     }
 
     vec4 albS = texture(gAlbedoSpec, TexCoords);
-    float mask = skinMask(albS.rgb, clamp(posS.a, 0.0, 1.0));
+    float metallic = sfeGBufferPbr(posS.a).x;
+    float mask = skinMask(albS.rgb, metallic);
     if (mask < 0.01 || params.strength < 0.001) {
         FragColor = vec4(center, 1.0);
         return;

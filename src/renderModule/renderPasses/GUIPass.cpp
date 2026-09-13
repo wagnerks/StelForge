@@ -43,7 +43,7 @@ namespace SFE::Render::RenderPasses {
 			{
 				.set = mTexSet,
 				.binding = 1,
-				.type = DescriptorType::UniformBuffer,
+				
 				.buffers = {{drawDataUBO}}
 			}
 			});

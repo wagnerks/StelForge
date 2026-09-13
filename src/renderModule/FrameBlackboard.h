@@ -5,6 +5,7 @@
 #include "mathModule/Forward.h"
 #include "renderModule/RenderHardwareInterface.h"
 
+#include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -62,6 +63,18 @@ namespace SFE::Render {
 		FramebufferHandle framebuffer(const char* name) const {
 			const auto* r = find(name);
 			return r ? r->framebuffer : FramebufferHandle{};
+		}
+
+		// Sorted, so anything that walks the frame's textures does it in the same order every run.
+		std::vector<std::string> textureNames() const {
+			std::vector<std::string> names;
+			for (const auto& [name, resource] : mGpu) {
+				if (resource.texture) {
+					names.push_back(name);
+				}
+			}
+			std::sort(names.begin(), names.end());
+			return names;
 		}
 
 		template<typename T>

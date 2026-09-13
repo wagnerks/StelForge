@@ -45,6 +45,7 @@ namespace SFE::PropertiesModule {
 				vert.position = { x, y, z };
 				vert.normal = vert.position;
 				vert.texCoords = { u, 1.f - v };
+				vert.texCoords1 = vert.texCoords;
 				const float lenXZ = std::sqrt(x * x + z * z);
 				if (lenXZ > 1e-4f) {
 					vert.tangent = { -z / lenXZ, 0.f, x / lenXZ };
@@ -186,32 +187,6 @@ namespace SFE::PropertiesModule {
 				}
 			}
 			return &anims.front();
-		}
-
-		ecss::EntityId spawnBlackRat(const Math::Vec3& pos, float yawDegrees = 0.f) {
-			constexpr const char* kPath = "models/rat/blackrat.fbx";
-			auto* model = AssetsModule::ModelLoader::instance()->load(kPath);
-			if (!model) {
-				return {};
-			}
-
-			const auto id = spawnModelEntity(model, kPath, pos, { 8.f }, false);
-			if (!id) {
-				return {};
-			}
-
-			if (auto transform = ECSHandler::registry().pinComponent<TransformComponent>(id)) {
-				transform->setRotate({ 0.f, yawDegrees, 0.f });
-				transform->reloadTransform();
-				SFE::SystemsModule::TasksManager::instance()->notify({
-					id, SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED, transform.get()
-				});
-			}
-
-			if (auto debug = ECSHandler::registry().pinComponent<DebugDataComponent>(id)) {
-				debug->stringId = "rat";
-			}
-			return id;
 		}
 
 		ecss::EntityId spawnDancingVampire(const Math::Vec3& pos, float yawDegrees, float animPhase = 0.f) {
@@ -590,31 +565,42 @@ namespace SFE::PropertiesModule {
 	}
 
 	ecss::EntityId PropertiesSystem::spawnDefaultScene() {
-		if (const auto rat = spawnBlackRat({ 0.f, 0.f, 0.f }, 180.f)) {
-			return rat;
+		return {};
+	}
+
+	void PropertiesSystem::spawnVampireGrid(int chunkX, int chunkZ, float chunkSize, float spacing) {
+		if (spacing < 1.f) {
+			spacing = 1.f;
 		}
 
-		SFE::Engine::reproTrace("blackrat.fbx missing, spawning vampires");
-		constexpr int kDancers = 8;
-		constexpr float kRadius = 4.f;
-		constexpr float kTwoPi = 6.2831853f;
-
 		auto* sampleModel = AssetsModule::ModelLoader::instance()->load("models/vampire.fbx");
+		if (!sampleModel) {
+			return;
+		}
 		const AssetsModule::Animation* sampleClip = pickPlaybackClip(sampleModel);
 		const float clipDuration = sampleClip ? sampleClip->getDuration() : 0.f;
 
-		for (int i = 0; i < kDancers; ++i) {
-			const float angle = kTwoPi * static_cast<float>(i) / static_cast<float>(kDancers);
-			const float x = kRadius * std::cos(angle);
-			const float z = kRadius * std::sin(angle);
-			const float yaw = Math::degrees(std::atan2(-x, -z));
-			const float phase = clipDuration > 0.f
-				? clipDuration * static_cast<float>(i) / static_cast<float>(kDancers)
-				: 0.f;
-			spawnDancingVampire({ x, 0.f, z }, yaw, phase);
-		}
+		const float originX = static_cast<float>(chunkX) * chunkSize;
+		const float originZ = static_cast<float>(chunkZ) * chunkSize;
+		const float maxX = originX + chunkSize;
+		const float maxZ = originZ + chunkSize;
+		const int i0 = static_cast<int>(std::ceil(originX / spacing - 1e-4f));
+		const int i1 = static_cast<int>(std::ceil(maxX / spacing - 1e-4f));
+		const int j0 = static_cast<int>(std::ceil(originZ / spacing - 1e-4f));
+		const int j1 = static_cast<int>(std::ceil(maxZ / spacing - 1e-4f));
 
-		return spawnDancingVampire({ 0.f, 0.f, 0.f }, 0.f, clipDuration * 0.25f);
+		for (int i = i0; i < i1; ++i) {
+			for (int j = j0; j < j1; ++j) {
+				const float x = static_cast<float>(i) * spacing;
+				const float z = static_cast<float>(j) * spacing;
+				float phase = 0.f;
+				if (clipDuration > 0.f) {
+					const uint32_t h = static_cast<uint32_t>(i) * 374761393u + static_cast<uint32_t>(j) * 668265263u;
+					phase = clipDuration * static_cast<float>(h & 1023u) / 1024.f;
+				}
+				spawnDancingVampire({ x, 0.f, z }, 180.f, phase);
+			}
+		}
 	}
 
 	void PropertiesSystem::spawnSphereGrid(int chunkX, int chunkZ, float chunkSize, float spacing) {

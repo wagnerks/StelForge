@@ -54,7 +54,9 @@ namespace SFE::SystemsModule {
 		float volumetricAnisotropy = 0.68f;
 		float volumetricDistance = 70.f;
 
-		float taaBlend = 0.72f;
+		// History weight. Must stay high enough that the jitter pattern averages out over its 8
+		// phases -- at 0.72 the resolve settles in ~3.6 frames and the pattern shows as shimmer.
+		float taaBlend = 0.92f;
 
 		float dofFocus = 18.f;
 		float dofRange = 28.f;
@@ -113,6 +115,8 @@ namespace SFE::SystemsModule {
 		uint8_t currentRegistry = 0;
 		uint8_t nextRegistry = 1;
 		int taaFrame = 0;
+		float taaJitterX = 0.f;
+		float taaJitterY = 0.f;
 
 		void rotate() {
 			std::swap(currentRegistry, nextRegistry);
@@ -157,6 +161,7 @@ namespace SFE::SystemsModule {
 		inline void setRenderType(RenderMode type) { mRenderData.mRenderType = type; }
 		inline RenderData& getRenderData() { return mRenderData; }
 		Render::DescriptorSetHandle frameSetHandle() const { return frameSet; }
+		int renderedFrames() const { return mRenderedFrames; }
 		Render::DescriptorSetLayoutHandle frameSetLayoutHandle() const { return frameSetLayout; }
 
 		void prepareDataForNextFrame();

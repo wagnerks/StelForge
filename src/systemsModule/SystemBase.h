@@ -71,30 +71,32 @@ namespace ecss {
 		}
 
 		virtual void onNotify() {
-			std::shared_lock lock(mMutex);
+			// mIsWorking only changes under mMutex, together with the worker's last sync. A notification
+			// either reaches the running worker's next sync or finds it finished and starts a new one.
+			// Setting it after releasing the lock left a window where both sides assumed the other would
+			// pick the entity up, and one was silently never processed -- a random object missing from
+			// the octree for the rest of the run.
+			std::unique_lock lock(mMutex);
 			if (mIsWorking) {
 				return;
 			}
-			mIsWorking = true;
-
 			sync();
 			if (mEntitiesToProcess.empty()) {
-				mIsWorking = false;
 				return;
 			}
+			mIsWorking = true;
+			lock.unlock();
 
 			SFE::ThreadPool::instance()->addTask([this] {
-				while (!mEntitiesToProcess.empty()) {
+				for (;;) {
 					updateAsync(mEntitiesToProcess);
-					std::unique_lock lock(mMutex);
-					sync();//synced
-					//separate thread added something which can be synced
-					//mEntitiesToProcess empty but here is entities to be synced
+					std::unique_lock workerLock(mMutex);
+					sync();
+					if (mEntitiesToProcess.empty()) {
+						mIsWorking = false;
+						return;
+					}
 				}
-				//it go here to set isWorking false
-				//at this time onNotify called and mIsWorking was true
-				//it was returned, no sync was called, isworking set false, but 
-				mIsWorking = false;
 			});
 		}
 

@@ -150,6 +150,7 @@ namespace SFE {
 			Mesh<Vertex3D>* mesh = nullptr;
 			bool indexed = false;
 			int faces = 0;
+			int uvSet = 0;
 		};
 
 		unsigned mikkVert(const MikkMesh* m, int face, int vert) {
@@ -186,8 +187,9 @@ namespace SFE {
 		void mikkGetTexCoord(const SMikkTSpaceContext* p, float out[], const int face, const int vert) {
 			const auto* m = static_cast<const MikkMesh*>(p->m_pUserData);
 			const auto& v = m->mesh->vertices[mikkVert(m, face, vert)];
-			out[0] = v.texCoords.x;
-			out[1] = v.texCoords.y;
+			const auto& uv = m->uvSet > 0 ? v.texCoords1 : v.texCoords;
+			out[0] = uv.x;
+			out[1] = uv.y;
 		}
 
 		void mikkSetTSpaceBasic(const SMikkTSpaceContext* p, const float tangent[], const float sign, const int face, const int vert) {
@@ -198,13 +200,14 @@ namespace SFE {
 		}
 	}
 
-	void MeshUtils::generateTangents(Mesh<Vertex3D>* mesh) {
+	void MeshUtils::generateTangents(Mesh<Vertex3D>* mesh, int uvSet) {
 		if (!mesh || mesh->vertices.empty()) {
 			return;
 		}
 
 		MikkMesh ctx;
 		ctx.mesh = mesh;
+		ctx.uvSet = uvSet;
 		ctx.indexed = !mesh->indices.empty();
 		if (ctx.indexed) {
 			if (mesh->indices.size() < 3) {

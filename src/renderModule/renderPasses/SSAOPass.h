@@ -43,6 +43,9 @@ namespace SFE::Render::RenderPasses {
 			float bias = 0.025f;
 			float sample_rad = 0.45f;
 			float max_distance = 2.4f;
+			// TAA jitter phase. Rotates the sample disc per frame so the static screen-space
+			// pattern averages out in the TAA resolve instead of standing still as ribbing.
+			float frameIndex = 0.f;
 		};
 
 		SSAOParams params;

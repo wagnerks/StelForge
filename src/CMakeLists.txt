@@ -219,3 +219,38 @@ elseif(XCODE)
 	)
 endif()
 
+
+# RHI conformance suite. Off by default: it fetches googletest and needs a GPU, neither of which
+# an ordinary build of the engine should pay for. Same shape as the ecss suite next door.
+option(SFE_BUILD_RHI_TESTS "Build the RHI conformance tests" OFF)
+
+if(SFE_BUILD_RHI_TESTS)
+	include(CTest)
+	include(FetchContent)
+	set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+	FetchContent_Declare(
+		googletest
+		URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+		UPDATE_DISCONNECTED TRUE
+		DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+	)
+	set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+	set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+	FetchContent_MakeAvailable(googletest)
+
+	file(GLOB RHI_TEST_SOURCES CONFIGURE_DEPENDS "${ENGINE_PATH}/tests/*.cpp")
+	add_executable(rhi_tests ${RHI_TEST_SOURCES})
+	target_include_directories(rhi_tests PRIVATE "${ENGINE_PATH}/tests")
+	target_link_libraries(rhi_tests PRIVATE ${ENGINE_NAME} gtest)
+	# A console subsystem, unlike the editor: the suite reports through stdout.
+	if(MSVC)
+		set_target_properties(rhi_tests PROPERTIES LINK_FLAGS "/SUBSYSTEM:CONSOLE")
+	endif()
+	# Staged like any other app here, so the native DLLs are delay-loaded and copied next to the
+	# exe. Without it the loader cannot resolve assimp or jsoncpp and the suite dies at startup
+	# with 0xC0000135, before a single test runs.
+	sfe_stage_app(rhi_tests)
+	# The tests load their shaders through relative paths, so they only run from the asset root.
+	set_target_properties(rhi_tests PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin")
+	add_test(NAME rhi_tests COMMAND rhi_tests WORKING_DIRECTORY "${ENGINE_PATH}/bin")
+endif()

@@ -51,7 +51,7 @@ namespace SFE {
 			mRHI->init();
 			reproTrace("initThread rhi ok");
 		}
-		if (mRHI && mRHI->supportsFullPipeline()) {
+		if (mRHI) {
 			ThreadPool::instance()->ensureLoadingContext();
 		}
 		reproTrace("initThread core");
@@ -177,6 +177,7 @@ namespace SFE {
 			mRHI = new Render::OpenGLRHI();
 			break;
 		}
+		mRHI->setHost(&mRhiHost);
 		LogsModule::Logger::LOG_INFO("Engine backend: %s", graphicsBackendName(activeGraphicsBackend()));
 	}
 

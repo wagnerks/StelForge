@@ -1,4 +1,4 @@
-#include "LightingPass.h"
+﻿#include "LightingPass.h"
 #include <algorithm>
 #include <cmath>
 #include "assetsModule/TextureHandler.h"
@@ -138,10 +138,10 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	lightMatricesUBO = rhi->createBuffer(lmDesc);
 
 	std::vector<Render::WriteDescriptor> writes = {
-		{ .set = mUboSet, .binding = 10, .type = Render::DescriptorType::UniformBuffer, .buffers{ {pointLightsUBO} } },
-		{ .set = mUboSet, .binding = 9, .type = Render::DescriptorType::UniformBuffer, .buffers{ {cascadedShadowsUBO} } },
-		{ .set = mUboSet, .binding = 15, .type = Render::DescriptorType::UniformBuffer, .buffers{ {pushConstantsUBO} } },
-		{ .set = mUboSet, .binding = 11, .type = Render::DescriptorType::UniformBuffer, .buffers{ {lightMatricesUBO} } },
+		{ .set = mUboSet, .binding = 10, .buffers{ {pointLightsUBO} } },
+		{ .set = mUboSet, .binding = 9, .buffers{ {cascadedShadowsUBO} } },
+		{ .set = mUboSet, .binding = 15, .buffers{ {pushConstantsUBO} } },
+		{ .set = mUboSet, .binding = 11, .buffers{ {lightMatricesUBO} } },
 	};
 
 	rhi->updateDescriptorSets(writes);
@@ -164,8 +164,8 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 		dummySamp.compareOp = CompareOp::LessEqual;
 		mDummyPointShadowSampler = rhi->createSampler(dummySamp);
 		rhi->updateDescriptorSets({
-			{ mTexSet, 7, DescriptorType::CombinedImageSampler, {}, {{ mDummyPointShadow, mDummyPointShadowSampler }} },
-			{ mUboSet, 3, DescriptorType::UniformBuffer, {{ lightMatricesUBO }} },
+			{ mTexSet, 7, {}, {{ mDummyPointShadow, mDummyPointShadowSampler }} },
+			{ mUboSet, 3, {{ lightMatricesUBO }} },
 		});
 		mBoundPointShadow = { mDummyPointShadow, mDummyPointShadowSampler };
 		mBoundPointMat = lightMatricesUBO;
@@ -177,19 +177,19 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 		std::vector<Render::WriteDescriptor> iblWrites{ {
 			.set = mTexSet,
 			.binding = 12,
-			.type = Render::DescriptorType::CombinedImageSampler,
+			
 			.images{ { mIbl.irradiance, mIbl.irradianceSampler } }
 		},
 		{
 			.set = mTexSet,
 			.binding = 13,
-			.type = Render::DescriptorType::CombinedImageSampler,
+			
 			.images{ { mIbl.prefilter, mIbl.prefilterSampler } }
 		},
 		{
 			.set = mTexSet,
 			.binding = 14,
-			.type = Render::DescriptorType::CombinedImageSampler,
+			
 			.images{ { mIbl.brdfLut, mIbl.lutSampler } }
 		} };
 		rhi->updateDescriptorSets(iblWrites);
@@ -265,13 +265,17 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 
 			const float invRes = 1.f / (std::max)(1.f, csm->resolution.x);
 			cascadeRenderData.cascade.x = invRes;
-			cascadeRenderData.cascade.y = (std::max)(cascade.texelSize.x, invRes);
+			// y carried max(texelSize.x, invRes), but texelSize is never filled for cascades and no
+			// shader read the slot -- it held a duplicate of x. It now carries the world size of one
+			// shadow-map texel, which is what the normal-offset bias needs.
+			cascadeRenderData.cascade.y = cascade.worldPerTexel;
 			// bias is authored in depth units. That means very different world distances per
 			// cascade (worldPerTexel and depthRange differ by ~40x between the near and far one),
 			// which is worth revisiting -- but converting it to texel-relative units changes the
 			// picture on both backends, so it is not a standalone fix.
 			cascadeRenderData.cascade.z = std::isfinite(cascade.bias) ? cascade.bias : 0.f;
 			cascadeRenderData.cascade.w = static_cast<float>(cascade.samples);
+			cascadeRenderData.cascadeExtra.x = cascade.depthRange;
 		}
 
 		const auto& levels = csm->shadowCascadeLevels;
@@ -356,7 +360,7 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		writes.push_back({
 			.set = mTexSet,
 			.binding = binding,
-			.type = Render::DescriptorType::CombinedImageSampler,
+			
 			.images{ {tex, samp} }
 		});
 	};
@@ -371,7 +375,7 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		writes.push_back({
 			.set = uboSet,
 			.binding = binding,
-			.type = Render::DescriptorType::UniformBuffer,
+			
 			.buffers{ {buf} }
 		});
 	};

@@ -1,4 +1,4 @@
-#include "VulkanRHI.h"
+﻿#include "VulkanRHI.h"
 
 #include <algorithm>
 #include <array>
@@ -233,7 +233,7 @@ namespace SFE::Render {
 			return;
 		}
 
-		auto* window = Engine::instance()->getWindow();
+		auto* window = hostWindow();
 		if (!window || !window->getWindow()) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI::init: window is not created");
 			return;
@@ -363,9 +363,19 @@ namespace SFE::Render {
 		m_freeRenderPasses.clear();
 
 		for (auto& fb : m_framebuffers) {
-			if (fb.live && fb.framebuffer != VK_NULL_HANDLE) {
+			if (!fb.live) {
+				continue;
+			}
+			if (fb.framebuffer != VK_NULL_HANDLE) {
 				vkDestroyFramebuffer(m_device, fb.framebuffer, nullptr);
 			}
+			// destroyFramebuffer frees these; this sweep used not to, so every framebuffer still alive
+			// at shutdown leaked one image view per pinned attachment layer and vkDestroyDevice named
+			// each of them.
+			for (VkImageView view : fb.ownedViews) {
+				vkDestroyImageView(m_device, view, nullptr);
+			}
+			fb.ownedViews.clear();
 		}
 		m_framebuffers.clear();
 		m_freeFramebuffers.clear();
@@ -506,7 +516,7 @@ namespace SFE::Render {
 	}
 
 	void VulkanRHI::createSurface() {
-		auto* glfwWindow = Engine::instance()->getWindow()->getWindow();
+		auto* glfwWindow = hostWindow() ? hostWindow()->getWindow() : nullptr;
 		if (glfwCreateWindowSurface(m_instance, glfwWindow, nullptr, &m_surface) != VK_SUCCESS) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: glfwCreateWindowSurface failed");
 		}
@@ -572,16 +582,26 @@ namespace SFE::Render {
 		if (supportedFeatures.multiDrawIndirect) {
 			deviceFeatures.multiDrawIndirect = VK_TRUE;
 		}
+		// A non-zero firstInstance inside an indirect record needs this; the direct vkCmdDraw path
+		// does not. Without it the drivers that honour it anyway do so as undefined behaviour, and
+		// the ones that do not draw the wrong instances with no diagnostic outside validation.
+		if (supportedFeatures.drawIndirectFirstInstance) {
+			deviceFeatures.drawIndirectFirstInstance = VK_TRUE;
+		}
 
 		VkPhysicalDeviceDepthClipControlFeaturesEXT depthClipControl{
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_CONTROL_FEATURES_EXT
 		};
-		VkPhysicalDeviceHostQueryResetFeatures hostQueryReset{
-			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES
+		// The 1.2 aggregate rather than the individual promoted structs: hostQueryReset lives in it,
+		// and so does samplerMirrorClampToEdge, which AddressMode::MirrorClampToEdge requires and which
+		// was previously used without being enabled. Chaining both the aggregate and a struct it
+		// promotes is illegal, so it has to be one or the other.
+		VkPhysicalDeviceVulkan12Features supported12{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
 		};
-		hostQueryReset.pNext = &depthClipControl;
+		supported12.pNext = &depthClipControl;
 		VkPhysicalDeviceFeatures2 features2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-		features2.pNext = &hostQueryReset;
+		features2.pNext = &supported12;
 		vkGetPhysicalDeviceFeatures2(m_physicalDevice, &features2);
 
 		if (!depthClipControl.depthClipControl) {
@@ -604,14 +624,15 @@ namespace SFE::Render {
 		depthClipControl.depthClipControl = VK_TRUE;
 		depthClipControl.pNext = nullptr;
 		m_negativeOneToOneDepth = true;
-		if (hostQueryReset.hostQueryReset) {
-			hostQueryReset.pNext = &depthClipControl;
-			createInfo.pNext = &hostQueryReset;
-			m_hostQueryReset = true;
-		}
-		else {
-			createInfo.pNext = &depthClipControl;
-		}
+		// Only the bits the device reported: asking for an unsupported feature fails device creation.
+		VkPhysicalDeviceVulkan12Features enabled12{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
+		};
+		enabled12.pNext = &depthClipControl;
+		enabled12.hostQueryReset = supported12.hostQueryReset;
+		enabled12.samplerMirrorClampToEdge = supported12.samplerMirrorClampToEdge;
+		m_hostQueryReset = supported12.hostQueryReset == VK_TRUE;
+		createInfo.pNext = &enabled12;
 
 		if (vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device) != VK_SUCCESS) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateDevice failed");
@@ -667,7 +688,7 @@ namespace SFE::Render {
 		const auto support = querySwapchainSupport(m_physicalDevice, m_surface);
 		const auto surfaceFormat = chooseSwapSurfaceFormat(support.formats);
 		const auto presentMode = chooseSwapPresentMode(support.presentModes);
-		const auto extent = chooseSwapExtent(support.capabilities, Engine::instance()->getWindow()->getWindow());
+		const auto extent = chooseSwapExtent(support.capabilities, hostWindow()->getWindow());
 
 		uint32_t imageCount = support.capabilities.minImageCount + 1;
 		if (support.capabilities.maxImageCount > 0 && imageCount > support.capabilities.maxImageCount) {
@@ -961,9 +982,9 @@ namespace SFE::Render {
 	void VulkanRHI::recreateSwapchain() {
 		int width = 0;
 		int height = 0;
-		glfwGetFramebufferSize(Engine::instance()->getWindow()->getWindow(), &width, &height);
+		glfwGetFramebufferSize(hostWindow()->getWindow(), &width, &height);
 		while (width == 0 || height == 0) {
-			glfwGetFramebufferSize(Engine::instance()->getWindow()->getWindow(), &width, &height);
+			glfwGetFramebufferSize(hostWindow()->getWindow(), &width, &height);
 			glfwWaitEvents();
 		}
 
@@ -1038,7 +1059,7 @@ namespace SFE::Render {
 
 		waitForInFlightFrame();
 
-		if (!Engine::instance()->presentToScreen()) {
+		if (!hostPresentsToScreen()) {
 			return false;
 		}
 
@@ -1120,6 +1141,23 @@ namespace SFE::Render {
 		m_frameWaited = false;
 	}
 
+	void VulkanRHI::finishPendingScene() {
+		if (!m_hasPendingScene || m_sceneFence == VK_NULL_HANDLE) {
+			return;
+		}
+		vkWaitForFences(m_device, 1, &m_sceneFence, VK_TRUE, UINT64_MAX);
+		if (auto* sceneList = getLive(m_commandLists, m_pendingSceneCmd.id)) {
+			if (sceneList->cmd != VK_NULL_HANDLE && sceneList->cmd != m_sceneCmds[0] && sceneList->cmd != m_sceneCmds[1]) {
+				vkFreeCommandBuffers(m_device, m_sceneCommandPool, 1, &sceneList->cmd);
+			}
+			sceneList->cmd = VK_NULL_HANDLE;
+			recycleResource(m_commandLists, m_freeCommandLists, m_pendingSceneCmd.id);
+		}
+		vkResetFences(m_device, 1, &m_sceneFence);
+		m_hasPendingScene = false;
+		m_pendingSceneCmd = {};
+	}
+
 	void VulkanRHI::drawFrame() {
 		if (m_framebufferResized) {
 			recreateSwapchain();
@@ -1127,19 +1165,7 @@ namespace SFE::Render {
 
 		vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
-		if (m_hasPendingScene) {
-			vkWaitForFences(m_device, 1, &m_sceneFence, VK_TRUE, UINT64_MAX);
-			if (auto* sceneList = getLive(m_commandLists, m_pendingSceneCmd.id)) {
-				if (sceneList->cmd != VK_NULL_HANDLE && sceneList->cmd != m_sceneCmds[0] && sceneList->cmd != m_sceneCmds[1]) {
-					vkFreeCommandBuffers(m_device, m_sceneCommandPool, 1, &sceneList->cmd);
-				}
-				sceneList->cmd = VK_NULL_HANDLE;
-				recycleResource(m_commandLists, m_freeCommandLists, m_pendingSceneCmd.id);
-			}
-			vkResetFences(m_device, 1, &m_sceneFence);
-			m_hasPendingScene = false;
-			m_pendingSceneCmd = {};
-		}
+		finishPendingScene();
 
 		uint32_t imageIndex = 0;
 		const VkResult acquireResult = vkAcquireNextImageKHR(

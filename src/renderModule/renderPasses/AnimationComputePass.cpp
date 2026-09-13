@@ -96,16 +96,9 @@ void AnimationComputePass::init(SystemsModule::RenderData&) {
 
 	ShaderModuleHandle cs = rhi->loadShader(ShaderStage::Compute, "shaders/animateBones.cs");
 	mPipeline = rhi->createComputePipeline({ cs, { mSetLayout } });
-
-	BufferDesc instDesc;
-	instDesc.size = sizeof(AnimPush) * 4096;
-	instDesc.usage = BufferUsage::Storage;
-	instDesc.cpuAccess = CpuAccess::Write;
-	instDesc.debugName = "AnimInstances";
-	mInstancesSSBO = rhi->createBuffer(instDesc);
 }
 
-const AnimationComputePass::GpuClip* AnimationComputePass::packClip(const AssetsModule::Animation* animation, const AssetsModule::Armature& armature) {
+AnimationComputePass::GpuClip* AnimationComputePass::packClip(const AssetsModule::Animation* animation, const AssetsModule::Armature& armature) {
 	if (!animation || armature.bones.empty()) {
 		return nullptr;
 	}
@@ -198,7 +191,7 @@ const AnimationComputePass::GpuClip* AnimationComputePass::packClip(const Assets
 void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK;
 
-	if (!mPipeline || !renderDataHandle.bonesSSBO || !mInstancesSSBO) {
+	if (!mPipeline || !renderDataHandle.bonesSSBO) {
 		return;
 	}
 
@@ -206,7 +199,7 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 	const float dt = Engine::instance()->getDeltaTime();
 
 	struct ClipBatch {
-		const GpuClip* clip = nullptr;
+		GpuClip* clip = nullptr;
 		std::vector<AnimPush> instances;
 	};
 	std::unordered_map<const AssetsModule::Animation*, ClipBatch> batches;
@@ -246,7 +239,7 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 			continue;
 		}
 
-		const auto* clip = packClip(anim, armatureComp->armature);
+		auto* clip = packClip(anim, armatureComp->armature);
 		if (!clip || clip->boneCount <= 0) {
 			continue;
 		}
@@ -273,16 +266,22 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 			continue;
 		}
 
-		const auto count = static_cast<uint32_t>(std::min(batch.instances.size(), size_t{ 4096 }));
-		rhi->cmdUpdateBuffer(cmd, mInstancesSSBO, 0, count * sizeof(AnimPush), batch.instances.data());
+		// Every instance: a cap left the rest with bones nobody wrote, which is uninitialised memory on
+		// Vulkan and a different pose on every run.
+		const auto count = static_cast<uint32_t>(batch.instances.size());
+		if (count > batch.clip->instanceCapacity) {
+			batch.clip->instanceCapacity = count + count / 2;
+			batch.clip->instances = createStorage(rhi, sizeof(AnimPush) * batch.clip->instanceCapacity, nullptr, "AnimInstances");
+		}
+		rhi->cmdUpdateBuffer(cmd, batch.clip->instances, 0, count * sizeof(AnimPush), batch.instances.data());
 		rhi->updateDescriptorSets({
-			{ mSet, 20, DescriptorType::StorageBuffer, {{ batch.clip->boneDescs }} },
-			{ mSet, 21, DescriptorType::StorageBuffer, {{ batch.clip->posKeys }} },
-			{ mSet, 22, DescriptorType::StorageBuffer, {{ batch.clip->rotKeys }} },
-			{ mSet, 23, DescriptorType::StorageBuffer, {{ batch.clip->sclKeys }} },
-			{ mSet, 24, DescriptorType::StorageBuffer, {{ batch.clip->order }} },
-			{ mSet, 25, DescriptorType::StorageBuffer, {{ mInstancesSSBO }} },
-			{ mSet, 2,  DescriptorType::StorageBuffer, {{ renderDataHandle.bonesSSBO }} },
+			{ mSet, 20, {{ batch.clip->boneDescs }} },
+			{ mSet, 21, {{ batch.clip->posKeys }} },
+			{ mSet, 22, {{ batch.clip->rotKeys }} },
+			{ mSet, 23, {{ batch.clip->sclKeys }} },
+			{ mSet, 24, {{ batch.clip->order }} },
+			{ mSet, 25, {{ batch.clip->instances }} },
+			{ mSet, 2,  {{ renderDataHandle.bonesSSBO }} },
 		});
 		rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
 		rhi->cmdDispatch(cmd, count, 1, 1);

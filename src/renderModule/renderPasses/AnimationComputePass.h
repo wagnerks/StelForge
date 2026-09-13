@@ -25,15 +25,18 @@ namespace SFE::Render::RenderPasses {
 			BufferHandle rotKeys;
 			BufferHandle sclKeys;
 			BufferHandle order;
+			// Per clip: cmdUpdateBuffer writes at the call, so two clips dispatched in one list must not
+			// share an instance buffer -- every dispatch would read the last clip's instances.
+			BufferHandle instances;
+			size_t instanceCapacity = 0;
 			int boneCount = 0;
 		};
 
-		const GpuClip* packClip(const AssetsModule::Animation* animation, const AssetsModule::Armature& armature);
+		GpuClip* packClip(const AssetsModule::Animation* animation, const AssetsModule::Armature& armature);
 
 		PipelineHandle mPipeline{};
 		DescriptorSetLayoutHandle mSetLayout{};
 		DescriptorSetHandle mSet{};
-		BufferHandle mInstancesSSBO{};
 		std::unordered_map<const AssetsModule::Animation*, GpuClip> mClips;
 	};
 

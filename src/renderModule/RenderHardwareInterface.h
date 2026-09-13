@@ -174,7 +174,10 @@ namespace SFE::Render
 
 	enum class AttachmentStoreOp : uint8_t { Store, DontCare };
 
-	enum class PrimitiveTopology : uint8_t { Triangles, TriangleStrip, Lines, Points, LineLoop, Patches };
+	// LineStrip rather than a line loop: Vulkan has no loop topology, so the closing segment is the
+	// caller's job -- repeat the first vertex. The enum used to carry LineLoop, which OpenGL honoured
+	// and Vulkan silently downgraded to a strip.
+	enum class PrimitiveTopology : uint8_t { Triangles, TriangleStrip, Lines, Points, LineStrip, Patches };
 
 	enum class CullMode : uint8_t { None, Front, Back };
 
@@ -409,10 +412,13 @@ namespace SFE::Render
 		SamplerHandle  sampler;
 	};
 
+	// No type here: the set's layout fixes one DescriptorType per binding, and a binding number appears
+	// at most once in a layout, so (set, binding) already names the descriptor. Carrying a second copy
+	// of the type only allowed the caller to contradict the layout -- which OpenGL silently ignored and
+	// Vulkan handed to the driver, where it read pImageInfo through a buffer descriptor and faulted.
 	struct WriteDescriptor {
 		DescriptorSetHandle set; // in which set to write
 		uint32_t            binding = 0; // binding in shader layout
-		DescriptorType      type;
 
 		std::vector<DescriptorBufferInfo> buffers;
 		std::vector<DescriptorImageInfo>  images;
@@ -429,6 +435,36 @@ namespace SFE::Render
 		std::vector<DescriptorSetLayoutBinding> bindings;
 	};
 
+	// One binding number, one descriptor. OpenGL would tolerate a repeat, because there an image and a
+	// buffer land in separate namespaces, but Vulkan cannot express it inside a set and no shader or
+	// layout in this engine asks for it -- every one keeps its numbers distinct and puts images and
+	// buffers in separate sets.
+	inline bool descriptorLayoutHasDuplicateBinding(const DescriptorSetLayoutDesc& desc) {
+		for (size_t i = 0; i < desc.bindings.size(); ++i) {
+			for (size_t j = i + 1; j < desc.bindings.size(); ++j) {
+				if (desc.bindings[i].binding == desc.bindings[j].binding) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	class Window;
+
+	// Everything the RHI needs from whoever owns it. It used to call Engine::instance() for these
+	// three things, which meant a backend could not be created without a whole engine standing
+	// behind it, and that is what made the RHI untestable on its own. The owner implements this;
+	// a test implements it with a stub and no engine at all.
+	class RhiHost {
+	public:
+		virtual ~RhiHost() = default;
+		// Null when there is nothing to present to: offscreen rendering, tests.
+		virtual Window* window() const = 0;
+		virtual bool presentToScreen() const = 0;
+		virtual bool publishEditorDisplay() const = 0;
+	};
+
 	class RenderHardwareInterface {
 	public:
 		RenderHardwareInterface(const RenderHardwareInterface& other) = delete;
@@ -439,16 +475,16 @@ namespace SFE::Render
 		RenderHardwareInterface() = default;
 		virtual ~RenderHardwareInterface() = default;
 
+		// Set before init(). Without a host the RHI runs headless: it presents nothing and reports
+		// no window, which is exactly what an offscreen test wants.
+		void setHost(RhiHost* host) { m_host = host; }
+		RhiHost* host() const { return m_host; }
+
 		virtual void init() = 0;
 		virtual void cleanup() = 0;
 		virtual void waitIdle() {}
 
 		virtual GraphicsBackend backend() const { return GraphicsBackend::OpenGL; }
-		virtual bool supportsFullPipeline() const { return true; }
-		virtual bool supportsGpuResources() const { return true; }
-		virtual bool supportsGeometryPass() const { return supportsFullPipeline(); }
-		// When supportsFullPipeline() is false, still allow a subset of RENDER_PASSES by name.
-		virtual bool supportsRenderPass(const char* name) const;
 		virtual void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) { (void)texture; (void)sampler; }
 		virtual void beginFrame() {}
 		virtual uint32_t frameInFlight() const { return 0; }
@@ -511,7 +547,8 @@ namespace SFE::Render
 		virtual void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY = 1, uint32_t groupCountZ = 1) = 0;
 
 		virtual void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask = BlitMask::Color, BlitFilter filter = BlitFilter::Nearest) = 0;
-		// Scissor is top-left origin (Vulkan / ImGui). OpenGL flips Y using the current pass height.
+		// Scissor is top-left ImGui/display origin. Both backends flip Y: the RT stores
+		// OpenGL-convention +Y-up (Vulkan present blit / readback then un-flips).
 		virtual void cmdSetScissor(CommandListHandle cmd, int32_t x, int32_t y, uint32_t width, uint32_t height) {
 			(void)cmd;
 			(void)x;
@@ -519,18 +556,15 @@ namespace SFE::Render
 			(void)width;
 			(void)height;
 		}
-		virtual void cmdSetPolygonFillMode(CommandListHandle cmd, PolygonFillMode mode) {
-			(void)cmd;
-			(void)mode;
-		}
-		virtual void cmdHostCallback(CommandListHandle cmd, std::function<void()> callback) {
-			(void)cmd;
-			(void)callback;
-		}
 		virtual void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) = 0;
+		// Writes the data at the call, not when the list runs: every draw in the list reads the new
+		// contents, including draws recorded before this call. Write a frame's data before the draws that
+		// read it, and never reuse one buffer region for two different draws in the same list.
 		virtual void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) = 0;
 
-		virtual void submit(const CommandListHandle* lists, uint32_t count) = 0;
+		// One list per call. Submit a list before beginning the next one: Vulkan records every list of a
+		// frame into the same command buffer, so a second open list overwrites the first.
+		virtual void submit(CommandListHandle list) = 0;
 		virtual void present() = 0;
 		virtual double lastGpuMs() const { return 0.0; }
 		virtual void publishDisplay(FramebufferHandle src) { (void)src; }
@@ -570,5 +604,13 @@ namespace SFE::Render
 			static_assert(std::is_trivially_copyable_v<T>);
 			cmdUpdateBuffer(cmd, handle, offset, sizeof(T), static_cast<const void*>(&data));
 		}
+	protected:
+		Window* hostWindow() const { return m_host ? m_host->window() : nullptr; }
+		bool hostPresentsToScreen() const { return m_host && m_host->presentToScreen(); }
+		bool hostPublishesEditorDisplay() const { return m_host && m_host->publishEditorDisplay(); }
+
+	private:
+		RhiHost* m_host = nullptr;
+
 	};
 }

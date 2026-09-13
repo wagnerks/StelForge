@@ -1,4 +1,4 @@
-#include "VulkanRHI.h"
+﻿#include "VulkanRHI.h"
 
 #include <algorithm>
 #include <cstring>
@@ -103,8 +103,14 @@ namespace SFE::Render {
 		recycleSceneList(m_inflightSceneCmd[m_currentFrame]);
 		m_inflightSceneCmd[m_currentFrame] = {};
 		collectGpuTimestamp();
+		if (auto& retired = m_retiredSets[m_currentFrame]; !retired.empty()) {
+			vkFreeDescriptorSets(m_device, m_descriptorPool, static_cast<uint32_t>(retired.size()), retired.data());
+			retired.clear();
+		}
 		if (m_timestampPool != VK_NULL_HANDLE) {
 			vkResetQueryPool(m_device, m_timestampPool, m_currentFrame * kTimestampsPerFrame, kTimestampsPerFrame);
+			m_timestampStartWritten[m_currentFrame] = false;
+			m_timestampEndWritten[m_currentFrame] = false;
 		}
 		m_uploadRingUsed = 0;
 		m_uploadOps.clear();
@@ -275,7 +281,6 @@ namespace SFE::Render {
 			}
 			vmaDestroyBuffer(m_allocator, buffer.buffer, buffer.allocation);
 		}
-		buffer = {};
 	}
 
 	BufferHandle VulkanRHI::createBuffer(const BufferDesc& desc, const void* initialData) {
@@ -295,7 +300,10 @@ namespace SFE::Render {
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		VmaAllocationCreateInfo allocInfo{};
-		const bool hostMapped = !gpuStorage && (desc.cpuAccess == CpuAccess::Write || desc.cpuAccess == CpuAccess::ReadWrite);
+		// Read counts as host access too. Leaving it out put a buffer the caller declared it would read
+		// into device-local memory, where vmaMapMemory cannot reach it -- so the one CpuAccess value
+		// that names a GPU-to-CPU transfer was the one that could not be mapped.
+		const bool hostMapped = !gpuStorage && desc.cpuAccess != CpuAccess::None;
 		if (gpuStorage) {
 			allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 			resource.deviceLocal = true;
@@ -330,27 +338,26 @@ namespace SFE::Render {
 		BufferHandle handle{};
 		handle.id = storeResource(m_buffers, m_freeBuffers, std::move(resource));
 
-		if (initialData) {
-			auto* stored = getLive(m_buffers, handle.id);
-			if (stored && stored->mapped) {
+		// Without initial data the buffer is zeroed, as OpenGL drivers hand one back. A pass that read one
+		// before anything wrote it -- bones of a frame slot not yet computed -- drew uninitialised memory,
+		// different on every run.
+		if (auto* stored = getLive(m_buffers, handle.id); stored && stored->mapped) {
+			if (initialData) {
 				std::memcpy(stored->mapped, initialData, desc.size);
-				if (stored->allocation != VK_NULL_HANDLE) {
-					vmaFlushAllocation(m_allocator, stored->allocation, 0, desc.size);
-				}
 			}
-			else if (stored && stored->buffer) {
-				VmaAllocation stagingMemory = VK_NULL_HANDLE;
-				const VkBuffer staging = createStagingBuffer(desc.size, stagingMemory, initialData);
-				const VkBuffer dst = stored->buffer;
-				executeImmediate([&](VkCommandBuffer cmd) {
-					VkBufferCopy copyRegion{};
-					copyRegion.srcOffset = 0;
-					copyRegion.dstOffset = 0;
-					copyRegion.size = desc.size;
-					vkCmdCopyBuffer(cmd, staging, dst, 1, &copyRegion);
-				});
-				destroyStagingBuffer(staging, stagingMemory);
+			else {
+				std::memset(stored->mapped, 0, desc.size);
 			}
+			if (stored->allocation != VK_NULL_HANDLE) {
+				vmaFlushAllocation(m_allocator, stored->allocation, 0, desc.size);
+			}
+		}
+		else if (stored && stored->buffer) {
+			std::vector<uint8_t> zeros;
+			if (!initialData) {
+				zeros.assign(desc.size, 0);
+			}
+			copyThroughStaging(stored->buffer, 0, desc.size, initialData ? initialData : zeros.data());
 		}
 		return handle;
 	}
@@ -388,6 +395,10 @@ namespace SFE::Render {
 			return;
 		}
 
+		copyThroughStaging(buffer->buffer, offset, size, data);
+	}
+
+	void VulkanRHI::copyThroughStaging(const VkBuffer dst, const size_t offset, const size_t size, const void* data) {
 		VmaAllocation stagingMemory = VK_NULL_HANDLE;
 		const VkBuffer staging = createStagingBuffer(size, stagingMemory, data);
 		executeImmediate([&](VkCommandBuffer cmd) {
@@ -395,7 +406,7 @@ namespace SFE::Render {
 			copyRegion.srcOffset = 0;
 			copyRegion.dstOffset = offset;
 			copyRegion.size = size;
-			vkCmdCopyBuffer(cmd, staging, buffer->buffer, 1, &copyRegion);
+			vkCmdCopyBuffer(cmd, staging, dst, 1, &copyRegion);
 		});
 		destroyStagingBuffer(staging, stagingMemory);
 	}
@@ -639,7 +650,8 @@ namespace SFE::Render {
 		imageInfo.format = out.format;
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageInfo.usage = toVkImageUsage(desc.usage);
+		// Transfer destination always: a texture created without data is cleared to zero below.
+		imageInfo.usage = toVkImageUsage(desc.usage) | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 		imageInfo.samples = toVkSampleCount(desc.sampleCount);
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -684,13 +696,33 @@ namespace SFE::Render {
 			destroyStagingBuffer(staging, stagingMemory);
 		}
 		else {
-			const VkImageLayout targetLayout = (desc.usage & TextureUsage::DepthStencilAttachment)
-				? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-				: ((desc.usage & TextureUsage::ColorAttachment)
-					? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-					: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			// Render passes leave their attachments in SHADER_READ_ONLY, so a sampled texture rests there from
+			// the start. Otherwise one read before anything renders into it -- a history buffer on its first
+			// frame -- is sampled while still in COLOR_ATTACHMENT.
+			const VkImageLayout targetLayout = (desc.usage & TextureUsage::Sampled)
+				? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+				: (desc.usage & TextureUsage::DepthStencilAttachment)
+					? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+					: ((desc.usage & TextureUsage::ColorAttachment)
+						? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+						: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			// Zero, as OpenGL drivers hand it back. Uninitialised memory read by a pass before anything
+			// rendered into it made early frames differ between runs, and TAA kept the difference.
 			executeImmediate([&](VkCommandBuffer cmd) {
-				transitionImageLayout(cmd, out.image, out.format, VK_IMAGE_LAYOUT_UNDEFINED, targetLayout, arrayLayers, mipLevels);
+				transitionImageLayout(cmd, out.image, out.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, arrayLayers, mipLevels);
+				VkImageSubresourceRange range{};
+				range.aspectMask = aspectMaskForFormat(out.format);
+				range.levelCount = mipLevels;
+				range.layerCount = arrayLayers;
+				if (range.aspectMask & VK_IMAGE_ASPECT_COLOR_BIT) {
+					const VkClearColorValue zero{};
+					vkCmdClearColorImage(cmd, out.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range);
+				}
+				else {
+					const VkClearDepthStencilValue zero{};
+					vkCmdClearDepthStencilImage(cmd, out.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range);
+				}
+				transitionImageLayout(cmd, out.image, out.format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, targetLayout, arrayLayers, mipLevels);
 			});
 			out.layout = targetLayout;
 		}
@@ -703,7 +735,6 @@ namespace SFE::Render {
 		if (texture.image != VK_NULL_HANDLE) {
 			vmaDestroyImage(m_allocator, texture.image, texture.allocation);
 		}
-		texture = {};
 	}
 
 	TextureHandle VulkanRHI::createTexture(const TextureDesc& desc, const void* data) {
@@ -897,34 +928,20 @@ namespace SFE::Render {
 			return vkCreateDescriptorSetLayout(m_device, &layoutInfo, nullptr, &out) == VK_SUCCESS;
 		};
 
+		// A repeated binding number used to be answered by splitting the layout into two Vulkan sets,
+		// images in one and buffers in the other, which silently shifted the set index of every layout
+		// after it: a shader written SFE_SET(1, ...) was then right on OpenGL and wrong on Vulkan.
+		// Nothing ever used it -- every layout and every shader here keeps its binding numbers distinct
+		// -- so the shape is rejected instead of quietly reinterpreted.
+		if (descriptorLayoutHasDuplicateBinding(desc)) {
+			LogsModule::Logger::LOG_ERROR(
+				"createDescriptorSetLayout: a binding number is declared twice; one binding, one descriptor");
+			return {};
+		}
+
 		VkDescriptorSetLayoutResource resource{};
 		resource.desc = desc;
-		resource.split = descriptorLayoutNeedsSplit(desc);
-
-		if (resource.split) {
-			std::vector<DescriptorSetLayoutBinding> images;
-			std::vector<DescriptorSetLayoutBinding> buffers;
-			images.reserve(desc.bindings.size());
-			buffers.reserve(desc.bindings.size());
-			for (const auto& binding : desc.bindings) {
-				if (isImageDescriptor(binding.type)) {
-					images.push_back(binding);
-				}
-				else {
-					buffers.push_back(binding);
-				}
-			}
-			if (!makeVkLayout(images, resource.layout) || !makeVkLayout(buffers, resource.bufferLayout)) {
-				if (resource.layout != VK_NULL_HANDLE) {
-					vkDestroyDescriptorSetLayout(m_device, resource.layout, nullptr);
-				}
-				if (resource.bufferLayout != VK_NULL_HANDLE) {
-					vkDestroyDescriptorSetLayout(m_device, resource.bufferLayout, nullptr);
-				}
-				return {};
-			}
-		}
-		else if (!makeVkLayout(desc.bindings, resource.layout)) {
+		if (!makeVkLayout(desc.bindings, resource.layout)) {
 			return {};
 		}
 
@@ -938,9 +955,6 @@ namespace SFE::Render {
 		if (auto* layoutObj = getLive(m_descriptorSetLayouts, layout.id)) {
 			if (layoutObj->layout != VK_NULL_HANDLE) {
 				vkDestroyDescriptorSetLayout(m_device, layoutObj->layout, nullptr);
-			}
-			if (layoutObj->bufferLayout != VK_NULL_HANDLE) {
-				vkDestroyDescriptorSetLayout(m_device, layoutObj->bufferLayout, nullptr);
 			}
 			recycleResource(m_descriptorSetLayouts, m_freeDescriptorSetLayouts, layout.id);
 		}
@@ -956,19 +970,16 @@ namespace SFE::Render {
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		allocInfo.descriptorPool = m_descriptorPool;
 
-		VkDescriptorSetLayout layouts[2] = { layoutObj->layout, layoutObj->bufferLayout };
-		const uint32_t setCount = layoutObj->split ? 2u : 1u;
-		allocInfo.descriptorSetCount = setCount;
-		allocInfo.pSetLayouts = layouts;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &layoutObj->layout;
 
-		VkDescriptorSet allocated[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+		VkDescriptorSet allocated = VK_NULL_HANDLE;
 		VkDescriptorSetResource resource{};
 		resource.layoutHandle = layout;
-		if (vkAllocateDescriptorSets(m_device, &allocInfo, allocated) != VK_SUCCESS) {
+		if (vkAllocateDescriptorSets(m_device, &allocInfo, &allocated) != VK_SUCCESS) {
 			return {};
 		}
-		resource.set = allocated[0];
-		resource.bufferSet = layoutObj->split ? allocated[1] : VK_NULL_HANDLE;
+		resource.set = allocated;
 		resource.live = true;
 		DescriptorSetHandle handle{};
 		handle.id = storeResource(m_descriptorSets, m_freeDescriptorSets, std::move(resource));
@@ -977,85 +988,181 @@ namespace SFE::Render {
 
 	void VulkanRHI::freeDescriptorSet(const DescriptorSetHandle set) {
 		if (auto* setObj = getLive(m_descriptorSets, set.id)) {
-			VkDescriptorSet toFree[2] = { setObj->set, setObj->bufferSet };
-			uint32_t count = 0;
-			if (toFree[0] != VK_NULL_HANDLE) {
-				++count;
-			}
-			if (toFree[1] != VK_NULL_HANDLE) {
-				if (count == 0) {
-					toFree[0] = toFree[1];
-				}
-				++count;
-			}
-			if (count > 0) {
-				vkFreeDescriptorSets(m_device, m_descriptorPool, count, toFree);
+			if (setObj->set != VK_NULL_HANDLE) {
+				vkFreeDescriptorSets(m_device, m_descriptorPool, 1, &setObj->set);
 			}
 			recycleResource(m_descriptorSets, m_freeDescriptorSets, set.id);
 		}
+	}
+
+	bool VulkanRHI::boundInUnfinishedList(const VkDescriptorSet set) const {
+		const auto binds = [&](const CommandListHandle handle) {
+			const auto* list = getLive(m_commandLists, handle.id);
+			return list && std::find(list->boundSets.begin(), list->boundSets.end(), set) != list->boundSets.end();
+		};
+		if ((m_openCommandList && binds(m_openCommandList)) || (m_hasPendingScene && binds(m_pendingSceneCmd))) {
+			return true;
+		}
+		for (const auto& inflight : m_inflightSceneCmd) {
+			if (inflight && binds(inflight)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Writing a set that is bound in an unfinished command buffer invalidates that buffer. Give the handle
+	// a fresh copy instead: binds already recorded keep the old contents, later binds see the write --
+	// what OpenGL does, since it captures a set's contents when the bind is recorded.
+	void VulkanRHI::detachBoundSet(VkDescriptorSetResource& set, const VkDescriptorSetLayoutResource& layout) {
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = m_descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &layout.layout;
+		VkDescriptorSet copy = VK_NULL_HANDLE;
+		if (vkAllocateDescriptorSets(m_device, &allocInfo, &copy) != VK_SUCCESS) {
+			LogsModule::Logger::LOG_ERROR("VulkanRHI: descriptor pool exhausted, writing a bound set in place");
+			return;
+		}
+
+		std::vector<VkCopyDescriptorSet> copies;
+		copies.reserve(layout.desc.bindings.size());
+		for (const auto& binding : layout.desc.bindings) {
+			VkCopyDescriptorSet c{};
+			c.sType = VK_STRUCTURE_TYPE_COPY_DESCRIPTOR_SET;
+			c.srcSet = set.set;
+			c.srcBinding = binding.binding;
+			c.dstSet = copy;
+			c.dstBinding = binding.binding;
+			c.descriptorCount = (std::max)(1u, binding.count);
+			copies.push_back(c);
+		}
+		vkUpdateDescriptorSets(m_device, 0, nullptr, static_cast<uint32_t>(copies.size()), copies.data());
+
+		m_retiredSets[m_currentFrame].push_back(set.set);
+		set.set = copy;
 	}
 
 	void VulkanRHI::updateDescriptorSets(const std::vector<WriteDescriptor>& writes) {
 		std::vector<VkWriteDescriptorSet> vkWrites;
 		std::vector<VkDescriptorBufferInfo> bufferInfos;
 		std::vector<VkDescriptorImageInfo> imageInfos;
+		// Where each accepted write's infos begin. The pointers are filled in only after every
+		// push_back is done: an array descriptor pushes more than one info, and taking the address of
+		// an element while the vector can still grow dangles the moment it reallocates.
+		struct InfoSpan {
+			size_t first = 0;
+			bool images = false;
+		};
+		std::vector<InfoSpan> spans;
 		vkWrites.reserve(writes.size());
-		bufferInfos.reserve(writes.size() * 2);
-		imageInfos.reserve(writes.size());
+		spans.reserve(writes.size());
 
 		for (const auto& write : writes) {
-			const auto* setObj = getLive(m_descriptorSets, write.set.id);
+			auto* setObj = getLive(m_descriptorSets, write.set.id);
 			if (!setObj) {
 				continue;
+			}
+
+			// The layout fixes the descriptor type at every binding. Passing the caller's type straight
+			// through meant a write that disagreed with the layout reached the driver, which then read
+			// pImageInfo where the layout promised a buffer and took an access violation -- the same
+			// input that OpenGL used to accept and silently ignore.
+			const auto* layoutObj = getLive(m_descriptorSetLayouts, setObj->layoutHandle.id);
+			if (!layoutObj) {
+				continue;
+			}
+			// The layout defines the binding's type, and binding numbers are unique within it.
+			const DescriptorSetLayoutBinding* declared = nullptr;
+			for (const auto& b : layoutObj->desc.bindings) {
+				if (b.binding == write.binding) {
+					declared = &b;
+					break;
+				}
+			}
+			if (!declared) {
+				LogsModule::Logger::LOG_ERROR("updateDescriptorSets: set has no binding %u", write.binding);
+				continue;
+			}
+			const DescriptorType type = declared->type;
+			if (boundInUnfinishedList(setObj->set)) {
+				detachBoundSet(*setObj, *layoutObj);
 			}
 
 			VkWriteDescriptorSet vkWrite{};
 			vkWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			vkWrite.dstSet = setObj->set;
 			vkWrite.dstBinding = write.binding;
-			vkWrite.descriptorType = toVkDescriptorType(write.type);
-			vkWrite.descriptorCount = 1;
+			vkWrite.descriptorType = toVkDescriptorType(type);
 
-			if (const auto* layoutObj = getLive(m_descriptorSetLayouts, setObj->layoutHandle.id)) {
-				if (layoutObj->split && !isImageDescriptor(write.type) && setObj->bufferSet != VK_NULL_HANDLE) {
-					vkWrite.dstSet = setObj->bufferSet;
-				}
-			}
 
-			if (write.type == DescriptorType::CombinedImageSampler) {
+			// The whole array in one write, element 0 upwards -- WriteDescriptor has no
+			// dstArrayElement, so a partial update is not expressible. A dead handle anywhere rejects
+			// the write rather than shortening it, since a short array would silently shift every
+			// element after the gap and leave the tail never written, which is a device loss on the
+			// first draw that reads it.
+			if (type == DescriptorType::CombinedImageSampler) {
 				if (write.images.empty()) {
 					continue;
 				}
-				const auto& image = write.images.front();
-				const auto* tex = getLive(m_textures, image.texture.id);
-				const auto* samp = getLive(m_samplers, image.sampler.id);
-				if (!tex) {
+				const size_t first = imageInfos.size();
+				bool ok = true;
+				for (const auto& image : write.images) {
+					const auto* tex = getLive(m_textures, image.texture.id);
+					if (!tex) {
+						ok = false;
+						break;
+					}
+					const auto* samp = getLive(m_samplers, image.sampler.id);
+					VkDescriptorImageInfo info{};
+					info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+					info.imageView = tex->view;
+					info.sampler = samp ? samp->sampler : VK_NULL_HANDLE;
+					imageInfos.push_back(info);
+				}
+				if (!ok) {
+					imageInfos.resize(first);
 					continue;
 				}
-				VkDescriptorImageInfo info{};
-				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				info.imageView = tex->view;
-				info.sampler = samp ? samp->sampler : VK_NULL_HANDLE;
-				imageInfos.push_back(info);
-				vkWrite.pImageInfo = &imageInfos.back();
+				vkWrite.descriptorCount = static_cast<uint32_t>(imageInfos.size() - first);
+				spans.push_back({ first, true });
 			}
 			else {
 				if (write.buffers.empty()) {
 					continue;
 				}
-				const auto& buf = write.buffers.front();
-				const auto* buffer = getLive(m_buffers, buf.buffer.id);
-				if (!buffer) {
+				const size_t first = bufferInfos.size();
+				bool ok = true;
+				for (const auto& buf : write.buffers) {
+					const auto* buffer = getLive(m_buffers, buf.buffer.id);
+					if (!buffer) {
+						ok = false;
+						break;
+					}
+					VkDescriptorBufferInfo info{};
+					info.buffer = buffer->buffer;
+					info.offset = buf.offset;
+					info.range = buf.range > 0 ? buf.range : buffer->desc.size;
+					bufferInfos.push_back(info);
+				}
+				if (!ok) {
+					bufferInfos.resize(first);
 					continue;
 				}
-				VkDescriptorBufferInfo info{};
-				info.buffer = buffer->buffer;
-				info.offset = buf.offset;
-				info.range = buf.range > 0 ? buf.range : buffer->desc.size;
-				bufferInfos.push_back(info);
-				vkWrite.pBufferInfo = &bufferInfos.back();
+				vkWrite.descriptorCount = static_cast<uint32_t>(bufferInfos.size() - first);
+				spans.push_back({ first, false });
 			}
 			vkWrites.push_back(vkWrite);
+		}
+
+		for (size_t i = 0; i < vkWrites.size(); ++i) {
+			if (spans[i].images) {
+				vkWrites[i].pImageInfo = imageInfos.data() + spans[i].first;
+			}
+			else {
+				vkWrites[i].pBufferInfo = bufferInfos.data() + spans[i].first;
+			}
 		}
 
 		if (!vkWrites.empty()) {
@@ -1065,6 +1172,12 @@ namespace SFE::Render {
 
 	CommandListHandle VulkanRHI::beginCommandList(const CommandListType type) {
 		prepareInlinePresent();
+		// Every list of a frame reuses m_sceneCmds[m_currentFrame]; resetting it while the previous
+		// submit still executes is undefined.
+		finishPendingScene();
+		if (m_openCommandList) {
+			LogsModule::Logger::LOG_ERROR("beginCommandList: the previous command list was never submitted");
+		}
 
 		VkRecordedCommandList list{};
 		list.type = type;
@@ -1093,13 +1206,15 @@ namespace SFE::Render {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkBeginCommandBuffer failed");
 		}
 		flushBufferUploads(list.cmd);
-		if (m_timestampPool != VK_NULL_HANDLE) {
+		if (m_timestampPool != VK_NULL_HANDLE && !m_timestampStartWritten[m_currentFrame]) {
 			vkCmdWriteTimestamp(list.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 				m_timestampPool, m_currentFrame * kTimestampsPerFrame);
+			m_timestampStartWritten[m_currentFrame] = true;
 		}
 
 		CommandListHandle handle{};
 		handle.id = storeResource(m_commandLists, m_freeCommandLists, std::move(list));
+		m_openCommandList = handle;
 		return handle;
 	}
 
@@ -1136,7 +1251,7 @@ namespace SFE::Render {
 					}
 					list->activeFramebuffer = {};
 				}
-				if (Engine::instance()->publishEditorDisplay() && m_presentBlitTexture) {
+				if (hostPublishesEditorDisplay() && m_presentBlitTexture) {
 					if (auto* srcTex = getLive(m_textures, m_presentBlitTexture.id)) {
 						const uint32_t w = (std::max)(1u, srcTex->desc.width);
 						const uint32_t h = (std::max)(1u, srcTex->desc.height);
@@ -1170,6 +1285,12 @@ namespace SFE::Render {
 					m_inlinePresent = true;
 				}
 				if (m_timestampPool != VK_NULL_HANDLE) {
+					// A query already written this frame must be reset before it is written again; the
+					// earlier list has finished, because beginCommandList waits for it.
+					if (m_timestampEndWritten[m_currentFrame]) {
+						vkResetQueryPool(m_device, m_timestampPool, m_currentFrame * kTimestampsPerFrame + 1, 1);
+					}
+					m_timestampEndWritten[m_currentFrame] = true;
 					vkCmdWriteTimestamp(list->cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
 						m_timestampPool, m_currentFrame * kTimestampsPerFrame + 1);
 					m_timestampPending[m_currentFrame] = true;
@@ -1201,17 +1322,17 @@ namespace SFE::Render {
 			0, nullptr);
 	}
 
-	void VulkanRHI::submit(const CommandListHandle* lists, const uint32_t count) {
-		if (!lists || count == 0) {
-			return;
+	void VulkanRHI::submit(const CommandListHandle handle) {
+		if (handle.id == m_openCommandList.id) {
+			m_openCommandList = {};
 		}
-		auto* list = getLive(m_commandLists, lists[0].id);
+		auto* list = getLive(m_commandLists, handle.id);
 		if (!list || list->cmd == VK_NULL_HANDLE) {
 			return;
 		}
 
 		if (m_inlinePresent) {
-			m_inflightSceneCmd[m_currentFrame] = lists[0];
+			m_inflightSceneCmd[m_currentFrame] = handle;
 			submitInlinePresent(list->cmd);
 			list->submitted = true;
 			return;
@@ -1230,30 +1351,28 @@ namespace SFE::Render {
 		}
 
 		m_hasPendingScene = true;
-		m_pendingSceneCmd = lists[0];
+		m_pendingSceneCmd = handle;
 		list->submitted = true;
 	}
 
 	void VulkanRHI::cmdUpdateBuffer(const CommandListHandle cmd, const BufferHandle handle,
 		const size_t offset, const size_t size, const void* data)
 	{
-		auto* list = getLive(m_commandLists, cmd.id);
+		const auto* list = getLive(m_commandLists, cmd.id);
 		const auto* buffer = getLive(m_buffers, handle.id);
-		if (!list || !buffer || !data || size == 0) {
+		if (!list || !list->recording || !buffer || !data || size == 0) {
+			return;
+		}
+		if (offset + size > buffer->desc.size) {
+			LogsModule::Logger::LOG_ERROR("VulkanRHI: cmdUpdateBuffer OOB offset=%zu size=%zu cap=%zu",
+				offset, size, static_cast<size_t>(buffer->desc.size));
 			return;
 		}
 		if (buffer->mapped) {
 			updateBuffer(handle, offset, size, data);
 			return;
 		}
-		if (list->activeFramebuffer) {
-			return;
-		}
-		if (size <= 65536) {
-			vkCmdUpdateBuffer(list->cmd, buffer->buffer, offset, size, data);
-		}
-		else {
-			updateBuffer(handle, offset, size, data);
-		}
+		// Not queued like updateBuffer does for device-local buffers: that lands in the next list.
+		copyThroughStaging(buffer->buffer, offset, size, data);
 	}
 }

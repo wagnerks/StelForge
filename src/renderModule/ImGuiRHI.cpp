@@ -157,7 +157,7 @@ namespace SFE::Render {
 			{
 				.set = mFontSet,
 				.binding = 0,
-				.type = DescriptorType::CombinedImageSampler,
+				
 				.images = { { mFontTex, mSampler } }
 			}
 		});
@@ -203,7 +203,7 @@ namespace SFE::Render {
 			{
 				.set = set,
 				.binding = 0,
-				.type = DescriptorType::CombinedImageSampler,
+				
 				.images = { { texture, mSampler } }
 			}
 		});

@@ -105,6 +105,19 @@ namespace SFE {
 		Render::Window* mWindow = nullptr;
 		inline static std::thread::id mMainThreadID;
 
+		// The RHI asks its host for the window and the present flags instead of reaching for this
+		// singleton. This is the engine answering; a test answers with its own stub.
+		class RhiHostAdapter final : public Render::RhiHost {
+		public:
+			explicit RhiHostAdapter(Engine* engine) : mEngine(engine) {}
+			Render::Window* window() const override { return mEngine->getWindow(); }
+			bool presentToScreen() const override { return mEngine->presentToScreen(); }
+			bool publishEditorDisplay() const override { return mEngine->publishEditorDisplay(); }
+		private:
+			Engine* mEngine = nullptr;
+		};
+		RhiHostAdapter mRhiHost{ this };
+
 		Render::RenderHardwareInterface* mRHI = nullptr;
 	};
 }

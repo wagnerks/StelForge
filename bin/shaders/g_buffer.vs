@@ -7,10 +7,12 @@ layout(location = 3) in vec3 aTangents;
 layout(location = 4) in vec3 aBiTangents;
 layout(location = 5) in ivec4 aBoneIds;
 layout(location = 6) in vec4 aWeights;
+layout(location = 7) in vec2 aTexCoords1;
 
 layout(location = 0) out vec3 FragPos;
 layout(location = 1) out vec2 TexCoords;
 layout(location = 2) out mat3 TBN;
+layout(location = 5) out vec2 TexCoords1;
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
@@ -57,6 +59,7 @@ void main() {
 
     FragPos = worldPos.xyz;
     TexCoords = aTexCoords;
+    TexCoords1 = aTexCoords1;
 
     vec3 N = normalize(normalMatrix * aNormal);
     vec3 T = normalMatrix * aTangents;

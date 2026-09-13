@@ -128,7 +128,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 		Render::WriteDescriptor w{};
 		w.set = mainTexSet;
 		w.binding = 0;
-		w.type = Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ gPos, gPosSamp });
 		writes.push_back(std::move(w));
 	}
@@ -136,7 +135,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 		Render::WriteDescriptor w{};
 		w.set = mainTexSet;
 		w.binding = 1;
-		w.type = Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ gNrm, gNrmSamp });
 		writes.push_back(std::move(w));
 	}
@@ -144,7 +142,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 		Render::WriteDescriptor w{};
 		w.set = mainTexSet;
 		w.binding = 3;
-		w.type = Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ ssaoParamsBuffer });
 		writes.push_back(std::move(w));
 	}
@@ -152,7 +149,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 		Render::WriteDescriptor w{};
 		w.set = blurTexSet;
 		w.binding = 0;
-		w.type = Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ mData.mSsaoColorBuffer, mData.sampler });
 		writes.push_back(std::move(w));
 	}
@@ -160,7 +156,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 		Render::WriteDescriptor w{};
 		w.set = blurTexSet;
 		w.binding = 1;
-		w.type = Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ gPos, gPosSamp });
 		writes.push_back(std::move(w));
 	}
@@ -168,7 +163,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 		Render::WriteDescriptor w{};
 		w.set = blurTexSet;
 		w.binding = 2;
-		w.type = Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ ssaoBlurParamsBuffer });
 		writes.push_back(std::move(w));
 	}
@@ -186,6 +180,9 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comma
 	FUNCTION_BENCHMARK
 
 	auto* rhi = Engine::instance()->rhi();
+	// Without TAA there is nothing to average the rotation, so a moving pattern would only
+	// read as flicker -- hold it still in that case.
+	params.frameIndex = renderDataHandle.graphics.taa ? static_cast<float>(renderDataHandle.taaFrame % 8) : 0.f;
 	rhi->updateBuffer(ssaoParamsBuffer, params);
 	rhi->updateBuffer(ssaoBlurParamsBuffer, blurParams);
 
@@ -193,7 +190,6 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comma
 		Render::WriteDescriptor w{};
 		w.set = mainTexSet;
 		w.binding = 5;
-		w.type = Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		rhi->updateDescriptorSets({ std::move(w) });
 	}

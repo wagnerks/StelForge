@@ -23,6 +23,9 @@ namespace AssetsModule {
 
 		SFE::Render::TextureHandle texture;
 		SFE::Render::SamplerHandle sampler;
+		bool hasAlpha = false;
+		bool hasCutoutAlpha = false;
+		float fgMean = 0.f;
 	};
 
 	class TextureHandler : public SFE::Singleton<TextureHandler> {

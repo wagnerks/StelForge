@@ -35,8 +35,12 @@ namespace {
 	struct GBufferMaterialPC {
 		float roughness = 0.5f;
 		float metallic = 0.f;
-		float pad0 = 0.f;
-		float pad1 = 0.f;
+		float mapMask = 0.f;
+		float alphaCutoff = 0.f;
+		float uvSel = 0.f;
+		float specFactor = 1.f;
+		float clearcoat = 0.f;
+		float clearcoatRough = 0.04f;
 	};
 }
 
@@ -241,6 +245,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layout.attributes.push_back({ 4,0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, biTangent)), true });
 	layout.attributes.push_back({ 5,0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false }); //todo only for dynamic mesh
 	layout.attributes.push_back({ 6,0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
+	layout.attributes.push_back({ 7,0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex3D, texCoords1)), true });
 	pipelineDesc.topology = PrimitiveTopology::Triangles;
 	pipelineDesc.cullMode = CullMode::None;
 	pipelineDesc.frontFace = FrontFace::CounterClockWise;
@@ -380,25 +385,31 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	geometryPassBegin.height = Engine::instance()->getWindow()->getScreenData().renderH;
 
 	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
-	if (wireframe) {
-		rhi->cmdSetPolygonFillMode(cmd, PolygonFillMode::Line);
-	}
+	const auto fillMode = wireframe ? PolygonFillMode::Line : PolygonFillMode::Fill;
 	if (!curPassData->getBatcher().drawList.empty()) {
-		curPassData->getBatcher().flushAll(cmd, gBuffetLayoutSet, [this](const std::string& vs, const std::string& fs) {
-			return getGBufferPipeline(vs, fs);
-		}, [this, wireframe](Render::CommandListHandle drawCmd, const DrawObject& obj) {
-			if (wireframe) {
-				Engine::instance()->rhi()->cmdSetPolygonFillMode(drawCmd, PolygonFillMode::Line);
+		curPassData->getBatcher().flushAll(cmd, gBuffetLayoutSet, [this, fillMode](const std::string& vs, const std::string& fs) {
+			return getGBufferPipeline(vs, fs, fillMode);
+		}, [this, fillMode](Render::CommandListHandle drawCmd, const DrawObject& obj) {
+			const auto pipe = getGBufferPipeline(obj.vertexShader, obj.fragmentShader, fillMode);
+			GBufferMaterialPC pc;
+			pc.roughness = obj.roughness;
+			pc.metallic = obj.metallic;
+			pc.mapMask = obj.gBufferMapMask();
+			pc.uvSel = obj.gBufferUvSel();
+			pc.specFactor = obj.specFactor;
+			pc.clearcoat = obj.clearcoat;
+			pc.clearcoatRough = obj.clearcoatRough;
+			if (obj.alphaDither) {
+				pc.alphaCutoff = 1.78f;
+			} else {
+				pc.alphaCutoff = obj.cutoutCutoff();
 			}
-			const auto pipe = getGBufferPipeline(obj.vertexShader, obj.fragmentShader);
-			GBufferMaterialPC pc{ obj.roughness, obj.metallic, 0.f, 0.f };
 			Engine::instance()->rhi()->cmdPushConstants(drawCmd, pipe, ShaderStage::Fragment, &pc, sizeof(pc));
 		});
 	}
+	// The grid keeps its own pipeline, so it stays filled in wireframe mode -- which is what it
+	// already did, since binding a pipeline reset the polygon mode on OpenGL anyway.
 	drawGrid(renderDataHandle, cmd);
-	if (wireframe) {
-		rhi->cmdSetPolygonFillMode(cmd, PolygonFillMode::Fill);
-	}
 	rhi->cmdEndRenderPass(cmd);
 
 	if (outlinePipeline && outlineFramebuffer && !outlineData->getBatcher().drawList.empty()) {
@@ -418,19 +429,19 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 				{
 					.set = mOutlineFrameSet,
 					.binding = 1,
-					.type = Render::DescriptorType::StorageBuffer,
+					
 					.buffers{ {renderDataHandle.transformsSSBO} }
 				},
 				{
 					.set = mOutlineFrameSet,
 					.binding = 2,
-					.type = Render::DescriptorType::StorageBuffer,
+					
 					.buffers{ {renderDataHandle.bonesSSBO} }
 				},
 				{
 					.set = mOutlineFrameSet,
 					.binding = 5,
-					.type = Render::DescriptorType::UniformBuffer,
+					
 					.buffers{ {renderDataHandle.cameraMatricesUBO} }
 				}
 			});
@@ -456,7 +467,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 				writes.push_back({
 					.set = mTexSetOutlines,
 					.binding = binding,
-					.type = Render::DescriptorType::CombinedImageSampler,
+					
 					.images{ {tex, mSampler} }
 				});
 			};
@@ -496,10 +507,11 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	}
 }
 
-SFE::Render::PipelineHandle GeometryPass::getGBufferPipeline(const std::string& vertexShader, const std::string& fragmentShader) {
+SFE::Render::PipelineHandle GeometryPass::getGBufferPipeline(const std::string& vertexShader, const std::string& fragmentShader,
+	const Render::PolygonFillMode fillMode) {
 	const std::string vs = vertexShader.empty() ? ComponentsModule::DefaultGBufferVS : vertexShader;
 	const std::string fs = fragmentShader.empty() ? ComponentsModule::DefaultGBufferFS : fragmentShader;
-	const auto key = vs + "|" + fs;
+	const auto key = vs + "|" + fs + (fillMode == PolygonFillMode::Line ? "|line" : "|fill");
 	if (const auto it = mGBufferPipelines.find(key); it != mGBufferPipelines.end()) {
 		return it->second;
 	}
@@ -515,6 +527,7 @@ SFE::Render::PipelineHandle GeometryPass::getGBufferPipeline(const std::string& 
 	auto desc = mGBufferPipelineDesc;
 	desc.shaders.vertex = vert;
 	desc.shaders.fragment = frag;
+	desc.fillMode = fillMode;
 	const auto pipeline = rhi->createGraphicsPipeline(desc);
 	mGBufferPipelines.emplace(key, pipeline);
 	return pipeline;

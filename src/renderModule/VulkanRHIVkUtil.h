@@ -238,7 +238,7 @@ namespace SFE::Render::VulkanVkUtil {
 		switch (topology) {
 		case PrimitiveTopology::Points: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 		case PrimitiveTopology::Lines: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-		case PrimitiveTopology::LineLoop: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+		case PrimitiveTopology::LineStrip: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
 		case PrimitiveTopology::Patches: return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
 		case PrimitiveTopology::Triangles: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		case PrimitiveTopology::TriangleStrip: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
@@ -263,17 +263,6 @@ namespace SFE::Render::VulkanVkUtil {
 		return type == DescriptorType::CombinedImageSampler;
 	}
 
-	inline bool descriptorLayoutNeedsSplit(const DescriptorSetLayoutDesc& desc) {
-		for (size_t i = 0; i < desc.bindings.size(); ++i) {
-			for (size_t j = i + 1; j < desc.bindings.size(); ++j) {
-				if (desc.bindings[i].binding == desc.bindings[j].binding
-					&& isImageDescriptor(desc.bindings[i].type) != isImageDescriptor(desc.bindings[j].type)) {
-					return true;
-				}
-			}
-		}
-		return false;
-	}
 
 	inline VkSampleCountFlagBits toVkSampleCount(uint32_t count) {
 		if (count >= 8) return VK_SAMPLE_COUNT_8_BIT;

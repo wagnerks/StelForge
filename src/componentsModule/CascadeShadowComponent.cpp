@@ -1,4 +1,4 @@
-#include "CascadeShadowComponent.h"
+﻿#include "CascadeShadowComponent.h"
 
 #include <algorithm>
 #include <cmath>
@@ -68,8 +68,13 @@ namespace SFE::ComponentsModule {
 		}
 
 		shadowCascadeLevels.front() = cameraProjection.getNear();
+		// The last level is how far shadows reach, and it is authored. It used to be overwritten with
+		// 70% of the camera far plane, which ties shadow quality to draw distance: at far = 5000 the
+		// outer cascade stretched to 3500 units, so one texel of a 4096 map covered about a metre and
+		// distant shadows turned into steps. Draw distance and shadow distance are separate choices.
 		const float camFar = Engine::instance()->getWindow()->getScreenData().far;
-		const float shadowFar = camFar * 0.7f;
+		const float authoredFar = shadowCascadeLevels.back();
+		const float shadowFar = (std::min)(authoredFar > shadowCascadeLevels.front() ? authoredFar : camFar, camFar);
 		shadowCascadeLevels.back() = shadowFar;
 
 		const float nearZ = (std::max)(shadowCascadeLevels.front(), 1e-3f);

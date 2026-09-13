@@ -157,6 +157,7 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layout.attributes.push_back({ 4, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, biTangent)), true });
 	layout.attributes.push_back({ 5, 0, Render::VertexFormat::Int4, static_cast<std::uint32_t>(offsetof(Vertex3D, boneIDs)), false });
 	layout.attributes.push_back({ 6, 0, Render::VertexFormat::Float4, static_cast<std::uint32_t>(offsetof(Vertex3D, weights)), false });
+	layout.attributes.push_back({ 7, 0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(Vertex3D, texCoords1)), true });
 	pipelineDesc.topology = PrimitiveTopology::Triangles;
 	pipelineDesc.cullMode = CullMode::None;
 	pipelineDesc.frontFace = FrontFace::CounterClockWise;
@@ -247,7 +248,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 6;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ mSceneCopy, mSampler });
 		writes.push_back(std::move(w));
 	}
@@ -255,7 +255,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.type = DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mParamsUBO });
 		writes.push_back(std::move(w));
 	}
@@ -263,7 +262,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 12;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ frame.texture(FrameId::IblIrradiance), frame.sampler(FrameId::IblIrradiance) });
 		writes.push_back(std::move(w));
 	}
@@ -271,7 +269,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 13;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ frame.texture(FrameId::IblPrefilter), frame.sampler(FrameId::IblPrefilter) });
 		writes.push_back(std::move(w));
 	}
@@ -279,7 +276,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 5;
-		w.type = DescriptorType::UniformBuffer;
 		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		writes.push_back(std::move(w));
 	}
@@ -287,7 +283,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.type = DescriptorType::StorageBuffer;
 		w.buffers.push_back({ renderDataHandle.transformsSSBO });
 		writes.push_back(std::move(w));
 	}
@@ -295,7 +290,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 2;
-		w.type = DescriptorType::StorageBuffer;
 		w.buffers.push_back({ renderDataHandle.bonesSSBO });
 		writes.push_back(std::move(w));
 	}
@@ -303,7 +297,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 14;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ frame.texture(FrameId::IblBrdf), frame.sampler(FrameId::IblBrdf) });
 		writes.push_back(std::move(w));
 	}
@@ -386,7 +379,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 4;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ diff, white->sampler });
 		rhi->updateDescriptorSets({ std::move(w) });
 	};

@@ -60,8 +60,10 @@ layout(SFE_SET(1, 10), std140) uniform pointLightsBlock {
 } plb;
 
 struct CascadData{
-    // xy texelSize, z bias, w samples
+    // x 1/resolution, y world size of one texel, z depth bias, w samples
     vec4 cascade;
+    // x light-space depth extent of this cascade, the rest spare
+    vec4 cascadeExtra;
 };
 
 layout(SFE_SET(1, 9), std140) uniform cascadedShadowBlock {
@@ -130,7 +132,24 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
     projCoords.z -= max(bias, uvTexel * 1.25);
 
     const int sampleCount = clamp(int(cascadedShadow.data[layer].cascade.w + 0.5), 4, 16);
-    float radius = uvTexel * 2.2;
+
+    // Contact hardening. A fixed filter radius gives every shadow the same soft edge, at the foot
+    // of a wall and a hundred metres down its length alike, which is what makes a shadow read as
+    // painted on. The penumbra of a real shadow grows with the gap between caster and receiver, so
+    // measure that gap first: findAverageBlockerDepth (written long ago and never called) returns
+    // the mean depth of whatever stands between this point and the sun.
+    float worldTexel = max(cascadedShadow.data[layer].cascade.y, 1e-6);
+    float depthRange = max(cascadedShadow.data[layer].cascadeExtra.x, 1e-4);
+    float radius = uvTexel * 1.5;
+    float blocker = findAverageBlockerDepth(layer, projCoords, uvTexel * 8.0, angle);
+    if (blocker > 0.0) {
+        // Depth difference to world units, then a world penumbra from the sun's angular size, then
+        // back into UV. SUN_TAN is a touch wider than the real sun so the softening is visible.
+        const float SUN_TAN = 0.02;
+        float gapWorld = max(projCoords.z - blocker, 0.0) * depthRange;
+        float penumbraUV = gapWorld * SUN_TAN * uvTexel / worldTexel;
+        radius = clamp(penumbraUV, uvTexel * 1.2, uvTexel * 10.0);
+    }
     float shadow = 0.0;
     int used = 0;
     for (uint i = 0; i < uint(sampleCount); ++i) {
@@ -181,10 +200,19 @@ vec3 worldToShadowUv(int layer, vec3 worldPos) {
 }
 
 float sampleCascade(int layer, vec3 worldPos, vec3 Normal) {
-    vec3 proj = worldToShadowUv(layer, worldPos);
     float illumination = -dot(Normal, cascadedShadow.direction_intensity.xyz);
     float nDotL = clamp(illumination, 0.0, 1.0);
-    float bias = cascadedShadow.data[layer].cascade.z * mix(2.0, 0.35, nDotL);
+
+    // Normal-offset bias: step the lookup off the surface instead of pushing its depth away from
+    // the light. A depth bias slides the shadow along the light ray, which is what detaches it
+    // from the caster (peter panning); moving along the normal cannot, because the shift is
+    // perpendicular to the ray. The offset grows on grazing surfaces, where one texel covers the
+    // most depth. Depth bias stays only as the small residual the offset cannot cover.
+    float worldTexel = cascadedShadow.data[layer].cascade.y;
+    float slope = 1.0 - nDotL;
+    vec3 proj = worldToShadowUv(layer, worldPos + Normal * (worldTexel * (1.0 + 3.0 * slope)));
+
+    float bias = cascadedShadow.data[layer].cascade.z * mix(0.6, 0.15, nDotL);
     return TechniqueVogelCascaded(layer, bias, proj);
 }
 
@@ -340,11 +368,20 @@ void main() {
     vec4 albedoSample = texture(gAlbedoSpec, TexCoords);
     vec3 albedo = albedoSample.rgb;
     float roughness = clamp(albedoSample.a, 0.04, 1.0);
-    float metallic = clamp(posSample.a, 0.0, 1.0);
+    vec4 pbr = sfeGBufferPbr(posSample.a);
+    float metallic = pbr.x;
+    float specFactor = pbr.y;
+    float clearcoat = pbr.z;
+    float ccRough = max(pbr.w, 0.04);
     const float AmbientOcclusion = texture(ssao, TexCoords).r;
 
     const vec3 V = normalize(pc.viewPos - FragPos);
-    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    float luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
+    float darkDiel = (1.0 - metallic) * (1.0 - smoothstep(0.03, 0.22, luma));
+    darkDiel *= 1.0 - smoothstep(0.05, 0.25, clearcoat);
+    roughness = mix(roughness, max(roughness, 0.62), darkDiel);
+    vec3 F0 = mix(vec3(0.04 * specFactor), albedo, metallic);
+    F0 *= mix(1.0, 0.35, darkDiel);
 
     vec3 Lsun = normalize(-cascadedShadow.direction_intensity.xyz);
     vec3 Lo = cookTorrance(
@@ -385,7 +422,21 @@ void main() {
     vec3 prefilteredColor = textureLod(prefilterMap, R, roughness * MAX_REFLECTION_LOD).rgb * pc.iblStrength;
     vec2 brdf = texture(brdfLUT, vec2(max(dot(Normal, V), 0.0), roughness)).rg;
     vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
+    specular *= mix(1.0, 0.12, darkDiel);
+    specular *= 1.0 - clearcoat;
+    if (clearcoat > 0.01) {
+        vec3 Fc0 = vec3(0.04);
+        vec3 sunCol = cascadedShadow.color_and_misc.xyz * PI;
+        vec3 Fc = fresnelSchlickRoughness(max(dot(Normal, V), 0.0), Fc0, ccRough);
+        float coatRough = max(ccRough, 0.08);
+        Lo += cookTorrance(Normal, V, Lsun, vec3(0.0), Fc0, coatRough, 0.0, sunCol) * clearcoat;
+        vec3 preCc = textureLod(prefilterMap, R, coatRough * MAX_REFLECTION_LOD).rgb * pc.iblStrength;
+        vec2 brdfCc = texture(brdfLUT, vec2(max(dot(Normal, V), 0.0), coatRough)).rg;
+        specular += preCc * (Fc * brdfCc.x + brdfCc.y) * clearcoat;
+        specular += Fc * clearcoat * 0.28;
+    }
     float ao = mix(1.0, AmbientOcclusion, pc.ssaoAmount);
+    ao = mix(ao, 1.0, clearcoat);
     vec3 ambient = kD * diffuse * ao + specular;
     ambient *= mix(pc.shadowAmbient, 1.0, shadowFactor);
 
@@ -462,17 +513,19 @@ void main() {
         return;
     }
 
+    float skin = sfeSkinSss(albedo, metallic);
+    float sssW = max(sssAmt, skin);
     vec3 lighting = ambient + Lo;
-    if (sssAmt > 0.001 && metallic < 0.45) {
+    if (sssW > 0.05 && metallic < 0.25 && clearcoat < 0.5) {
         float wrap = max(pc.padLook0, 0.0);
         float str = max(pc.padLook1, 0.0);
         float nDotL = dot(Normal, Lsun);
         float trans = max(-nDotL, 0.0);
         float wrapL = clamp((nDotL + wrap) / max(1.0 + wrap, 1e-3), 0.0, 1.0);
-        vec3 scatter = albedo * vec3(1.2, 0.4, 0.22);
+        vec3 scatter = albedo * vec3(0.55, 0.22, 0.16);
         vec3 sssL = scatter * cascadedShadow.color_and_misc.xyz * 3.14159265
-            * (trans * 2.6 + wrapL * 0.35) * sssAmt * str;
-        lighting += sssL * mix(shadowFactor, 1.0, trans * 0.85);
+            * (trans * 0.9 + wrapL * 0.25) * sssW * str;
+        lighting += sssL * mix(shadowFactor, 1.0, trans * 0.5);
     }
 
     const float outlines = texture(gOutlines, TexCoords).b;

@@ -29,7 +29,6 @@ namespace SFE::SystemsModule {
 	}
 
 	// Order is draw order. Flip `enabled` to include a pass; insert a row to add one.
-	// Vulkan uses the same list; unsupported passes are filtered via RHI::supportsRenderPass().
 	inline const Render::RenderPassEntry RENDER_PASSES[] = {
 		{ "AnimationCompute", true,  &createRenderPass<Render::RenderPasses::AnimationComputePass> },
 		{ "CascadedShadow", true,  &createRenderPass<Render::RenderPasses::CascadedShadowPass> },

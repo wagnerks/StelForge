@@ -11,6 +11,7 @@ namespace SFE::Render::RenderPasses {
 	private:
 		struct Params {
 			Math::Mat4 prevPV{ 1.f };
+			Math::Mat4 curPV{ 1.f };
 			float resX = 1.f;
 			float resY = 1.f;
 			float blend = 0.92f;

@@ -30,13 +30,18 @@ namespace SFE::Render::RenderPasses {
 		void updateRenderData(SystemsModule::RenderData& renderDataHandle);
 		void debug(SystemsModule::RenderData& renderDataHandle);
 
-		FramebufferHandle lightFbo;
+		// One framebuffer per cascade layer. The layer used to come from gl_Layer in a geometry
+		// shader whose only other job was to copy the triangle through.
+		std::vector<FramebufferHandle> lightFbos;
 		TextureHandle  lightDepthMa;
 		SamplerHandle  lightSampler;
 		SamplerHandle  lightDepthSampler;
 
 		BufferHandle matricesUBO;
-		PipelineHandle pipeline;
+		// Opaque casters render depth only; anything with a cutout or dithered opacity needs a
+		// fragment shader with discard, which costs early-Z, so it gets its own pipeline.
+		PipelineHandle pipelineOpaque;
+		PipelineHandle pipelineCutout;
 		RenderPassHandle renderPass;
 
 		Render::DescriptorSetLayoutHandle shadowsLayoutHandle;

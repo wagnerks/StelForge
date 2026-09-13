@@ -103,7 +103,6 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 0;
-		w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ src, mLinear });
 		writes.push_back(std::move(w));
 	}
@@ -111,7 +110,6 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.type = SFE::Render::DescriptorType::CombinedImageSampler;
 		w.images.push_back({ pos, frame.sampler(SFE::Render::FrameId::GBufferPosition) ? frame.sampler(SFE::Render::FrameId::GBufferPosition) : mNearest });
 		writes.push_back(std::move(w));
 	}
@@ -119,7 +117,6 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.type = SFE::Render::DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mParamsUBO });
 		writes.push_back(std::move(w));
 	}

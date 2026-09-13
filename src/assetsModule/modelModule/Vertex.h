@@ -14,6 +14,7 @@ namespace SFE {
 		int boneIDs[MAX_BONE_INFLUENCE]{ -1,-1,-1,-1 };
 		float weights[MAX_BONE_INFLUENCE]{ 0.f,0.f,0.f,0.f };
 		SFE::Math::Vec4 color;
+		SFE::Math::Vec2 texCoords1;
 	};
 	
 	struct Vertex2D {

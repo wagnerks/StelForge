@@ -61,6 +61,10 @@ namespace SFE::Render::RenderPasses {
 		IMGUI_CHECKVERSION();
 		mContext = ImGui::CreateContext();
 		ImGui::SetCurrentContext(mContext);
+		// A capture must not depend on the window layout the previous run left in imgui.ini.
+		if (Engine::instance()->capturingFrame()) {
+			ImGui::GetIO().IniFilename = nullptr;
+		}
 		Debug::applyDefaultImGuiStyle();
 		ImGui_ImplGlfw_InitForOther(window, true);
 		mGlfw = true;
@@ -89,7 +93,10 @@ namespace SFE::Render::RenderPasses {
 		}
 
 		ImGui_ImplGlfw_NewFrame();
+		Debug::freezeImGuiForCapture();
 		ImGui::NewFrame();
+		ImGui::SetNextWindowSize(ImVec2(380.f, 560.f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(280.f, 200.f), ImVec2(FLT_MAX, FLT_MAX));
 		if (ImGui::Begin("Graphics")) {
 			SystemsModule::drawGraphicsSettings(renderDataHandle.graphics);
 		}

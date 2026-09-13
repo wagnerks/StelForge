@@ -81,6 +81,7 @@ namespace SFE {
 						if (task.valid()) {
 							task();
 						}
+						mPending.fetch_sub(1, std::memory_order_acq_rel);
 					}
 				}));
 			}
@@ -117,6 +118,7 @@ namespace SFE {
 			if (mTerminating.load(std::memory_order_acquire)) {
 				return {};
 			}
+			mPending.fetch_add(1, std::memory_order_acq_rel);
 			mTasksQueue.emplace(std::packaged_task(std::move(task)));
 			auto future = mTasksQueue.back().get_future();
 			mCondition.notify_one();
@@ -124,8 +126,12 @@ namespace SFE {
 			return future;
 		}
 
+		// Queued plus running.
+		bool idle() const { return mPending.load(std::memory_order_acquire) == 0; }
+
 	private:
 		std::vector<std::thread> mWorkers;
+		std::atomic<int> mPending{ 0 };
 		std::queue<std::packaged_task<void()>> mTasksQueue;
 
 		std::mutex mMutex;
@@ -170,6 +176,12 @@ namespace SFE {
 			case WorkerType::COMMON:
 				return mCommonWorkers.addTask(std::move(task));
 			case WorkerType::RENDER:
+				if (mRenderTasksInline.load(std::memory_order_acquire)) {
+					task();
+					std::promise<void> done;
+					done.set_value();
+					return done.get_future().share();
+				}
 				return mRenderWorkers.addTask(std::move(task));
 			case WorkerType::SYNC:
 				return addTaskToSynchronization(std::move(task));
@@ -182,11 +194,18 @@ namespace SFE {
 		}
 
 		void syncUpdate();
+		// A frame capture runs render tasks on the calling thread: when a worker finishes then depends
+		// on scheduling, and that timing leaks into what the captured frame draws.
+		void setRenderTasksInline(bool inlineTasks) { mRenderTasksInline.store(inlineTasks, std::memory_order_release); }
+		// Blocks until every worker pool is empty, pumping main-thread tasks meanwhile. A capture calls it
+		// before each frame so asynchronous work, asset loading above all, lands on a fixed frame.
+		void waitIdle();
 		void ensureLoadingContext();
 		void shutdown();
 		bool isShuttingDown() const { return mShuttingDown.load(std::memory_order_acquire); }
 
 	private:
+		std::atomic<bool> mRenderTasksInline = false;
 		std::shared_future<void> addTaskToSynchronization(std::function<void()>&& task);
 		std::shared_future<void> addLoadingTask(std::function<void()>&& task);
 		void drainSync();

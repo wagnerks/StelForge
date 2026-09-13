@@ -28,7 +28,7 @@ vec4 grid(vec3 fragPos3D, float scale) {
     float line = min(gridLines.x, gridLines.y);
     float minimumz = min(derivative.y, 1.0);
     float minimumx = min(derivative.x, 1.0);
-    vec4 color = vec4(0.2, 0.2, 0.2, 2.5 - min(line, 1.0));
+    vec4 color = vec4(0.2, 0.2, 0.2, 1.2 - min(line, 1.0));
     if (fragPos3D.x > -0.5 * minimumx && fragPos3D.x < 0.5 * minimumx) {
         color.z = 1.0;
         color.a = 1.0;
@@ -49,7 +49,7 @@ float computeLinearDepth(vec3 pos) {
 
 void main() {
     gPosition.rgb = FragPos;
-    gPosition.a = 0.0;
+    gPosition.a = sfePackGBufferPbr(0.0, 1.0, 0.0, 0.04);
     gNormal.xyz = vec3(0.0, 1.0, 0.0);
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 

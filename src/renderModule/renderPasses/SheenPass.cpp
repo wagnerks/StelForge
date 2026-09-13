@@ -131,7 +131,6 @@ void SheenPass::render(SystemsModule::RenderData& renderDataHandle, CommandListH
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 0;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ src, mLinear });
 		writes.push_back(std::move(w));
 	}
@@ -139,7 +138,6 @@ void SheenPass::render(SystemsModule::RenderData& renderDataHandle, CommandListH
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ pos, sampOr(FrameId::GBufferPosition, mNearest) });
 		writes.push_back(std::move(w));
 	}
@@ -147,7 +145,6 @@ void SheenPass::render(SystemsModule::RenderData& renderDataHandle, CommandListH
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 2;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ alb, sampOr(FrameId::GBufferAlbedo, mLinear) });
 		writes.push_back(std::move(w));
 	}
@@ -155,7 +152,6 @@ void SheenPass::render(SystemsModule::RenderData& renderDataHandle, CommandListH
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 3;
-		w.type = DescriptorType::CombinedImageSampler;
 		w.images.push_back({ nrm, sampOr(FrameId::GBufferNormal, mNearest) });
 		writes.push_back(std::move(w));
 	}
@@ -163,7 +159,6 @@ void SheenPass::render(SystemsModule::RenderData& renderDataHandle, CommandListH
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.type = DescriptorType::UniformBuffer;
 		w.buffers.push_back({ mParamsUBO });
 		writes.push_back(std::move(w));
 	}
