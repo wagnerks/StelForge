@@ -600,13 +600,20 @@ namespace SFE::Render {
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
 		};
 		supported12.pNext = &depthClipControl;
+		VkPhysicalDeviceVulkan11Features supported11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+		supported11.pNext = &supported12;
 		VkPhysicalDeviceFeatures2 features2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-		features2.pNext = &supported12;
+		features2.pNext = &supported11;
 		vkGetPhysicalDeviceFeatures2(m_physicalDevice, &features2);
 
 		if (!depthClipControl.depthClipControl) {
 			LogsModule::Logger::LOG_FATAL(false,
 				"VulkanRHI: VK_EXT_depth_clip_control required so shaders keep OpenGL clip Z [-1, 1]");
+		}
+		// GPU-driven rendering: compute writes the draw count, shaders read gl_DrawID / gl_BaseInstance.
+		if (!supported12.drawIndirectCount || !supported11.shaderDrawParameters
+			|| !supportedFeatures.multiDrawIndirect || !supportedFeatures.drawIndirectFirstInstance) {
+			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: drawIndirectCount, shaderDrawParameters, multiDrawIndirect and drawIndirectFirstInstance are required");
 		}
 
 		const char* deviceExtensions[] = {
@@ -631,8 +638,12 @@ namespace SFE::Render {
 		enabled12.pNext = &depthClipControl;
 		enabled12.hostQueryReset = supported12.hostQueryReset;
 		enabled12.samplerMirrorClampToEdge = supported12.samplerMirrorClampToEdge;
+		enabled12.drawIndirectCount = VK_TRUE;
 		m_hostQueryReset = supported12.hostQueryReset == VK_TRUE;
-		createInfo.pNext = &enabled12;
+		VkPhysicalDeviceVulkan11Features enabled11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+		enabled11.shaderDrawParameters = VK_TRUE;
+		enabled11.pNext = &enabled12;
+		createInfo.pNext = &enabled11;
 
 		if (vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device) != VK_SUCCESS) {
 			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateDevice failed");

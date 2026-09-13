@@ -262,6 +262,28 @@ namespace SFE::Render::Tests {
 			rhi.waitIdle();
 		}
 
+		void drawIndexedIndirectCountFrom(RenderHardwareInterface& rhi, RenderPassHandle pass, FramebufferHandle fb,
+			PipelineHandle pipeline, BufferHandle vbo, BufferHandle ibo, BufferHandle args, BufferHandle count,
+			size_t countOffset, uint32_t maxDrawCount) {
+			rhi.beginFrame();
+			const auto cmd = rhi.beginCommandList(CommandListType::Graphics);
+			RenderPassBeginInfo begin;
+			begin.renderPass = pass;
+			begin.framebuffer = fb;
+			begin.width = kSize;
+			begin.height = kSize;
+			rhi.cmdBeginRenderPass(cmd, begin);
+			rhi.cmdBindPipeline(cmd, pipeline);
+			rhi.cmdBindVertexBuffer(cmd, 0, vbo, 0);
+			rhi.cmdBindIndexBuffer(cmd, ibo, IndexType::Uint16, 0);
+			rhi.cmdDrawIndexedIndirectCount(cmd, args, 0, count, countOffset, maxDrawCount);
+			rhi.cmdEndRenderPass(cmd);
+			rhi.endCommandList(cmd);
+			rhi.submit(cmd);
+			rhi.present();
+			rhi.waitIdle();
+		}
+
 		// One frame, one indirect draw against the instanced pipeline: the same records as
 		// drawIndirectFrom reads, but with a per-instance binding in place so the instanceCount and
 		// firstInstance words inside a record finally have somewhere to show. Everything except
@@ -985,6 +1007,94 @@ namespace SFE::Render::Tests {
 		// leave the yellow corner its indices name untouched instead.
 		EXPECT_EQ(pixelAt(negativePixels, 6, 6), green) << "a negative vertexOffset did not shift the indices down";
 		EXPECT_EQ(pixelAt(negativePixels, 1, 6), clear) << "a negative vertexOffset was dropped: the unshifted triangle still drew";
+	}
+
+	// The GPU-driven path: how many records are drawn is read from a buffer, not passed in, and the args
+	// buffer is the one a compute pass writes, so it is Storage and Indirect at once. Same corner triangles
+	// as above, so the painted corners say which records were drawn.
+	TEST_P(RhiBackendTest, IndexedIndirectCountDrawsTheCountFromTheBufferClampedToMaxDrawCount) {
+		const auto countTarget = makeTarget(rhi());
+		const auto clampTarget = makeTarget(rhi());
+		ASSERT_TRUE(countTarget);
+		ASSERT_TRUE(clampTarget);
+		const auto pass = makeClearPass(rhi(), { 0.f, 0.f, 0.f, 1.f });
+		ASSERT_TRUE(pass);
+		const auto pipeline = makeVertexBufferPipeline(rhi(), pass);
+		ASSERT_TRUE(pipeline);
+
+		const Vertex verts[12] = {
+			{ -1.00f,  1.00f, 1.f, 0.f, 0.f, 1.f },
+			{ -1.00f, -0.25f, 1.f, 0.f, 0.f, 1.f },
+			{  0.25f,  1.00f, 1.f, 0.f, 0.f, 1.f },
+			{  1.00f, -1.00f, 0.f, 1.f, 0.f, 1.f },
+			{  1.00f,  0.25f, 0.f, 1.f, 0.f, 1.f },
+			{ -0.25f, -1.00f, 0.f, 1.f, 0.f, 1.f },
+			{  1.00f,  1.00f, 0.f, 0.f, 1.f, 1.f },
+			{  1.00f, -0.25f, 0.f, 0.f, 1.f, 1.f },
+			{ -0.25f,  1.00f, 0.f, 0.f, 1.f, 1.f },
+			{ -1.00f, -1.00f, 1.f, 1.f, 0.f, 1.f },
+			{ -1.00f,  0.25f, 1.f, 1.f, 0.f, 1.f },
+			{  0.25f, -1.00f, 1.f, 1.f, 0.f, 1.f },
+		};
+		const uint16_t indices[9] = { 3, 4, 5, 0, 1, 2, 9, 10, 11 };
+		// green bottom-right, red top-left, yellow bottom-left
+		const DrawIndexedArgs args[3] = {
+			{ 3, 1, 0, 0, 0 },
+			{ 3, 1, 3, 0, 0 },
+			{ 3, 1, 6, 0, 0 },
+		};
+		// Count 2 at offset 0 for the count draw; count 3 at offset 4 for the clamp draw.
+		const uint32_t counts[2] = { 2, 3 };
+
+		BufferDesc vboDesc;
+		vboDesc.size = sizeof(verts);
+		vboDesc.usage = BufferUsage::Vertex;
+		const auto vbo = rhi().createBuffer(vboDesc, verts);
+		BufferDesc iboDesc;
+		iboDesc.size = sizeof(indices);
+		iboDesc.usage = BufferUsage::Index;
+		const auto ibo = rhi().createBuffer(iboDesc, indices);
+		BufferDesc argsDesc;
+		argsDesc.size = sizeof(args);
+		argsDesc.usage = BufferUsage::Storage | BufferUsage::Indirect;
+		const auto argsBuffer = rhi().createBuffer(argsDesc, args);
+		BufferDesc countDesc;
+		countDesc.size = sizeof(counts);
+		countDesc.usage = BufferUsage::Storage | BufferUsage::Indirect;
+		const auto countBuffer = rhi().createBuffer(countDesc, counts);
+		ASSERT_TRUE(vbo);
+		ASSERT_TRUE(ibo);
+		ASSERT_TRUE(argsBuffer) << "a Storage | Indirect buffer failed to allocate";
+		ASSERT_TRUE(countBuffer);
+
+		const auto countFb = makeTargetFramebuffer(rhi(), pass, countTarget);
+		const auto clampFb = makeTargetFramebuffer(rhi(), pass, clampTarget);
+		ASSERT_TRUE(countFb);
+		ASSERT_TRUE(clampFb);
+
+		drawIndexedIndirectCountFrom(rhi(), pass, countFb, pipeline, vbo, ibo, argsBuffer, countBuffer, 0, 3);
+		drawIndexedIndirectCountFrom(rhi(), pass, clampFb, pipeline, vbo, ibo, argsBuffer, countBuffer, sizeof(uint32_t), 1);
+
+		std::vector<uint8_t> countPixels;
+		std::vector<uint8_t> clampPixels;
+		int w = 0;
+		int h = 0;
+		ASSERT_TRUE(rhi().readbackTexture(countTarget, countPixels, w, h));
+		ASSERT_TRUE(rhi().readbackTexture(clampTarget, clampPixels, w, h));
+		ASSERT_FALSE(countPixels.empty());
+		ASSERT_FALSE(clampPixels.empty());
+
+		const Rgba red{ 255, 0, 0, 255 };
+		const Rgba green{ 0, 255, 0, 255 };
+		const Rgba clear{ 0, 0, 0, 255 };
+
+		EXPECT_EQ(pixelAt(countPixels, 6, 6), green) << "the first record of a count of 2 did not draw";
+		EXPECT_EQ(pixelAt(countPixels, 1, 1), red) << "the second record of a count of 2 did not draw";
+		EXPECT_EQ(pixelAt(countPixels, 1, 6), clear) << "the draw ran to maxDrawCount instead of the count in the buffer";
+
+		EXPECT_EQ(pixelAt(clampPixels, 6, 6), green) << "the count at countOffset drew nothing";
+		EXPECT_EQ(pixelAt(clampPixels, 1, 1), clear) << "maxDrawCount 1 did not clamp a count of 3";
+		EXPECT_EQ(pixelAt(clampPixels, 1, 6), clear) << "maxDrawCount 1 did not clamp a count of 3";
 	}
 
 	// Two of a DrawArgs record's four words have never been under test. Every indirect draw so far ran

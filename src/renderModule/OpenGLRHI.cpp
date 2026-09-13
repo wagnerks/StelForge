@@ -407,15 +407,14 @@ namespace SFE::Render
 
 	GLenum OpenGLRHI::toGLBufferTarget(BufferUsage usage) const
 	{
-		switch (usage)
-		{
-		case BufferUsage::Vertex:   return GL_ARRAY_BUFFER;
-		case BufferUsage::Index:    return GL_ELEMENT_ARRAY_BUFFER;
-		case BufferUsage::Uniform:  return GL_UNIFORM_BUFFER;
-		case BufferUsage::Storage:  return GL_SHADER_STORAGE_BUFFER;
-		case BufferUsage::Indirect: return GL_DRAW_INDIRECT_BUFFER;
-		default:                    return GL_ARRAY_BUFFER;
-		}
+		// Only where the buffer is created and mapped; every draw and descriptor bind names its own target,
+		// so a multi-usage buffer serves all its roles whichever one is picked here.
+		if (usage & BufferUsage::Vertex)   return GL_ARRAY_BUFFER;
+		if (usage & BufferUsage::Index)    return GL_ELEMENT_ARRAY_BUFFER;
+		if (usage & BufferUsage::Uniform)  return GL_UNIFORM_BUFFER;
+		if (usage & BufferUsage::Storage)  return GL_SHADER_STORAGE_BUFFER;
+		if (usage & BufferUsage::Indirect) return GL_DRAW_INDIRECT_BUFFER;
+		return GL_ARRAY_BUFFER;
 	}
 
 	GLenum OpenGLRHI::toGLAccessFlags(CpuAccess access) const
@@ -647,7 +646,7 @@ namespace SFE::Render
 		if (slot >= gp->desc.layout.bindings.size())
 			return;
 
-		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage == BufferUsage::Vertex, "WRONG BUFFER TYPE BINDING");
+		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage & BufferUsage::Vertex, "WRONG BUFFER TYPE BINDING");
 		const auto& bindingDesc = gp->desc.layout.bindings[slot];
 		const GLsizei stride = static_cast<GLsizei>(bindingDesc.stride);
 		glVertexArrayVertexBuffer(
@@ -657,7 +656,7 @@ namespace SFE::Render
 			static_cast<GLintptr>(offset), // byte offset
 			stride
 		);
-		glBindBuffer(buf->target, buf->id);
+		glBindBuffer(GL_ARRAY_BUFFER, buf->id);
 	}
 
 	void OpenGLRHI::cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset)
@@ -677,9 +676,9 @@ namespace SFE::Render
 			return;
 		}
 
-		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage == BufferUsage::Index, "WRONG BUFFER TYPE BINDING");
+		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage & BufferUsage::Index, "WRONG BUFFER TYPE BINDING");
 		glVertexArrayElementBuffer(gp->vaoId, buf->id);
-		glBindBuffer(buf->target, buf->id);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buf->id);
 		m_currentIndexType = type;
 		m_currentIndexOffset = offset;
 	}
@@ -823,6 +822,28 @@ namespace SFE::Render
 		}
 	}
 
+	void OpenGLRHI::cmdDrawIndexedIndirectCount(CommandListHandle cmd, BufferHandle buffer, size_t offset, BufferHandle countBuffer, size_t countOffset, uint32_t maxDrawCount, uint32_t stride)
+	{
+		if (GLCommandList* list = recordingList(cmd)) {
+			list->commands.emplace_back(CmdDrawIndexedIndirectCount{ buffer, offset, countBuffer, countOffset, maxDrawCount, stride });
+		}
+	}
+
+	void OpenGLRHI::execDrawIndexedIndirectCount(BufferHandle buffer, size_t offset, BufferHandle countBuffer, size_t countOffset, uint32_t maxDrawCount, uint32_t stride)
+	{
+		const GLBuffer* buf = getLive(m_buffers, buffer.id);
+		const GLBuffer* countBuf = getLive(m_buffers, countBuffer.id);
+		if (!buf || !countBuf || maxDrawCount == 0) {
+			return;
+		}
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, buf->id);
+		glBindBuffer(GL_PARAMETER_BUFFER, countBuf->id);
+		glMultiDrawElementsIndirectCount(m_currentPrimitive, ToGLIndexType(m_currentIndexType),
+			reinterpret_cast<const void*>(offset), static_cast<GLintptr>(countOffset),
+			static_cast<GLsizei>(maxDrawCount), static_cast<GLsizei>(stride ? stride : 20u));
+		glBindBuffer(GL_PARAMETER_BUFFER, 0);
+	}
+
 	void OpenGLRHI::cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
 	{
 		if (GLCommandList* list = recordingList(cmd)) {
@@ -915,6 +936,9 @@ namespace SFE::Render
 			}
 			else if constexpr (std::is_same_v<T, CmdDrawIndexedIndirect>) {
 				execDrawIndexedIndirect(recorded.buffer, recorded.offset, recorded.drawCount, recorded.stride);
+			}
+			else if constexpr (std::is_same_v<T, CmdDrawIndexedIndirectCount>) {
+				execDrawIndexedIndirectCount(recorded.buffer, recorded.offset, recorded.countBuffer, recorded.countOffset, recorded.maxDrawCount, recorded.stride);
 			}
 			else if constexpr (std::is_same_v<T, CmdDispatch>) {
 				execDispatch(recorded.groupCountX, recorded.groupCountY, recorded.groupCountZ);
@@ -1915,6 +1939,14 @@ namespace SFE::Render
 		}
 		glfwMakeContextCurrent(window->getWindow());
 		LogsModule::Logger::LOG_FATAL(gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)), "Failed to initialize GLAD");
+		// GPU-driven rendering draws through glMultiDrawElementsIndirectCount, which is core only from 4.6.
+		LogsModule::Logger::LOG_FATAL(GLAD_GL_VERSION_4_6, "OpenGLRHI: OpenGL 4.6 required, context is %d.%d", GLVersion.major, GLVersion.minor);
+		// Intel's Windows driver reports 4.6 but exports the entry point only under its ARB name.
+		if (!glad_glMultiDrawElementsIndirectCount) {
+			glad_glMultiDrawElementsIndirectCount = reinterpret_cast<PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC>(
+				glfwGetProcAddress("glMultiDrawElementsIndirectCountARB"));
+		}
+		LogsModule::Logger::LOG_FATAL(glad_glMultiDrawElementsIndirectCount != nullptr, "OpenGLRHI: glMultiDrawElementsIndirectCount is not exported by the driver");
 		m_inited = true;
 
 		// Off by default: GL_DEBUG_OUTPUT_SYNCHRONOUS costs real frame time. Uncomment to get

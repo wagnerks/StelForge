@@ -42,14 +42,13 @@ namespace SFE::Render::VulkanVkUtil {
 	}
 
 	inline VkBufferUsageFlags toVkBufferUsage(BufferUsage usage) {
-		switch (usage) {
-		case BufferUsage::Vertex: return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-		case BufferUsage::Index: return VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-		case BufferUsage::Uniform: return VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-		case BufferUsage::Storage: return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		case BufferUsage::Indirect: return VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-		default: return 0;
-		}
+		VkBufferUsageFlags flags = 0;
+		if (usage & BufferUsage::Vertex) flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		if (usage & BufferUsage::Index) flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		if (usage & BufferUsage::Uniform) flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+		if (usage & BufferUsage::Storage) flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		if (usage & BufferUsage::Indirect) flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		return flags;
 	}
 
 	inline VkMemoryPropertyFlags toVkMemoryProperties(CpuAccess access) {

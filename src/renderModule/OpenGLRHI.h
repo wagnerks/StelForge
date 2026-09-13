@@ -95,6 +95,7 @@ namespace SFE::Render
 	struct CmdDrawIndexed { uint32_t indexCount = 0, instanceCount = 1, firstIndex = 0; int32_t vertexOffset = 0; uint32_t firstInstance = 0; };
 	struct CmdDrawIndirect { BufferHandle buffer; size_t offset = 0; uint32_t drawCount = 1; uint32_t stride = 16; };
 	struct CmdDrawIndexedIndirect { BufferHandle buffer; size_t offset = 0; uint32_t drawCount = 1; uint32_t stride = 20; };
+	struct CmdDrawIndexedIndirectCount { BufferHandle buffer; size_t offset = 0; BufferHandle countBuffer; size_t countOffset = 0; uint32_t maxDrawCount = 0; uint32_t stride = 20; };
 	struct CmdDispatch { uint32_t groupCountX = 1, groupCountY = 1, groupCountZ = 1; };
 	struct CmdBlit { FramebufferHandle src; FramebufferHandle dst; BlitMask mask = BlitMask::Color; BlitFilter filter = BlitFilter::Nearest; };
 	struct CmdSetScissor { int32_t x = 0, y = 0; uint32_t width = 0, height = 0; };
@@ -112,6 +113,7 @@ namespace SFE::Render
 		CmdDrawIndexed,
 		CmdDrawIndirect,
 		CmdDrawIndexedIndirect,
+		CmdDrawIndexedIndirectCount,
 		CmdDispatch,
 		CmdBlit,
 		CmdSetScissor,
@@ -277,6 +279,7 @@ namespace SFE::Render
 		void execDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
 		void execDrawIndirect(BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride);
 		void execDrawIndexedIndirect(BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride);
+		void execDrawIndexedIndirectCount(BufferHandle buffer, size_t offset, BufferHandle countBuffer, size_t countOffset, uint32_t maxDrawCount, uint32_t stride);
 		void execDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 		void execPushConstants(const void* data, uint32_t size);
 		void execBlit(FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter);
@@ -309,6 +312,7 @@ namespace SFE::Render
 		void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) override;
 		void cmdDrawIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride) override;
 		void cmdDrawIndexedIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset, uint32_t drawCount, uint32_t stride) override;
+		void cmdDrawIndexedIndirectCount(CommandListHandle cmd, BufferHandle buffer, size_t offset, BufferHandle countBuffer, size_t countOffset, uint32_t maxDrawCount, uint32_t stride) override;
 		void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) override;
 		void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, ShaderStage stages, const void* data,	uint32_t size) override;
 		void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter) override;

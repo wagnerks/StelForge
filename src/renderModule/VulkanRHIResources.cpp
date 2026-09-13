@@ -292,7 +292,7 @@ namespace SFE::Render {
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 		bufferInfo.size = desc.size < 16 ? 16 : desc.size;
 		bufferInfo.usage = toVkBufferUsage(desc.usage);
-		const bool gpuStorage = desc.usage == BufferUsage::Storage && desc.cpuAccess != CpuAccess::None
+		const bool gpuStorage = (desc.usage & BufferUsage::Storage) && desc.cpuAccess != CpuAccess::None
 			&& desc.size >= (1u << 20);
 		if (desc.cpuAccess != CpuAccess::None || initialData || gpuStorage) {
 			bufferInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;

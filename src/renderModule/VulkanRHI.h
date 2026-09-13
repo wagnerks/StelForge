@@ -169,6 +169,7 @@ namespace SFE::Render
 		void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t vertexOffset = 0, uint32_t firstInstance = 0) override;
 		void cmdDrawIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset = 0, uint32_t drawCount = 1, uint32_t stride = 16) override;
 		void cmdDrawIndexedIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset = 0, uint32_t drawCount = 1, uint32_t stride = 20) override;
+		void cmdDrawIndexedIndirectCount(CommandListHandle cmd, BufferHandle buffer, size_t offset, BufferHandle countBuffer, size_t countOffset, uint32_t maxDrawCount, uint32_t stride = 20) override;
 		void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY = 1, uint32_t groupCountZ = 1) override;
 		void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask = BlitMask::Color, BlitFilter filter = BlitFilter::Nearest) override;
 		void cmdSetScissor(CommandListHandle cmd, int32_t x, int32_t y, uint32_t width, uint32_t height) override;

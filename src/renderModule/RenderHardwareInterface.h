@@ -121,7 +121,18 @@ namespace SFE::Render
 
 	enum class AddressMode : uint8_t { Repeat, ClampToEdge, ClampToBorder, MirrorRepeat, MirrorClampToEdge };
 
-	enum class BufferUsage : uint8_t { Vertex, Index, Uniform, Storage, Indirect };
+	// Flags: a GPU-driven buffer is written by compute as Storage and read by the draw as Indirect.
+	enum class BufferUsage : uint8_t {
+		None = 0,
+		Vertex = 1 << 0,
+		Index = 1 << 1,
+		Uniform = 1 << 2,
+		Storage = 1 << 3,
+		Indirect = 1 << 4,
+	};
+
+	inline BufferUsage operator|(BufferUsage a, BufferUsage b) { return static_cast<BufferUsage>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b)); }
+	inline bool operator&(BufferUsage a, BufferUsage b) { return (static_cast<uint8_t>(a) & static_cast<uint8_t>(b)) != 0; }
 
 	enum class CpuAccess : uint8_t {
 		None,       // GPU-only
@@ -376,6 +387,7 @@ namespace SFE::Render
 	struct ComputePipelineDesc {
 		ShaderModuleHandle compute;
 		std::vector<DescriptorSetLayoutHandle> descriptorSetLayouts;
+		uint32_t pushConstantSize = 0;
 	};
 
 	struct GraphicsPipelineDesc {
@@ -544,6 +556,9 @@ namespace SFE::Render
 		virtual void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t  vertexOffset = 0, uint32_t firstInstance = 0) = 0;
 		virtual void cmdDrawIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset = 0, uint32_t drawCount = 1, uint32_t stride = 16) = 0;
 		virtual void cmdDrawIndexedIndirect(CommandListHandle cmd, BufferHandle buffer, size_t offset = 0, uint32_t drawCount = 1, uint32_t stride = 20) = 0;
+		// Draws min(uint32 at countOffset in countBuffer, maxDrawCount) records, so a compute pass decides
+		// how many draws there are without a readback.
+		virtual void cmdDrawIndexedIndirectCount(CommandListHandle cmd, BufferHandle buffer, size_t offset, BufferHandle countBuffer, size_t countOffset, uint32_t maxDrawCount, uint32_t stride = 20) = 0;
 		virtual void cmdDispatch(CommandListHandle cmd, uint32_t groupCountX, uint32_t groupCountY = 1, uint32_t groupCountZ = 1) = 0;
 
 		virtual void cmdBlit(CommandListHandle cmd, FramebufferHandle src, FramebufferHandle dst, BlitMask mask = BlitMask::Color, BlitFilter filter = BlitFilter::Nearest) = 0;

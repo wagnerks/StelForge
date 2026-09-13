@@ -1240,10 +1240,13 @@ namespace SFE::Render {
 
 		VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 		{
+			const VkPushConstantRange pushRange{ VK_SHADER_STAGE_COMPUTE_BIT, 0, desc.pushConstantSize };
 			VkPipelineLayoutCreateInfo layoutInfo{};
 			layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 			layoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
 			layoutInfo.pSetLayouts = setLayouts.empty() ? nullptr : setLayouts.data();
+			layoutInfo.pushConstantRangeCount = desc.pushConstantSize > 0 ? 1u : 0u;
+			layoutInfo.pPushConstantRanges = desc.pushConstantSize > 0 ? &pushRange : nullptr;
 			if (vkCreatePipelineLayout(m_device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
 				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: compute pipeline layout creation failed");
 				return {};
@@ -1550,6 +1553,18 @@ namespace SFE::Render {
 			return;
 		}
 		vkCmdDrawIndexedIndirect(list->cmd, buf->buffer, offset, drawCount, stride ? stride : 20u);
+	}
+
+	void VulkanRHI::cmdDrawIndexedIndirectCount(const CommandListHandle cmd, const BufferHandle buffer, const size_t offset,
+		const BufferHandle countBuffer, const size_t countOffset, const uint32_t maxDrawCount, const uint32_t stride)
+	{
+		auto* list = listInPass(cmd, "cmdDrawIndexedIndirectCount");
+		const auto* buf = getLive(m_buffers, buffer.id);
+		const auto* countBuf = getLive(m_buffers, countBuffer.id);
+		if (!list || !buf || !countBuf || maxDrawCount == 0) {
+			return;
+		}
+		vkCmdDrawIndexedIndirectCount(list->cmd, buf->buffer, offset, countBuf->buffer, countOffset, maxDrawCount, stride ? stride : 20u);
 	}
 
 	void VulkanRHI::cmdDispatch(const CommandListHandle cmd, const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) {
