@@ -165,7 +165,7 @@ namespace SFE::SystemsModule {
 		Render::DescriptorSetLayoutHandle frameSetLayoutHandle() const { return frameSetLayout; }
 
 		void prepareDataForNextFrame();
-		void syncVulkanGpuFrameData();
+		void uploadDirtyGpuData();
 		bool allPassesReady() const;
 
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
@@ -297,7 +297,11 @@ namespace SFE::SystemsModule {
 		bool shouldRunPass(size_t passIndex) const;
 		void ensureGpuCapacity(ecss::EntityId id);
 		void bindGpuFrame();
-		void createGpuFrameResources(uint32_t slot, size_t transformCount);
+		void createGpuFrameResources(uint32_t slot);
+		void createSceneBuffers(size_t capacity);
+		void uploadTransforms(const std::vector<ecss::EntityId>& sortedIds);
+		void uploadBones(const std::vector<ecss::EntityId>& sortedIds);
+		void markGpuDirty(std::vector<ecss::EntityId>& list, ecss::EntityId id);
 
 		template<typename T>
 		void markDirtyImpl(ecss::EntityId id) {
@@ -331,9 +335,15 @@ namespace SFE::SystemsModule {
 		static constexpr uint32_t kMaxGpuFrames = 2;
 		uint32_t mGpuFrames = 1;
 		Render::BufferHandle mCameraUbo[kMaxGpuFrames]{};
-		Render::BufferHandle mTransforms[kMaxGpuFrames]{};
-		Render::BufferHandle mBones[kMaxGpuFrames]{};
 		Render::DescriptorSetHandle mFrameSet[kMaxGpuFrames]{};
+
+		// Scene data lives on the GPU in one buffer each, indexed by entity id. Only entities that changed
+		// since the last frame are uploaded, through the backend's queued upload path.
+		std::mutex mGpuDirtyMutex;
+		std::vector<ecss::EntityId> mGpuDirtyTransforms;
+		std::vector<ecss::EntityId> mGpuDirtyBones;
+		// Buffers replaced by a capacity grow, destroyed once no in-flight frame can still read them.
+		std::vector<std::pair<Render::BufferHandle, int>> mRetiredBuffers;
 
 		Render::BufferHandle transforms;
 		Render::BufferHandle bones;

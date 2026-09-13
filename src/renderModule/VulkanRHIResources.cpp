@@ -294,9 +294,8 @@ namespace SFE::Render {
 		bufferInfo.usage = toVkBufferUsage(desc.usage);
 		const bool gpuStorage = (desc.usage & BufferUsage::Storage) && desc.cpuAccess != CpuAccess::None
 			&& desc.size >= (1u << 20);
-		if (desc.cpuAccess != CpuAccess::None || initialData || gpuStorage) {
-			bufferInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-		}
+		// Always: a CpuAccess::None buffer is still written through updateBuffer's queued upload.
+		bufferInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		VmaAllocationCreateInfo allocInfo{};

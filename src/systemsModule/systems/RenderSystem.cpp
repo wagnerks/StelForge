@@ -156,8 +156,9 @@ namespace SFE::SystemsModule {
 			mRenderData.frameSetLayout = frameSetLayout;
 		}
 
+		createSceneBuffers(maxDrawSize);
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
-			createGpuFrameResources(slot, maxDrawSize);
+			createGpuFrameResources(slot);
 		}
 		bindGpuFrame();
 
@@ -186,14 +187,20 @@ namespace SFE::SystemsModule {
 			if (live.hasComponent<MeshComponent>(id)) {
 				markDirty<MeshComponent>(id);
 			}
-			if (live.hasComponent<ComponentsModule::TransformMatComp>(id)) {
+			if (auto matComp = live.pinComponent<ComponentsModule::TransformMatComp>(id)) {
+				// A reload that finished before we subscribed never refreshed the copy, so take it from the source.
+				if (const auto transform = live.pinComponent<const TransformComponent>(id)) {
+					matComp->mTransform = transform->getTransform();
+				}
 				markDirty<ComponentsModule::TransformMatComp>(id);
+				markGpuDirty(mGpuDirtyTransforms, id);
 			}
 			if (live.hasComponent<MaterialComponent>(id)) {
 				markDirty<MaterialComponent>(id);
 			}
 			if (live.hasComponent<ComponentsModule::ArmatureBonesComponent>(id)) {
 				markDirty<ComponentsModule::ArmatureBonesComponent>(id);
+				markGpuDirty(mGpuDirtyBones, id);
 			}
 		}
 		SFE::Engine::reproTrace("RenderSystem prepare");
@@ -285,7 +292,7 @@ namespace SFE::SystemsModule {
 		mRenderData.rotate();
 
 		if (frameLock) {
-			syncVulkanGpuFrameData();
+			uploadDirtyGpuData();
 		}
 
 		renderFrame();
@@ -307,15 +314,13 @@ namespace SFE::SystemsModule {
 		auto* rhi = Engine::instance()->rhi();
 		const uint32_t slot = rhi->frameInFlight() % mGpuFrames;
 		cameraMatricesUBO = mCameraUbo[slot];
-		transforms = mTransforms[slot];
-		bones = mBones[slot];
 		frameSet = mFrameSet[slot];
 		mRenderData.transformsSSBO = transforms;
 		mRenderData.bonesSSBO = bones;
 		mRenderData.cameraMatricesUBO = cameraMatricesUBO;
 	}
 
-	void RenderSystem::createGpuFrameResources(const uint32_t slot, const size_t transformCount) {
+	void RenderSystem::createGpuFrameResources(const uint32_t slot) {
 		auto* rhi = Engine::instance()->rhi();
 		Render::BufferDesc uboDesc;
 		uboDesc.size = sizeof(RenderMatrices);
@@ -324,26 +329,33 @@ namespace SFE::SystemsModule {
 		uboDesc.debugName = "CameraMatricesUBO";
 		mCameraUbo[slot] = rhi->createBuffer(uboDesc);
 
-		Render::BufferDesc transformDesc;
-		transformDesc.size = sizeof(Math::Mat4) * transformCount;
-		transformDesc.usage = Render::BufferUsage::Storage;
-		transformDesc.cpuAccess = Render::CpuAccess::Write;
-		transformDesc.debugName = "TransformsSSBO";
-		mTransforms[slot] = rhi->createBuffer(transformDesc);
-
-		Render::BufferDesc boneDesc;
-		boneDesc.size = sizeof(Math::Mat4) * ComponentsModule::kMaxArmatureBones * transformCount;
-		boneDesc.usage = Render::BufferUsage::Storage;
-		boneDesc.cpuAccess = Render::CpuAccess::Write;
-		boneDesc.debugName = "BonesSSBO";
-		mBones[slot] = rhi->createBuffer(boneDesc);
-
 		mFrameSet[slot] = rhi->allocateDescriptorSet(frameSetLayout);
 		rhi->updateDescriptorSets({
 			{ mFrameSet[slot], 5, {{ mCameraUbo[slot] }} },
-			{ mFrameSet[slot], 1, {{ mTransforms[slot] }} },
-			{ mFrameSet[slot], 2, {{ mBones[slot] }} },
+			{ mFrameSet[slot], 1, {{ transforms }} },
+			{ mFrameSet[slot], 2, {{ bones }} },
 		});
+	}
+
+	void RenderSystem::createSceneBuffers(const size_t capacity) {
+		auto* rhi = Engine::instance()->rhi();
+		// CpuAccess::None: device-local, written only through updateBuffer, which on Vulkan is copied
+		// in the frame's own command list instead of racing the frames still in flight.
+		Render::BufferDesc transformDesc;
+		transformDesc.size = sizeof(Math::Mat4) * capacity;
+		transformDesc.usage = Render::BufferUsage::Storage;
+		transformDesc.cpuAccess = Render::CpuAccess::None;
+		transformDesc.debugName = "TransformsSSBO";
+		transforms = rhi->createBuffer(transformDesc);
+
+		Render::BufferDesc boneDesc;
+		boneDesc.size = sizeof(Math::Mat4) * ComponentsModule::kMaxArmatureBones * capacity;
+		boneDesc.usage = Render::BufferUsage::Storage;
+		boneDesc.cpuAccess = Render::CpuAccess::None;
+		boneDesc.debugName = "BonesSSBO";
+		bones = rhi->createBuffer(boneDesc);
+
+		mGpuCapacity = capacity;
 	}
 
 	void RenderSystem::ensureGpuCapacity(ecss::EntityId id) {
@@ -358,109 +370,131 @@ namespace SFE::SystemsModule {
 		}
 
 		auto* rhi = Engine::instance()->rhi();
+		mRetiredBuffers.emplace_back(transforms, mRenderedFrames);
+		mRetiredBuffers.emplace_back(bones, mRenderedFrames);
+		createSceneBuffers(newCap);
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
-			Render::BufferDesc ssbDesc;
-			ssbDesc.size = sizeof(Math::Mat4) * newCap;
-			ssbDesc.usage = Render::BufferUsage::Storage;
-			ssbDesc.cpuAccess = Render::CpuAccess::Write;
-			ssbDesc.debugName = "TransformsSSBO";
-			auto newTransforms = rhi->createBuffer(ssbDesc);
-
-			for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::TransformMatComp>()) {
-				if (static_cast<size_t>(entId) < newCap && comp) {
-					rhi->updateBuffer(newTransforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &comp->mTransform);
-				}
-			}
-
-			Render::BufferDesc boneDesc;
-			boneDesc.size = sizeof(Math::Mat4) * ComponentsModule::kMaxArmatureBones * newCap;
-			boneDesc.usage = Render::BufferUsage::Storage;
-			boneDesc.cpuAccess = Render::CpuAccess::Write;
-			boneDesc.debugName = "BonesSSBO";
-			mBones[slot] = rhi->createBuffer(boneDesc);
-
-			mTransforms[slot] = newTransforms;
 			rhi->updateDescriptorSets({
-				{ mFrameSet[slot], 1, {{ mTransforms[slot] }} },
-				{ mFrameSet[slot], 2, {{ mBones[slot] }} },
+				{ mFrameSet[slot], 1, {{ transforms }} },
+				{ mFrameSet[slot], 2, {{ bones }} },
 			});
 		}
-
-		mGpuCapacity = newCap;
 		bindGpuFrame();
+
+		// The new buffers start empty: everything live goes up again.
+		std::vector<ecss::EntityId> ids;
+		for (auto [entId, comp] : ECSHandler::registry().view<const ComponentsModule::TransformMatComp>()) {
+			ids.push_back(entId);
+		}
+		std::sort(ids.begin(), ids.end());
+		uploadTransforms(ids);
+
+		ids.clear();
+		for (auto [entId, comp] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
+			ids.push_back(entId);
+		}
+		std::sort(ids.begin(), ids.end());
+		uploadBones(ids);
 	}
 
-	void RenderSystem::syncVulkanGpuFrameData() {
-		struct TransformUpload {
-			ecss::EntityId id = ecss::INVALID_ID;
-			Math::Mat4 mat{};
-			bool missing = false;
-		};
-		std::vector<TransformUpload> transformUploads;
-		{
-			for (auto [entId, transform, mesh] : ECSHandler::registry().view<const TransformComponent, const MeshComponent>()) {
-				if (!transform || !mesh) {
-					continue;
-				}
-				TransformUpload upload{ entId, transform->getTransform(), false };
-				if (auto transformMat = ECSHandler::registry().pinComponent<ComponentsModule::TransformMatComp>(entId)) {
-					transformMat->mTransform = upload.mat;
-				}
-				else {
-					upload.missing = true;
-				}
-				transformUploads.push_back(upload);
-			}
-		}
+	void RenderSystem::markGpuDirty(std::vector<ecss::EntityId>& list, const ecss::EntityId id) {
+		std::lock_guard lock(mGpuDirtyMutex);
+		list.push_back(id);
+	}
 
-		ecss::EntityId maxTransformId = 0;
-		for (auto& upload : transformUploads) {
-			if (upload.missing) {
-				ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(upload.id, upload.mat);
-			}
-			maxTransformId = (std::max)(maxTransformId, upload.id);
-		}
-
-		bool hasBoneUpload = false;
-		{
-			for (auto [entId, armature] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
-				if (!armature || armature->boneMatrices.empty()) {
-					continue;
-				}
-				if (const auto anim = ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entId);
-					anim && anim->mCurrentAnimation && anim->mPlay) {
-					continue;
-				}
-				hasBoneUpload = true;
-				maxTransformId = (std::max)(maxTransformId, entId);
-			}
-		}
-
-		if (!transformUploads.empty() || hasBoneUpload) {
-			ensureGpuCapacity(maxTransformId);
-		}
-
+	void RenderSystem::uploadTransforms(const std::vector<ecss::EntityId>& sortedIds) {
 		auto* rhi = Engine::instance()->rhi();
-		for (const auto& upload : transformUploads) {
-			rhi->updateBuffer(transforms, static_cast<size_t>(upload.id) * sizeof(Math::Mat4), sizeof(Math::Mat4), &upload.mat);
-		}
-		if (hasBoneUpload) {
-			for (auto [entId, armature] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
-				if (!armature || armature->boneMatrices.empty()) {
-					continue;
-				}
-				if (const auto anim = ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entId);
-					anim && anim->mCurrentAnimation && anim->mPlay) {
-					continue;
-				}
-				const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(ComponentsModule::kMaxArmatureBones));
-				rhi->updateBuffer(
-					bones,
-					static_cast<size_t>(entId) * ComponentsModule::kMaxArmatureBones * sizeof(Math::Mat4),
-					boneCount * sizeof(Math::Mat4),
-					armature->boneMatrices.data());
+		auto& registry = ECSHandler::registry();
+		// Consecutive ids go up as one range, so a spawned chunk is one copy rather than one per entity.
+		std::vector<Math::Mat4> run;
+		ecss::EntityId runStart = 0;
+		const auto flush = [&] {
+			if (!run.empty()) {
+				rhi->updateBuffer(transforms, static_cast<size_t>(runStart) * sizeof(Math::Mat4), run.size() * sizeof(Math::Mat4), run.data());
+				run.clear();
 			}
+		};
+		for (const auto id : sortedIds) {
+			if (static_cast<size_t>(id) >= mGpuCapacity) {
+				break;
+			}
+			const auto comp = registry.pinComponent<const ComponentsModule::TransformMatComp>(id);
+			if (!comp) {
+				flush();
+				continue;
+			}
+			if (!run.empty() && id != runStart + run.size()) {
+				flush();
+			}
+			if (run.empty()) {
+				runStart = id;
+			}
+			run.push_back(comp->mTransform);
 		}
+		flush();
+	}
+
+	void RenderSystem::uploadBones(const std::vector<ecss::EntityId>& sortedIds) {
+		auto* rhi = Engine::instance()->rhi();
+		auto& registry = ECSHandler::registry();
+		for (const auto id : sortedIds) {
+			if (static_cast<size_t>(id) >= mGpuCapacity) {
+				break;
+			}
+			const auto armature = registry.pinComponent<const ComponentsModule::ArmatureBonesComponent>(id);
+			if (!armature || armature->boneMatrices.empty()) {
+				continue;
+			}
+			// A playing animation is written straight into the buffer by AnimationComputePass.
+			if (const auto anim = registry.pinComponent<const ComponentsModule::AnimationComponent>(id);
+				anim && anim->mCurrentAnimation && anim->mPlay) {
+				continue;
+			}
+			const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(ComponentsModule::kMaxArmatureBones));
+			rhi->updateBuffer(bones, static_cast<size_t>(id) * ComponentsModule::kMaxArmatureBones * sizeof(Math::Mat4),
+				boneCount * sizeof(Math::Mat4), armature->boneMatrices.data());
+		}
+	}
+
+	void RenderSystem::uploadDirtyGpuData() {
+		auto* rhi = Engine::instance()->rhi();
+		std::erase_if(mRetiredBuffers, [&](const auto& retired) {
+			if (mRenderedFrames - retired.second <= static_cast<int>(kMaxGpuFrames)) {
+				return false;
+			}
+			rhi->destroyBuffer(retired.first);
+			return true;
+		});
+
+		std::vector<ecss::EntityId> dirtyTransforms;
+		std::vector<ecss::EntityId> dirtyBones;
+		{
+			std::lock_guard lock(mGpuDirtyMutex);
+			dirtyTransforms.swap(mGpuDirtyTransforms);
+			dirtyBones.swap(mGpuDirtyBones);
+		}
+		if (dirtyTransforms.empty() && dirtyBones.empty()) {
+			return;
+		}
+		for (auto* ids : { &dirtyTransforms, &dirtyBones }) {
+			std::sort(ids->begin(), ids->end());
+			ids->erase(std::unique(ids->begin(), ids->end()), ids->end());
+		}
+
+		const size_t capacityBefore = mGpuCapacity;
+		ecss::EntityId maxId = 0;
+		if (!dirtyTransforms.empty()) {
+			maxId = dirtyTransforms.back();
+		}
+		if (!dirtyBones.empty()) {
+			maxId = (std::max)(maxId, dirtyBones.back());
+		}
+		ensureGpuCapacity(maxId);
+		if (mGpuCapacity != capacityBefore) {
+			return; // the grow already uploaded everything live
+		}
+		uploadTransforms(dirtyTransforms);
+		uploadBones(dirtyBones);
 	}
 
 	bool RenderSystem::allPassesReady() const {
@@ -509,9 +543,6 @@ namespace SFE::SystemsModule {
 				const auto id = batch.id;
 				std::sort(ids.begin(), ids.end());
 				ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-				if (id == getDirtyId<ComponentsModule::TransformMatComp>() && !ids.empty()) {
-					ensureGpuCapacity(ids.back());
-				}
 				auto range = OcTreeSystem::makeEntityRanges(std::move(ids));
 
 				if (id == getDirtyId<ComponentsModule::TransformMatComp>()) {//todo support deleting
@@ -520,7 +551,6 @@ namespace SFE::SystemsModule {
 							continue;
 						}
 						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<ComponentsModule::TransformMatComp>(entId, *comp);
-						Engine::instance()->rhi()->updateBuffer(transforms, static_cast<size_t>(entId) * sizeof(Math::Mat4), sizeof(Math::Mat4), &comp->mTransform);
 					}
 				}
 				else if (id == getDirtyId<ComponentsModule::ArmatureBonesComponent>()) {
@@ -557,9 +587,11 @@ namespace SFE::SystemsModule {
 		if (task.type == TRAHSFORM_RELOADED) {
 			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(task.entity, static_cast<TransformComponent*>(task.customData)->getTransform());
 			markDirty<ComponentsModule::TransformMatComp>(task.entity);
+			markGpuDirty(mGpuDirtyTransforms, task.entity);
 		}
 		else if (task.type == ARMATURE_UPDATED) {
 			markDirty<ComponentsModule::ArmatureBonesComponent>(task.entity);
+			markGpuDirty(mGpuDirtyBones, task.entity);
 		}
 		else if (task.type == MATERIAL_UPDATED) {
 			markDirty<ComponentsModule::MaterialComponent>(task.entity);
