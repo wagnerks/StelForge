@@ -9,4 +9,7 @@ bin/imgui.ini
 imgui.ini
 Microsoft.DTfW.DHL.manifest
 .*/
+# SPIR-V is compiled from the GLSL sources at run time and cached here; a tracked copy goes stale and the
+# cache, trusting its .hash sidecar, serves it.
+bin/shaders/vulkan/*.spv
 bin/shaders/vulkan/*.spv.hash
