@@ -13,6 +13,7 @@
 #include "vld.h"
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -22,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -93,6 +95,10 @@ int main(int argc, char** argv)
 	int lightingDebugTerm = 0;
 	bool temporalAccumulation = true;
 	bool proceduralSpheres = false;
+	// Timing run: average the frame and per-pass times over the last two thirds of this many frames, write
+	// them to perfOut and exit. An ordinary run, not a capture, so nothing waits for the GPU between frames.
+	int perfFrames = 0;
+	std::string perfOut = "perf.txt";
 	std::string cameraPos;
 	std::string cameraRot;
 	std::string contentDir;
@@ -135,6 +141,12 @@ int main(int argc, char** argv)
 		}
 		else if (arg == "--spheres") {
 			proceduralSpheres = true;
+		}
+		else if (arg == "--perf-frames" && i + 1 < argc && argv[i + 1]) {
+			perfFrames = std::atoi(argv[++i]);
+		}
+		else if (arg == "--perf-out" && i + 1 < argc && argv[i + 1]) {
+			perfOut = argv[++i];
 		}
 		else if (arg == "--debug-term" && i + 1 < argc && argv[i + 1]) {
 			lightingDebugTerm = std::atoi(argv[++i]);
@@ -346,6 +358,12 @@ int main(int argc, char** argv)
 	crashLog("entering loop");
 	const auto reproStart = std::chrono::steady_clock::now();
 	int frames = 0;
+	struct PerfTotals {
+		double frameMs = 0, cpuMs = 0, submitMs = 0, presentMs = 0, gpuMs = 0;
+		std::vector<std::pair<std::string, double>> passes;
+		int samples = 0;
+	} perf;
+	auto perfLast = std::chrono::steady_clock::now();
 	while (engine->isAlive()) {
 		if (!capturePath.empty()) {
 			SFE::ThreadPool::instance()->waitIdle();
@@ -357,6 +375,42 @@ int main(int argc, char** argv)
 		}
 		engine->update();
 		heartbeat.store(++frames, std::memory_order_relaxed);
+
+		if (perfFrames > 0) {
+			const auto now = std::chrono::steady_clock::now();
+			const double frameMs = std::chrono::duration<double, std::milli>(now - perfLast).count();
+			perfLast = now;
+			if (frames > perfFrames / 3) {
+				const auto* info = SFE::SystemsModule::RenderDebugInfo::instance();
+				perf.frameMs += frameMs;
+				perf.cpuMs += info->cpuMs;
+				perf.submitMs += info->submitMs;
+				perf.presentMs += info->presentMs;
+				perf.gpuMs += info->gpuMs;
+				for (int p = 0; p < info->passCount; ++p) {
+					const std::string name = info->passTimes[p].name;
+					auto it = std::find_if(perf.passes.begin(), perf.passes.end(), [&](const auto& e) { return e.first == name; });
+					if (it == perf.passes.end()) {
+						perf.passes.emplace_back(name, 0.0);
+						it = perf.passes.end() - 1;
+					}
+					it->second += info->passTimes[p].cpuMs;
+				}
+				++perf.samples;
+			}
+			if (frames >= perfFrames) {
+				if (FILE* f = std::fopen(SFE::FileSystem::resolve(perfOut).string().c_str(), "w")) {
+					const double n = (std::max)(1, perf.samples);
+					std::fprintf(f, "frames %d\nframe %.2f ms (%.1f fps)\nrender cpu %.2f\nsubmit %.2f\npresent %.2f\ngpu %.2f\n",
+						perf.samples, perf.frameMs / n, 1000.0 * n / (std::max)(1e-3, perf.frameMs), perf.cpuMs / n, perf.submitMs / n, perf.presentMs / n, perf.gpuMs / n);
+					for (const auto& [name, ms] : perf.passes) {
+						std::fprintf(f, "  %-16s %.2f\n", name.c_str(), ms / n);
+					}
+					std::fclose(f);
+				}
+				break;
+			}
+		}
 
 		if (!capturePath.empty() && frames >= captureFrame) {
 			const bool ok = SFE::Render::captureFrameToPng(capturePath);
