@@ -99,18 +99,6 @@ vec2 vogel_disk_sample(uint sample_index, int sample_count, float angle) {
   return vec2(cosine, sine) * r;
 }
 
-// Jimenez's interleaved gradient noise, fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))),
-// in fixed point. The float form came out different on OpenGL and Vulkan for the same pixel -- the two shader
-// compilers evaluate it differently even marked precise -- so the Vogel samples it rotates, and every
-// penumbra, differed between backends. Integer arithmetic has one result: the inner fract keeps 16 bits,
-// and the outer multiply wraps modulo 2^32, which is exactly the outer fract.
-float interleavedGradientNoise(vec2 p) {
-    uvec2 pixel = uvec2(p);
-    uint inner = (pixel.x * 4398u + pixel.y * 383u) & 0xFFFFu; // fract(dot(p, k)) * 2^16
-    uint outer = inner * 3472289u;                             // fract(52.9829189 * inner / 2^16) * 2^32
-    return float(outer >> 8u) / 16777216.0;
-}
-
 float findAverageBlockerDepth(int layer, vec3 proj, float searchRadius, float angle) {
     const int BLOCKER_SAMPLES = 8;
     float sum = 0.0;
@@ -135,7 +123,7 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
         return 0.0;
     }
 
-    float angle = interleavedGradientNoise(gl_FragCoord.xy) * 6.28318530718;
+    float angle = sfeInterleavedGradientNoise(gl_FragCoord.xy, 0u) * 6.28318530718;
     float uvTexel = max(cascadedShadow.data[layer].cascade.x, 1.0 / 4096.0);
     projCoords.z -= max(bias, uvTexel * 1.25);
 
@@ -181,7 +169,7 @@ float TechniqueVogelPoint(PointLight light, int layer, vec3 projCoords) {
 
     const int sampleCount = clamp(light.samples, 1, 64);
     const float invSamples = 1.0 / float(sampleCount);
-    const float angle = interleavedGradientNoise(gl_FragCoord.xy) * 6.28318530718;
+    const float angle = sfeInterleavedGradientNoise(gl_FragCoord.xy, 0u) * 6.28318530718;
 
     for (int i = 0; i < sampleCount; i++) {
         const vec2 offset = vogel_disk_sample(uint(i), sampleCount, angle) * light.texelSize;

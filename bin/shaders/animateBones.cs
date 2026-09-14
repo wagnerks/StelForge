@@ -54,7 +54,9 @@ layout(SFE_SET(0, 25), std430) readonly buffer AnimInstances {
 layout(SFE_SET(0, 26), std430) buffer Worlds { mat4 worlds[]; };
 
 // `precise` along the bone chain: without it each compiler is free to fuse a multiply-add into an fma in
-// different places, and the bones differ in the last bits between the OpenGL and Vulkan backends.
+// different places, and the bones differ in the last bits between the OpenGL and Vulkan backends. For the same
+// reason mix(), normalize() and length() are written out below: the two paths implement those built-ins with
+// different formulas or sum orders, which `precise` cannot pin.
 mat4 quatToMat(vec4 q) {
     float x = q.x, y = q.y, z = q.z, w = q.w;
     precise float qxx = x * x;
@@ -132,7 +134,7 @@ vec3 lerpVec3Keys(int off, int cnt, float t) {
     Vec3Key a = posKeys[off + i];
     Vec3Key b = posKeys[off + i + 1];
     precise float f = (t - a.time) / (b.time - a.time);
-    precise vec3 v = mix(a.value, b.value, f);
+    precise vec3 v = a.value * (1.0 - f) + b.value * f;
     return v;
 }
 
@@ -147,7 +149,7 @@ vec3 lerpSclKeys(int off, int cnt, float t) {
     Vec3Key a = sclKeys[off + i];
     Vec3Key b = sclKeys[off + i + 1];
     precise float f = (t - a.time) / (b.time - a.time);
-    precise vec3 v = mix(a.value, b.value, f);
+    precise vec3 v = a.value * (1.0 - f) + b.value * f;
     return v;
 }
 
@@ -157,7 +159,8 @@ vec3 lerpSclKeys(int off, int cnt, float t) {
 // and nlerp stays within a hair of slerp.
 vec4 nlerpQuat(vec4 q0, vec4 q1, float inFraction) {
     float sign1 = dot(q0, q1) < 0.0 ? -1.0 : 1.0;
-    precise vec4 q = normalize((1.0 - inFraction) * q0 + (sign1 * inFraction) * q1);
+    precise vec4 qs = (1.0 - inFraction) * q0 + (sign1 * inFraction) * q1;
+    precise vec4 q = qs / sqrt(((qs.x * qs.x + qs.y * qs.y) + qs.z * qs.z) + qs.w * qs.w);
     return q;
 }
 
@@ -166,7 +169,9 @@ vec4 lerpQuatKeys(int off, int cnt, float t) {
         return vec4(0.0, 0.0, 0.0, 1.0);
     }
     if (cnt == 1) {
-        return normalize(rotKeys[off].q);
+        precise vec4 q = rotKeys[off].q;
+        precise vec4 qn = q / sqrt(((q.x * q.x + q.y * q.y) + q.z * q.z) + q.w * q.w);
+        return qn;
     }
     int i = findQuatKey(t, off, cnt);
     QuatKey a = rotKeys[off + i];
@@ -185,7 +190,7 @@ void main() {
         precise mat4 local = b.restLocal;
         if (b.posCnt > 0 || b.rotCnt > 0 || b.sclCnt > 0) {
             vec3 pos = b.restLocal[3].xyz;
-            vec3 scl = vec3(length(b.restLocal[0].xyz), length(b.restLocal[1].xyz), length(b.restLocal[2].xyz));
+            precise vec3 scl = sqrt(vec3(dot(b.restLocal[0].xyz, b.restLocal[0].xyz), dot(b.restLocal[1].xyz, b.restLocal[1].xyz), dot(b.restLocal[2].xyz, b.restLocal[2].xyz)));
             if (b.posCnt > 0) {
                 pos = lerpVec3Keys(b.posOff, b.posCnt, inst.animTime);
             }
