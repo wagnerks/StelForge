@@ -99,8 +99,16 @@ vec2 vogel_disk_sample(uint sample_index, int sample_count, float angle) {
   return vec2(cosine, sine) * r;
 }
 
+// Jimenez's interleaved gradient noise, fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))),
+// in fixed point. The float form came out different on OpenGL and Vulkan for the same pixel -- the two shader
+// compilers evaluate it differently even marked precise -- so the Vogel samples it rotates, and every
+// penumbra, differed between backends. Integer arithmetic has one result: the inner fract keeps 16 bits,
+// and the outer multiply wraps modulo 2^32, which is exactly the outer fract.
 float interleavedGradientNoise(vec2 p) {
-    return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+    uvec2 pixel = uvec2(p);
+    uint inner = (pixel.x * 4398u + pixel.y * 383u) & 0xFFFFu; // fract(dot(p, k)) * 2^16
+    uint outer = inner * 3472289u;                             // fract(52.9829189 * inner / 2^16) * 2^32
+    return float(outer >> 8u) / 16777216.0;
 }
 
 float findAverageBlockerDepth(int layer, vec3 proj, float searchRadius, float angle) {

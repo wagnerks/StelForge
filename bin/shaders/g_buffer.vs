@@ -10,6 +10,10 @@ layout(location = 5) in ivec4 aBoneIds;
 layout(location = 6) in vec4 aWeights;
 layout(location = 7) in vec2 aTexCoords1;
 
+// invariant and `precise` on the skinning chain: otherwise the OpenGL driver and the SPIR-V path may
+// fuse multiply-adds differently, and the same skinned vertex lands a few ULPs apart per backend,
+// which moves triangle edges by a pixel.
+invariant gl_Position;
 layout(location = 0) out vec3 FragPos;
 layout(location = 1) out vec2 TexCoords;
 layout(location = 2) out mat3 TBN;
@@ -38,7 +42,7 @@ void main() {
     uint index = instance.entity;
     vMaterial = instance.material;
 
-    mat4 BoneTransform = mat4(0.0);
+    precise mat4 BoneTransform = mat4(0.0);
     bool withBones = false;
     for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
         int boneIdx = aBoneIds[i];
@@ -52,10 +56,10 @@ void main() {
         BoneTransform = mat4(1.0);
     }
 
-    mat3 normalMatrix = mat3(model[index]) * mat3(BoneTransform);
-    vec4 newPos = BoneTransform * vec4(aPos.xyz, 1.0);
+    precise mat3 normalMatrix = mat3(model[index]) * mat3(BoneTransform);
+    precise vec4 newPos = BoneTransform * vec4(aPos.xyz, 1.0);
     newPos /= newPos.w;
-    vec4 worldPos = model[index] * newPos;
+    precise vec4 worldPos = model[index] * newPos;
 
     FragPos = worldPos.xyz;
     TexCoords = aTexCoords;
@@ -79,5 +83,6 @@ void main() {
     }
     TBN[2] = N;
 
-    gl_Position = matrices.PV * worldPos;
+    precise vec4 clipPos = matrices.PV * worldPos;
+    gl_Position = clipPos;
 }

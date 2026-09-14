@@ -1763,4 +1763,711 @@ namespace SFE::Render::Tests {
 		rhi().destroySampler(sampler);
 		rhi().destroyTexture(texture);
 	}
+
+	namespace {
+
+		constexpr uint32_t kShadowTex = 8;
+		constexpr uint32_t kShadowTarget = 64;
+		constexpr uint32_t kShadowLayer = 1;
+		// Magnification with non-binary scales, as in the bilinear "magnify" case, so sub-texel
+		// offsets land on arbitrary values rather than on a quantised filter's grid.
+		constexpr float kShadowScale[2] = { 0.9137f, 0.7731f };
+		constexpr float kShadowOffset[2] = { 0.0313f, 0.0471f };
+
+		enum class ShadowLookup { LinearCompare, NearestCompare, RawDepth };
+
+		struct ShadowCase {
+			const char* name;
+			ShadowLookup lookup;
+			float ref;
+		};
+
+		// Result per pixel, indexed [row][column] by the row the shader reported: the 8-bit value the
+		// lighting pass would see and the same value carried as 16 bits.
+		struct ShadowImage {
+			std::vector<uint8_t> narrow;
+			std::vector<uint16_t> wide;
+		};
+
+		std::map<std::string, ShadowImage>& shadowSeen() {
+			static std::map<std::string, ShadowImage> seen;
+			return seen;
+		}
+
+		// The formula rhi_test_depth_pattern.fs writes, in window depth.
+		double shadowDepthAt(uint32_t x, uint32_t y) {
+			return (static_cast<double>((x * 5u + y * 3u) % kShadowTex) + 0.5) / kShadowTex;
+		}
+
+		void shadowUv(uint32_t x, uint32_t y, float& u, float& v) {
+			u = kShadowOffset[0] + (static_cast<float>(x) + 0.5f) / static_cast<float>(kShadowTarget) * kShadowScale[0];
+			v = kShadowOffset[1] + (static_cast<float>(y) + 0.5f) / static_cast<float>(kShadowTarget) * kShadowScale[1];
+		}
+
+		// What the lookup is defined to return with exact weights and ClampToEdge: LessEqual passes when
+		// ref <= stored depth, Linear weights the four compare results bilinearly, Nearest takes one.
+		double cpuShadow(const ShadowCase& c, float u, float v) {
+			const auto clampIndex = [](double i) {
+				return static_cast<uint32_t>(std::clamp(i, 0.0, static_cast<double>(kShadowTex - 1)));
+			};
+			const auto lit = [&](uint32_t x, uint32_t y) {
+				return static_cast<double>(c.ref) <= shadowDepthAt(x, y) ? 1.0 : 0.0;
+			};
+			if (c.lookup != ShadowLookup::LinearCompare) {
+				const uint32_t x = clampIndex(std::floor(static_cast<double>(u) * kShadowTex));
+				const uint32_t y = clampIndex(std::floor(static_cast<double>(v) * kShadowTex));
+				return c.lookup == ShadowLookup::RawDepth ? shadowDepthAt(x, y) : lit(x, y);
+			}
+			const double s = static_cast<double>(u) * kShadowTex - 0.5;
+			const double t = static_cast<double>(v) * kShadowTex - 0.5;
+			const double fs = std::floor(s);
+			const double ft = std::floor(t);
+			const double a = s - fs;
+			const double b = t - ft;
+			const uint32_t x0 = clampIndex(fs);
+			const uint32_t x1 = clampIndex(fs + 1.0);
+			const uint32_t y0 = clampIndex(ft);
+			const uint32_t y1 = clampIndex(ft + 1.0);
+			return (1.0 - a) * (1.0 - b) * lit(x0, y0) + a * (1.0 - b) * lit(x1, y0)
+				+ (1.0 - a) * b * lit(x0, y1) + a * b * lit(x1, y1);
+		}
+	}
+
+	// Hardware PCF compared across backends at sub-texel positions. The frame comparison shows the
+	// lighting pass differing by 1/255 on ~26k pixels, in streaks inside shadow penumbrae, where
+	// deferred_shading.fs samples the cascade map through sampler2DArrayShadow. How a Linear compare
+	// lookup weights its 2x2 footprint, and how finely it resolves the sub-texel position, is left to
+	// the implementation, so two correct backends may disagree there.
+	//
+	// Texture and samplers are made as CascadedShadowPass::initRender makes them: a DEPTH_COMPONENT32
+	// array rendered one layer at a time, a LessEqual Linear ClampToEdge compare sampler, and a
+	// Nearest non-compare one for the raw depth. A Nearest compare sampler is added to separate the
+	// compare itself from the filter. The depth is rendered, not uploaded: Vulkan cannot create a
+	// depth texture with initial data (see TextureFormatMatrixRoundTripsThroughCreateAndReadback).
+	//
+	// References 0.25, 0.5 and 0.75 never equal a stored depth (odd sixteenths), so those cases can
+	// only differ in weights or position. The "equal" cases use 9/16, which is stored exactly as
+	// D32_SFLOAT on Vulkan but rounded as a 32-bit unorm on OpenGL, so they probe depth precision.
+	//
+	// Unlike the bilinear test the cross-backend assert is exact on the 8-bit value: a one-step
+	// difference is the symptom being documented.
+	TEST_P(RhiBackendTest, ShadowCompareSamplingMatchesAcrossBackendsAtSubTexelUvs) {
+		const char* backend = graphicsBackendName(GetParam());
+
+		TextureDesc depthDesc;
+		depthDesc.width = kShadowTex;
+		depthDesc.height = kShadowTex;
+		depthDesc.depth = 2;
+		depthDesc.arrayLayers = 2;
+		depthDesc.dimension = TextureDimension::Array;
+		depthDesc.format = TextureFormat::DEPTH_COMPONENT32;
+		depthDesc.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
+		const auto depth = rhi().createTexture(depthDesc);
+		ASSERT_TRUE(depth);
+
+		RenderPassDesc depthPassDesc;
+		depthPassDesc.hasDepthStencil = true;
+		depthPassDesc.depthAttachment.loadOp = AttachmentLoadOp::Clear;
+		depthPassDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
+		depthPassDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT32;
+		depthPassDesc.depthAttachment.clearDepth = 1.f;
+		const auto depthPass = rhi().createRenderPass(depthPassDesc);
+		ASSERT_TRUE(depthPass);
+
+		GraphicsPipelineDesc depthPipeDesc;
+		depthPipeDesc.renderPass = depthPass;
+		depthPipeDesc.topology = PrimitiveTopology::Triangles;
+		depthPipeDesc.cullMode = CullMode::None;
+		depthPipeDesc.frontFace = FrontFace::CounterClockWise;
+		depthPipeDesc.fillMode = PolygonFillMode::Fill;
+		depthPipeDesc.depthStencilState = { true, true, CompareOp::Always };
+		depthPipeDesc.blend = { false };
+		depthPipeDesc.shaders.vertex = rhi().loadShader(ShaderStage::Vertex, "shaders/rhi_test_fullscreen.vs");
+		depthPipeDesc.shaders.fragment = rhi().loadShader(ShaderStage::Fragment, "shaders/rhi_test_depth_pattern.fs");
+		const auto depthPipeline = rhi().createGraphicsPipeline(depthPipeDesc);
+		ASSERT_TRUE(depthPipeline) << "depth pattern pipeline creation failed";
+
+		// Layer 0 keeps its clear of 1.0 and only the sampled layer gets the pattern, so a lookup that
+		// read the wrong layer passes every compare and is far off the CPU reference.
+		std::vector<FramebufferHandle> layerFbs;
+		for (uint32_t layer = 0; layer < 2; ++layer) {
+			FramebufferDesc fbDesc;
+			fbDesc.width = kShadowTex;
+			fbDesc.height = kShadowTex;
+			fbDesc.layers = 1;
+			fbDesc.renderPass = depthPass;
+			FramebufferAttachmentDesc att;
+			att.texture = depth;
+			att.layer = layer;
+			fbDesc.depthStencilAttachment = att;
+			layerFbs.push_back(rhi().createFramebuffer(fbDesc));
+			ASSERT_TRUE(layerFbs.back()) << "layer " << layer;
+
+			rhi().beginFrame();
+			const auto cmd = rhi().beginCommandList(CommandListType::Graphics);
+			RenderPassBeginInfo begin;
+			begin.renderPass = depthPass;
+			begin.framebuffer = layerFbs.back();
+			begin.width = kShadowTex;
+			begin.height = kShadowTex;
+			rhi().cmdBeginRenderPass(cmd, begin);
+			if (layer == kShadowLayer) {
+				rhi().cmdBindPipeline(cmd, depthPipeline);
+				rhi().cmdDraw(cmd, 3, 1, 0, 0);
+			}
+			rhi().cmdEndRenderPass(cmd);
+			rhi().endCommandList(cmd);
+			rhi().submit(cmd);
+			rhi().present();
+			rhi().waitIdle();
+		}
+
+		const auto makeSampler = [&](FilterMode filter, CompareOp compare) {
+			SamplerDesc desc;
+			desc.minFilter = filter;
+			desc.magFilter = filter;
+			desc.addressU = AddressMode::ClampToEdge;
+			desc.addressV = AddressMode::ClampToEdge;
+			desc.addressW = AddressMode::ClampToEdge;
+			desc.compareOp = compare;
+			return rhi().createSampler(desc);
+		};
+		const auto linearCompare = makeSampler(FilterMode::Linear, CompareOp::LessEqual);
+		const auto nearestCompare = makeSampler(FilterMode::Nearest, CompareOp::LessEqual);
+		const auto nearestRaw = makeSampler(FilterMode::Nearest, CompareOp::None);
+		ASSERT_TRUE(linearCompare);
+		ASSERT_TRUE(nearestCompare);
+		ASSERT_TRUE(nearestRaw);
+
+		// Magenta, alpha 255: a pixel the draw never touched reports row 255 and is caught below.
+		const auto pass = makeLodPass(rhi(), { 1.f, 0.f, 1.f, 1.f });
+		ASSERT_TRUE(pass);
+
+		DescriptorSetLayoutDesc layoutDesc;
+		layoutDesc.bindings.push_back({ 0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment });
+		layoutDesc.bindings.push_back({ 1, DescriptorType::UniformBuffer, ShaderStage::Fragment });
+		const auto layout = rhi().createDescriptorSetLayout(layoutDesc);
+		ASSERT_TRUE(layout);
+
+		const auto makePipeline = [&](const char* fragment) {
+			GraphicsPipelineDesc desc;
+			desc.renderPass = pass;
+			desc.topology = PrimitiveTopology::Triangles;
+			desc.cullMode = CullMode::None;
+			desc.frontFace = FrontFace::CounterClockWise;
+			desc.fillMode = PolygonFillMode::Fill;
+			desc.depthStencilState = { false, false, CompareOp::Always };
+			desc.blend = { false };
+			desc.descriptorSetLayouts = { layout };
+			desc.shaders.vertex = rhi().loadShader(ShaderStage::Vertex, "shaders/rhi_test_fullscreen.vs");
+			desc.shaders.fragment = rhi().loadShader(ShaderStage::Fragment, fragment);
+			return rhi().createGraphicsPipeline(desc);
+		};
+		const auto comparePipeline = makePipeline("shaders/rhi_test_shadow_compare.fs");
+		const auto rawPipeline = makePipeline("shaders/rhi_test_shadow_raw.fs");
+		ASSERT_TRUE(comparePipeline) << "compare pipeline creation failed";
+		ASSERT_TRUE(rawPipeline) << "raw depth pipeline creation failed";
+
+		TextureDesc targetDesc;
+		targetDesc.width = kShadowTarget;
+		targetDesc.height = kShadowTarget;
+		targetDesc.format = TextureFormat::RGBA8;
+		targetDesc.dimension = TextureDimension::Tex2D;
+		targetDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled | TextureUsage::TransferSrc;
+		const auto target = rhi().createTexture(targetDesc);
+		ASSERT_TRUE(target);
+		FramebufferDesc fbDesc;
+		fbDesc.width = kShadowTarget;
+		fbDesc.height = kShadowTarget;
+		fbDesc.layers = 1;
+		fbDesc.renderPass = pass;
+		FramebufferAttachmentDesc att;
+		att.texture = target;
+		att.layer = UINT32_MAX;
+		fbDesc.colorAttachments = { att };
+		const auto fb = rhi().createFramebuffer(fbDesc);
+		ASSERT_TRUE(fb);
+
+		const ShadowCase cases[] = {
+			{ "linear ref 0.25", ShadowLookup::LinearCompare, 0.25f },
+			{ "linear ref 0.5", ShadowLookup::LinearCompare, 0.5f },
+			{ "linear ref 0.75", ShadowLookup::LinearCompare, 0.75f },
+			{ "linear ref equal 9/16", ShadowLookup::LinearCompare, 0.5625f },
+			{ "nearest ref 0.5", ShadowLookup::NearestCompare, 0.5f },
+			{ "nearest ref equal 9/16", ShadowLookup::NearestCompare, 0.5625f },
+			{ "raw depth nearest", ShadowLookup::RawDepth, 0.f },
+		};
+
+		const uint32_t pixelCount = kShadowTarget * kShadowTarget;
+		for (const auto& c : cases) {
+			SCOPED_TRACE(c.name);
+
+			const float params[8] = { kShadowScale[0], kShadowScale[1], kShadowOffset[0], kShadowOffset[1],
+				static_cast<float>(kShadowTarget), static_cast<float>(kShadowTarget), c.ref, 0.f };
+			BufferDesc paramsDesc;
+			paramsDesc.size = sizeof(params);
+			paramsDesc.usage = BufferUsage::Uniform;
+			paramsDesc.cpuAccess = CpuAccess::Write;
+			paramsDesc.debugName = "rhi_test_shadow_compare";
+			const auto paramsBuffer = rhi().createBuffer(paramsDesc, params);
+			ASSERT_TRUE(paramsBuffer);
+
+			const bool raw = c.lookup == ShadowLookup::RawDepth;
+			const auto sampler = raw ? nearestRaw
+				: c.lookup == ShadowLookup::LinearCompare ? linearCompare : nearestCompare;
+			const auto pipeline = raw ? rawPipeline : comparePipeline;
+
+			const auto set = rhi().allocateDescriptorSet(layout);
+			ASSERT_TRUE(set);
+			WriteDescriptor image{};
+			image.set = set;
+			image.binding = 0;
+			image.images.push_back({ depth, sampler });
+			WriteDescriptor uniform{};
+			uniform.set = set;
+			uniform.binding = 1;
+			uniform.buffers.push_back({ paramsBuffer, 0, 0 });
+			rhi().updateDescriptorSets({ image, uniform });
+
+			rhi().beginFrame();
+			const auto cmd = rhi().beginCommandList(CommandListType::Graphics);
+			RenderPassBeginInfo begin;
+			begin.renderPass = pass;
+			begin.framebuffer = fb;
+			begin.width = kShadowTarget;
+			begin.height = kShadowTarget;
+			rhi().cmdBeginRenderPass(cmd, begin);
+			rhi().cmdBindPipeline(cmd, pipeline);
+			rhi().cmdBindDescriptorSets(cmd, pipeline, 0, &set, 1);
+			rhi().cmdDraw(cmd, 3, 1, 0, 0);
+			rhi().cmdEndRenderPass(cmd);
+			rhi().endCommandList(cmd);
+			rhi().submit(cmd);
+			rhi().present();
+			rhi().waitIdle();
+
+			std::vector<uint8_t> pixels;
+			int w = 0;
+			int h = 0;
+			const bool readOk = rhi().readbackTexture(target, pixels, w, h);
+			rhi().freeDescriptorSet(set);
+			rhi().destroyBuffer(paramsBuffer);
+			ASSERT_TRUE(readOk) << "readback failed";
+			ASSERT_EQ(pixels.size(), static_cast<size_t>(pixelCount) * 4u);
+
+			// File each readback row under the row index the shader wrote into alpha.
+			ShadowImage got;
+			got.narrow.assign(pixelCount, 0);
+			got.wide.assign(pixelCount, 0);
+			std::vector<bool> filled(kShadowTarget, false);
+			for (uint32_t row = 0; row < kShadowTarget; ++row) {
+				const uint8_t reported = pixels[static_cast<size_t>(row) * kShadowTarget * 4u + 3u];
+				ASSERT_LT(reported, kShadowTarget) << "readback row " << row << " reports row " << int(reported)
+					<< ": the draw did not cover the target";
+				ASSERT_FALSE(filled[reported]) << "two readback rows report row " << int(reported);
+				filled[reported] = true;
+				for (uint32_t x = 0; x < kShadowTarget; ++x) {
+					const size_t src = (static_cast<size_t>(row) * kShadowTarget + x) * 4u;
+					const size_t dst = static_cast<size_t>(reported) * kShadowTarget + x;
+					got.narrow[dst] = pixels[src];
+					got.wide[dst] = static_cast<uint16_t>(pixels[src + 1] * 256u + pixels[src + 2]);
+				}
+			}
+
+			ShadowImage cpu;
+			cpu.narrow.assign(pixelCount, 0);
+			cpu.wide.assign(pixelCount, 0);
+			for (uint32_t y = 0; y < kShadowTarget; ++y) {
+				for (uint32_t x = 0; x < kShadowTarget; ++x) {
+					float u = 0.f;
+					float v = 0.f;
+					shadowUv(x, y, u, v);
+					const double value = cpuShadow(c, u, v);
+					const size_t i = static_cast<size_t>(y) * kShadowTarget + x;
+					cpu.narrow[i] = static_cast<uint8_t>(std::floor(value * 255.0 + 0.5));
+					cpu.wide[i] = static_cast<uint16_t>(std::floor(value * 65535.0 + 0.5));
+				}
+			}
+
+			// Worst 8-bit and 16-bit difference, where the 8-bit one is worst, and how many pixels
+			// differ in 8 bits at all.
+			struct Diff {
+				int narrow = 0;
+				int wide = 0;
+				uint32_t x = 0;
+				uint32_t y = 0;
+				uint32_t count = 0;
+			};
+			const auto measure = [&](const ShadowImage& other) {
+				Diff d;
+				for (uint32_t y = 0; y < kShadowTarget; ++y) {
+					for (uint32_t x = 0; x < kShadowTarget; ++x) {
+						const size_t i = static_cast<size_t>(y) * kShadowTarget + x;
+						const int n = std::abs(int(got.narrow[i]) - int(other.narrow[i]));
+						d.wide = std::max(d.wide, std::abs(int(got.wide[i]) - int(other.wide[i])));
+						d.count += n != 0 ? 1u : 0u;
+						if (n > d.narrow) {
+							d.narrow = n;
+							d.x = x;
+							d.y = y;
+						}
+					}
+				}
+				return d;
+			};
+			const auto describe = [&](uint32_t x, uint32_t y) {
+				float u = 0.f;
+				float v = 0.f;
+				shadowUv(x, y, u, v);
+				std::ostringstream out;
+				out << "pixel (" << x << ", " << y << ") uv (" << u << ", " << v << ") texel-space ("
+					<< u * kShadowTex - 0.5f << ", " << v * kShadowTex - 0.5f << ")";
+				return out.str();
+			};
+			const auto valueAt = [](const ShadowImage& img, uint32_t x, uint32_t y) {
+				const size_t i = static_cast<size_t>(y) * kShadowTarget + x;
+				std::ostringstream out;
+				out << int(img.narrow[i]) << "/" << img.wide[i];
+				return out.str();
+			};
+
+			const Diff vsCpu = measure(cpu);
+			std::cout << "[shadow] " << backend << " " << c.name << ": vs CPU max 8-bit " << vsCpu.narrow
+				<< " (" << vsCpu.count << " px), max 16-bit " << vsCpu.wide << ", worst at "
+				<< describe(vsCpu.x, vsCpu.y) << " got " << valueAt(got, vsCpu.x, vsCpu.y)
+				<< " cpu " << valueAt(cpu, vsCpu.x, vsCpu.y) << "\n";
+
+			auto& seen = shadowSeen();
+			const auto other = seen.find(c.name);
+			if (other == seen.end()) {
+				seen.emplace(c.name, got);
+				continue;
+			}
+			const Diff vsOther = measure(other->second);
+			std::cout << "[shadow] " << backend << " " << c.name << ": vs other backend max 8-bit " << vsOther.narrow
+				<< " (" << vsOther.count << " px), max 16-bit " << vsOther.wide << ", worst at "
+				<< describe(vsOther.x, vsOther.y) << " this " << valueAt(got, vsOther.x, vsOther.y) << " other "
+				<< valueAt(other->second, vsOther.x, vsOther.y) << " cpu " << valueAt(cpu, vsOther.x, vsOther.y) << "\n";
+			EXPECT_EQ(vsOther.narrow, 0)
+				<< c.name << ": shadow lookups differ between backends by up to " << vsOther.narrow << "/255 on "
+				<< vsOther.count << " pixels, worst at " << describe(vsOther.x, vsOther.y) << ", this backend "
+				<< valueAt(got, vsOther.x, vsOther.y) << ", other backend " << valueAt(other->second, vsOther.x, vsOther.y)
+				<< ", CPU " << valueAt(cpu, vsOther.x, vsOther.y) << " (8-bit/16-bit)";
+		}
+
+		rhi().destroyFramebuffer(fb);
+		rhi().destroyTexture(target);
+		rhi().destroyGraphicsPipeline(rawPipeline);
+		rhi().destroyGraphicsPipeline(comparePipeline);
+		rhi().destroyDescriptorSetLayout(layout);
+		rhi().destroyRenderPass(pass);
+		rhi().destroySampler(nearestRaw);
+		rhi().destroySampler(nearestCompare);
+		rhi().destroySampler(linearCompare);
+		for (const auto layerFb : layerFbs) {
+			rhi().destroyFramebuffer(layerFb);
+		}
+		rhi().destroyGraphicsPipeline(depthPipeline);
+		rhi().destroyRenderPass(depthPass);
+		rhi().destroyTexture(depth);
+	}
+
+	namespace {
+
+		constexpr uint32_t kLodTex = 64;
+		constexpr uint32_t kLodMips = 7;
+		constexpr uint32_t kLodTarget = 128;
+
+		// Per-bit weights 128, 64, ... 4: every weight is even, so a 2x2 box average of a sum of them
+		// is again such a sum plus whole constants, down to 1x1. Generated mips are then exact bytes on
+		// both backends (see GeneratedMipLevelsMatchA2x2BoxFilter), and a difference in a lookup below
+		// cannot come from the mip contents.
+		uint8_t lodBits(uint32_t i) {
+			uint32_t sum = 0;
+			for (uint32_t k = 0; k < 6; ++k) {
+				sum += ((i >> k) & 1u) * (128u >> k);
+			}
+			return static_cast<uint8_t>(sum);
+		}
+
+		std::vector<uint8_t> lodSource() {
+			std::vector<uint8_t> bytes;
+			for (uint32_t y = 0; y < kLodTex; ++y) {
+				for (uint32_t x = 0; x < kLodTex; ++x) {
+					bytes.insert(bytes.end(), { lodBits(x), lodBits(y), lodBits(x ^ y), 255 });
+				}
+			}
+			return bytes;
+		}
+
+		enum class LodOutput { Color, FloatBits };
+
+		struct LodCase {
+			const char* name;
+			bool engineSampler; // the albedo sampler, else LinearMipmapLinear
+			float select;       // rhi_test_implicit_lod.fs select.x
+			LodOutput output;
+		};
+
+		std::map<std::string, std::vector<uint8_t>>& lodSeen() {
+			static std::map<std::string, std::vector<uint8_t>> seen;
+			return seen;
+		}
+
+		float lodFloatAt(const std::vector<uint8_t>& pixels, size_t pixel) {
+			const uint32_t bits = pixels[pixel * 4u] | (pixels[pixel * 4u + 1] << 8u)
+				| (pixels[pixel * 4u + 2] << 16u) | (static_cast<uint32_t>(pixels[pixel * 4u + 3]) << 24u);
+			float value = 0.f;
+			std::memcpy(&value, &bits, sizeof(value));
+			return value;
+		}
+	}
+
+	// Implicit-LOD sampling and the screen-space derivatives behind it, compared across backends. The
+	// frame comparison shows G-buffer albedo differing by 1/255 on ~36k pixels and by up to 41 on a
+	// few, on textured characters and along the floor grid lines (grid.fs uses fwidth). g_buffer.fs
+	// samples albedo with texture(), so the LOD comes from derivatives, and the Vulkan backend reaches
+	// OpenGL's +Y-up image with an un-flipped viewport and inverted winding, which could flip dFdy.
+	//
+	// A perspective floor quad samples a mipmapped high-frequency texture two ways: through the
+	// albedo sampler exactly as TextureHandler::loadTexture makes it (Linear/Linear Repeat,
+	// maxAnisotropy 1 — which, having no mip filter, pins lookups to level 0), and through a
+	// LinearMipmapLinear sampler, where the implicit LOD matters. Colour cases are texture(),
+	// textureGrad with the fragment's own derivatives, and textureLod at textureQueryLod().x: if
+	// texture() differs but the other two agree with each other, the LOD computation differs; if
+	// textureLod differs too, the trilinear blend does. Float cases write the exact bits of uv, its
+	// derivatives, fwidth and the queried LOD, and count pixels where one backend holds the exact
+	// negation of the other, which is what a flipped dFdy would look like.
+	//
+	// Readback rows are compared as returned: both backends hand rows back top down
+	// (TextureFormatMatrixRoundTripsThroughCreateAndReadback), and a vertical misalignment would show
+	// as a mismatch in every case, including uv. The assert is exact on every case.
+	TEST_P(RhiBackendTest, ImplicitLodAndDerivativesMatchAcrossBackendsOnAPerspectiveQuad) {
+		const char* backend = graphicsBackendName(GetParam());
+		const auto source = lodSource();
+
+		TextureDesc texDesc;
+		texDesc.width = kLodTex;
+		texDesc.height = kLodTex;
+		texDesc.mipLevels = kLodMips;
+		texDesc.format = TextureFormat::RGBA8;
+		texDesc.dimension = TextureDimension::Tex2D;
+		texDesc.usage = TextureUsage::Sampled | TextureUsage::TransferDst;
+		const auto texture = rhi().createTexture(texDesc, source.data());
+		ASSERT_TRUE(texture);
+
+		const auto makeSampler = [&](FilterMode minFilter) {
+			SamplerDesc desc;
+			desc.minFilter = minFilter;
+			desc.magFilter = FilterMode::Linear;
+			desc.addressU = AddressMode::Repeat;
+			desc.addressV = AddressMode::Repeat;
+			desc.addressW = AddressMode::Repeat;
+			desc.maxAnisotropy = 1.f;
+			return rhi().createSampler(desc);
+		};
+		const auto albedoSampler = makeSampler(FilterMode::Linear);
+		const auto trilinearSampler = makeSampler(FilterMode::LinearMipmapLinear);
+		ASSERT_TRUE(albedoSampler);
+		ASSERT_TRUE(trilinearSampler);
+
+		// Transparent black: pixels off the quad read back as zero on both backends, colour or bits.
+		const auto pass = makeLodPass(rhi(), { 0.f, 0.f, 0.f, 0.f });
+		ASSERT_TRUE(pass);
+
+		DescriptorSetLayoutDesc layoutDesc;
+		layoutDesc.bindings.push_back({ 0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment });
+		layoutDesc.bindings.push_back({ 1, DescriptorType::UniformBuffer, ShaderStage::Fragment });
+		const auto layout = rhi().createDescriptorSetLayout(layoutDesc);
+		ASSERT_TRUE(layout);
+
+		GraphicsPipelineDesc pipelineDesc;
+		pipelineDesc.renderPass = pass;
+		pipelineDesc.topology = PrimitiveTopology::Triangles;
+		pipelineDesc.cullMode = CullMode::None;
+		pipelineDesc.frontFace = FrontFace::CounterClockWise;
+		pipelineDesc.fillMode = PolygonFillMode::Fill;
+		pipelineDesc.depthStencilState = { false, false, CompareOp::Always };
+		pipelineDesc.blend = { false };
+		pipelineDesc.descriptorSetLayouts = { layout };
+		pipelineDesc.shaders.vertex = rhi().loadShader(ShaderStage::Vertex, "shaders/rhi_test_perspective_quad.vs");
+		pipelineDesc.shaders.fragment = rhi().loadShader(ShaderStage::Fragment, "shaders/rhi_test_implicit_lod.fs");
+		const auto pipeline = rhi().createGraphicsPipeline(pipelineDesc);
+		ASSERT_TRUE(pipeline) << "pipeline creation failed";
+
+		TextureDesc targetDesc;
+		targetDesc.width = kLodTarget;
+		targetDesc.height = kLodTarget;
+		targetDesc.format = TextureFormat::RGBA8;
+		targetDesc.dimension = TextureDimension::Tex2D;
+		targetDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled | TextureUsage::TransferSrc;
+		const auto target = rhi().createTexture(targetDesc);
+		ASSERT_TRUE(target);
+		FramebufferDesc fbDesc;
+		fbDesc.width = kLodTarget;
+		fbDesc.height = kLodTarget;
+		fbDesc.layers = 1;
+		fbDesc.renderPass = pass;
+		FramebufferAttachmentDesc att;
+		att.texture = target;
+		att.layer = UINT32_MAX;
+		fbDesc.colorAttachments = { att };
+		const auto fb = rhi().createFramebuffer(fbDesc);
+		ASSERT_TRUE(fb);
+
+		const LodCase cases[] = {
+			{ "albedo sampler texture", true, 0.f, LodOutput::Color },
+			{ "trilinear texture", false, 0.f, LodOutput::Color },
+			{ "trilinear textureGrad", false, 1.f, LodOutput::Color },
+			{ "trilinear textureLod at queried lod", false, 2.f, LodOutput::Color },
+			{ "uv.x", false, 10.f, LodOutput::FloatBits },
+			{ "uv.y", false, 11.f, LodOutput::FloatBits },
+			{ "dFdx(uv).x", false, 12.f, LodOutput::FloatBits },
+			{ "dFdx(uv).y", false, 13.f, LodOutput::FloatBits },
+			{ "dFdy(uv).x", false, 14.f, LodOutput::FloatBits },
+			{ "dFdy(uv).y", false, 15.f, LodOutput::FloatBits },
+			{ "fwidth(uv).x", false, 16.f, LodOutput::FloatBits },
+			{ "fwidth(uv).y", false, 17.f, LodOutput::FloatBits },
+			{ "trilinear textureQueryLod.x", false, 18.f, LodOutput::FloatBits },
+			{ "trilinear textureQueryLod.y", false, 19.f, LodOutput::FloatBits },
+			{ "albedo sampler textureQueryLod.x", true, 18.f, LodOutput::FloatBits },
+		};
+
+		const size_t pixelCount = static_cast<size_t>(kLodTarget) * kLodTarget;
+		for (const auto& c : cases) {
+			SCOPED_TRACE(c.name);
+
+			const float params[4] = { c.select, 0.f, 0.f, 0.f };
+			BufferDesc paramsDesc;
+			paramsDesc.size = sizeof(params);
+			paramsDesc.usage = BufferUsage::Uniform;
+			paramsDesc.cpuAccess = CpuAccess::Write;
+			paramsDesc.debugName = "rhi_test_implicit_lod";
+			const auto paramsBuffer = rhi().createBuffer(paramsDesc, params);
+			ASSERT_TRUE(paramsBuffer);
+
+			const auto set = rhi().allocateDescriptorSet(layout);
+			ASSERT_TRUE(set);
+			WriteDescriptor image{};
+			image.set = set;
+			image.binding = 0;
+			image.images.push_back({ texture, c.engineSampler ? albedoSampler : trilinearSampler });
+			WriteDescriptor uniform{};
+			uniform.set = set;
+			uniform.binding = 1;
+			uniform.buffers.push_back({ paramsBuffer, 0, 0 });
+			rhi().updateDescriptorSets({ image, uniform });
+
+			rhi().beginFrame();
+			const auto cmd = rhi().beginCommandList(CommandListType::Graphics);
+			RenderPassBeginInfo begin;
+			begin.renderPass = pass;
+			begin.framebuffer = fb;
+			begin.width = kLodTarget;
+			begin.height = kLodTarget;
+			rhi().cmdBeginRenderPass(cmd, begin);
+			rhi().cmdBindPipeline(cmd, pipeline);
+			rhi().cmdBindDescriptorSets(cmd, pipeline, 0, &set, 1);
+			rhi().cmdDraw(cmd, 6, 1, 0, 0);
+			rhi().cmdEndRenderPass(cmd);
+			rhi().endCommandList(cmd);
+			rhi().submit(cmd);
+			rhi().present();
+			rhi().waitIdle();
+
+			std::vector<uint8_t> pixels;
+			int w = 0;
+			int h = 0;
+			const bool readOk = rhi().readbackTexture(target, pixels, w, h);
+			rhi().freeDescriptorSet(set);
+			rhi().destroyBuffer(paramsBuffer);
+			ASSERT_TRUE(readOk) << "readback failed";
+			ASSERT_EQ(pixels.size(), pixelCount * 4u);
+
+			// How much of the target the quad covered, so an empty draw cannot pass as a match.
+			size_t covered = 0;
+			for (size_t i = 0; i < pixelCount; ++i) {
+				covered += (pixels[i * 4u] | pixels[i * 4u + 1] | pixels[i * 4u + 2] | pixels[i * 4u + 3]) != 0 ? 1u : 0u;
+			}
+
+			auto& seen = lodSeen();
+			const auto other = seen.find(c.name);
+			if (other == seen.end()) {
+				std::cout << "[implicit lod] " << backend << " " << c.name << ": " << covered << " of " << pixelCount
+					<< " pixels non-zero\n";
+				// Colour only: a float case may legitimately be 0.0 everywhere, as the albedo sampler's
+				// queried LOD is, and zero bits read as uncovered.
+				if (c.output == LodOutput::Color) {
+					EXPECT_GT(covered, pixelCount / 8) << "the quad did not cover the target";
+				}
+				seen.emplace(c.name, pixels);
+				continue;
+			}
+			const auto& theirs = other->second;
+
+			size_t differing = 0;
+			size_t worstPixel = 0;
+			std::ostringstream detail;
+			if (c.output == LodOutput::Color) {
+				int worst = 0;
+				for (size_t i = 0; i < pixelCount; ++i) {
+					int d = 0;
+					for (size_t ch = 0; ch < 4; ++ch) {
+						d = std::max(d, std::abs(int(pixels[i * 4u + ch]) - int(theirs[i * 4u + ch])));
+					}
+					differing += d != 0 ? 1u : 0u;
+					if (d > worst) {
+						worst = d;
+						worstPixel = i;
+					}
+				}
+				const auto rgba = [&](const std::vector<uint8_t>& img) {
+					std::ostringstream out;
+					out << "(" << int(img[worstPixel * 4u]) << ", " << int(img[worstPixel * 4u + 1]) << ", "
+						<< int(img[worstPixel * 4u + 2]) << ", " << int(img[worstPixel * 4u + 3]) << ")";
+					return out.str();
+				};
+				detail << "max channel diff " << worst << " this " << rgba(pixels) << " other " << rgba(theirs);
+			}
+			else {
+				double worst = 0.0;
+				double worstRelative = 0.0;
+				size_t negated = 0;
+				for (size_t i = 0; i < pixelCount; ++i) {
+					const float mine = lodFloatAt(pixels, i);
+					const float yours = lodFloatAt(theirs, i);
+					if (std::memcmp(&pixels[i * 4u], &theirs[i * 4u], 4) == 0) {
+						continue;
+					}
+					++differing;
+					negated += (mine == -yours && mine != 0.f) ? 1u : 0u;
+					const double d = std::abs(static_cast<double>(mine) - static_cast<double>(yours));
+					if (d > worst) {
+						worst = d;
+						worstRelative = d / std::max(std::abs(static_cast<double>(yours)), 1e-30);
+						worstPixel = i;
+					}
+				}
+				detail << std::setprecision(9) << "exact negations " << negated << ", max abs diff " << worst
+					<< " (relative " << worstRelative << ") this " << lodFloatAt(pixels, worstPixel) << " other "
+					<< lodFloatAt(theirs, worstPixel);
+			}
+			const size_t worstX = worstPixel % kLodTarget;
+			const size_t worstY = worstPixel / kLodTarget;
+			std::cout << "[implicit lod] " << backend << " " << c.name << ": vs other backend " << differing << " of "
+				<< covered << " covered pixels differ, " << detail.str() << " at readback pixel (" << worstX << ", "
+				<< worstY << ")\n";
+			EXPECT_EQ(differing, 0u) << c.name << ": " << differing << " pixels differ between backends, "
+				<< detail.str() << " at readback pixel (" << worstX << ", " << worstY << ")";
+		}
+
+		rhi().destroyFramebuffer(fb);
+		rhi().destroyTexture(target);
+		rhi().destroyGraphicsPipeline(pipeline);
+		rhi().destroyDescriptorSetLayout(layout);
+		rhi().destroyRenderPass(pass);
+		rhi().destroySampler(trilinearSampler);
+		rhi().destroySampler(albedoSampler);
+		rhi().destroyTexture(texture);
+	}
 }

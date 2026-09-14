@@ -53,24 +53,27 @@ layout(SFE_SET(0, 25), std430) readonly buffer AnimInstances {
 // them cost NVIDIA's GL driver ~20 ms for a thousand characters.
 layout(SFE_SET(0, 26), std430) buffer Worlds { mat4 worlds[]; };
 
+// `precise` along the bone chain: without it each compiler is free to fuse a multiply-add into an fma in
+// different places, and the bones differ in the last bits between the OpenGL and Vulkan backends.
 mat4 quatToMat(vec4 q) {
     float x = q.x, y = q.y, z = q.z, w = q.w;
-    float qxx = x * x;
-    float qyy = y * y;
-    float qzz = z * z;
-    float qxz = x * z;
-    float qxy = x * y;
-    float qyz = y * z;
-    float qwx = w * x;
-    float qwy = w * y;
-    float qwz = w * z;
+    precise float qxx = x * x;
+    precise float qyy = y * y;
+    precise float qzz = z * z;
+    precise float qxz = x * z;
+    precise float qxy = x * y;
+    precise float qyz = y * z;
+    precise float qwx = w * x;
+    precise float qwy = w * y;
+    precise float qwz = w * z;
 
-    return mat4(
+    precise mat4 R = mat4(
         vec4(1.0 - 2.0 * (qyy + qzz), 2.0 * (qxy + qwz),     2.0 * (qxz - qwy),     0.0),
         vec4(2.0 * (qxy - qwz),       1.0 - 2.0 * (qxx + qzz), 2.0 * (qyz + qwx),     0.0),
         vec4(2.0 * (qxz + qwy),       2.0 * (qyz - qwx),     1.0 - 2.0 * (qxx + qyy), 0.0),
         vec4(0.0, 0.0, 0.0, 1.0)
     );
+    return R;
 }
 
 mat4 localTRS(vec3 t, vec4 q, vec3 s) {
@@ -81,7 +84,8 @@ mat4 localTRS(vec3 t, vec4 q, vec3 s) {
     S[0][0] = s.x;
     S[1][1] = s.y;
     S[2][2] = s.z;
-    return T * R * S;
+    precise mat4 trs = T * R * S;
+    return trs;
 }
 
 // The key before the first one later than t, or the second to last when none is: binary searches over
@@ -127,8 +131,9 @@ vec3 lerpVec3Keys(int off, int cnt, float t) {
     int i = findKey(t, off, cnt);
     Vec3Key a = posKeys[off + i];
     Vec3Key b = posKeys[off + i + 1];
-    float f = (t - a.time) / (b.time - a.time);
-    return mix(a.value, b.value, f);
+    precise float f = (t - a.time) / (b.time - a.time);
+    precise vec3 v = mix(a.value, b.value, f);
+    return v;
 }
 
 vec3 lerpSclKeys(int off, int cnt, float t) {
@@ -141,30 +146,19 @@ vec3 lerpSclKeys(int off, int cnt, float t) {
     int i = findSclKey(t, off, cnt);
     Vec3Key a = sclKeys[off + i];
     Vec3Key b = sclKeys[off + i + 1];
-    float f = (t - a.time) / (b.time - a.time);
-    return mix(a.value, b.value, f);
+    precise float f = (t - a.time) / (b.time - a.time);
+    precise vec3 v = mix(a.value, b.value, f);
+    return v;
 }
 
-vec4 slerpQuat(vec4 q0, vec4 q1, float inFraction) {
-    float signScale1 = 1.0;
-    float cosOmega = clamp(dot(q0, q1), -1.0, 1.0);
-    if (cosOmega < 0.0) {
-        cosOmega = -cosOmega;
-        signScale1 = -1.0;
-    }
-
-    float scale0;
-    float scale1;
-    if (1.0 - cosOmega > 0.0001) {
-        float omega = acos(cosOmega);
-        float sinOmega = sin(omega);
-        scale0 = sin((1.0 - inFraction) * omega) / sinOmega;
-        scale1 = signScale1 * sin(inFraction * omega) / sinOmega;
-    } else {
-        scale0 = 1.0 - inFraction;
-        scale1 = signScale1 * inFraction;
-    }
-    return normalize(scale0 * q0 + scale1 * q1);
+// Normalised lerp, not slerp: acos() and sin() come out in different low bits from the OpenGL driver's
+// GLSL compiler and the SPIR-V path, and every bone below inherits that, so skinned vertices landed a
+// fraction of a ULP apart between backends. Between two neighbouring animation keys the angle is small
+// and nlerp stays within a hair of slerp.
+vec4 nlerpQuat(vec4 q0, vec4 q1, float inFraction) {
+    float sign1 = dot(q0, q1) < 0.0 ? -1.0 : 1.0;
+    precise vec4 q = normalize((1.0 - inFraction) * q0 + (sign1 * inFraction) * q1);
+    return q;
 }
 
 vec4 lerpQuatKeys(int off, int cnt, float t) {
@@ -177,8 +171,8 @@ vec4 lerpQuatKeys(int off, int cnt, float t) {
     int i = findQuatKey(t, off, cnt);
     QuatKey a = rotKeys[off + i];
     QuatKey b = rotKeys[off + i + 1];
-    float f = (t - a.time) / (b.time - a.time);
-    return slerpQuat(a.q, b.q, f);
+    precise float f = (t - a.time) / (b.time - a.time);
+    return nlerpQuat(a.q, b.q, f);
 }
 
 void main() {
@@ -188,7 +182,7 @@ void main() {
         int bi = order[i];
         BoneDesc b = bones[bi];
 
-        mat4 local = b.restLocal;
+        precise mat4 local = b.restLocal;
         if (b.posCnt > 0 || b.rotCnt > 0 || b.sclCnt > 0) {
             vec3 pos = b.restLocal[3].xyz;
             vec3 scl = vec3(length(b.restLocal[0].xyz), length(b.restLocal[1].xyz), length(b.restLocal[2].xyz));
@@ -210,8 +204,9 @@ void main() {
         }
 
         mat4 parent = (b.parent < 0) ? inst.armatureTransform : worlds[row + b.parent];
-        mat4 world = parent * local;
+        precise mat4 world = parent * local;
         worlds[row + bi] = world;
-        outBones[inst.entityId * MAX_BONES + b.boneId] = world * b.offset;
+        precise mat4 skin = world * b.offset;
+        outBones[inst.entityId * MAX_BONES + b.boneId] = skin;
     }
 }

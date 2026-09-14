@@ -8,6 +8,7 @@
 
 #include "rhi/VulkanRHIVkUtil.h"
 #include "rhi/RhiLog.h"
+#include "rhi/RhiReadback.h"
 #include "rhi/SpirvCompiler.h"
 
 using namespace SFE::Render::VulkanVkUtil;
@@ -69,13 +70,16 @@ void main() {
 		}
 
 		const bool isDepth = (aspectMaskForFormat(toVkFormat(source->desc.format)) & VK_IMAGE_ASPECT_DEPTH_BIT) != 0;
+		const int floatChannels = floatFormatChannels(source->desc.format);
 
 		// Pass outputs come in many formats (RGBA16F and friends). Blit through a scratch RGBA8
 		// image so one copy path serves all of them and the bytes match what OpenGL hands back.
-		// Depth is copied straight out instead: it cannot be blitted into a colour image.
+		// Depth is copied straight out instead: it cannot be blitted into a colour image. So are float formats,
+		// converted on the CPU by the rule OpenGL uses too (RhiReadback.h): the blit rounded some values to a
+		// different byte than glReadPixels did.
 		TextureHandle scratchHandle{};
 		VkTextureResource* tex = source;
-		if (!isDepth && source->desc.format != TextureFormat::RGBA8) {
+		if (!isDepth && floatChannels == 0 && source->desc.format != TextureFormat::RGBA8) {
 			TextureDesc scratchDesc;
 			scratchDesc.width = source->desc.width;
 			scratchDesc.height = source->desc.height;
@@ -97,7 +101,8 @@ void main() {
 			}
 		}
 
-		const VkDeviceSize byteSize = static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) * 4u;
+		const VkDeviceSize texelBytes = floatChannels > 0 ? bytesPerPixel(source->desc.format) : 4u;
+		const VkDeviceSize byteSize = static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) * texelBytes;
 		VkBuffer staging = VK_NULL_HANDLE;
 		VmaAllocation stagingAlloc = VK_NULL_HANDLE;
 		VmaAllocationInfo mappedInfo{};
@@ -145,7 +150,7 @@ void main() {
 		// viewport, so image row 0 holds the BOTTOM of the picture here, exactly as glReadPixels
 		// does. Flip so callers always get rows in display order.
 		const size_t rowBytes = static_cast<size_t>(width) * 4u;
-		rgba.resize(static_cast<size_t>(byteSize));
+		rgba.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u);
 		if (isDepth) {
 			// D32 float. Packed the same way as the OpenGL path: 16 bits across R and G
 			// (R = high byte), B kept as a greyscale preview. 8 bits cannot resolve a far
@@ -161,6 +166,32 @@ void main() {
 					out[1] = static_cast<uint8_t>(q & 0xFF);
 					out[2] = static_cast<uint8_t>(q >> 8);
 					out[3] = 255;
+				}
+			}
+		}
+		else if (floatChannels > 0) {
+			const auto* src = static_cast<const uint8_t*>(mappedInfo.pMappedData);
+			const size_t channelBytes = static_cast<size_t>(texelBytes) / static_cast<size_t>(floatChannels);
+			for (int y = 0; y < height; ++y) {
+				const size_t srcRow = static_cast<size_t>(height - 1 - y) * static_cast<size_t>(width);
+				for (int x = 0; x < width; ++x) {
+					const uint8_t* texel = src + (srcRow + static_cast<size_t>(x)) * static_cast<size_t>(texelBytes);
+					uint8_t* out = rgba.data() + rowBytes * static_cast<size_t>(y) + static_cast<size_t>(x) * 4u;
+					for (int c = 0; c < 4; ++c) {
+						float value = c == 3 ? 1.f : 0.f;
+						if (c < floatChannels) {
+							const uint8_t* bytes = texel + static_cast<size_t>(c) * channelBytes;
+							if (channelBytes == 2) {
+								uint16_t half = 0;
+								std::memcpy(&half, bytes, 2);
+								value = halfToFloat(half);
+							}
+							else {
+								std::memcpy(&value, bytes, 4);
+							}
+						}
+						out[c] = floatToUnorm8(value);
+					}
 				}
 			}
 		}

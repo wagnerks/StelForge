@@ -10,6 +10,7 @@
 
 
 #include "rhi/RhiLog.h"
+#include "rhi/RhiReadback.h"
 
 namespace SFE::Render
 {
@@ -1048,6 +1049,15 @@ namespace SFE::Render
 					bottomUp[i * 4 + 1] = static_cast<uint8_t>(q & 0xFF);
 					bottomUp[i * 4 + 2] = static_cast<uint8_t>(q >> 8);
 					bottomUp[i * 4 + 3] = 255;
+				}
+			}
+			else if (floatFormatChannels(tex->desc.format) > 0) {
+				// As floats, converted by the same rule as Vulkan (RhiReadback.h). GL fills missing channels with
+				// 0, 0, 1 itself.
+				std::vector<float> texels(bottomUp.size());
+				glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, texels.data());
+				for (size_t i = 0; i < texels.size(); ++i) {
+					bottomUp[i] = floatToUnorm8(texels[i]);
 				}
 			}
 			else {
