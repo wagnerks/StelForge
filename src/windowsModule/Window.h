@@ -124,6 +124,9 @@ namespace SFE::Render {
 		~Window();
 
 		Window(int w, int h, const std::string& title, GLFWwindow* share, const WindowHints& hints = {});
+		// No GLFW window at all, for the None backend: the screen data has the given size, input never arrives
+		// and closing is only a flag.
+		Window(int w, int h, const std::string& title);
 
 		void create(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints = {});
 		GLFWwindow* getWindow() const { return mWindow; }
@@ -135,7 +138,8 @@ namespace SFE::Render {
 		void hide() const;
 		void swapBuffers() const;
 		void setInputMode(CursorType type);
-		void close() const;
+		void close();
+		void setShouldClose(bool close);
 
 #ifdef _WIN32
 		void* getNativeHandle() const;
@@ -163,6 +167,8 @@ namespace SFE::Render {
 		GLFWwindow* mWindow = nullptr;
 		std::string mTitle;
 		bool mNoApi = false;
+		bool mHeadless = false;
+		bool mHeadlessClosing = false;
 #ifdef _WIN32
 		bool mEmbeddedInHost = false;
 #endif

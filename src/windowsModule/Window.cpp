@@ -72,12 +72,23 @@ namespace SFE::Render {
 	}
 
 	Window::~Window() {
-		glfwDestroyWindow(mWindow);
-		windows.erase(mWindow);
+		if (mWindow) {
+			glfwDestroyWindow(mWindow);
+			windows.erase(mWindow);
+		}
 	}
 
 	Window::Window(int w, int h, const std::string& title, GLFWwindow* share, const WindowHints& hints) {
 		create(w, h, title, share, hints);
+	}
+
+	Window::Window(int w, int h, const std::string& title) : mTitle(title), mHeadless(true) {
+		data.width = w;
+		data.height = h;
+		data.renderW = w;
+		data.renderH = h;
+		data.backbufferW = w;
+		data.backbufferH = h;
 	}
 
 	void Window::create(int w, int h, const std::string& title, GLFWwindow* share, WindowHints hints) {
@@ -191,6 +202,9 @@ namespace SFE::Render {
 	}
 
 	bool Window::isClosing() const {
+		if (mHeadless) {
+			return mHeadlessClosing;
+		}
 		if (!mWindow) {
 			return true;
 		}
@@ -221,15 +235,22 @@ namespace SFE::Render {
 	}
 
 	void Window::setInputMode(CursorType type) {
-		glfwSetInputMode(mWindow, GLFW_CURSOR, type);
+		if (mWindow) {
+			glfwSetInputMode(mWindow, GLFW_CURSOR, type);
+		}
 	}
 
-	void Window::close() const {
-		if (isClosing()) {
-			return;
-		}
+	void Window::close() {
+		setShouldClose(true);
+	}
 
-		glfwSetWindowShouldClose(mWindow, true);
+	void Window::setShouldClose(const bool close) {
+		if (mHeadless) {
+			mHeadlessClosing = close;
+		}
+		else if (mWindow) {
+			glfwSetWindowShouldClose(mWindow, close);
+		}
 	}
 
 #ifdef _WIN32

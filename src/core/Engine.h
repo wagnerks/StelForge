@@ -35,6 +35,7 @@ namespace SFE {
 		GLFWwindow* getMainWindow() const;
 		Render::Window* getWindow() const;
 		static bool isMainThread();
+		static double clockSeconds();
 
 		static void reproTrace(const char* msg) {
 			const auto path = FileSystem::resolve("hang.trace").string();

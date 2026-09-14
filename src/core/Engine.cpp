@@ -21,6 +21,12 @@ namespace SFE {
 	using Render::graphicsBackendName;
 	using Render::GraphicsBackend;
 
+	// Seconds since the first call. Not glfwGetTime: the None backend never initialises GLFW.
+	double Engine::clockSeconds() {
+		static const auto start = std::chrono::steady_clock::now();
+		return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+	}
+
 	void Engine::setWindow(Render::Window* window) {
 		if (mWindow) {
 			delete mWindow;
@@ -38,8 +44,8 @@ namespace SFE {
 	}
 
 	void Engine::initThread() {
-		if (!mWindow || !mWindow->getWindow()) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize thread without context, forgot to call createWindow?");
+		if (!mWindow) {
+			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize thread without a window, forgot to call createWindow?");
 			return;
 		}
 
@@ -62,7 +68,7 @@ namespace SFE {
 			}
 
 			if (key == CoreModule::InputKey::KEY_ESCAPE && mPresentToScreen) {
-				glfwSetWindowShouldClose(getMainWindow(), true);
+				mWindow->close();
 			}
 		};
 
@@ -79,6 +85,10 @@ namespace SFE {
 
 
 	Render::Window* Engine::createWindow(int width, int height, GLFWwindow* window, const std::string& title, Render::WindowHints hints) {
+		if (activeGraphicsBackend() == GraphicsBackend::None) {
+			setWindow(new Render::Window(width, height, title));
+			return mWindow;
+		}
 		if (activeGraphicsBackend() == GraphicsBackend::Vulkan) {
 			hints.ints[Render::CLIENT_API] = GLFW_NO_API;
 		}
@@ -101,7 +111,9 @@ namespace SFE {
 
 		mCore.update(mDeltaTime);
 	
-		glfwPollEvents();
+		if (getMainWindow()) {
+			glfwPollEvents();
+		}
 
 		//getWindow()->swapBuffers();
 
@@ -122,7 +134,7 @@ namespace SFE {
 		// show up as a backend difference when it is only a timing difference.
 		const auto currentFrame = mCapturingFrame
 			? mLastFrame + 1.f / 60.f
-			: static_cast<float>(glfwGetTime());
+			: static_cast<float>(clockSeconds());
 		mDeltaTime = currentFrame - mLastFrame;
 		mLastFrame = currentFrame;
 
@@ -140,7 +152,7 @@ namespace SFE {
 	}
 
 	bool Engine::checkNeedClose() {
-		if (!mWindow || !mWindow->getWindow()) {
+		if (!mWindow) {
 			mAlive = false;
 			return false;
 		}
@@ -154,7 +166,7 @@ namespace SFE {
 
 
 	GLFWwindow* Engine::getMainWindow() const {
-		return mWindow->getWindow();
+		return mWindow ? mWindow->getWindow() : nullptr;
 	}
 
 	Render::Window* Engine::getWindow() const {
@@ -210,7 +222,7 @@ namespace SFE {
 		const double target = 1.0 / static_cast<double>(fps);
 		const double start = static_cast<double>(mLastFrame);
 		for (;;) {
-			const double remain = target - (glfwGetTime() - start);
+			const double remain = target - (clockSeconds() - start);
 			if (remain <= 0.0) {
 				break;
 			}

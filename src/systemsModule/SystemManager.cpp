@@ -1,4 +1,5 @@
 ﻿#include "SystemManager.h"
+#include "core/Engine.h"
 
 #include "systemsModule/SystemBase.h"
 #include "debugModule/Benchmark.h"
@@ -23,7 +24,7 @@ namespace ecss {
 			float mLastFrame = 0.f;
 			
 			while (SystemManagerAlive) {
-				const auto currentFrame = static_cast<float>(glfwGetTime());
+				const auto currentFrame = static_cast<float>(SFE::Engine::clockSeconds());
 				const auto mDeltaTime = currentFrame - mLastFrame;
 				mLastFrame = currentFrame;
 

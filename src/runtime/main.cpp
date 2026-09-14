@@ -227,7 +227,9 @@ int main(int argc, char** argv)
 #endif
 	crashLog(SFE::FileSystem::root().string().c_str());
 
-	if (!glfwInit()) {
+	// The None backend has no window, so it needs no GLFW -- and runs where there is no display.
+	const bool useGlfw = SFE::Render::activeGraphicsBackend() != SFE::Render::GraphicsBackend::None;
+	if (useGlfw && !glfwInit()) {
 		crashLog("glfwInit failed");
 		if (gCrashLog) {
 			std::fclose(gCrashLog);
@@ -258,9 +260,11 @@ int main(int argc, char** argv)
 	title += SFE::Render::graphicsBackendName(SFE::Render::activeGraphicsBackend());
 	title += "]";
 	engine->createWindow(1920, 1080, nullptr, title, hints);
-	if (!engine->getMainWindow()) {
+	if (!engine->getWindow() || (useGlfw && !engine->getMainWindow())) {
 		crashLog("createWindow failed");
-		glfwTerminate();
+		if (useGlfw) {
+			glfwTerminate();
+		}
 		if (gCrashLog) {
 			std::fclose(gCrashLog);
 			gCrashLog = nullptr;
@@ -308,7 +312,7 @@ int main(int argc, char** argv)
 	engine->initRender();
 	crashLog("initRender ok");
 	if (!visibleWindow) {
-		glfwSetWindowShouldClose(engine->getMainWindow(), GLFW_FALSE);
+		engine->getWindow()->setShouldClose(false);
 	}
 
 	if (serveEditor) {
@@ -353,7 +357,7 @@ int main(int argc, char** argv)
 			SFE::Render::graphicsBackendName(SFE::Render::activeGraphicsBackend()),
 			engine->presentToScreen() ? 1 : 0,
 			engine->getWindow() && engine->getWindow()->isVisible() ? 1 : 0,
-			glfwWindowShouldClose(engine->getMainWindow()) ? 1 : 0,
+			engine->getWindow()->isClosing() ? 1 : 0,
 			engine->isAlive() ? 1 : 0);
 		crashLog(cfg);
 	}
@@ -445,7 +449,7 @@ int main(int argc, char** argv)
 					std::fprintf(gReproLog, "repro finished ok frames=%d\n", frames);
 					std::fflush(gReproLog);
 				}
-				glfwSetWindowShouldClose(engine->getMainWindow(), true);
+				engine->getWindow()->close();
 			}
 		}
 	}
@@ -454,7 +458,7 @@ int main(int argc, char** argv)
 		char exitLine[160];
 		std::snprintf(exitLine, sizeof(exitLine), "loop exit frames=%d shouldClose=%d",
 			frames,
-			engine->getMainWindow() && glfwWindowShouldClose(engine->getMainWindow()) ? 1 : 0);
+			engine->getWindow() && engine->getWindow()->isClosing() ? 1 : 0);
 		crashLog(exitLine);
 	}
 	watchdogRun.store(false, std::memory_order_relaxed);
@@ -469,7 +473,9 @@ int main(int argc, char** argv)
 	crashLog("before terminate");
 	SFE::Engine::terminate();
 	crashLog("after terminate");
-	glfwTerminate();
+	if (useGlfw) {
+		glfwTerminate();
+	}
 	if (gCrashLog) {
 		std::fclose(gCrashLog);
 		gCrashLog = nullptr;

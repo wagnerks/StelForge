@@ -19,12 +19,12 @@ Approach: a third RHI backend, `None`, the same way as Unreal `-nullrhi` and God
 - [x] `rhi_tests`: a small smoke test that NullRHI hands out unique handles and survives a frame of calls. The pixel tests stay on OpenGL/Vulkan only, and the fixture labels become three-way.
 
 ## 2. Engine without a window
-- [ ] `Window` without a GLFW handle: `ScreenData` comes from a fixed size (from the command line, 1280x720 by default). Camera, cascades and passes keep reading `getScreenData()`.
-- [ ] Guard the few GLFW-only uses:
+- [x] `Window` without a GLFW handle: `ScreenData` comes from a fixed size (from the command line, 1280x720 by default). Camera, cascades and passes keep reading `getScreenData()`.
+- [x] Guard the few GLFW-only uses:
   - `Engine::initThread`: the no-window check, the Esc handler, `glfwPollEvents`, `checkNeedClose`;
   - `InputHandler::init`;
   - `runtime/main.cpp`: `glfwInit` failure, `createWindow`, `glfwWindowShouldClose` / `SetWindowShouldClose`.
-- [ ] Time without GLFW: `Engine::updateDelta` / `fpsSync` and the `SystemManager` tick threads use `std::chrono` instead of `glfwGetTime`. No `glfwInit` is needed in None mode.
+- [x] Time without GLFW: `Engine::updateDelta` / `fpsSync` and the `SystemManager` tick threads use `std::chrono` instead of `glfwGetTime`. No `glfwInit` is needed in None mode.
 
 ## 3. Fixed time step
 - [ ] `--fixed-dt <seconds>` (and a setter on Engine) generalises the capture path: `updateDelta` returns the fixed value, and `fpsSync` does not wait.
