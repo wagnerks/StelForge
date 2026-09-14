@@ -273,6 +273,10 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		const auto count = static_cast<uint32_t>(batch.instances.size());
 		if (count > batch.clip->instanceCapacity) {
 			batch.clip->instanceCapacity = count + count / 2;
+			if (batch.clip->instances) {
+				rhi->destroyBuffer(batch.clip->instances);
+				rhi->destroyBuffer(batch.clip->worlds);
+			}
 			batch.clip->instances = createStorage(rhi, sizeof(AnimPush) * batch.clip->instanceCapacity, nullptr, "AnimInstances");
 			batch.clip->worlds = createStorage(rhi, sizeof(Math::Mat4) * batch.clip->instanceCapacity * batch.clip->boneCount, nullptr, "AnimBoneWorlds");
 		}
