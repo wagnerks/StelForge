@@ -117,7 +117,9 @@ namespace SFE {
 
 		//getWindow()->swapBuffers();
 
-		fpsSync(maxFPS);
+		if (mFixedDeltaTime <= 0.f) {
+			fpsSync(maxFPS);
+		}
 	}
 
 	float Engine::getDeltaTime() const {
@@ -132,11 +134,17 @@ namespace SFE {
 		// A capture steps at a fixed rate: wall-clock deltas make everything time-dependent
 		// (TAA history, volumetrics) land differently on a faster or slower run, which would
 		// show up as a backend difference when it is only a timing difference.
-		const auto currentFrame = mCapturingFrame
-			? mLastFrame + 1.f / 60.f
-			: static_cast<float>(clockSeconds());
-		mDeltaTime = currentFrame - mLastFrame;
-		mLastFrame = currentFrame;
+		if (mFixedDeltaTime > 0.f || mCapturingFrame) {
+			// Assigned, not derived from an accumulated clock: a float clock loses bits as it grows, and the
+			// difference of two of its values would stop being exactly the step.
+			mDeltaTime = mFixedDeltaTime > 0.f ? mFixedDeltaTime : 1.f / 60.f;
+			mLastFrame += mDeltaTime;
+		}
+		else {
+			const auto currentFrame = static_cast<float>(clockSeconds());
+			mDeltaTime = currentFrame - mLastFrame;
+			mLastFrame = currentFrame;
+		}
 
 		mFramesCounter++;
 		mFramesTimer += mDeltaTime;

@@ -100,6 +100,9 @@ int main(int argc, char** argv)
 	// Timing run: average the frame and per-pass times over the last two thirds of this many frames, write
 	// them to perfOut and exit. An ordinary run, not a capture, so nothing waits for the GPU between frames.
 	int perfFrames = 0;
+	// Leave after this many frames with exit code 0; 0 runs until closed.
+	int frameLimit = 0;
+	float fixedDeltaTime = 0.f;
 	std::string perfOut = "perf.txt";
 	std::string cameraPos;
 	std::string cameraRot;
@@ -161,6 +164,12 @@ int main(int argc, char** argv)
 		}
 		else if (arg.starts_with("--capture-passes=")) {
 			passDumpDir = std::string(arg.substr(std::string_view("--capture-passes=").size()));
+		}
+		else if (arg == "--frames" && i + 1 < argc && argv[i + 1]) {
+			frameLimit = std::atoi(argv[++i]);
+		}
+		else if (arg == "--fixed-dt" && i + 1 < argc && argv[i + 1]) {
+			fixedDeltaTime = static_cast<float>(std::atof(argv[++i]));
 		}
 		else if (arg == "--repro-hang") {
 			reproHang = true;
@@ -279,6 +288,7 @@ int main(int argc, char** argv)
 	engine->setLightingDebugTerm(lightingDebugTerm);
 	engine->setTemporalAccumulation(temporalAccumulation);
 	engine->setProceduralSpheres(proceduralSpheres);
+	engine->setFixedDeltaTime(fixedDeltaTime);
 	if (!capturePath.empty() && !passDumpDir.empty()) {
 		const std::filesystem::path requested(passDumpDir);
 		engine->setPassDumpDir(requested.is_absolute()
@@ -418,6 +428,9 @@ int main(int argc, char** argv)
 			}
 		}
 
+		if (frameLimit > 0 && frames >= frameLimit) {
+			break;
+		}
 		if (!capturePath.empty() && frames >= captureFrame) {
 			const bool ok = SFE::Render::captureFrameToPng(capturePath);
 			crashLog(ok ? "capture ok" : "capture failed");

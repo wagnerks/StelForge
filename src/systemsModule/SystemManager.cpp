@@ -18,6 +18,15 @@ namespace ecss {
 		}
 	}
 
+	void SystemManager::addTickSystem(System* system, float ticks) {
+		if (!mStepTickSystems) {
+			mTickSystemThreads.push_back(startTickSystem(system, ticks));
+			return;
+		}
+		system->setTick(ticks);
+		mSteppedTickSystems.push_back({ system });
+	}
+
 	std::thread SystemManager::startTickSystem(System* system, float ticks) {
 		system->setTick(ticks);
 		return std::thread([system] {
@@ -40,6 +49,15 @@ namespace ecss {
 
 	void SystemManager::update(float_t dt) {
 		FUNCTION_BENCHMARK;
+
+		for (auto& ticked : mSteppedTickSystems) {
+			const float step = 1.f / ticked.system->getTicks();
+			ticked.accumulated += dt;
+			while (ticked.accumulated >= step) {
+				ticked.system->update(step);
+				ticked.accumulated -= step;
+			}
+		}
 
 		for (const auto system : mMainThreadSystems) {
 			system->update(dt);

@@ -77,6 +77,7 @@ void ECSHandler::initSystems() {
 	// backends, so it holds the scene still instead. AnimationComputePass runs its own clock and
 	// is frozen separately.
 	if (!SFE::Engine::instance()->capturingFrame()) {
+		mSystemManager.setStepTickSystems(SFE::Engine::instance()->fixedDeltaTime() > 0.f);
 		mSystemManager.addTickSystems<SFE::SystemsModule::WorldTimeSystem>(1);
 		mSystemManager.addTickSystems<SFE::SystemsModule::SkeletalAnimationSystem>(24);
 	}

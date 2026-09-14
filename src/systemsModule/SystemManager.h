@@ -48,12 +48,22 @@ namespace ecss {
 			(mMainThreadSystems.push_back(createSystem<ARGS>()), ...);
 		}
 
+		// Tick systems run at their own rate: on a thread each by default, or -- once this is set, before they
+		// are added -- stepped from update() by the frame time, so a fixed frame step makes them deterministic.
+		void setStepTickSystems(bool stepped) { mStepTickSystems = stepped; }
+
 		template <class... ARGS>
 		void addTickSystems(float ticks = 32) {
-			(mTickSystemThreads.push_back(startTickSystem(createSystem<ARGS>(), ticks)), ...);
+			(addTickSystem(createSystem<ARGS>(), ticks), ...);
 		}
 
 	private:
+		struct SteppedTickSystem {
+			System* system = nullptr;
+			float accumulated = 0.f;
+		};
+
+		void addTickSystem(System* system, float ticks);
 		std::thread startTickSystem(System* system, float ticks = 32);
 
 		std::vector<System*> mSystemsMap;
@@ -61,5 +71,7 @@ namespace ecss {
 		std::vector<System*> mMainThreadSystems;
 
 		std::vector<std::thread> mTickSystemThreads;
+		std::vector<SteppedTickSystem> mSteppedTickSystems;
+		bool mStepTickSystems = false;
 	};
 }

@@ -27,9 +27,9 @@ Approach: a third RHI backend, `None`, the same way as Unreal `-nullrhi` and God
 - [x] Time without GLFW: `Engine::updateDelta` / `fpsSync` and the `SystemManager` tick threads use `std::chrono` instead of `glfwGetTime`. No `glfwInit` is needed in None mode.
 
 ## 3. Fixed time step
-- [ ] `--fixed-dt <seconds>` (and a setter on Engine) generalises the capture path: `updateDelta` returns the fixed value, and `fpsSync` does not wait.
-- [ ] Tick systems (WorldTime, SkeletalAnimation) under a fixed step: stepped from `Engine::update` with an accumulator instead of their own wall-clock threads, so frame N is the same scene on every run.
-- [ ] `--frames N`: leave the loop after N frames with exit code 0.
+- [x] `--fixed-dt <seconds>` (and a setter on Engine) generalises the capture path: `updateDelta` returns the fixed value, and `fpsSync` does not wait.
+- [x] Tick systems (WorldTime, SkeletalAnimation) under a fixed step: stepped from `Engine::update` with an accumulator instead of their own wall-clock threads, so frame N is the same scene on every run.
+- [x] `--frames N`: leave the loop after N frames with exit code 0.
 
 ## 4. Editor bridge
 - [ ] `--serve --backend none`: no embedding in the editor window (there is no window), no Frame packets (readback returns false), and input injection and the rest of the protocol unchanged.
