@@ -5,7 +5,7 @@ layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in vec2 TexCoords1;
 layout(location = 3) flat in uint vMaterial;
 
-layout(SFE_SET(0, 4)) uniform sampler2D texture_diffuse1;
+layout(SFE_SET(1, 4)) uniform sampler2D texture_diffuse1;
 
 float ign(vec2 p) {
     return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));

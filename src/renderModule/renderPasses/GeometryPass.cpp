@@ -32,66 +32,12 @@
 
 using namespace SFE::Render::RenderPasses;
 
-void GeometryPass::prepare() {
-	auto curPassData = getContainer().getCurrentPassData();
-	auto outlineData = mOutlineData.getCurrentPassData();
-		curPassData->markPreparing();
-
-	auto& renderData = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->getRenderData();
-	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, outlineData, renderData]() mutable {
-		FUNCTION_BENCHMARK;
-		struct ReadyGuard {
-			RenderPassData* data = nullptr;
-			~ReadyGuard() { if (data) { data->markReady(); } }
-		} ready{ curPassData };
-		auto* renderSys = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
-		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : SFE::SystemsModule::RenderSystem::WorldReadGuard{};
-		if (renderSys && !worldLock) {
-			return;
-		}
-		outlineData->getBatcher().clear();
-
-		ecss::Ranges<ecss::EntityId> entities;
-		{
-			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			if (octreeSys) {
-				entities = octreeSys->collectVisibleRanges(renderData.mNextCamFrustum);
-			}
-		}
-
-		{
-			auto& outlineBatcher = outlineData->getBatcher();
-			FUNCTION_BENCHMARK_NAMED(addedToBatcherOutline)
-			for (const auto& [entity, outline, transform, meshComp, armatComp] : ECSHandler::drawRegistry(nextRegistry).view<const OutlineComponent, const ComponentsModule::TransformMatComp, const MeshComponent, const ComponentsModule::ArmatureBonesComponent>()) {
-				if (!entities.empty() && !entities.contains(entity)) {
-					continue;
-				}
-
-				if (!meshComp) {
-					continue;
-				}
-
-				/*for (const auto& mesh : meshComp->meshGraph) {
-					outlineBatcher.addToDrawList(mesh.value.vaoId, mesh.value.verticesCount, mesh.value.indicesCount, {}, transform->mTransform, armatComp ? const_cast<Math::Mat4*>(armatComp->boneMatrices.data()) : nullptr);
-				}*/
-
-				for (const auto& mesh : meshComp->meshGraph) {
-					outlineBatcher.addToDrawList(mesh.value, nullptr, entity);
-				}
-			}
-
-			//outlineBatcher.sort(ECSHandler::registry().getComponent<TransformComponent>(ECSHandler::getSystem<SFE::SystemsModule::CameraSystem>()->getCurrentCamera())->getPos());
-		}
-	});
-}
-
 void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	if (mInited) {
 		return;
 	}
 	mInited = true;
 
-	mOutlineData.init(2);
 	getContainer().init(2);
 
 	const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
@@ -309,13 +255,6 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	const auto& slot = mFrames[rhi->frameInFlight() % mGpuFrames];
 	const bool wireframe = renderDataHandle.mRenderType == SystemsModule::RenderMode::WIREFRAME;
 
-	getContainer().getCurrentPassData()->waitReady();
-	auto* curPassData = getContainer().getCurrentPassData();
-	auto* outlineData = mOutlineData.getCurrentPassData();
-	getContainer().rotate();
-	mOutlineData.rotate();
-	prepare();
-
 	RenderPassBeginInfo geometryPassBegin;
 	geometryPassBegin.renderPass = geometryPass;
 	geometryPassBegin.framebuffer = slot.gFramebuffer;
@@ -325,7 +264,9 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	// Culling is a compute dispatch, so it is recorded before the render pass opens.
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 	const auto materials = renderSystem->materials().upload();
-	const bool sceneVisible = renderSystem->scene().cull(cmd, mCameraView, renderDataHandle.mCamFrustum, renderSystem->transformsBuffer());
+	auto& scene = renderSystem->scene();
+	const bool sceneVisible = scene.cullFrustum(cmd, GpuScene::List::GBuffer, mCameraView, renderDataHandle.mCamFrustum);
+	const bool outlineVisible = scene.cullFrustum(cmd, GpuScene::List::Outline, mOutlineView, renderDataHandle.mCamFrustum);
 
 	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
 	const auto fillMode = wireframe ? PolygonFillMode::Line : PolygonFillMode::Fill;
@@ -337,7 +278,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	drawGrid(renderDataHandle, cmd);
 	rhi->cmdEndRenderPass(cmd);
 
-	if (outlinePipeline && outlineFramebuffer && !outlineData->getBatcher().drawList.empty()) {
+	if (outlinePipeline && outlineFramebuffer && outlineVisible) {
 		const int rw = Engine::instance()->getWindow()->getScreenData().renderW;
 		const int rh = Engine::instance()->getWindow()->getScreenData().renderH;
 		needClearOutlines = true;
@@ -366,12 +307,18 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 				{
 					.set = mOutlineFrameSet,
 					.binding = 5,
-					
+
 					.buffers{ {renderDataHandle.cameraMatricesUBO} }
-				}
+				},
+				{ .set = mOutlineFrameSet, .binding = 3, .buffers{ { mOutlineView.visible } } },
 			});
 		}
-		outlineData->getBatcher().flushAll(cmd, mOutlineFrameSet, {}, {}, nullptr, false);
+		rhi->cmdBindVertexBuffer(cmd, 0, MeshVaoRegistry::instance()->vertexBuffer(), 0);
+		rhi->cmdBindIndexBuffer(cmd, MeshVaoRegistry::instance()->indexBuffer(), IndexType::Uint32, 0);
+		rhi->cmdBindDescriptorSets(cmd, gBufferOutlinePipeline, 0, &mOutlineFrameSet, 1);
+		for (const auto& group : scene.groups(GpuScene::List::Outline)) {
+			scene.draw(cmd, mOutlineView, group);
+		}
 		rhi->cmdEndRenderPass(cmd);
 
 		if (outlineResultFbo) {
@@ -448,7 +395,8 @@ void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode 
 
 	const auto* meshes = SFE::MeshVaoRegistry::instance();
 	PipelineHandle bound{};
-	for (const auto& group : renderSystem->scene().groups()) {
+	auto& scene = renderSystem->scene();
+	for (const auto& group : scene.groups(GpuScene::List::GBuffer)) {
 		if (group.batchCount == 0) {
 			continue;
 		}
@@ -468,8 +416,7 @@ void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode 
 		}
 		const DescriptorSetHandle sets[] = { frameSet, textures };
 		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
-		rhi->cmdDrawIndexedIndirect(cmd, mCameraView.commands, group.firstBatch * GpuScene::kCommandStride, group.batchCount, GpuScene::kCommandStride);
-		SystemsModule::RenderDebugInfo::instance()->drawCalls++;
+		scene.draw(cmd, mCameraView, group);
 	}
 }
 

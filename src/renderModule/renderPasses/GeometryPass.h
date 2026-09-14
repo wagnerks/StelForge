@@ -19,7 +19,6 @@ namespace SFE::Render::RenderPasses {
 
 	class GeometryPass : public RenderPassWithData {
 	public:
-		void prepare() override;
 		struct Data {
 			FramebufferHandle gFramebuffer;
 
@@ -73,9 +72,9 @@ namespace SFE::Render::RenderPasses {
 		TextureHandle mBoundOutlineMask{};
 		bool needClearOutlines = true;
 
-		RenderPassDataContainer mOutlineData;
 
 		GpuScene::View mCameraView;
+		GpuScene::View mOutlineView;
 		std::unordered_map<uint64_t, DescriptorSetHandle> mTextureSets;
 		// Per frame set: the visible-instance and material buffers last written, so a set is rewritten
 		// only when one of them was replaced.

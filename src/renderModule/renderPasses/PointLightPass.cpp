@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "assetsModule/TextureHandler.h"
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/Vertex.h"
 #include "mathModule/Projection.h"
 #include "mathModule/Utils.h"
@@ -46,11 +47,10 @@ PointLightPass::PointLightPass() {
 	getContainer().init(2);
 }
 
-void PointLightPass::collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<ecss::SectorId>* entities) {
+void PointLightPass::collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<Math::Vec4>& spheres, std::vector<ecss::SectorId>& entities) {
 	matrices.clear();
-	if (entities) {
-		entities->clear();
-	}
+	spheres.clear();
+	entities.clear();
 
 	struct Candidate {
 		ecss::SectorId id;
@@ -82,73 +82,11 @@ void PointLightPass::collectLights(const FrustumModule::Frustum& camFrustum, con
 	}
 
 	for (const auto& c : candidates) {
-		if (entities) {
-			entities->push_back(c.id);
-		}
+		entities.push_back(c.id);
 		appendFaceMatrices(matrices, c.pos, c.nearP, c.radius);
+		// The six faces reach radius along each axis, so their union fits in a sphere sqrt(3) times wider.
+		spheres.push_back({ c.pos.x, c.pos.y, c.pos.z, c.radius * 1.7321f });
 	}
-}
-
-void PointLightPass::prepare() {
-	auto curPassData = getContainer().getCurrentPassData();
-	curPassData->markPreparing();
-	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
-	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, camFrustum = renderData.mNextCamFrustum, camPos = renderData.mNextCameraPos]() mutable {
-		FUNCTION_BENCHMARK;
-		struct ReadyGuard {
-			RenderPassData* data = nullptr;
-			~ReadyGuard() { if (data) { data->markReady(); } }
-		} ready{ curPassData };
-
-		auto* renderSys = ECSHandler::getSystem<SystemsModule::RenderSystem>();
-		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : SystemsModule::RenderSystem::WorldReadGuard{};
-		if (renderSys && !worldLock) {
-			return;
-		}
-
-		curPassData->getBatcher().clear();
-
-		std::vector<Math::Mat4> matrices;
-		collectLights(camFrustum, camPos, matrices, nullptr);
-		if (matrices.empty()) {
-			return;
-		}
-
-		std::vector<ecss::EntityId> ids;
-		ids.reserve(2048);
-		auto* octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-		if (octreeSys) {
-			for (const auto& mat : matrices) {
-				octreeSys->collectVisible(FrustumModule::createFrustum(mat), ids);
-			}
-			std::sort(ids.begin(), ids.end());
-			ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-		}
-		auto entities = SystemsModule::OcTreeSystem::makeEntityRanges(std::move(ids));
-
-		auto addMeshes = [&](auto&& viewObjs) {
-			auto& batcher = curPassData->getBatcher();
-			for (auto [ent, transform, meshComp, matComp] : viewObjs) {
-				if (!meshComp) {
-					continue;
-				}
-				meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
-					if (mat && mat->transparent) {
-						return;
-					}
-					batcher.addToDrawList(mesh, mat, ent);
-				});
-			}
-		};
-
-		auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
-		if (entities.empty() && (!octreeSys || octreeSys->empty())) {
-			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
-		}
-		else {
-			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
-		}
-	});
 }
 
 void PointLightPass::init(SystemsModule::RenderData&) {
@@ -207,15 +145,19 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 	bufDesc.debugName = "PointLightPass_MatricesUBO";
 	mMatricesUBO = rhi->createBuffer(bufDesc);
 
+	// Set 0: buffers. Set 1: the caster's mask texture.
 	Render::DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
 	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
-	mSetLayout = rhi->createDescriptorSetLayout(layoutDesc);
-	mSet = rhi->allocateDescriptorSet(mSetLayout);
+	mBufferLayout = rhi->createDescriptorSetLayout(layoutDesc);
+	mSet = rhi->allocateDescriptorSet(mBufferLayout);
+
+	Render::DescriptorSetLayoutDesc textureLayoutDesc;
+	textureLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	mTextureLayout = rhi->createDescriptorSetLayout(textureLayoutDesc);
 
 	GraphicsPipelineDesc pipelineDesc;
 	pipelineDesc.depthStencilState.depthTest = true;
@@ -226,7 +168,7 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 	pipelineDesc.cullMode = CullMode::None;
 	pipelineDesc.frontFace = FrontFace::CounterClockWise;
 	pipelineDesc.renderPass = renderPass;
-	pipelineDesc.descriptorSetLayouts = { mSetLayout };
+	pipelineDesc.descriptorSetLayouts = { mBufferLayout, mTextureLayout };
 	pipelineDesc.pushConstantSize = sizeof(PointShadowPush);
 	pipelineDesc.pushConstantStages = ShaderStage::Geometry | ShaderStage::Fragment;
 	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/cascadeShadowMap.vs");
@@ -254,14 +196,6 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 			.buffers{ {mMatricesUBO} }
 		}
 	});
-	if (auto* white = AssetsModule::TextureHandler::loadTexture("white.png")) {
-		rhi->updateDescriptorSets({ {
-			.set = mSet,
-			.binding = 4,
-			
-			.images{ {white->texture, white->sampler} }
-		} });
-	}
 
 	data.matricesUBO = mMatricesUBO;
 }
@@ -280,39 +214,34 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 	FUNCTION_BENCHMARK;
 
 	std::vector<Math::Mat4> matrices;
-	collectLights(renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, matrices, &data.shadowEntities);
+	std::vector<Math::Vec4> spheres;
+	collectLights(renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, matrices, spheres, data.shadowEntities);
 	if (matrices.empty()) {
 		publish(renderDataHandle);
 		return;
 	}
 
 	ensureGpu(renderDataHandle);
-
-	auto* rhi = Engine::instance()->rhi();
-	RenderPassData* curPassData = getContainer().getCurrentPassData();
-	curPassData->waitReady();
-	getContainer().rotate();
-	prepare();
-
 	publish(renderDataHandle);
 
+	auto* rhi = Engine::instance()->rhi();
 	rhi->updateBuffer(mMatricesUBO, 0, matrices.size() * sizeof(Math::Mat4), matrices.data());
 
-	if (renderDataHandle.transformsSSBO) {
-		rhi->updateDescriptorSets({
-			{
-				.set = mSet,
-				.binding = 1,
-				
-				.buffers{ {renderDataHandle.transformsSSBO} }
-			},
-			{
-				.set = mSet,
-				.binding = 2,
-				
-				.buffers{ {renderDataHandle.bonesSSBO} }
-			}
-		});
+	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+	auto& scene = renderSystem->scene();
+	const auto materials = renderSystem->materials().upload();
+	const bool visible = scene.cullSpheres(cmd, GpuScene::List::Shadow, mView, spheres);
+	if (visible) {
+		const uint32_t ids[4] = { renderDataHandle.transformsSSBO.id, renderDataHandle.bonesSSBO.id, mView.visible.id, materials.id };
+		if (!std::equal(std::begin(ids), std::end(ids), std::begin(mBoundIds))) {
+			std::copy(std::begin(ids), std::end(ids), std::begin(mBoundIds));
+			rhi->updateDescriptorSets({
+				{ .set = mSet, .binding = 1, .buffers{ { renderDataHandle.transformsSSBO } } },
+				{ .set = mSet, .binding = 2, .buffers{ { renderDataHandle.bonesSSBO } } },
+				{ .set = mSet, .binding = 3, .buffers{ { mView.visible } } },
+				{ .set = mSet, .binding = 7, .buffers{ { materials } } },
+			});
+		}
 	}
 
 	RenderPassBeginInfo begin;
@@ -324,25 +253,24 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 	begin.height = shadowResolution;
 
 	rhi->cmdBeginRenderPass(cmd, begin);
-	rhi->cmdBindPipeline(cmd, pipeline);
-	const int lightCount = static_cast<int>(data.shadowEntities.size());
-	curPassData->getBatcher().flushAll(cmd, mSet, {},
-		[this, lightCount](SFE::Render::CommandListHandle drawCmd, const DrawObject& obj) {
-			PointShadowPush pc;
-			pc.lightCount = lightCount;
-			if (auto* white = AssetsModule::TextureHandler::loadTexture("white.png")) {
-				auto diff = obj.alphaFromMaps ? obj.maskTexture() : obj.diffuseTexture();
-				if (!diff) {
-					diff = white->texture;
-				}
-				Engine::instance()->rhi()->updateDescriptorSets({ {
-					.set = mSet,
-					.binding = 4,
-					.images{ {diff, white->sampler} }
-				} });
+	if (visible) {
+		const auto* meshes = SFE::MeshVaoRegistry::instance();
+		rhi->cmdBindPipeline(cmd, pipeline);
+		rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
+		rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
+		PointShadowPush push;
+		push.lightCount = static_cast<int>(data.shadowEntities.size());
+		rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Geometry | ShaderStage::Fragment, &push, sizeof(push));
+		for (const auto& group : scene.groups(GpuScene::List::Shadow)) {
+			// Transparent casters only reach the cascades, through the glass proxy.
+			if (group.transparent || group.batchCount == 0) {
+				continue;
 			}
-			Engine::instance()->rhi()->cmdPushConstants(drawCmd, pipeline, SFE::Render::ShaderStage::Geometry | SFE::Render::ShaderStage::Fragment, &pc, sizeof(pc));
-		});
+			const DescriptorSetHandle sets[] = { mSet, mMaskSets.get(mTextureLayout, 4, group.maskTexture) };
+			rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+			scene.draw(cmd, mView, group);
+		}
+	}
 	rhi->cmdEndRenderPass(cmd);
 }
 

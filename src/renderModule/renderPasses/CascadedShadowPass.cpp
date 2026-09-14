@@ -45,116 +45,6 @@
 
 using namespace SFE::Render::RenderPasses;
 
-void CascadedShadowPass::prepare() {
-	auto shadowsComp = ECSHandler::registry().pinComponent<const CascadeShadowComponent>(mShadowSource);
-	if (!shadowsComp) {
-		return;
-	}
-
-	// Culling used to run once against the camera frustum and the resulting list was then drawn
-	// into every cascade. That missed every caster standing outside the view but still between the
-	// sun and something visible, and it made the near cascade pay for geometry hundreds of units
-	// away that its own frustum clips anyway. Each cascade now collects its own list against the
-	// light-space volume that was already being computed for it.
-	std::vector<FrustumModule::Frustum> cascadeFrustums;
-	cascadeFrustums.reserve(shadowsComp->cascades.size());
-	for (const auto& cascade : shadowsComp->cascades) {
-		cascadeFrustums.push_back(cascade.frustum);
-	}
-	if (cascadeFrustums.empty()) {
-		return;
-	}
-
-	auto curPassData = getContainer().getCurrentPassData();
-	curPassData->markPreparing();
-	auto& renderData = ECSHandler::getSystem<SystemsModule::RenderSystem>()->getRenderData();
-	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, this, curPassData, frustums = std::move(cascadeFrustums)]() mutable {
-		FUNCTION_BENCHMARK;
-		struct ReadyGuard {
-			RenderPassData* data = nullptr;
-			~ReadyGuard() { if (data) { data->markReady(); } }
-		} ready{ curPassData };
-
-		auto* renderSys = ECSHandler::getSystem<SystemsModule::RenderSystem>();
-		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : SystemsModule::RenderSystem::WorldReadGuard{};
-		if (renderSys && !worldLock) {
-			return;
-		}
-
-		auto& batchers = curPassData->getBatchers();
-		const auto materialLayout = batchers.empty() ? SFE::Render::DescriptorSetLayoutHandle{} : batchers.front().materialLayout();
-		if (batchers.size() < frustums.size()) {
-			batchers.resize(frustums.size());
-			for (auto& batcher : batchers) {
-				batcher.setMaterialLayout(materialLayout);
-			}
-		}
-		for (auto& batcher : batchers) {
-			batcher.clear();
-		}
-
-		{
-			FUNCTION_BENCHMARK_NAMED(addedToBatcher)
-			auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
-			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-
-			auto inflate = [](FrustumModule::Frustum f, float e) {
-				f.leftFace.distance += e;
-				f.rightFace.distance += e;
-				f.topFace.distance += e;
-				f.bottomFace.distance += e;
-				f.nearFace.distance += e;
-				f.farFace.distance += e;
-				return f;
-			};
-
-			size_t total = 0;
-			std::vector<ecss::EntityId> ids;
-			for (size_t layer = 0; layer < frustums.size(); ++layer) {
-				auto& batcher = batchers[layer];
-
-				auto addMeshes = [&](auto&& viewObjs) {
-					size_t n = 0;
-					for (auto [ent, transform, meshComp, matComp] : viewObjs) {
-						if (!meshComp) {
-							continue;
-						}
-						meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
-							if (mat && mat->transparent && mGlassShadowMeshData) {
-								batcher.addToDrawList(mGlassShadowMeshData, mat, ent);
-							}
-							else {
-								batcher.addToDrawList(mesh, mat, ent);
-							}
-							++n;
-						});
-					}
-					return n;
-				};
-
-				ecss::Ranges<ecss::EntityId> entities;
-				if (octreeSys) {
-					ids.clear();
-					ids.reserve(2048);
-					octreeSys->collectVisible(inflate(frustums[layer], 16.f), ids);
-					entities = SystemsModule::OcTreeSystem::makeEntityRanges(std::move(ids));
-					ids.clear();
-				}
-
-				size_t added = 0;
-				if (entities.empty() && (!octreeSys || octreeSys->empty())) {
-					added = addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
-				}
-				else {
-					added = addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
-				}
-				total += added;
-			}
-			SystemsModule::RenderDebugInfo::instance()->cullShadow = total;
-		}
-	});
-}
-
 CascadedShadowPass::CascadedShadowPass() {
 	getContainer().init(2);
 }
@@ -324,16 +214,18 @@ void CascadedShadowPass::initRender() {
 	matricesUBO = rhi->createBuffer(desc);
 	mData.lightSpaceMatricesUBO = matricesUBO;
 
-	Render::DescriptorSetLayoutDesc shadowsLayoutDesc;
-	shadowsLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex);
-	shadowsLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	shadowsLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	shadowsLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	shadowsLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
-	shadowsLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	// Set 0: buffers, one per cascade. Set 1: the caster's mask texture, shared.
+	Render::DescriptorSetLayoutDesc bufferLayoutDesc;
+	bufferLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex);
+	bufferLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	bufferLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	bufferLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	bufferLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
+	mBufferLayout = rhi->createDescriptorSetLayout(bufferLayoutDesc);
 
-	shadowsLayoutHandle = rhi->createDescriptorSetLayout(shadowsLayoutDesc);
-	shadowsSetDescHandle = rhi->allocateDescriptorSet(shadowsLayoutHandle);
+	Render::DescriptorSetLayoutDesc textureLayoutDesc;
+	textureLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	mTextureLayout = rhi->createDescriptorSetLayout(textureLayoutDesc);
 
 	GraphicsPipelineDesc pipelineDesc;
 	pipelineDesc.depthStencilState.depthTest = true;
@@ -345,7 +237,7 @@ void CascadedShadowPass::initRender() {
 	// left the two backends storing opposite faces: OpenGL the far surface, Vulkan the near one.
 	pipelineDesc.frontFace = FrontFace::CounterClockWise;
 	pipelineDesc.renderPass = renderPass;
-	pipelineDesc.descriptorSetLayouts = { shadowsLayoutHandle };
+	pipelineDesc.descriptorSetLayouts = { mBufferLayout, mTextureLayout };
 	pipelineDesc.pushConstantSize = 16u;
 	// The vertex shader applies the cascade matrix now, so it needs the push block too.
 	pipelineDesc.pushConstantStages = ShaderStage::Vertex | ShaderStage::Fragment;
@@ -371,22 +263,6 @@ void CascadedShadowPass::initRender() {
 	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/cascadeShadowMap.fs");
 	pipelineCutout = rhi->createGraphicsPipeline(pipelineDesc);
 
-	rhi->updateDescriptorSets({
-		{
-			.set = shadowsSetDescHandle,
-			.binding = 11,
-			
-			.buffers{ {matricesUBO} }
-		}
-	});
-	if (auto* white = AssetsModule::TextureHandler::loadTexture("white.png")) {
-		rhi->updateDescriptorSets({ {
-			.set = shadowsSetDescHandle,
-			.binding = 4,
-			
-			.images{ {white->texture, white->sampler} }
-		} });
-	}
 }
 
 void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -401,11 +277,6 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 	auto rhi = Engine::instance()->rhi();
 
 	updateRenderData(renderDataHandle);
-
-	auto* curPassData = getContainer().getCurrentPassData();
-	curPassData->waitReady();
-	getContainer().rotate();
-	prepare();
 
 	auto shadowsComp = ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource);
 	if (!shadowsComp) {
@@ -428,61 +299,52 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		rhi->updateBuffer(matricesUBO, 0, sizeof(packed), packed);
 	}
 
-	if (renderDataHandle.transformsSSBO) {
-		rhi->updateDescriptorSets({
-			{
-				.set = shadowsSetDescHandle,
-				.binding = 1,
-				
-				.buffers{ {renderDataHandle.transformsSSBO} }
-			},
-			{
-				.set = shadowsSetDescHandle,
-				.binding = 2,
-				
-				.buffers{ {renderDataHandle.bonesSSBO} }
-			}
-		});
+	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+	auto& scene = renderSystem->scene();
+	if (!mProxyRegistered) {
+		scene.setGlassShadowProxy(mGlassShadowMeshData);
+		mProxyRegistered = true;
 	}
+	const auto materials = renderSystem->materials().upload();
+	const auto* meshes = SFE::MeshVaoRegistry::instance();
 
-	// Every layer, not just the ones with a batcher. A cascade that renders no pass keeps last
-	// frame's depth and, on Vulkan, never reaches SHADER_READ_ONLY, so sampling it is undefined.
-	auto& batchers = curPassData->getBatchers();
+	// A caster only needs the fragment shader when something can make it transparent: an alpha cutout, a
+	// mask or a dithered opacity. Everything else writes depth on a pipeline with no fragment shader work,
+	// which keeps early-Z for the bulk of the scene.
+	const auto& groups = scene.groups(GpuScene::List::Shadow);
+	mCascades.resize(lightFbos.size());
+
+	// Every layer, not just the ones with casters. A cascade that renders no pass keeps last frame's depth
+	// and, on Vulkan, never reaches SHADER_READ_ONLY, so sampling it is undefined.
 	for (size_t layer = 0; layer < lightFbos.size(); ++layer) {
 		if (!lightFbos[layer]) {
 			continue;
 		}
+		auto& cascade = mCascades[layer];
 
-		// A caster only needs the fragment shader when something can make it transparent: an alpha
-		// cutout, an alpha-from-maps mask, or a dithered opacity. Everything else writes depth on a
-		// pipeline with no fragment shader at all, which keeps early-Z for the bulk of the scene and
-		// needs no per-draw descriptor writes.
-		std::vector<DrawObject*> opaque;
-		std::vector<DrawObject*> cutout;
-		Batcher* batcher = layer < batchers.size() ? &batchers[layer] : nullptr;
-		if (batcher) {
-			for (auto& entry : batcher->drawList) {
-				auto& obj = entry.second;
-				if (obj.entities.empty()) {
-					continue;
-				}
-				const bool dithered = obj.opacity > 0.f && obj.opacity < 0.999f;
-				if (obj.alphaFromMaps || obj.cutoutCutoff() > 0.f || dithered) {
-					cutout.push_back(&obj);
-				}
-				else {
-					opaque.push_back(&obj);
-				}
+		// The cascade's own volume, widened a little so casters just outside it still reach in.
+		auto frustum = layer < shadowsComp->cascades.size() ? shadowsComp->cascades[layer].frustum : FrustumModule::Frustum{};
+		for (auto* plane : { &frustum.leftFace, &frustum.rightFace, &frustum.topFace, &frustum.bottomFace, &frustum.nearFace, &frustum.farFace }) {
+			plane->distance += 16.f;
+		}		const bool visible = layer < shadowsComp->cascades.size()
+			&& scene.cullFrustum(cmd, GpuScene::List::Shadow, cascade.view, frustum);
+
+		if (visible) {
+			if (!cascade.set) {
+				cascade.set = rhi->allocateDescriptorSet(mBufferLayout);
+				rhi->updateDescriptorSets({ { .set = cascade.set, .binding = 11, .buffers{ { matricesUBO } } } });
+			}
+			const uint32_t ids[4] = { renderDataHandle.transformsSSBO.id, renderDataHandle.bonesSSBO.id, cascade.view.visible.id, materials.id };
+			if (!std::equal(std::begin(ids), std::end(ids), std::begin(cascade.boundIds))) {
+				std::copy(std::begin(ids), std::end(ids), std::begin(cascade.boundIds));
+				rhi->updateDescriptorSets({
+					{ .set = cascade.set, .binding = 1, .buffers{ { renderDataHandle.transformsSSBO } } },
+					{ .set = cascade.set, .binding = 2, .buffers{ { renderDataHandle.bonesSSBO } } },
+					{ .set = cascade.set, .binding = 3, .buffers{ { cascade.view.visible } } },
+					{ .set = cascade.set, .binding = 7, .buffers{ { materials } } },
+				});
 			}
 		}
-		// A cascade with nothing to draw still has to open its pass: the clear lives in the render
-		// pass, and skipping it would leave last frame's depth in that layer.
-
-		// Caster opacity and cutoff come from the material table.
-		struct ShadowPush {
-			int cascadeLayer = 0;
-			float pad[3]{};
-		};
 
 		RenderPassBeginInfo begin;
 		begin.renderPass = renderPass;
@@ -493,48 +355,31 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		begin.height = static_cast<int>(shadowsComp->resolution.y);
 		rhi->cmdBeginRenderPass(cmd, begin);
 
-		if (!opaque.empty()) {
-			rhi->cmdBindPipeline(cmd, pipelineOpaque);
-			batcher->flushAll(cmd, shadowsSetDescHandle, {},
-				[this, layer](SFE::Render::CommandListHandle drawCmd, const DrawObject&) {
-					ShadowPush pc;
-					pc.cascadeLayer = static_cast<int>(layer);
-					Engine::instance()->rhi()->cmdPushConstants(
-						drawCmd, pipelineOpaque,
-						SFE::Render::ShaderStage::Vertex | SFE::Render::ShaderStage::Fragment,
-						&pc, sizeof(pc));
-				}, &opaque, false);
-		}
+		if (visible) {
+			struct ShadowPush {
+				int cascadeLayer = 0;
+				float pad[3]{};
+			} push;
+			push.cascadeLayer = static_cast<int>(layer);
 
-		if (!cutout.empty()) {
-			// Looked up once per pass instead of once per object per cascade.
-			auto* white = AssetsModule::TextureHandler::loadTexture("white.png");
-			SFE::Render::TextureHandle boundDiffuse{};
-			rhi->cmdBindPipeline(cmd, pipelineCutout);
-			batcher->flushAll(cmd, shadowsSetDescHandle, {},
-				[this, layer, white, &boundDiffuse](SFE::Render::CommandListHandle drawCmd, const DrawObject& obj) {
-					ShadowPush pc;
-					pc.cascadeLayer = static_cast<int>(layer);
-
-					auto diff = obj.alphaFromMaps ? obj.maskTexture() : obj.diffuseTexture();
-					if (!diff && white) {
-						diff = white->texture;
-					}
-					// Rewriting the set for a texture that is already bound is what filled the log
-					// with "descriptor set updated without UPDATE_AFTER_BIND".
-					if (diff && diff.id != boundDiffuse.id) {
-						boundDiffuse = diff;
-						Engine::instance()->rhi()->updateDescriptorSets({ {
-							.set = shadowsSetDescHandle,
-							.binding = 4,
-							.images{ {diff, white ? white->sampler : SFE::Render::SamplerHandle{}} }
-						} });
-					}
-					Engine::instance()->rhi()->cmdPushConstants(
-						drawCmd, pipelineCutout,
-						SFE::Render::ShaderStage::Vertex | SFE::Render::ShaderStage::Fragment,
-						&pc, sizeof(pc));
-				}, &cutout, false);
+			PipelineHandle bound{};
+			for (const auto& group : groups) {
+				if (group.batchCount == 0) {
+					continue;
+				}
+				const auto pipeline = group.cutout ? pipelineCutout : pipelineOpaque;
+				if (pipeline.id != bound.id) {
+					bound = pipeline;
+					rhi->cmdBindPipeline(cmd, pipeline);
+					// After the pipeline: OpenGL keeps the vertex and index buffers on the pipeline's VAO.
+					rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
+					rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
+					rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Vertex | ShaderStage::Fragment, &push, sizeof(push));
+				}
+				const DescriptorSetHandle sets[] = { cascade.set, mMaskSets.get(mTextureLayout, 4, group.maskTexture) };
+				rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+				scene.draw(cmd, cascade.view, group);
+			}
 		}
 
 		rhi->cmdEndRenderPass(cmd);
@@ -542,7 +387,7 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 
 	{
 		auto* info = SFE::SystemsModule::RenderDebugInfo::instance();
-		info->shadowMeshes = curPassData->getBatcher().drawList.size();
+		info->shadowMeshes = groups.size();
 		info->shadowFbosTotal = static_cast<uint32_t>(lightFbos.size());
 		info->shadowFbos = static_cast<uint32_t>(lightFbos.size());
 		info->shadowPipeline = pipelineOpaque.id;

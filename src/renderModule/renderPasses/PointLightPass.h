@@ -1,6 +1,8 @@
 ﻿#pragma once
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "renderModule/FrameBlackboard.h"
+#include "renderModule/GpuScene.h"
+#include "renderModule/MaterialTextures.h"
 #include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
@@ -10,13 +12,12 @@ namespace SFE::Render::RenderPasses {
 		using Data = Render::PointShadowFrame;
 
 		PointLightPass();
-		void prepare() override;
 		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 	private:
 		void publish(SystemsModule::RenderData& renderDataHandle);
-		void collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<ecss::SectorId>* entities);
+		void collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<Math::Vec4>& spheres, std::vector<ecss::SectorId>& entities);
 		void ensureGpu(SystemsModule::RenderData& renderDataHandle);
 
 		FramebufferHandle lightFramebuffer;
@@ -25,8 +26,12 @@ namespace SFE::Render::RenderPasses {
 		BufferHandle mMatricesUBO;
 		RenderPassHandle renderPass;
 		PipelineHandle pipeline;
-		Render::DescriptorSetLayoutHandle mSetLayout{};
+		Render::DescriptorSetLayoutHandle mBufferLayout{};
+		Render::DescriptorSetLayoutHandle mTextureLayout{};
 		Render::DescriptorSetHandle mSet{};
+		uint32_t mBoundIds[4]{};
+		GpuScene::View mView;
+		SingleTextureSets mMaskSets;
 
 		bool mInited = false;
 		bool mGpuReady = false;

@@ -38,4 +38,15 @@ namespace SFE::Render {
 		}
 		return writes;
 	}
+
+	DescriptorSetHandle SingleTextureSets::get(const DescriptorSetLayoutHandle layout, const uint32_t binding, const TextureHandle texture) {
+		auto& set = mSets[texture.id];
+		if (!set) {
+			const auto* white = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
+			auto* rhi = Engine::instance()->rhi();
+			set = rhi->allocateDescriptorSet(layout);
+			rhi->updateDescriptorSets({ { .set = set, .binding = binding, .images{ { texture ? texture : white->texture, white->sampler } } } });
+		}
+		return set;
+	}
 }

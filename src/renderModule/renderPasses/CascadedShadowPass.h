@@ -6,6 +6,8 @@
 #include "assetsModule/modelModule/Mesh.h"
 #include "componentsModule/MeshComponent.h"
 #include "renderModule/FrameBlackboard.h"
+#include "renderModule/GpuScene.h"
+#include "renderModule/MaterialTextures.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 #include "renderModule/renderPasses/RenderPass.h"
@@ -15,8 +17,6 @@ namespace SFE::Render::RenderPasses {
 
 	class CascadedShadowPass : public RenderPassWithData {
 	public:
-		void prepare() override;
-
 
 		using Data = Render::CsmFrame;
 
@@ -44,8 +44,18 @@ namespace SFE::Render::RenderPasses {
 		PipelineHandle pipelineCutout;
 		RenderPassHandle renderPass;
 
-		Render::DescriptorSetLayoutHandle shadowsLayoutHandle;
-		Render::DescriptorSetHandle       shadowsSetDescHandle;
+		// Set 0 holds the buffers and differs per cascade (each has its own visible list); set 1 holds the
+		// caster's mask texture and is shared by every cascade.
+		struct Cascade {
+			GpuScene::View view;
+			DescriptorSetHandle set;
+			uint32_t boundIds[4]{};
+		};
+		Render::DescriptorSetLayoutHandle mBufferLayout;
+		Render::DescriptorSetLayoutHandle mTextureLayout;
+		std::vector<Cascade> mCascades;
+		SingleTextureSets mMaskSets;
+		bool mProxyRegistered = false;
 
 		ecss::EntityId mShadowSource;
 		bool mInited = false;

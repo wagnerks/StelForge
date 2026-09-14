@@ -61,9 +61,14 @@ layout(SFE_SET(0, 30), std430) writeonly buffer Commands {
     DrawCommand commands[];
 };
 
-SFE_PUSH_BLOCK CullView {
-    vec4 planes[6]; // xyz normal, w distance: inside when dot(n, p) + w >= -radius
+// mode 0: shapes are 6 planes (xyz normal, w distance), inside when dot(n, p) + w >= -radius.
+// mode 1: shapes are spheres (xyz centre, w radius), visible when the bounds touch any of them.
+layout(SFE_SET(0, 31), std430) readonly buffer CullView {
+    uint mode;
+    uint shapeCount;
     uint batchCount;
+    uint _pad;
+    vec4 shapes[16];
 } view;
 
 // Animation can move vertices past the bind pose, so skinned bounds get this much of their largest
@@ -71,14 +76,23 @@ SFE_PUSH_BLOCK CullView {
 const float kSkinnedInflate = 0.5;
 
 bool visibleInView(vec3 center, vec3 extents) {
-    for (int i = 0; i < 6; ++i) {
-        vec3 n = view.planes[i].xyz;
-        float r = dot(extents, abs(n));
-        if (dot(n, center) + view.planes[i].w < -r) {
-            return false;
+    if (view.mode == 0u) {
+        for (uint i = 0u; i < view.shapeCount; ++i) {
+            vec3 n = view.shapes[i].xyz;
+            float r = dot(extents, abs(n));
+            if (dot(n, center) + view.shapes[i].w < -r) {
+                return false;
+            }
+        }
+        return true;
+    }
+    for (uint i = 0u; i < view.shapeCount; ++i) {
+        vec3 d = max(abs(center - view.shapes[i].xyz) - extents, vec3(0.0));
+        if (dot(d, d) <= view.shapes[i].w * view.shapes[i].w) {
+            return true;
         }
     }
-    return true;
+    return false;
 }
 
 void main() {
