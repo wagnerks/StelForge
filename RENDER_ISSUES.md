@@ -100,7 +100,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: deferred destroy in the Vulkan backend itself (free after `framesInFlight` frames), so no caller has to remember.
 
 ## 27. Shared CPU-writable buffers are overwritten while the previous frame reads them (Vulkan)
-- [ ] `VulkanRHI::updateBuffer` on a mapped buffer is a plain memcpy, and a frame only waits on its own slot's fence. RenderSystem and GpuScene keep one buffer per frame slot, but these do not: `CascadedShadowPass.cpp:298` (cascade matrices), `PointLightPass.cpp:227`, `LightingPass.cpp:245,293,302,320`, `GlassPass.cpp:257`, `AnimationComputePass.cpp:279` (instances). Frame N-1 can render with frame N's cascade matrices (shadows swim while the camera moves), or skin with the wrong entity ids. GL is unaffected.
+- [x] `VulkanRHI::updateBuffer` on a mapped buffer is a plain memcpy, and a frame only waits on its own slot's fence. RenderSystem and GpuScene keep one buffer per frame slot, but these do not: `CascadedShadowPass.cpp:298` (cascade matrices), `PointLightPass.cpp:227`, `LightingPass.cpp:245,293,302,320`, `GlassPass.cpp:257`, `AnimationComputePass.cpp:279` (instances). Frame N-1 can render with frame N's cascade matrices (shadows swim while the camera moves), or skin with the wrong entity ids. GL is unaffected.
 - Fix: per-slot buffers for these, or have the RHI rotate per-frame copies of `CpuAccess::Write` buffers.
 
 ## 28. The Vulkan descriptor pool has a fixed size and fails silently

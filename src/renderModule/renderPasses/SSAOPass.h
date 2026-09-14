@@ -49,7 +49,6 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		SSAOParams params;
-		BufferHandle ssaoParamsBuffer;
 
 		struct SSAOBlurParams
 		{
@@ -66,7 +65,9 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		SSAOBlurParams blurParams;
-		BufferHandle ssaoBlurParamsBuffer;
+		// Transient buffer each set's dynamic params binding was last written with.
+		uint32_t mainParamsBufferId = UINT32_MAX;
+		uint32_t blurParamsBufferId = UINT32_MAX;
 
 		bool ssaoDebugWindow = false;
 		Data mData{};

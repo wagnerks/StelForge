@@ -43,19 +43,11 @@ void SSSPass::init(SystemsModule::RenderData&) {
 	fb.colorAttachments = { { mColor } };
 	mFbo = rhi->createFramebuffer(fb);
 
-	BufferDesc uboDesc;
-	uboDesc.usage = BufferUsage::Uniform;
-	uboDesc.cpuAccess = CpuAccess::Write;
-	uboDesc.size = sizeof(Params);
-	mParams.resX = static_cast<float>(w);
-	mParams.resY = static_cast<float>(h);
-	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
-
 	DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(2, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBuffer, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
 
@@ -94,7 +86,7 @@ void SSSPass::render(SystemsModule::RenderData& renderDataHandle, CommandListHan
 	mParams.radius = renderDataHandle.graphics.sssRadius;
 	mParams.resX = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
 	mParams.resY = screen.renderH > 0 ? static_cast<float>(screen.renderH) : 1.f;
-	rhi->updateBuffer(mParamsUBO, mParams);
+	const auto params = rhi->allocTransient(mParams);
 
 	auto sampOr = [&](const char* id, SamplerHandle fallback) {
 		const auto s = frame.sampler(id);
@@ -127,7 +119,7 @@ void SSSPass::render(SystemsModule::RenderData& renderDataHandle, CommandListHan
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.buffers.push_back({ mParamsUBO });
+		w.buffers.push_back({ params.buffer, 0, sizeof(Params) });
 		writes.push_back(std::move(w));
 	}
 	rhi->updateDescriptorSets(writes);
@@ -139,7 +131,7 @@ void SSSPass::render(SystemsModule::RenderData& renderDataHandle, CommandListHan
 	beginInfo.height = screen.renderH;
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, mPipeline);
-	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &params.offset, 1);
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 

@@ -20,6 +20,7 @@ namespace SFE::Render {
 	};
 
 	struct CsmFrame {
+		static constexpr size_t kMaxCascades = 6; // the shaders' `mat4 lightSpaceMatrices[6]`
 		TextureHandle shadowMapTexture;
 		SamplerHandle shadowMapSampler;
 		Math::Vec3 lightDirection = {};
@@ -30,13 +31,13 @@ namespace SFE::Render {
 		ecss::EntityId shadows = ecss::INVALID_ID;
 		std::vector<ComponentsModule::ShadowCascade> shadowCascades;
 		float shadowsIntensity = 0.f;
-		BufferHandle lightSpaceMatricesUBO;
 		std::vector<Math::Mat4> lightSpaceMatrices;
 	};
 
 	struct PointShadowFrame {
+		static constexpr size_t kMaxShadowFaces = 72; // the shaders' `mat4 pointLightMatrices[72]`
 		std::vector<ecss::SectorId> shadowEntities;
-		BufferHandle matricesUBO;
+		std::vector<Math::Mat4> matrices;
 	};
 
 	class FrameBlackboard {
@@ -113,7 +114,6 @@ namespace SFE::Render {
 		constexpr const char* GBufferDepth = "gbuffer.depth";
 		constexpr const char* ShadowCsm = "shadow.csm";
 		constexpr const char* ShadowCsmDepth = "shadow.csmDepth";
-		constexpr const char* ShadowMatrices = "shadow.matrices";
 		constexpr const char* SsaoColor = "ssao.color";
 		constexpr const char* SsaoBlur = "ssao.blur";
 		constexpr const char* Lit = "lighting.color";

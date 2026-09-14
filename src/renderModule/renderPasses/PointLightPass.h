@@ -23,13 +23,13 @@ namespace SFE::Render::RenderPasses {
 		FramebufferHandle lightFramebuffer;
 		TextureHandle mLightDepthMaps;
 		SamplerHandle mLightDepthMapsSampler;
-		BufferHandle mMatricesUBO;
 		RenderPassHandle renderPass;
 		PipelineHandle pipeline;
 		Render::DescriptorSetLayoutHandle mBufferLayout{};
 		Render::DescriptorSetLayoutHandle mTextureLayout{};
 		Render::DescriptorSetHandle mSet{};
 		uint32_t mBoundIds[4]{};
+		uint32_t mMatricesId = UINT32_MAX; // transient buffer binding 11 was last written with
 		GpuScene::View mView;
 		SingleTextureSets mMaskSets;
 
@@ -41,5 +41,6 @@ namespace SFE::Render::RenderPasses {
 		static constexpr int maxLights = 12;
 		static constexpr int facesPerLight = 6;
 		static constexpr int maxShadowFaces = maxLights * facesPerLight;
+		static_assert(maxShadowFaces == Data::kMaxShadowFaces);
 	};
 }

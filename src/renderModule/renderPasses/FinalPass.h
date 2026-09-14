@@ -22,7 +22,6 @@ namespace SFE::Render::RenderPasses {
 		DescriptorSetHandle mBloomSet{};
 		DescriptorSetHandle mPostSet{};
 		SamplerHandle mSampler{};
-		BufferHandle mPostUBO{};
 
 		struct PostParams {
 			float bloomStrength = 0.62f;

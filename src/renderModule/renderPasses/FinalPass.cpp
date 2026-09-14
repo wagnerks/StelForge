@@ -42,16 +42,10 @@ void FinalPass::init(SystemsModule::RenderData&) {
 	DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBuffer, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mBloomSet = rhi->allocateDescriptorSet(mLayout);
 	mPostSet = rhi->allocateDescriptorSet(mLayout);
-
-	BufferDesc postUbo;
-	postUbo.usage = BufferUsage::Uniform;
-	postUbo.cpuAccess = CpuAccess::Write;
-	postUbo.size = sizeof(PostParams);
-	mPostUBO = rhi->createBuffer(postUbo, &mPostParams);
 
 	RenderPassDesc bloomRp;
 	bloomRp.colorAttachmentCount = 1;
@@ -123,14 +117,19 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		mPostParams.vignette = 0.f;
 		mPostParams.ca = 0.f;
 	}
-	rhi->updateBuffer(mPostUBO, mPostParams);
+	const auto post = rhi->allocTransient(mPostParams);
 
 	if (gfx.bloom && mBloomPipeline) {
 		WriteDescriptor w{};
 		w.set = mBloomSet;
 		w.binding = 0;
 		w.images.push_back({ src, mSampler });
-		rhi->updateDescriptorSets({ w });
+		// The layout's dynamic binding 15 must hold a buffer, and Vulkan wants its offset at the bind.
+		WriteDescriptor params{};
+		params.set = mBloomSet;
+		params.binding = 15;
+		params.buffers.push_back({ post.buffer, 0, sizeof(PostParams) });
+		rhi->updateDescriptorSets({ w, params });
 
 		RenderPassBeginInfo beginInfo;
 		beginInfo.framebuffer = mBloomFbo;
@@ -139,7 +138,7 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		beginInfo.height = std::max(1, screen.renderH / 4);
 		rhi->cmdBeginRenderPass(cmd, beginInfo);
 		rhi->cmdBindPipeline(cmd, mBloomPipeline);
-		rhi->cmdBindDescriptorSets(cmd, mBloomPipeline, 0, &mBloomSet, 1);
+		rhi->cmdBindDescriptorSets(cmd, mBloomPipeline, 0, &mBloomSet, 1, &post.offset, 1);
 		Utils::renderQuad(cmd);
 		rhi->cmdEndRenderPass(cmd);
 	}
@@ -164,7 +163,7 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 			WriteDescriptor w{};
 			w.set = mPostSet;
 			w.binding = 15;
-			w.buffers.push_back({ mPostUBO });
+			w.buffers.push_back({ post.buffer, 0, sizeof(PostParams) });
 			writes.push_back(std::move(w));
 		}
 		rhi->updateDescriptorSets(writes);
@@ -176,7 +175,7 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		beginInfo.height = screen.renderH;
 		rhi->cmdBeginRenderPass(cmd, beginInfo);
 		rhi->cmdBindPipeline(cmd, mPostPipeline);
-		rhi->cmdBindDescriptorSets(cmd, mPostPipeline, 0, &mPostSet, 1);
+		rhi->cmdBindDescriptorSets(cmd, mPostPipeline, 0, &mPostSet, 1, &post.offset, 1);
 		Utils::renderQuad(cmd);
 		if (mOverlayFont && !Engine::instance()->capturingFrame()) {
 			char overlay[256];

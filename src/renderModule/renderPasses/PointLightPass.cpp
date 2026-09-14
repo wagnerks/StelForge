@@ -17,6 +17,7 @@
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 #include "multithreading/ThreadPool.h"
+#include "renderModule/Utils.h"
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/SystemManager.h"
@@ -137,16 +138,9 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 	fbDesc.depthStencilAttachment = depthAtt;
 	lightFramebuffer = rhi->createFramebuffer(fbDesc);
 
-	BufferDesc bufDesc;
-	bufDesc.size = sizeof(Math::Mat4) * maxShadowFaces;
-	bufDesc.usage = BufferUsage::Uniform;
-	bufDesc.cpuAccess = CpuAccess::Write;
-	bufDesc.debugName = "PointLightPass_MatricesUBO";
-	mMatricesUBO = rhi->createBuffer(bufDesc);
-
 	// Set 0: buffers. Set 1: the caster's mask texture.
 	Render::DescriptorSetLayoutDesc layoutDesc;
-	layoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Geometry);
+	layoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Geometry);
 	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
@@ -186,21 +180,9 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 	vaoDesc.attributes.push_back({ 7, 0, Render::VertexFormat::Float2, static_cast<std::uint32_t>(offsetof(SFE::Vertex3D, texCoords1)), true });
 	pipelineDesc.layout = vaoDesc;
 	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
-	rhi->updateDescriptorSets({
-		{
-			.set = mSet,
-			.binding = 11,
-			
-			.buffers{ {mMatricesUBO} }
-		}
-	});
-
-	data.matricesUBO = mMatricesUBO;
 }
 
 void PointLightPass::publish(SystemsModule::RenderData& renderDataHandle) {
-	data.matricesUBO = mMatricesUBO;
 	renderDataHandle.frame.setData(FrameId::PointShadow, &data);
 	renderDataHandle.frame.set(FrameId::ShadowPoint, { .texture = mLightDepthMaps, .sampler = mLightDepthMapsSampler });
 }
@@ -212,7 +194,7 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 
 	FUNCTION_BENCHMARK;
 
-	std::vector<Math::Mat4> matrices;
+	auto& matrices = data.matrices;
 	std::vector<Math::Vec4> spheres;
 	collectLights(renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, matrices, spheres, data.shadowEntities);
 	if (matrices.empty()) {
@@ -224,7 +206,11 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 	publish(renderDataHandle);
 
 	auto* rhi = Engine::instance()->rhi();
-	rhi->updateBuffer(mMatricesUBO, 0, matrices.size() * sizeof(Math::Mat4), matrices.data());
+	const auto matricesBlock = Utils::allocMatrices(matrices, maxShadowFaces);
+	if (matricesBlock.buffer.id != mMatricesId) {
+		mMatricesId = matricesBlock.buffer.id;
+		rhi->updateDescriptorSets({ { .set = mSet, .binding = 11, .buffers{ { matricesBlock.buffer, 0, sizeof(Math::Mat4) * maxShadowFaces } } } });
+	}
 
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 	auto& scene = renderSystem->scene();
@@ -266,7 +252,7 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 				continue;
 			}
 			const DescriptorSetHandle sets[] = { mSet, mMaskSets.get(mTextureLayout, 4, group.maskTexture) };
-			rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+			rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2, &matricesBlock.offset, 1);
 			scene.draw(cmd, mView, group);
 		}
 	}

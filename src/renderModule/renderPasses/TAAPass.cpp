@@ -49,7 +49,7 @@ void TAAPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(0, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(2, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
 
@@ -66,14 +66,6 @@ void TAAPass::init(SystemsModule::RenderData&) {
 	pipelineDesc.shaders.vertex = rhi->loadShader(SFE::Render::ShaderStage::Vertex, "shaders/deferred_shading.vs");
 	pipelineDesc.shaders.fragment = rhi->loadShader(SFE::Render::ShaderStage::Fragment, "shaders/taa.fs");
 	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
-	SFE::Render::BufferDesc uboDesc;
-	uboDesc.usage = SFE::Render::BufferUsage::Uniform;
-	uboDesc.cpuAccess = SFE::Render::CpuAccess::Write;
-	uboDesc.size = sizeof(Params);
-	mParams.resX = static_cast<float>(w);
-	mParams.resY = static_cast<float>(h);
-	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
 }
 
 void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::CommandListHandle cmd) {
@@ -103,7 +95,7 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		mParams.resX = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
 		mParams.resY = screen.renderH > 0 ? static_cast<float>(screen.renderH) : 1.f;
 	}
-	rhi->updateBuffer(mParamsUBO, mParams);
+	const auto params = rhi->allocTransient(mParams);
 
 	const int hist = 1 - mWrite;
 	std::vector<SFE::Render::WriteDescriptor> writes;
@@ -136,7 +128,7 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.buffers.push_back({ mParamsUBO });
+		w.buffers.push_back({ params.buffer, 0, sizeof(Params) });
 		writes.push_back(std::move(w));
 	}
 	rhi->updateDescriptorSets(writes);
@@ -149,7 +141,7 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 	beginInfo.height = screen.renderH;
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, mPipeline);
-	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &params.offset, 1);
 	SFE::Render::Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 

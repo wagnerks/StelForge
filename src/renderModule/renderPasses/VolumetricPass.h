@@ -21,7 +21,6 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		Params mParams;
-		BufferHandle mParamsUBO{};
 		TextureHandle mHalfTex{};
 		FramebufferHandle mHalfFbo{};
 		TextureHandle mColor{};

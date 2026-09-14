@@ -82,11 +82,6 @@ namespace SFE::Render::RenderPasses {
 		};
 		DrawDataLines drawDataLines;
 
-		BufferHandle trianglesVBO;
-		BufferHandle linesVBO;
-		size_t mLinesCapacity = 0;
-		size_t mTrisCapacity = 0;
-
 		PipelineHandle trianglesPipeline;
 		PipelineHandle linesPipeline;
 

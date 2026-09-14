@@ -22,7 +22,6 @@ namespace SFE::Render::RenderPasses {
 		static_assert(sizeof(Params) == 64);
 
 		Params mParams;
-		BufferHandle mParamsUBO{};
 		TextureHandle mColor{};
 		FramebufferHandle mFbo{};
 		SamplerHandle mLinear{};

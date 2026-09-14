@@ -14,12 +14,6 @@ namespace SFE::Render::RenderPasses {
 	void GUIPass::init(SystemsModule::RenderData&) {
 		auto* rhi = Engine::instance()->rhi();
 
-		BufferDesc vboDesc;
-		vboDesc.size = sizeof(Math::Vec2) * 6 * 1000;
-		vboDesc.usage = BufferUsage::Vertex;
-		vboDesc.cpuAccess = CpuAccess::Write;
-		VBO = rhi->createBuffer(vboDesc);
-
 		RenderPassDesc rpd;
 		rpd.colorAttachmentCount = 1;
 		rpd.colorAttachments[0].loadOp = AttachmentLoadOp::Load;
@@ -118,8 +112,10 @@ namespace SFE::Render::RenderPasses {
 			colors.push_back(color->color);
 		}
 
+		TransientAllocation vbo;
 		if (!vertices.empty()) {
-			rhi->cmdUpdateBuffer(cmd, VBO, 0, vertices.size() * sizeof(Math::Vec2), vertices.data());
+			vbo = rhi->allocTransient(vertices.size() * sizeof(Math::Vec2));
+			std::memcpy(vbo.data, vertices.data(), vertices.size() * sizeof(Math::Vec2));
 		}
 
 		const auto& screen = Engine::instance()->getWindow()->getScreenData();
@@ -130,9 +126,9 @@ namespace SFE::Render::RenderPasses {
 		rpBeginInfo.height = screen.renderH;
 		rhi->cmdBeginRenderPass(cmd, rpBeginInfo);
 
-		if (!colors.empty()) {
+		if (!colors.empty() && vbo) {
 			rhi->cmdBindPipeline(cmd, pipeline);
-			rhi->cmdBindVertexBuffer(cmd, 0, VBO);
+			rhi->cmdBindVertexBuffer(cmd, 0, vbo.buffer, vbo.offset);
 			rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &mTexSet, 1);
 			for (uint32_t i = 0; i < static_cast<uint32_t>(colors.size()); ++i) {
 				rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Fragment, &colors[i], sizeof(Math::Vec4));

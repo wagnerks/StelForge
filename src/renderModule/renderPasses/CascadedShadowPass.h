@@ -37,7 +37,6 @@ namespace SFE::Render::RenderPasses {
 		SamplerHandle  lightSampler;
 		SamplerHandle  lightDepthSampler;
 
-		BufferHandle matricesUBO;
 		// Opaque casters render depth only; anything with a cutout or dithered opacity needs a
 		// fragment shader with discard, which costs early-Z, so it gets its own pipeline.
 		PipelineHandle pipelineOpaque;
@@ -50,6 +49,7 @@ namespace SFE::Render::RenderPasses {
 			GpuScene::View view;
 			DescriptorSetHandle set;
 			uint32_t boundIds[4]{};
+			uint32_t matricesId = UINT32_MAX; // transient buffer binding 11 was last written with
 		};
 		Render::DescriptorSetLayoutHandle mBufferLayout;
 		Render::DescriptorSetLayoutHandle mTextureLayout;

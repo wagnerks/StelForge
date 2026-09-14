@@ -37,6 +37,18 @@ std::vector<Utils::Triangle>& Utils::getTrianglesArray(const TriangleData& data)
 }
 
 
+TransientAllocation Utils::allocMatrices(const std::vector<Math::Mat4>& matrices, size_t count) {
+	const auto allocation = Engine::instance()->rhi()->allocTransient(sizeof(Math::Mat4) * count);
+	if (!allocation) {
+		return allocation;
+	}
+	auto* out = static_cast<Math::Mat4*>(allocation.data);
+	for (size_t i = 0; i < count; ++i) {
+		out[i] = matrices.empty() ? Math::Mat4{} : matrices[(std::min)(i, matrices.size() - 1)];
+	}
+	return allocation;
+}
+
 void Utils::renderQuad(CommandListHandle cmd) {
 	static BufferHandle quadVBO;
 
@@ -74,7 +86,6 @@ void Utils::renderQuad(CommandListHandle cmd, float x1 = -1.f, float y1 = -1.f, 
 	} };
 
 	static PipelineHandle pipeline;
-	static BufferHandle vbo;
 	if (!pipeline) {
 		GraphicsPipelineDesc pipelineDesc;
 		pipelineDesc.topology = PrimitiveTopology::TriangleStrip;
@@ -82,10 +93,6 @@ void Utils::renderQuad(CommandListHandle cmd, float x1 = -1.f, float y1 = -1.f, 
 		pipelineDesc.fillMode = PolygonFillMode::Fill;
 		
 
-		BufferDesc vboDesc;
-		vboDesc.size = sizeof(Vertex3D) * mesh.vertices.size();
-		vboDesc.usage = BufferUsage::Vertex;
-		vbo = Engine::instance()->rhi()->createBuffer(vboDesc, mesh.vertices.data());
 		pipelineDesc.layout.bindings = {
 			{ 0, sizeof(Vertex3D), VertexInputRate::PerVertex }
 		};
@@ -97,9 +104,13 @@ void Utils::renderQuad(CommandListHandle cmd, float x1 = -1.f, float y1 = -1.f, 
 		pipeline = Engine::instance()->rhi()->createGraphicsPipeline(pipelineDesc);
 	}
 
-	Engine::instance()->rhi()->cmdUpdateBuffer(cmd, vbo, 0, sizeof(Vertex3D) * mesh.vertices.size(), mesh.vertices.data());
+	const auto vbo = Engine::instance()->rhi()->allocTransient(sizeof(Vertex3D) * mesh.vertices.size());
+	if (!vbo) {
+		return;
+	}
+	std::memcpy(vbo.data, mesh.vertices.data(), sizeof(Vertex3D) * mesh.vertices.size());
 	Engine::instance()->rhi()->cmdBindPipeline(cmd, pipeline);
-	Engine::instance()->rhi()->cmdBindVertexBuffer(cmd,0, vbo);
+	Engine::instance()->rhi()->cmdBindVertexBuffer(cmd, 0, vbo.buffer, vbo.offset);
 	Engine::instance()->rhi()->cmdDraw(cmd, mesh.vertices.size());
 }
 

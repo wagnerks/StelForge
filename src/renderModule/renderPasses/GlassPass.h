@@ -34,7 +34,6 @@ namespace SFE::Render::RenderPasses {
 		void ensureTargets(SystemsModule::RenderData& renderDataHandle);
 
 		Params mParams;
-		BufferHandle mParamsUBO{};
 		TextureHandle mSceneCopy{};
 		SamplerHandle mSampler{};
 		FramebufferHandle mSceneCopyFbo{};

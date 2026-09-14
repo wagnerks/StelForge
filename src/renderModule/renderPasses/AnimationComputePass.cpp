@@ -88,7 +88,7 @@ void AnimationComputePass::init(SystemsModule::RenderData&) {
 		{ 22, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 23, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 24, DescriptorType::StorageBuffer, ShaderStage::Compute },
-		{ 25, DescriptorType::StorageBuffer, ShaderStage::Compute },
+		{ 25, DescriptorType::StorageBufferDynamic, ShaderStage::Compute },
 		{ 26, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 2,  DescriptorType::StorageBuffer, ShaderStage::Compute },
 	};
@@ -271,27 +271,30 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		// Every instance: a cap left the rest with bones nobody wrote, which is uninitialised memory on
 		// Vulkan and a different pose on every run.
 		const auto count = static_cast<uint32_t>(batch.instances.size());
-		if (count > batch.clip->instanceCapacity) {
-			batch.clip->instanceCapacity = count + count / 2;
-			if (batch.clip->instances) {
-				rhi->destroyBuffer(batch.clip->instances);
+		if (count > batch.clip->worldsCapacity) {
+			batch.clip->worldsCapacity = count + count / 2;
+			if (batch.clip->worlds) {
 				rhi->destroyBuffer(batch.clip->worlds);
 			}
-			batch.clip->instances = createStorage(rhi, sizeof(AnimPush) * batch.clip->instanceCapacity, nullptr, "AnimInstances");
-			batch.clip->worlds = createStorage(rhi, sizeof(Math::Mat4) * batch.clip->instanceCapacity * batch.clip->boneCount, nullptr, "AnimBoneWorlds");
+			batch.clip->worlds = createStorage(rhi, sizeof(Math::Mat4) * batch.clip->worldsCapacity * batch.clip->boneCount, nullptr, "AnimBoneWorlds");
 		}
-		rhi->cmdUpdateBuffer(cmd, batch.clip->instances, 0, count * sizeof(AnimPush), batch.instances.data());
+		// Per clip: each dispatch reads its own clip's instances.
+		const auto instances = rhi->allocTransient(count * sizeof(AnimPush));
+		if (!instances) {
+			continue;
+		}
+		std::memcpy(instances.data, batch.instances.data(), count * sizeof(AnimPush));
 		rhi->updateDescriptorSets({
 			{ mSet, 20, {{ batch.clip->boneDescs }} },
 			{ mSet, 21, {{ batch.clip->posKeys }} },
 			{ mSet, 22, {{ batch.clip->rotKeys }} },
 			{ mSet, 23, {{ batch.clip->sclKeys }} },
 			{ mSet, 24, {{ batch.clip->order }} },
-			{ mSet, 25, {{ batch.clip->instances }} },
+			{ mSet, 25, {{ instances.buffer, 0, count * sizeof(AnimPush) }} },
 			{ mSet, 26, {{ batch.clip->worlds }} },
 			{ mSet, 2,  {{ renderDataHandle.bonesSSBO }} },
 		});
-		rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+		rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &instances.offset, 1);
 		rhi->cmdDispatch(cmd, count, 1, 1);
 		dispatched = true;
 	}

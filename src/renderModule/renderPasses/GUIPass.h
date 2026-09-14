@@ -34,7 +34,6 @@ namespace SFE::Render::RenderPasses {
 
 		static inline ecss::Registry<> registry;
 
-		BufferHandle VBO;
 
 		PipelineHandle pipeline;
 

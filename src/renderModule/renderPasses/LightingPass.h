@@ -10,7 +10,15 @@ namespace SFE::Render::RenderPasses {
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 	private:
-		void updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
+		// This frame's blocks for the dynamic bindings of mUboSet.
+		struct UboBlocks {
+			TransientAllocation pointMatrices;   // 3
+			TransientAllocation cascadedShadows; // 9
+			TransientAllocation pointLights;     // 10
+			TransientAllocation lightMatrices;   // 11
+			TransientAllocation drawData;        // 15
+		};
+		void updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd, const UboBlocks& blocks);
 
 		struct DrawData
 		{
@@ -85,10 +93,6 @@ namespace SFE::Render::RenderPasses {
 
 		PointLight pointLight[12];
 
-		BufferHandle pointLightsUBO;
-		BufferHandle cascadedShadowsUBO;
-		BufferHandle pushConstantsUBO;
-		BufferHandle lightMatricesUBO;
 		TextureHandle mDummyPointShadow;
 		SamplerHandle mDummyPointShadowSampler;
 
@@ -117,6 +121,8 @@ namespace SFE::Render::RenderPasses {
 		BufferHandle mBoundLightMat{};
 		BufferHandle mBoundPointMat{};
 		BufferHandle mBoundPc{};
+		BufferHandle mBoundShadows{};
+		BufferHandle mBoundPointLights{};
 		BufferHandle mBoundCam{};
 	};
 }

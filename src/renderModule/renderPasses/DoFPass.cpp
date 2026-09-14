@@ -43,18 +43,10 @@ void DoFPass::init(SystemsModule::RenderData&) {
 	fb.colorAttachments = { { mColor } };
 	mFbo = rhi->createFramebuffer(fb);
 
-	SFE::Render::BufferDesc uboDesc;
-	uboDesc.usage = SFE::Render::BufferUsage::Uniform;
-	uboDesc.cpuAccess = SFE::Render::CpuAccess::Write;
-	uboDesc.size = sizeof(Params);
-	mParams.resX = static_cast<float>(w);
-	mParams.resY = static_cast<float>(h);
-	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
-
 	SFE::Render::DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(0, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
 
@@ -96,7 +88,7 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 	const auto& screen = Engine::instance()->getWindow()->getScreenData();
 	mParams.resX = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
 	mParams.resY = screen.renderH > 0 ? static_cast<float>(screen.renderH) : 1.f;
-	rhi->updateBuffer(mParamsUBO, mParams);
+	const auto params = rhi->allocTransient(mParams);
 
 	std::vector<SFE::Render::WriteDescriptor> writes;
 	{
@@ -117,7 +109,7 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.buffers.push_back({ mParamsUBO });
+		w.buffers.push_back({ params.buffer, 0, sizeof(Params) });
 		writes.push_back(std::move(w));
 	}
 	rhi->updateDescriptorSets(writes);
@@ -129,7 +121,7 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 	beginInfo.height = screen.renderH;
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, mPipeline);
-	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &params.offset, 1);
 	SFE::Render::Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 

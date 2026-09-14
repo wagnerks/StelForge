@@ -83,7 +83,6 @@ void CascadedShadowPass::init(SystemsModule::RenderData& renderDataHandle) {
 	renderDataHandle.frame.setData(FrameId::Csm, &mData);
 	renderDataHandle.frame.set(FrameId::ShadowCsm, { .texture = lightDepthMa, .sampler = lightSampler });
 	renderDataHandle.frame.set(FrameId::ShadowCsmDepth, { .texture = lightDepthMa, .sampler = lightDepthSampler });
-	renderDataHandle.frame.set(FrameId::ShadowMatrices, { .buffer = matricesUBO });
 }
 
 void CascadedShadowPass::initRender() {
@@ -204,18 +203,10 @@ void CascadedShadowPass::initRender() {
 		fb.depthStencilAttachment = depthAtt;
 		lightFbos.push_back(rhi->createFramebuffer(fb));
 	}
-	
-	BufferDesc desc;
-	desc.size = sizeof(Math::Mat4) * 6; //max 6 cascades
-	desc.usage = BufferUsage::Uniform;
-	desc.cpuAccess = CpuAccess::Write;
-	desc.debugName = "CascadedShadowPass_MatricesUBO";
-	matricesUBO = rhi->createBuffer(desc);
-	mData.lightSpaceMatricesUBO = matricesUBO;
 
 	// Set 0: buffers, one per cascade. Set 1: the caster's mask texture, shared.
 	Render::DescriptorSetLayoutDesc bufferLayoutDesc;
-	bufferLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex);
+	bufferLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Vertex);
 	bufferLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	bufferLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	bufferLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
@@ -288,15 +279,9 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 	updateRenderData(renderDataHandle);
 
 	if (!lightMatrices.empty()) {
-		FUNCTION_BENCHMARK_NAMED(_bind_ubo);
 		mData.lightSpaceMatrices = lightMatrices;
-		Math::Mat4 packed[6]{};
-		const size_t n = (std::min)(lightMatrices.size(), size_t{6});
-		for (size_t i = 0; i < 6; ++i) {
-			packed[i] = lightMatrices[i < n ? i : n - 1];
-		}
-		rhi->updateBuffer(matricesUBO, 0, sizeof(packed), packed);
 	}
+	const auto matrices = Utils::allocMatrices(mData.lightSpaceMatrices, CsmFrame::kMaxCascades);
 
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 	auto& scene = renderSystem->scene();
@@ -331,7 +316,10 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		if (visible) {
 			if (!cascade.set) {
 				cascade.set = rhi->allocateDescriptorSet(mBufferLayout);
-				rhi->updateDescriptorSets({ { .set = cascade.set, .binding = 11, .buffers{ { matricesUBO } } } });
+			}
+			if (matrices.buffer.id != cascade.matricesId) {
+				cascade.matricesId = matrices.buffer.id;
+				rhi->updateDescriptorSets({ { .set = cascade.set, .binding = 11, .buffers{ { matrices.buffer, 0, sizeof(Math::Mat4) * CsmFrame::kMaxCascades } } } });
 			}
 			const uint32_t ids[4] = { renderDataHandle.transformsSSBO.id, renderDataHandle.bonesSSBO.id, cascade.view.visible.id, materials.id };
 			if (!std::equal(std::begin(ids), std::end(ids), std::begin(cascade.boundIds))) {
@@ -376,7 +364,7 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 					rhi->cmdPushConstants(cmd, pipeline, ShaderStage::Vertex | ShaderStage::Fragment, &push, sizeof(push));
 				}
 				const DescriptorSetHandle sets[] = { cascade.set, mMaskSets.get(mTextureLayout, 4, group.maskTexture) };
-				rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+				rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2, &matrices.offset, 1);
 				scene.draw(cmd, cascade.view, group);
 			}
 		}
@@ -408,12 +396,10 @@ void CascadedShadowPass::updateRenderData(SystemsModule::RenderData& renderDataH
 	mData.shadows = mShadowSource;
 	mData.shadowCascades = shadowsComp->cascades;
 	mData.shadowsIntensity = shadowsComp->shadowIntensity;
-	mData.lightSpaceMatricesUBO = matricesUBO;
 
 	renderDataHandle.frame.setData(FrameId::Csm, &mData);
 	renderDataHandle.frame.set(FrameId::ShadowCsm, { .texture = lightDepthMa, .sampler = lightSampler });
 	renderDataHandle.frame.set(FrameId::ShadowCsmDepth, { .texture = lightDepthMa, .sampler = lightDepthSampler });
-	renderDataHandle.frame.set(FrameId::ShadowMatrices, { .buffer = matricesUBO });
 }
 
 void CascadedShadowPass::debug(SystemsModule::RenderData& renderDataHandle) {

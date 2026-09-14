@@ -22,26 +22,6 @@
 
 
 namespace SFE::Render::RenderPasses {
-	namespace {
-		BufferHandle makeDebugVBO(RenderHardwareInterface* rhi, size_t size) {
-			BufferDesc desc;
-			desc.size = size;
-			desc.usage = BufferUsage::Vertex;
-			desc.cpuAccess = CpuAccess::Write;
-			return rhi->createBuffer(desc);
-		}
-
-		// cmdUpdateBuffer writes at the call, so every draw of the frame needs its own region.
-		void growDebugVBO(RenderHardwareInterface* rhi, BufferHandle& vbo, size_t& capacity, size_t needed) {
-			if (needed <= capacity) {
-				return;
-			}
-			capacity = (std::max)(needed, capacity * 2);
-			rhi->destroyBuffer(vbo);
-			vbo = makeDebugVBO(rhi, capacity);
-		}
-	}
-
 	DebugPass::DebugPass() = default;
 
 	void DebugPass::init(SystemsModule::RenderData&) {
@@ -54,8 +34,6 @@ namespace SFE::Render::RenderPasses {
 		rpd.colorAttachments[0].format = TextureFormat::RGBA8;
 		debugRenderPass = rhi->createRenderPass(rpd);
 
-		mLinesCapacity = 65536 * sizeof(Math::Vec3);
-		linesVBO = makeDebugVBO(rhi, mLinesCapacity);
 
 		VertexLayoutDesc lineLayout;
 		lineLayout.bindings.push_back({ 0, sizeof(Math::Vec3), VertexInputRate::PerVertex });
@@ -67,8 +45,6 @@ namespace SFE::Render::RenderPasses {
 			false
 			});
 
-		mTrisCapacity = 4096 * 3 * sizeof(SFE::Vertex3D);
-		trianglesVBO = makeDebugVBO(rhi, mTrisCapacity);
 
 		VertexLayoutDesc triLayout;
 		triLayout.bindings.push_back({ 0, sizeof(SFE::Vertex3D), VertexInputRate::PerVertex });
@@ -174,39 +150,27 @@ namespace SFE::Render::RenderPasses {
 			drawDataTriangles.pv = renderDataHandle.current.PV;
 			drawDataTriangles.viewPos = Math::Vec4(renderDataHandle.mCameraPos, 1.f);
 			const size_t triStride = sizeof(Utils::Triangle);
-			size_t totalTris = 0;
-			for (const auto& [data, triangles] : Utils::renderTriangles) {
-				(void)data;
-				totalTris += triangles.size();
-			}
-			growDebugVBO(rhi, trianglesVBO, mTrisCapacity, totalTris * triStride);
 			rhi->cmdBindPipeline(cmd, trianglesPipeline);
-			rhi->cmdBindVertexBuffer(cmd, 0, trianglesVBO);
 			rhi->cmdPushConstants(cmd, trianglesPipeline, drawDataTriangles);
-			size_t firstTri = 0;
 			for (auto& [data, triangles] : Utils::renderTriangles) {
 				(void)data;
 				if (triangles.empty()) {
 					continue;
 				}
-				rhi->cmdUpdateBuffer(cmd, trianglesVBO, firstTri * triStride, triangles.size() * triStride, triangles.data());
-				rhi->cmdDraw(cmd, static_cast<uint32_t>(triangles.size() * 3), 1, static_cast<uint32_t>(firstTri * 3));
+				const auto vbo = rhi->allocTransient(triangles.size() * triStride);
+				if (!vbo) {
+					continue;
+				}
+				std::memcpy(vbo.data, triangles.data(), triangles.size() * triStride);
+				rhi->cmdBindVertexBuffer(cmd, 0, vbo.buffer, vbo.offset);
+				rhi->cmdDraw(cmd, static_cast<uint32_t>(triangles.size() * 3));
 				++dbg->drawCalls;
-				firstTri += triangles.size();
 			}
 			Utils::renderTriangles.clear();
 		}
 
 		if (!Utils::renderVertices.empty() && linesPipeline) {
-			size_t totalVertices = 0;
-			for (const auto& [data, vertices] : Utils::renderVertices) {
-				(void)data;
-				totalVertices += vertices.size();
-			}
-			growDebugVBO(rhi, linesVBO, mLinesCapacity, totalVertices * sizeof(Math::Vec3));
-			size_t firstVertex = 0;
 			rhi->cmdBindPipeline(cmd, linesPipeline);
-			rhi->cmdBindVertexBuffer(cmd, 0, linesVBO);
 			drawDataLines.pv = renderDataHandle.current.PV;
 			const size_t vertStride = sizeof(Math::Vec3);
 			for (auto& [data, vertices] : Utils::renderVertices) {
@@ -215,10 +179,14 @@ namespace SFE::Render::RenderPasses {
 				if (vertices.empty()) {
 					continue;
 				}
-				rhi->cmdUpdateBuffer(cmd, linesVBO, firstVertex * vertStride, vertices.size() * vertStride, vertices.data());
-				rhi->cmdDraw(cmd, static_cast<uint32_t>(vertices.size()), 1, static_cast<uint32_t>(firstVertex));
+				const auto vbo = rhi->allocTransient(vertices.size() * vertStride);
+				if (!vbo) {
+					continue;
+				}
+				std::memcpy(vbo.data, vertices.data(), vertices.size() * vertStride);
+				rhi->cmdBindVertexBuffer(cmd, 0, vbo.buffer, vbo.offset);
+				rhi->cmdDraw(cmd, static_cast<uint32_t>(vertices.size()));
 				++dbg->drawCalls;
-				firstVertex += vertices.size();
 			}
 			Utils::renderVertices.clear();
 		}

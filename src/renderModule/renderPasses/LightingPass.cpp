@@ -46,12 +46,12 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	mTexSet = rhi->allocateDescriptorSet(mTexSetLayout);
 
 	Render::DescriptorSetLayoutDesc uboLayoutDesc;
-	uboLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
 	uboLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	uboLayoutDesc.bindings.emplace_back(9, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	uboLayoutDesc.bindings.emplace_back(10, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	uboLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
-	uboLayoutDesc.bindings.emplace_back(15, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(9, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(10, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
+	uboLayoutDesc.bindings.emplace_back(15, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
 	mUboSetLayout = rhi->createDescriptorSetLayout(uboLayoutDesc);
 	mUboSet = rhi->allocateDescriptorSet(mUboSetLayout);
 
@@ -111,41 +111,6 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/deferred_shading.fs");
 	pipeline = rhi->createGraphicsPipeline(pipelineDesc);
 
-	BufferDesc plubodesc;
-	plubodesc.usage = BufferUsage::Uniform;
-	plubodesc.cpuAccess = CpuAccess::Write;
-	plubodesc.size = sizeof(pointLight); // max 12 lights
-
-	pointLightsUBO = rhi->createBuffer(plubodesc, pointLight);
-
-	BufferDesc shadowsUBODesc;
-	shadowsUBODesc.usage = BufferUsage::Uniform;
-	shadowsUBODesc.cpuAccess = CpuAccess::Write;
-	shadowsUBODesc.size = sizeof(CascadedShadowBlock);
-	cascadedShadowsUBO = rhi->createBuffer(shadowsUBODesc, &cascadedShadowData);
-
-	BufferDesc pcDesc;
-	pcDesc.usage = BufferUsage::Uniform;
-	pcDesc.cpuAccess = CpuAccess::Write;
-	pcDesc.size = sizeof(DrawData);
-	pushConstantsUBO = rhi->createBuffer(pcDesc);
-
-	BufferDesc lmDesc;
-	lmDesc.usage = BufferUsage::Uniform;
-	lmDesc.cpuAccess = CpuAccess::Write;
-	lmDesc.size = sizeof(Math::Mat4) * 6;
-	lmDesc.debugName = "LightingPass_LightSpaceMatrices";
-	lightMatricesUBO = rhi->createBuffer(lmDesc);
-
-	std::vector<Render::WriteDescriptor> writes = {
-		{ .set = mUboSet, .binding = 10, .buffers{ {pointLightsUBO} } },
-		{ .set = mUboSet, .binding = 9, .buffers{ {cascadedShadowsUBO} } },
-		{ .set = mUboSet, .binding = 15, .buffers{ {pushConstantsUBO} } },
-		{ .set = mUboSet, .binding = 11, .buffers{ {lightMatricesUBO} } },
-	};
-
-	rhi->updateDescriptorSets(writes);
-
 	{
 		TextureDesc dummyShadow;
 		dummyShadow.width = 1;
@@ -165,10 +130,8 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 		mDummyPointShadowSampler = rhi->createSampler(dummySamp);
 		rhi->updateDescriptorSets({
 			{ mTexSet, 7, {}, {{ mDummyPointShadow, mDummyPointShadowSampler }} },
-			{ mUboSet, 3, {{ lightMatricesUBO }} },
 		});
 		mBoundPointShadow = { mDummyPointShadow, mDummyPointShadowSampler };
-		mBoundPointMat = lightMatricesUBO;
 	}
 
 	mIbl = {};
@@ -242,7 +205,6 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 			offsetSum += lightComp->getTypeOffset(lightComp->getType());
 		}
 
-		rhi->updateBuffer(pointLightsUBO, pointLight);
 		drawData.pointLightsSize = static_cast<int>(lightCount);
 	}
 
@@ -290,17 +252,6 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 			ECSHandler::getSystem<SystemsModule::RenderSystem>()->isShadowsDebugData() ? 1.f : 0.f
 		};
 
-		rhi->updateBuffer(cascadedShadowsUBO, cascadedShadowData);
-
-		const auto& mats = csm->lightSpaceMatrices;
-		if (!mats.empty()) {
-			Math::Mat4 packed[6]{};
-			const size_t n = (std::min)(mats.size(), size_t{6});
-			for (size_t i = 0; i < 6; ++i) {
-				packed[i] = mats[i < n ? i : n - 1];
-			}
-			rhi->updateBuffer(lightMatricesUBO, 0, sizeof(packed), packed);
-		}
 	}
 
 	drawData.fogEnd = Engine::instance()->getWindow()->getScreenData().far;
@@ -317,7 +268,16 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	drawData.padLook0 = renderDataHandle.graphics.sssWrap;
 	drawData.padLook1 = renderDataHandle.graphics.sssStrength;
 	drawData.debugTerm = static_cast<float>(Engine::instance()->lightingDebugTerm());
-	rhi->updateBuffer(pushConstantsUBO, drawData);
+
+	// Every block every frame: a dynamic binding needs this frame's offset even when its data did not change.
+	static const std::vector<Math::Mat4> noMatrices;
+	const UboBlocks blocks{
+		.pointMatrices = Utils::allocMatrices(point ? point->matrices : noMatrices, PointShadowFrame::kMaxShadowFaces),
+		.cascadedShadows = rhi->allocTransient(cascadedShadowData),
+		.pointLights = rhi->allocTransient(pointLight),
+		.lightMatrices = Utils::allocMatrices(csm ? csm->lightSpaceMatrices : noMatrices, CsmFrame::kMaxCascades),
+		.drawData = rhi->allocTransient(drawData),
+	};
 
 	const int write = 1 - mPresentShow;
 
@@ -329,7 +289,7 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, pipeline);
-	updateTextures(renderDataHandle, cmd);
+	updateTextures(renderDataHandle, cmd, blocks);
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 
@@ -338,14 +298,13 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	renderDataHandle.frame.set(FrameId::Final, { .texture = mPresentTex[write], .sampler = mPresentSampler, .framebuffer = mPresentFbo[write] });
 }
 
-void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd)
+void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd, const UboBlocks& blocks)
 {
 	auto rhi = Engine::instance()->rhi();
 	const auto uboSet = mUboSet;
 
 	std::vector<Render::WriteDescriptor> writes;
 	auto& frame = renderDataHandle.frame;
-	const auto* point = frame.data<PointShadowFrame>(FrameId::PointShadow);
 	const auto* csm = frame.data<CsmFrame>(FrameId::Csm);
 
 	auto addImage = [&](uint32_t binding, TextureHandle tex, SamplerHandle samp, BoundImage& prev) {
@@ -364,7 +323,7 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 			.images{ {tex, samp} }
 		});
 	};
-	auto addBuffer = [&](uint32_t binding, BufferHandle buf, BufferHandle& prev) {
+	auto addBuffer = [&](uint32_t binding, BufferHandle buf, BufferHandle& prev, size_t range = 0) {
 		if (buf.id == prev.id) {
 			return;
 		}
@@ -376,12 +335,12 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 			.set = uboSet,
 			.binding = binding,
 			
-			.buffers{ {buf} }
+			.buffers{ {buf, 0, range} }
 		});
 	};
 
 	addImage(0, frame.texture(FrameId::GBufferPosition), frame.sampler(FrameId::GBufferPosition), mBoundGPos);
-	addBuffer(11, lightMatricesUBO, mBoundLightMat);
+	addBuffer(11, blocks.lightMatrices.buffer, mBoundLightMat, sizeof(Math::Mat4) * CsmFrame::kMaxCascades);
 	addImage(1, frame.texture(FrameId::GBufferNormal), frame.sampler(FrameId::GBufferNormal), mBoundGNormal);
 	addImage(2, frame.texture(FrameId::GBufferAlbedo), frame.sampler(FrameId::GBufferAlbedo), mBoundGAlbedo);
 
@@ -397,9 +356,7 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		addImage(3, ssaoTex, ssaoSampler, mBoundSsao);
 	}
 
-	if (point) {
-		addBuffer(3, point->matricesUBO, mBoundPointMat);
-	}
+	addBuffer(3, blocks.pointMatrices.buffer, mBoundPointMat, sizeof(Math::Mat4) * PointShadowFrame::kMaxShadowFaces);
 	addImage(7, frame.texture(FrameId::ShadowPoint), frame.sampler(FrameId::ShadowPoint), mBoundPointShadow);
 
 	{
@@ -419,7 +376,9 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		addImage(6, frame.texture(FrameId::ShadowCsmDepth), frame.sampler(FrameId::ShadowCsmDepth), mBoundCsmDepth);
 	}
 
-	addBuffer(15, pushConstantsUBO, mBoundPc);
+	addBuffer(15, blocks.drawData.buffer, mBoundPc, sizeof(DrawData));
+	addBuffer(9, blocks.cascadedShadows.buffer, mBoundShadows, sizeof(CascadedShadowBlock));
+	addBuffer(10, blocks.pointLights.buffer, mBoundPointLights, sizeof(pointLight));
 	addBuffer(5, renderDataHandle.cameraMatricesUBO, mBoundCam);
 
 	if (mIbl.irradiance && mIbl.prefilter && mIbl.brdfLut) {
@@ -432,5 +391,8 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		rhi->updateDescriptorSets(writes);
 	}
 	Render::DescriptorSetHandle sets[2] = { mTexSet, mUboSet };
-	rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+	// Set 0 has no dynamic bindings; set 1's in binding order.
+	const uint32_t offsets[] = { blocks.pointMatrices.offset, blocks.cascadedShadows.offset, blocks.pointLights.offset,
+		blocks.lightMatrices.offset, blocks.drawData.offset };
+	rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2, offsets, static_cast<uint32_t>(std::size(offsets)));
 }

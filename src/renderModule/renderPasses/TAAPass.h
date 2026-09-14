@@ -19,7 +19,6 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		Params mParams;
-		BufferHandle mParamsUBO{};
 		TextureHandle mHistory[2]{};
 		FramebufferHandle mFbo[2]{};
 		int mWrite = 0;

@@ -68,6 +68,10 @@ namespace SFE::Render {
 		static std::vector<Triangle>& getTrianglesArray(const TriangleData& data);
 
 		static void renderQuad(CommandListHandle cmd);
+
+		// A std140 `mat4 x[count]` block for this frame: the matrices, then the last one repeated (zeros if none),
+		// so the bound range always covers the whole declared array.
+		static TransientAllocation allocMatrices(const std::vector<Math::Mat4>& matrices, size_t count);
 		static void renderQuad(CommandListHandle cmd, float x1, float y1, float x2, float y2);
 
 		static void renderLine(const Math::Vec3& begin, const Math::Vec3& end, const Math::Vec4& color, float thickness = 1.f);

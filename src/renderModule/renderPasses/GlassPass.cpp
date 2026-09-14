@@ -66,14 +66,6 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	rpDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT24;
 	mRenderPass = rhi->createRenderPass(rpDesc);
 
-	BufferDesc uboDesc;
-	uboDesc.usage = BufferUsage::Uniform;
-	uboDesc.cpuAccess = CpuAccess::Write;
-	uboDesc.size = sizeof(Params);
-	mParams.resolutionX = static_cast<float>(w);
-	mParams.resolutionY = static_cast<float>(h);
-	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
-
 	DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(6, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(13, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
@@ -83,7 +75,7 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layoutDesc.bindings.emplace_back(3, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(7, DescriptorType::StorageBuffer, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBuffer, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
 
@@ -180,6 +172,8 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		mParams.colorY = csm->lightColor.y;
 		mParams.colorZ = csm->lightColor.z;
 	}
+	// Per-material ior, opacity and tint come from the material table; the rest is the same for every draw.
+	const auto params = rhi->allocTransient(mParams);
 
 	std::vector<WriteDescriptor> writes;
 	{
@@ -193,7 +187,7 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 15;
-		w.buffers.push_back({ mParamsUBO });
+		w.buffers.push_back({ params.buffer, 0, sizeof(Params) });
 		writes.push_back(std::move(w));
 	}
 	if (frame.texture(FrameId::IblPrefilter)) {
@@ -241,9 +235,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	writes.push_back({ .set = mSet, .binding = 7, .buffers{ { materials } } });
 	rhi->updateDescriptorSets(writes);
 
-	// Per-material ior, opacity and tint come from the material table; the rest is the same for every draw.
-	rhi->cmdUpdateBuffer(cmd, mParamsUBO, mParams);
-
 	const int w = Engine::instance()->getWindow()->getScreenData().renderW;
 	const int h = Engine::instance()->getWindow()->getScreenData().renderH;
 	RenderPassBeginInfo beginInfo;
@@ -258,7 +249,7 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	rhi->cmdBindPipeline(cmd, mPipeline);
 	rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
 	rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
-	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &params.offset, 1);
 	scene.drawSorted(cmd, mView);
 	rhi->cmdEndRenderPass(cmd);
 }

@@ -39,20 +39,12 @@ void SSRPass::init(SystemsModule::RenderData& renderDataHandle) {
 	fbDesc.colorAttachments = { { mColor } };
 	mFbo = rhi->createFramebuffer(fbDesc);
 
-	BufferDesc uboDesc;
-	uboDesc.usage = BufferUsage::Uniform;
-	uboDesc.cpuAccess = CpuAccess::Write;
-	uboDesc.size = sizeof(Params);
-	mParams.resolutionX = static_cast<float>(w);
-	mParams.resolutionY = static_cast<float>(h);
-	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
-
 	DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(2, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(4, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(3, DescriptorType::UniformBuffer, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(3, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mLayout);
@@ -70,16 +62,6 @@ void SSRPass::init(SystemsModule::RenderData& renderDataHandle) {
 	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/deferred_shading.vs");
 	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/ssr.fs");
 	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
-
-	std::vector<WriteDescriptor> initWrites;
-	{
-		WriteDescriptor w{};
-		w.set = mSet;
-		w.binding = 3;
-		w.buffers.push_back({ mParamsUBO });
-		initWrites.push_back(std::move(w));
-	}
-	rhi->updateDescriptorSets(initWrites);
 }
 
 void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -107,7 +89,7 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		mParams.resolutionX = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
 		mParams.resolutionY = screen.renderH > 0 ? static_cast<float>(screen.renderH) : 1.f;
 	}
-	rhi->updateBuffer(mParamsUBO, mParams);
+	const auto params = rhi->allocTransient(mParams);
 
 	std::vector<WriteDescriptor> writes;
 	{
@@ -142,7 +124,7 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 3;
-		w.buffers.push_back({ mParamsUBO });
+		w.buffers.push_back({ params.buffer, 0, sizeof(Params) });
 		writes.push_back(std::move(w));
 	}
 	if (renderDataHandle.cameraMatricesUBO) {
@@ -164,7 +146,7 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, mPipeline);
-	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &params.offset, 1);
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 

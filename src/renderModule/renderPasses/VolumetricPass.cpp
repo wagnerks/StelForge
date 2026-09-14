@@ -77,20 +77,12 @@ void VolumetricPass::init(SystemsModule::RenderData&) {
 	fb.colorAttachments = { { mColor } };
 	mFbo = rhi->createFramebuffer(fb);
 
-	SFE::Render::BufferDesc uboDesc;
-	uboDesc.usage = SFE::Render::BufferUsage::Uniform;
-	uboDesc.cpuAccess = SFE::Render::CpuAccess::Write;
-	uboDesc.size = sizeof(Params);
-	mParams.resX = static_cast<float>(w);
-	mParams.resY = static_cast<float>(h);
-	mParamsUBO = rhi->createBuffer(uboDesc, &mParams);
-
 	SFE::Render::DescriptorSetLayoutDesc marchLayout;
 	marchLayout.bindings.emplace_back(0, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	marchLayout.bindings.emplace_back(8, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	marchLayout.bindings.emplace_back(5, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
-	marchLayout.bindings.emplace_back(11, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
-	marchLayout.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
+	marchLayout.bindings.emplace_back(11, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
+	marchLayout.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
 	mMarchLayout = rhi->createDescriptorSetLayout(marchLayout);
 	mMarchSet = rhi->allocateDescriptorSet(mMarchLayout);
 
@@ -136,7 +128,9 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		mParams.colorZ = csm->lightColor.z;
 		mParams.cascadeCount = static_cast<int>(csm->shadowCascades.size());
 	}
-	rhi->updateBuffer(mParamsUBO, mParams);
+	const auto params = rhi->allocTransient(mParams);
+	static const std::vector<SFE::Math::Mat4> noMatrices;
+	const auto matrices = SFE::Render::Utils::allocMatrices(csm ? csm->lightSpaceMatrices : noMatrices, SFE::Render::CsmFrame::kMaxCascades);
 
 	std::vector<SFE::Render::WriteDescriptor> marchWrites;
 	{
@@ -160,18 +154,18 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		marchWrites.push_back(std::move(w));
 	}
-	if (const auto mats = frame.buffer(SFE::Render::FrameId::ShadowMatrices)) {
+	{
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 11;
-		w.buffers.push_back({ mats });
+		w.buffers.push_back({ matrices.buffer, 0, sizeof(SFE::Math::Mat4) * SFE::Render::CsmFrame::kMaxCascades });
 		marchWrites.push_back(std::move(w));
 	}
 	{
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 15;
-		w.buffers.push_back({ mParamsUBO });
+		w.buffers.push_back({ params.buffer, 0, sizeof(Params) });
 		marchWrites.push_back(std::move(w));
 	}
 	rhi->updateDescriptorSets(marchWrites);
@@ -185,7 +179,8 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		beginInfo.height = std::max(1, screen.renderH / 2);
 		rhi->cmdBeginRenderPass(cmd, beginInfo);
 		rhi->cmdBindPipeline(cmd, mMarchPipeline);
-		rhi->cmdBindDescriptorSets(cmd, mMarchPipeline, 0, &mMarchSet, 1);
+		const uint32_t offsets[] = { matrices.offset, params.offset }; // bindings 11, 15
+		rhi->cmdBindDescriptorSets(cmd, mMarchPipeline, 0, &mMarchSet, 1, offsets, 2);
 		SFE::Render::Utils::renderQuad(cmd);
 		rhi->cmdEndRenderPass(cmd);
 	}

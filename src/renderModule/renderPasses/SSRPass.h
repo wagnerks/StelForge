@@ -20,7 +20,6 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		Params mParams;
-		BufferHandle mParamsUBO{};
 		TextureHandle mColor{};
 		SamplerHandle mSampler{};
 		FramebufferHandle mFbo{};
