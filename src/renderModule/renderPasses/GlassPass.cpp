@@ -7,6 +7,7 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/Material.h"
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/Vertex.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/MaterialComponent.h"
@@ -25,69 +26,7 @@
 
 using namespace SFE::Render::RenderPasses;
 
-void GlassPass::prepare() {
-	auto* renderSys = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
-	if (!renderSys) {
-		return;
-	}
-	auto curPassData = getContainer().getCurrentPassData();
-	if (!curPassData) {
-		return;
-	}
-	curPassData->markPreparing();
-
-	auto& renderData = renderSys->getRenderData();
-	ThreadPool::instance()->addTask<WorkerType::RENDER>([nextRegistry = renderData.nextRegistry, curPassData, camFrustum = renderData.mNextCamFrustum]() mutable {
-		FUNCTION_BENCHMARK;
-		struct ReadyGuard {
-			RenderPassData* data = nullptr;
-			~ReadyGuard() { if (data) { data->markReady(); } }
-		} ready{ curPassData };
-		auto* renderSys = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
-		auto worldLock = renderSys ? renderSys->tryLockWorldRead() : SFE::SystemsModule::RenderSystem::WorldReadGuard{};
-		if (renderSys && !worldLock) {
-			return;
-		}
-		curPassData->getBatcher().clear();
-
-		ecss::Ranges<ecss::EntityId> entities;
-		{
-			const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-			if (octreeSys) {
-				entities = octreeSys->collectVisibleRanges(camFrustum);
-			}
-		}
-
-		auto& batcher = curPassData->getBatcher();
-		auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
-		auto addMeshes = [&](auto&& viewObjs) {
-			for (auto [ent, transform, meshComp, matComp] : viewObjs) {
-				if (!meshComp || !transform) {
-					continue;
-				}
-				meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
-					if (!mat || !mat->transparent) {
-						return;
-					}
-					batcher.addToDrawListGlass(mesh, *mat, ent);
-				});
-			}
-		};
-		const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-		if (entities.empty() || !octreeSys || octreeSys->empty()) {
-			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
-		}
-		else {
-			addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
-			if (batcher.drawList.empty()) {
-				addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
-			}
-		}
-	});
-}
-
 void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
-	getContainer().init(2);
 
 	auto* rhi = Engine::instance()->rhi();
 	const int w = Engine::instance()->getWindow()->getScreenData().renderW;
@@ -138,7 +77,7 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(6, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(13, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
-	layoutDesc.bindings.emplace_back(4, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.push_back({ 16, DescriptorType::CombinedImageSampler, ShaderStage::Fragment, static_cast<uint32_t>(GpuMaterialTable::kGlassTextureSlots) });
 	layoutDesc.bindings.emplace_back(1, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(2, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, DescriptorType::StorageBuffer, ShaderStage::Vertex);
@@ -205,18 +144,17 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	FUNCTION_BENCHMARK;
 
 	auto* rhi = Engine::instance()->rhi();
-	const auto curPassData = getContainer().getCurrentPassData();
-	curPassData->waitReady();
-	getContainer().rotate();
-	prepare();
-
-	if (curPassData->getBatcher().drawList.empty()) {
-		return;
-	}
-
 	ensureTargets(renderDataHandle);
 	const auto srcFbo = renderDataHandle.frame.framebuffer(FrameId::Final);
 	if (!mGlassFbo || !srcFbo || !mPipeline) {
+		return;
+	}
+
+	// Culled and sorted far to near on the GPU; outside the render pass, since it is compute.
+	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+	auto& scene = renderSystem->scene();
+	const auto materials = renderSystem->materials().upload();
+	if (!scene.sortGlass(cmd, mView, renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, renderDataHandle.mViewDir)) {
 		return;
 	}
 
@@ -298,7 +236,25 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		w.images.push_back({ frame.texture(FrameId::IblBrdf), frame.sampler(FrameId::IblBrdf) });
 		writes.push_back(std::move(w));
 	}
+	// The glass albedo textures as one array, so every glass instance draws from the same set.
+	{
+		const auto* white = AssetsModule::TextureHandler::loadTexture("white.png");
+		const auto textures = renderSystem->materials().glassTextures();
+		WriteDescriptor albedo{};
+		albedo.set = mSet;
+		albedo.binding = 16;
+		for (size_t i = 0; i < GpuMaterialTable::kGlassTextureSlots; ++i) {
+			const auto tex = i < textures.size() && textures[i] ? textures[i] : white->texture;
+			albedo.images.push_back({ tex, white->sampler });
+		}
+		writes.push_back(std::move(albedo));
+	}
+	writes.push_back({ .set = mSet, .binding = 3, .buffers{ { mView.visible } } });
+	writes.push_back({ .set = mSet, .binding = 7, .buffers{ { materials } } });
 	rhi->updateDescriptorSets(writes);
+
+	// Per-material ior, opacity and tint come from the material table; the rest is the same for every draw.
+	rhi->cmdUpdateBuffer(cmd, mParamsUBO, mParams);
 
 	const int w = Engine::instance()->getWindow()->getScreenData().renderW;
 	const int h = Engine::instance()->getWindow()->getScreenData().renderH;
@@ -308,82 +264,13 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	beginInfo.width = w;
 	beginInfo.height = h;
 
-	const Math::Mat4& view = renderDataHandle.current.view;
-
-	auto entityPos = [&](ecss::EntityId id) -> Math::Vec3 {
-		if (auto tm = ECSHandler::registry().pinComponent<const ComponentsModule::TransformMatComp>(id)) {
-			return Math::Vec3(tm->mTransform[3]);
-		}
-		if (auto tc = ECSHandler::registry().pinComponent<const TransformComponent>(id)) {
-			return tc->getPos(true);
-		}
-		return {};
-	};
-
-	auto viewDepthKey = [&](ecss::EntityId id) -> int32_t {
-		const Math::Vec3 p = entityPos(id);
-		const Math::Vec4 viewP = view * Math::Vec4(p.x, p.y, p.z, 1.f);
-		return static_cast<int32_t>(std::floor(-viewP.z * 64.f));
-	};
-
-	struct BatchDrawItem {
-		DrawObject* batch = nullptr;
-		int32_t depthKey = 0;
-	};
-
-	std::vector<BatchDrawItem> batches;
-	batches.reserve(curPassData->getBatcher().drawList.size());
-	for (auto& [_, obj] : curPassData->getBatcher().drawList) {
-		if (obj.entities.empty()) {
-			continue;
-		}
-		int32_t maxDepth = std::numeric_limits<int32_t>::min();
-		for (ecss::EntityId id : obj.entities) {
-			maxDepth = std::max(maxDepth, viewDepthKey(id));
-		}
-		batches.push_back({ &obj, maxDepth });
-	}
-
-	std::stable_sort(batches.begin(), batches.end(), [](const BatchDrawItem& a, const BatchDrawItem& b) {
-		return a.depthKey > b.depthKey;
-	});
-
-	std::vector<DrawObject*> ordered;
-	ordered.reserve(batches.size());
-	for (const BatchDrawItem& item : batches) {
-		ordered.push_back(item.batch);
-	}
-
-	// Per-material ior, opacity and tint come from the material table; the rest is the same for every draw.
-	rhi->cmdUpdateBuffer(cmd, mParamsUBO, mParams);
-	auto beforeDraw = [this, rhi](Render::CommandListHandle, const DrawObject& o) {
-		auto* white = AssetsModule::TextureHandler::loadTexture("white.png");
-		if (!white) {
-			return;
-		}
-		Render::TextureHandle diff = white->texture;
-		for (uint8_t i = 0; i < o.materialData.materialsCount; ++i) {
-			const auto& mat = o.materialData.material[i];
-			if (mat.slot == SFE::DIFFUSE && mat.texture) {
-				diff = mat.texture;
-				break;
-			}
-		}
-		WriteDescriptor w{};
-		w.set = mSet;
-		w.binding = 4;
-		w.images.push_back({ diff, white->sampler });
-		rhi->updateDescriptorSets({ std::move(w) });
-	};
-
-	auto getPipeline = [this](const std::string&, const std::string&) {
-		return mPipeline;
-	};
-
 	rhi->cmdBlit(cmd, srcFbo, mSceneCopyFbo, BlitMask::Color, BlitFilter::Nearest);
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
-
-	curPassData->getBatcher().flushAll(cmd, mSet, getPipeline, beforeDraw, &ordered, false);
-
+	const auto* meshes = SFE::MeshVaoRegistry::instance();
+	rhi->cmdBindPipeline(cmd, mPipeline);
+	rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
+	rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+	scene.drawSorted(cmd, mView);
 	rhi->cmdEndRenderPass(cmd);
 }

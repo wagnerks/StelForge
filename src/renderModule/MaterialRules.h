@@ -6,7 +6,7 @@
 #include "componentsModule/MaterialComponent.h"
 
 // How a material's fields become shader inputs. One place for the rules, used by the GPU material
-// table, the draw lists and the batcher's per-group copies.
+// table and the draw lists.
 namespace SFE::Render::MaterialRules {
 	inline float cutoutCutoff(const float alphaCutoff, const bool alphaFromMaps, const std::string& fragmentShader) {
 		if (alphaCutoff > 0.f) {

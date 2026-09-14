@@ -1,13 +1,6 @@
 #pragma once
-#include <chrono>
-#include <cstdio>
-#include <future>
-#include <thread>
-#include <vector>
-#include <atomic>
 
-#include "renderModule/Batcher.h"
-#include "multithreading/ThreadPool.h"
+#include "renderModule/RenderHardwareInterface.h"
 
 namespace SFE {
 	namespace SystemsModule {
@@ -16,72 +9,11 @@ namespace SFE {
 }
 
 namespace SFE::Render {
-	class Renderer;
-
-	enum class RenderPreparingStatus {
-		NONE,
-		PREPARING,
-		READY,
-	};
-
-	class RenderPassData {
-	public:
-		virtual ~RenderPassData() = default;
-		Batcher& getBatcher() { return mBatchers[0]; }
-		std::vector<Batcher>& getBatchers() { return mBatchers; }
-
-		std::atomic<RenderPreparingStatus> mStatus = RenderPreparingStatus::READY; //default status is ready for passes without render data
-
-		void markPreparing() {
-			mStatus.store(RenderPreparingStatus::PREPARING, std::memory_order_release);
-		}
-
-		void markReady() {
-			mStatus.store(RenderPreparingStatus::READY, std::memory_order_release);
-			mStatus.notify_all();
-		}
-
-		void waitReady() {
-			const auto t0 = std::chrono::steady_clock::now();
-			bool stalled = false;
-			for (;;) {
-				const auto status = mStatus.load(std::memory_order_acquire);
-				if (status == RenderPreparingStatus::READY) {
-					return;
-				}
-				if (!stalled && std::chrono::steady_clock::now() - t0 > std::chrono::seconds(2)) {
-					stalled = true;
-					if (FILE* f = nullptr; fopen_s(&f, "hang.trace", "a") == 0 && f) {
-						std::fprintf(f, "waitReady stalled status=%d\n", static_cast<int>(status));
-						std::fflush(f);
-						std::fclose(f);
-					}
-				}
-				if (SFE::ThreadPool::isAlive()) {
-					SFE::ThreadPool::instance()->syncUpdate();
-				}
-				std::this_thread::yield();
-			}
-		}
-
-		void setMaterialLayout(DescriptorSetLayoutHandle layout) {
-			for (auto& batcher : mBatchers) {
-				batcher.setMaterialLayout(layout);
-			}
-		}
-
-	private:
-		std::vector<Batcher> mBatchers{{}};
-	};
-
 	class RenderPass {
 	public:
 		virtual ~RenderPass() = default;
 		virtual void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) = 0;
 		virtual void init(SystemsModule::RenderData& renderDataHandle) {}
-		virtual bool isPrepared() const { return true; }
-		virtual bool isAllSlotsReady() const { return true; }
-		virtual void prepare() {}
 		void setPriority(size_t priority);
 		size_t getPriority() const;
 
@@ -94,86 +26,4 @@ namespace SFE::Render {
 		bool enabled = true;
 		RenderPass* (*create)() = nullptr;
 	};
-
-	class RenderPassDataContainer {
-	public:
-		~RenderPassDataContainer() {
-			clear();
-		}
-
-		void init(size_t size) {
-			for (auto i = 0u; i < size; i++) {
-				passData.push_back(new RenderPassData());
-			}
-		}
-
-		void clear() {
-			for (auto& data : passData) {
-				delete data;
-			}
-			passData.clear();
-		}
-
-		void rotate() {
-			if (passData.empty()) {
-				return;
-			}
-			if (cur == passData.size() - 1) {
-				cur = 0;
-			}
-			else {
-				cur++;
-			}
-		}
-
-		RenderPassData* getCurrentPassData() const {
-			if (passData.empty() || cur >= passData.size()) {
-				return nullptr;
-			}
-			return passData[cur];
-		}
-
-		bool allSlotsReady() const {
-			for (auto* data : passData) {
-				if (data && data->mStatus.load(std::memory_order_acquire) != RenderPreparingStatus::READY) {
-					return false;
-				}
-			}
-			return true;
-		}
-
-		void setMaterialLayout(DescriptorSetLayoutHandle layout) {
-			for (auto* data : passData) {
-				if (data) {
-					data->setMaterialLayout(layout);
-				}
-			}
-		}
-
-		
-	private:
-		
-		std::vector<RenderPassData*> passData;
-		int cur = 0;
-	};
-
-	class RenderPassWithData : public RenderPass {
-	public:
-		std::shared_future<void> currentLock;
-
-		bool isPrepared() const override {
-			auto* data = mData.getCurrentPassData();
-			return !data || data->mStatus.load(std::memory_order_acquire) == RenderPreparingStatus::READY;
-		}
-
-		bool isAllSlotsReady() const override {
-			return mData.allSlotsReady();
-		}
-
-		RenderPassDataContainer& getContainer() { return mData; }
-
-	protected:
-		RenderPassDataContainer mData;
-	};
-
 }

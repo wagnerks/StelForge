@@ -12,12 +12,10 @@
 #include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
-class Batcher;
-
 namespace SFE::Render::RenderPasses {
 
 
-	class GeometryPass : public RenderPassWithData {
+	class GeometryPass : public RenderPass {
 	public:
 		struct Data {
 			FramebufferHandle gFramebuffer;

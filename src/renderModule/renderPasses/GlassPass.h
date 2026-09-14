@@ -1,12 +1,12 @@
 #pragma once
 #include "renderModule/renderPasses/RenderPass.h"
+#include "renderModule/GpuScene.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 namespace SFE::Render::RenderPasses {
-	class GlassPass : public RenderPassWithData {
+	class GlassPass : public RenderPass {
 	public:
 		void init(SystemsModule::RenderData& renderDataHandle) override;
-		void prepare() override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 
 	private:
@@ -45,5 +45,6 @@ namespace SFE::Render::RenderPasses {
 		RenderPassHandle mRenderPass{};
 		DescriptorSetLayoutHandle mLayout{};
 		DescriptorSetHandle mSet{};
+		GpuScene::View mView;
 	};
 }

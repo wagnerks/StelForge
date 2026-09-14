@@ -180,30 +180,14 @@ namespace SFE::SystemsModule {
 		}
 		SFE::Engine::reproTrace("RenderSystem passes ok");
 
-		ECSHandler::drawRegistry(0).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
-		ECSHandler::drawRegistry(1).registerArray<ComponentsModule::TransformMatComp, MeshComponent, MaterialComponent, ComponentsModule::ArmatureBonesComponent>(0);
-
-		// ChunksSystem seeds before this ctor; MESH_UPDATED/TRAHSFORM_RELOADED never reached us.
+		// ChunksSystem seeds before this ctor; ARMATURE_UPDATED never reached us. Transforms are refreshed on
+		// the first frame, and GpuScene starts dirty.
 		auto& live = ECSHandler::registry();
 		for (auto id : live.getAllEntities()) {
-			if (live.hasComponent<MeshComponent>(id)) {
-				markDirty<MeshComponent>(id);
-			}
-			if (live.hasComponent<ComponentsModule::TransformMatComp>(id)) {
-				markDirty<ComponentsModule::TransformMatComp>(id);
-				markGpuDirty(mGpuDirtyTransforms, id);
-			}
-			if (live.hasComponent<MaterialComponent>(id)) {
-				markDirty<MaterialComponent>(id);
-			}
 			if (live.hasComponent<ComponentsModule::ArmatureBonesComponent>(id)) {
-				markDirty<ComponentsModule::ArmatureBonesComponent>(id);
 				markGpuDirty(mGpuDirtyBones, id);
 			}
 		}
-		SFE::Engine::reproTrace("RenderSystem prepare");
-		prepareDataForNextFrame();
-		SFE::Engine::reproTrace("RenderSystem prepare ok");
 
 		// init gpu timer queries
 		//glGenQueries(2, mGpuTimeQueries);
@@ -287,8 +271,6 @@ namespace SFE::SystemsModule {
 			mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
 		}
 
-		mRenderData.rotate();
-
 		if (frameLock) {
 			if (mRefreshTransforms) {
 				// A reload that finished before we subscribed -- or while the constructor ran -- never reached
@@ -298,7 +280,6 @@ namespace SFE::SystemsModule {
 				for (auto [id, matComp, transform] : live.view<ComponentsModule::TransformMatComp, const TransformComponent>()) {
 					if (matComp && transform) {
 						matComp->mTransform = transform->getTransform();
-						markDirty<ComponentsModule::TransformMatComp>(id);
 						markGpuDirty(mGpuDirtyTransforms, id);
 					}
 				}
@@ -308,12 +289,6 @@ namespace SFE::SystemsModule {
 		}
 
 		renderFrame();
-
-		frameLock = {};
-		frameLock = tryLockWorldRead();
-		if (frameLock) {
-			prepareDataForNextFrame();
-		}
 	}
 
 	void RenderSystem::debugUpdate(float dt) {
@@ -509,108 +484,18 @@ namespace SFE::SystemsModule {
 		uploadBones(dirtyBones);
 	}
 
-	bool RenderSystem::allPassesReady() const {
-		for (size_t i = 0; i < mRenderPasses.size(); ++i) {
-			if (!shouldRunPass(i) || !mRenderPasses[i]) {
-				continue;
-			}
-			if (!mRenderPasses[i]->isAllSlotsReady()) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	void RenderSystem::prepareDataForNextFrame() {
-		struct DirtyBatch {
-			ecss::ECSType id = 0;
-			std::vector<ecss::EntityId> ids;
-		};
-		std::vector<DirtyBatch> batches;
-		{
-			FUNCTION_BENCHMARK_NAMED(dirties_copy);
-			std::unique_lock lock(dirtiesMutex);
-			batches.reserve(dirties.size());
-			for (auto& [id, entities] : dirties) {
-				DirtyBatch batch;
-				batch.id = id;
-				batch.ids.reserve(entities.size());
-				for (auto [entId, _] : entities) {
-					batch.ids.push_back(entId);
-				}
-				std::erase_if(entities, [](std::pair<ecss::EntityId, uint8_t>& val) {
-					return val.second-- <= 1;
-				});
-				batches.push_back(std::move(batch));
-			}
-		}
-
-		//prepare data for next frame
-		{
-			FUNCTION_BENCHMARK_NAMED(copy_components_transform_armat);
-
-
-			for (auto& batch : batches) {
-				auto& ids = batch.ids;
-				const auto id = batch.id;
-				std::sort(ids.begin(), ids.end());
-				ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-				auto range = OcTreeSystem::makeEntityRanges(std::move(ids));
-
-				if (id == getDirtyId<ComponentsModule::TransformMatComp>()) {//todo support deleting
-					for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::TransformMatComp>(range)) {
-						if (!comp) {
-							continue;
-						}
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<ComponentsModule::TransformMatComp>(entId, *comp);
-					}
-				}
-				else if (id == getDirtyId<ComponentsModule::ArmatureBonesComponent>()) {
-					for (auto [entId, comp] : ECSHandler::registry().view<ComponentsModule::ArmatureBonesComponent>(range)) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<ComponentsModule::ArmatureBonesComponent>(entId, *comp);
-					}
-				}
-				else if (id == getDirtyId<MeshComponent>()) {
-					for (auto [entId, comp] : ECSHandler::registry().view<MeshComponent>(range)) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<MeshComponent>(entId, *comp);
-					}
-				}
-				else if (id == getDirtyId<MaterialComponent>()) {
-					for (auto [entId, comp] : ECSHandler::registry().view<MaterialComponent>(range)) {
-						ECSHandler::drawRegistry(mRenderData.currentRegistry).addComponent<MaterialComponent>(entId, *comp);
-					}
-				}
-			}
-			{
-				FUNCTION_BENCHMARK_NAMED(copy_components);
-				auto& draw = ECSHandler::drawRegistry(mRenderData.currentRegistry);
-				auto& live = ECSHandler::registry();
-				if (auto* outline = live.getComponentContainer<OutlineComponent>()) {
-					draw.insert<OutlineComponent>(*outline);
-				}
-				if (auto* occluded = live.getComponentContainer<ComponentsModule::OccludedComponent>()) {
-					draw.insert<ComponentsModule::OccludedComponent>(*occluded);
-				}
-			}
-		}
-	}
-
 	void RenderSystem::notify(Task task) {
 		if (task.type == TRAHSFORM_RELOADED) {
 			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(task.entity, static_cast<TransformComponent*>(task.customData)->getTransform());
-			markDirty<ComponentsModule::TransformMatComp>(task.entity);
 			markGpuDirty(mGpuDirtyTransforms, task.entity);
 		}
 		else if (task.type == ARMATURE_UPDATED) {
-			markDirty<ComponentsModule::ArmatureBonesComponent>(task.entity);
 			markGpuDirty(mGpuDirtyBones, task.entity);
 		}
 		else if (task.type == MATERIAL_UPDATED) {
-			markDirty<ComponentsModule::MaterialComponent>(task.entity);
 			mScene.markDirty();
 		}
 		else if (task.type == MESH_UPDATED) {
-			markDirty<ComponentsModule::MeshComponent>(task.entity);
 			mScene.markDirty();
 		}
 		else if (task.type == ENTITY_DESTROYED) {

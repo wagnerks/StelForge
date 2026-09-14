@@ -21,38 +21,17 @@ public:
 
 	template<typename CompType, class ...Args>
 	inline static CompType* addComponent(ecss::EntityId entity, Args&&... args) {
-		auto comp = instance()->mRegistry.addComponent<CompType>(entity, std::forward<Args>(args)...);
-		if constexpr (std::is_same<CompType, MaterialComponent>()) {
-			if (auto renderSys = getSystem<SFE::SystemsModule::RenderSystem>()) {
-				renderSys->markDirty<CompType>(entity);
-			}
-		}
-		else if constexpr (std::is_same<CompType, MaterialComponent>()) {
-
-		}
-		
-
-		return comp;
+		return instance()->mRegistry.addComponent<CompType>(entity, std::forward<Args>(args)...);
 	}
 
 	template<typename CompType>
 	inline static void removeComponent(ecss::EntityId entity) {
 		instance()->mRegistry.destroyComponent<CompType>(entity);
-		if (auto renderSys = getSystem<SFE::SystemsModule::RenderSystem>()) {
-			renderSys->markRemoved<CompType>(entity);
-		}
 	}
 
 	template<typename CompType>
 	inline static void removeComponent(std::vector<ecss::EntityId>& entities) {
 		instance()->mRegistry.destroyComponent<CompType>(entities);
-		if (!entities.empty()) {
-			if (auto renderSys = getSystem<SFE::SystemsModule::RenderSystem>()) {
-				for (auto entity : entities) {
-					renderSys->markRemoved<CompType>(entity);
-				}
-			}
-		}
 	}
 	
 	// Use these instead of the registry's own: they tell the systems that keep per-entity state.
@@ -68,16 +47,11 @@ public:
 		instance()->mRegistry.destroyEntities(entities);
 	}
 
-	inline static auto& drawRegistry(uint8_t index = 0) {
-		return instance()->mDrawRegistry[index];
-	}
-	
 	void initSystems();
 
 private:
 	// Registry must outlive systems: ~SystemManager joins tick threads and
 	// ChunksSystem::saveLoaded() still walks entities.
 	ecss::Registry<> mRegistry;
-	std::array<ecss::Registry<true, ecss::Memory::ChunksAllocator<65536>>, 2> mDrawRegistry;
 	ecss::SystemManager mSystemManager;
 };

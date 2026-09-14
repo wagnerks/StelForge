@@ -24,7 +24,7 @@ namespace SFE::Render {
 		float ior = 1.52f;
 		float casterOpacity = 1.f;
 		float shadowCutoff = 0.f;
-		float pad = 0.f;
+		float albedoSlot = 0.f; // glass: index into glassTextures()
 	};
 	static_assert(sizeof(GpuMaterial) == 64, "must match the std430 SfeMaterial");
 
@@ -37,7 +37,15 @@ namespace SFE::Render {
 		// Main thread. Uploads entries added since the last call and returns the buffer to bind.
 		BufferHandle upload();
 
+		// The albedo of every glass material, in slot order; an empty handle means no texture. Glass binds them
+		// all as one array so a single indirect call can draw every glass instance in depth order.
+		static constexpr size_t kGlassTextureSlots = 8;
+		std::vector<TextureHandle> glassTextures();
+
 	private:
+		uint32_t glassSlot(TextureHandle albedo);
+
+		std::vector<TextureHandle> mGlassTextures{ TextureHandle{} };
 		std::mutex mMutex;
 		std::unordered_map<uint64_t, uint32_t> mIndexByHash;
 		std::vector<GpuMaterial> mEntries;

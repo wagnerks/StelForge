@@ -15,7 +15,7 @@
 
 namespace SFE::Render::RenderPasses {
 
-	class CascadedShadowPass : public RenderPassWithData {
+	class CascadedShadowPass : public RenderPass {
 	public:
 
 		using Data = Render::CsmFrame;

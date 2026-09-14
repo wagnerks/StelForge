@@ -38,8 +38,6 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	}
 	mInited = true;
 
-	getContainer().init(2);
-
 	const auto w = Engine::instance()->getWindow()->getScreenData().renderW;
 	const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
 
@@ -156,7 +154,6 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	texLayoutDescGBuf.bindings.emplace_back(6, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	gBuffetLayout = rhi->createDescriptorSetLayout(texLayoutDescGBuf);
 	gBuffetLayoutSet = rhi->allocateDescriptorSet(gBuffetLayout);
-	getContainer().setMaterialLayout(gBuffetLayout);
 	if (frameLayout) {
 		pipelineDesc.descriptorSetLayouts.push_back(gBuffetLayout);
 	}

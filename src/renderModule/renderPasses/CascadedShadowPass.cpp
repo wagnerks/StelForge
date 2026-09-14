@@ -46,7 +46,6 @@
 using namespace SFE::Render::RenderPasses;
 
 CascadedShadowPass::CascadedShadowPass() {
-	getContainer().init(2);
 }
 
 CascadedShadowPass::~CascadedShadowPass() {

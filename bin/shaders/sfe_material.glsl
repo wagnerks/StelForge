@@ -14,7 +14,7 @@ struct SfeMaterial {
     float ior;             // glass
     float casterOpacity;   // shadow casters
     float shadowCutoff;    // shadow casters: < 0 takes the mask from r/g
-    float _pad;
+    float albedoSlot;      // glass: index into the glass albedo array
 };
 
 layout(SFE_SET(0, 7), std430) readonly buffer SfeMaterials {

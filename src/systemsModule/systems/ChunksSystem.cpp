@@ -65,6 +65,7 @@ namespace SFE::SystemsModule {
 	ChunksSystem::ChunksSystem() : System({ SFE::SystemsModule::TaskType::CAMERA_UPDATED }) {
 		FileSystem::createDirectories("world/chunks");
 		seedIfEmpty();
+		debugData.proceduralSpheres = Engine::instance()->proceduralSpheres();
 
 		if (!Engine::instance()->rhi()) {
 			return;

@@ -7,7 +7,7 @@
 #include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {
-	class PointLightPass : public RenderPassWithData {
+	class PointLightPass : public RenderPass {
 	public:
 		using Data = Render::PointShadowFrame;
 

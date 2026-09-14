@@ -114,15 +114,9 @@ namespace SFE::SystemsModule {
 		RenderMode mRenderType = RenderMode::DEFAULT;
 		GraphicsSettings graphics;
 
-		uint8_t currentRegistry = 0;
-		uint8_t nextRegistry = 1;
 		int taaFrame = 0;
 		float taaJitterX = 0.f;
 		float taaJitterY = 0.f;
-
-		void rotate() {
-			std::swap(currentRegistry, nextRegistry);
-		}
 	};
 
 		class RenderDebugInfo : public Singleton<RenderDebugInfo>
@@ -166,18 +160,15 @@ namespace SFE::SystemsModule {
 		int renderedFrames() const { return mRenderedFrames; }
 		Render::DescriptorSetLayoutHandle frameSetLayoutHandle() const { return frameSetLayout; }
 
-		void prepareDataForNextFrame();
 		void uploadDirtyGpuData();
 		// Destroys the buffer once no frame still in flight can read it. Main thread only.
 		void retireBuffer(Render::BufferHandle buffer) { mRetiredBuffers.emplace_back(buffer, mRenderedFrames); }
 		Render::GpuMaterialTable& materials() { return mMaterials; }
 		Render::GpuScene& scene() { return mScene; }
 		Render::BufferHandle transformsBuffer() const { return transforms; }
-		bool allPassesReady() const;
 
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
-		// waits for in-flight readers — never blocks new prepares behind a waiting exclusive
-		// (that deadlocks waitReady).
+		// waits for in-flight readers, so a waiting mutate never blocks readers already running.
 		class WorldReadGuard {
 		public:
 			WorldReadGuard() = default;
@@ -258,45 +249,8 @@ namespace SFE::SystemsModule {
 			return mShadowsDebugDataDraw;
 		}
 
-		static inline ecss::ECSType types = 0;
-
-		template<typename T>
-		static ecss::ECSType getDirtyId() {
-			static ecss::ECSType typeId = types++;
-			return typeId;
-		}
-
 		void notify(Task task) override;
 
-		template<typename CompType>
-		void markDirty(ecss::EntityId id) {
-			if constexpr
-			(
-				std::is_same_v<CompType, MaterialComponent> ||
-				std::is_same_v<CompType, ComponentsModule::TransformMatComp> ||
-				std::is_same_v<CompType, ComponentsModule::ArmatureBonesComponent> ||
-				std::is_same_v<CompType, OutlineComponent> ||
-				std::is_same_v<CompType, MeshComponent> ||
-				std::is_same_v<CompType, ComponentsModule::OccludedComponent>
-			)
-			{
-				markDirtyImpl<CompType>(id);
-			}
-		}
-
-		template<typename T>
-		void markRemoved(ecss::EntityId id) {
-			auto lock = std::unique_lock(dirtiesMutex);
-			auto& entities = removed[getDirtyId<T>()];
-
-			if (auto it = entities.find([id](const std::pair<ecss::EntityId, uint8_t>& a) { return a.first == id; })) {
-				it->second = 2;
-			}
-			else {
-				entities.emplace_back(id, 2);
-			}
-		}
-		
 		bool mShadowsDebugDataDraw = false;
 	private:
 
@@ -310,17 +264,6 @@ namespace SFE::SystemsModule {
 		void uploadBones(const std::vector<ecss::EntityId>& sortedIds);
 		void markGpuDirty(std::vector<ecss::EntityId>& list, ecss::EntityId id);
 
-		template<typename T>
-		void markDirtyImpl(ecss::EntityId id) {
-			auto lock = std::unique_lock(dirtiesMutex);
-			dirties[getDirtyId<T>()].emplace_back(id, 2);
-		}
-
-		//std::unordered_map<ecss::ECSType, ecss::EntitiesRanges> dirtiesRanges;
-
-		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> dirties;
-		std::unordered_map<ecss::ECSType, SFE::Vector<std::pair<ecss::EntityId, uint8_t>>> removed;
-		std::shared_mutex dirtiesMutex;
 		std::atomic<int> mWorldReaders{ 0 };
 		std::atomic<bool> mWorldMutating{ false };
 

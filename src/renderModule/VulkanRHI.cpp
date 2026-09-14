@@ -611,10 +611,13 @@ namespace SFE::Render {
 				"VulkanRHI: VK_EXT_depth_clip_control required so shaders keep OpenGL clip Z [-1, 1]");
 		}
 		// GPU-driven rendering: compute writes the draw count, shaders read gl_DrawID / gl_BaseInstance.
+		// Glass picks its albedo out of a sampler array by an index that is constant within each draw.
 		if (!supported12.drawIndirectCount || !supported11.shaderDrawParameters
-			|| !supportedFeatures.multiDrawIndirect || !supportedFeatures.drawIndirectFirstInstance) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: drawIndirectCount, shaderDrawParameters, multiDrawIndirect and drawIndirectFirstInstance are required");
+			|| !supportedFeatures.multiDrawIndirect || !supportedFeatures.drawIndirectFirstInstance
+			|| !supportedFeatures.shaderSampledImageArrayDynamicIndexing) {
+			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: drawIndirectCount, shaderDrawParameters, multiDrawIndirect, drawIndirectFirstInstance and shaderSampledImageArrayDynamicIndexing are required");
 		}
+		deviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 
 		const char* deviceExtensions[] = {
 			VK_KHR_SWAPCHAIN_EXTENSION_NAME,

@@ -2,6 +2,7 @@
 
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
+#include "logsModule/logger.h"
 #include "renderModule/MaterialRules.h"
 #include "systemsModule/systems/RenderSystem.h"
 
@@ -35,9 +36,32 @@ namespace SFE::Render {
 		std::lock_guard lock(mMutex);
 		const auto [it, inserted] = mIndexByHash.try_emplace(hash, static_cast<uint32_t>(mEntries.size()));
 		if (inserted) {
-			mEntries.push_back(makeGpuMaterial(material));
+			auto entry = makeGpuMaterial(material);
+			if (material.transparent) {
+				entry.albedoSlot = static_cast<float>(glassSlot(MaterialRules::diffuseTexture(material.materials)));
+			}
+			mEntries.push_back(entry);
 		}
 		return it->second;
+	}
+
+	uint32_t GpuMaterialTable::glassSlot(const TextureHandle albedo) {
+		for (size_t i = 0; i < mGlassTextures.size(); ++i) {
+			if (mGlassTextures[i].id == albedo.id) {
+				return static_cast<uint32_t>(i);
+			}
+		}
+		if (mGlassTextures.size() == kGlassTextureSlots) {
+			LogsModule::Logger::LOG_WARNING("GpuMaterialTable: more than %zu glass albedo textures, the rest draw untextured", kGlassTextureSlots);
+			return 0;
+		}
+		mGlassTextures.push_back(albedo);
+		return static_cast<uint32_t>(mGlassTextures.size() - 1);
+	}
+
+	std::vector<TextureHandle> GpuMaterialTable::glassTextures() {
+		std::lock_guard lock(mMutex);
+		return mGlassTextures;
 	}
 
 	BufferHandle GpuMaterialTable::upload() {

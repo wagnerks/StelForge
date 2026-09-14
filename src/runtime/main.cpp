@@ -92,6 +92,7 @@ int main(int argc, char** argv)
 	int captureFrame = 240;
 	int lightingDebugTerm = 0;
 	bool temporalAccumulation = true;
+	bool proceduralSpheres = false;
 	std::string cameraPos;
 	std::string cameraRot;
 	std::string contentDir;
@@ -131,6 +132,9 @@ int main(int argc, char** argv)
 		}
 		else if (arg == "--no-taa") {
 			temporalAccumulation = false;
+		}
+		else if (arg == "--spheres") {
+			proceduralSpheres = true;
 		}
 		else if (arg == "--debug-term" && i + 1 < argc && argv[i + 1]) {
 			lightingDebugTerm = std::atoi(argv[++i]);
@@ -256,6 +260,7 @@ int main(int argc, char** argv)
 	engine->setCaptureFrame(captureFrame);
 	engine->setLightingDebugTerm(lightingDebugTerm);
 	engine->setTemporalAccumulation(temporalAccumulation);
+	engine->setProceduralSpheres(proceduralSpheres);
 	if (!capturePath.empty() && !passDumpDir.empty()) {
 		const std::filesystem::path requested(passDumpDir);
 		engine->setPassDumpDir(requested.is_absolute()

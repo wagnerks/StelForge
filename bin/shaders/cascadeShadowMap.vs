@@ -2,9 +2,14 @@
 #include "sfe.glsl"
 #include "sfe_scene.glsl"
 layout(location = 0) in vec3 aPos;
+layout(location = 2) in vec2 aTexCoords;
 layout(location = 5) in ivec4 aBoneIds;
 layout(location = 6) in vec4 aWeights;
+layout(location = 7) in vec2 aTexCoords1;
 
+// pointLightMap.gs reads the UVs for the caster's mask; without them OpenGL refuses to link the pipeline.
+layout(location = 1) out vec2 TexCoords;
+layout(location = 2) out vec2 TexCoords1;
 layout(location = 3) flat out uint vMaterial;
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
@@ -42,4 +47,6 @@ void main() {
 
     mat4 world = model[index];
     gl_Position = world * newPos;
+    TexCoords = aTexCoords;
+    TexCoords1 = aTexCoords1;
 }

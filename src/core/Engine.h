@@ -73,6 +73,9 @@ namespace SFE {
 		// Turning it off measures what a single frame actually produces.
 		void setTemporalAccumulation(bool enabled) { mTemporalAccumulation = enabled; }
 		bool temporalAccumulation() const { return mTemporalAccumulation; }
+		// World chunks spawn the glass sphere grid instead of the character grid: the scene that has glass.
+		void setProceduralSpheres(bool enabled) { mProceduralSpheres = enabled; }
+		bool proceduralSpheres() const { return mProceduralSpheres; }
 
 	protected:
 		Engine();
@@ -98,6 +101,7 @@ namespace SFE {
 		int mCaptureFrame = 0;
 		int mLightingDebugTerm = 0;
 		bool mTemporalAccumulation = true;
+		bool mProceduralSpheres = false;
 		std::string mPassDumpDir;
 
 		CoreModule::Core mCore;

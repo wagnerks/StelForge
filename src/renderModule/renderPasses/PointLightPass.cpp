@@ -44,7 +44,6 @@ namespace {
 namespace SFE::Render::RenderPasses {
 
 PointLightPass::PointLightPass() {
-	getContainer().init(2);
 }
 
 void PointLightPass::collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<Math::Vec4>& spheres, std::vector<ecss::SectorId>& entities) {

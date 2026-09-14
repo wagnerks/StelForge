@@ -11,7 +11,8 @@ layout(location = 0) out vec4 FragColor;
 
 layout(SFE_SET(0, 6)) uniform sampler2D sceneCopy;
 layout(SFE_SET(0, 13)) uniform samplerCube prefilterMap;
-layout(SFE_SET(0, 4)) uniform sampler2D albedoMap;
+// Every glass albedo in one array; each glass draw holds one instance, so the index is constant per draw.
+layout(SFE_SET(0, 16)) uniform sampler2D albedoMaps[8];
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
@@ -162,7 +163,7 @@ void main() {
     // opacity drives colored absorption inside the volume, not surface alpha.
     float density = clamp(material.opacity, 0.02, 1.0);
     float path = spherePathFactor(N, V);
-    vec3 albedo = pow(max(texture(albedoMap, TexCoords).rgb, vec3(0.0)), vec3(2.2));
+    vec3 albedo = pow(max(texture(albedoMaps[uint(material.albedoSlot)], TexCoords).rgb, vec3(0.0)), vec3(2.2));
     vec3 tint = max(material.tint * max(albedo, vec3(0.02)), vec3(0.02));
     vec3 absorb = (vec3(1.0) - tint) * density * 5.0 + vec3(0.015);
 

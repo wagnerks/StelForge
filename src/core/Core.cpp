@@ -24,8 +24,6 @@ namespace SFE::CoreModule {
 		ECSHandler::systemManager().update(dt);
 		ThreadPool::instance()->syncUpdate();
 		ECSHandler::registry().update();
-		ECSHandler::drawRegistry(0).update();
-		ECSHandler::drawRegistry(1).update();
 	}
 
 	void Core::init() {

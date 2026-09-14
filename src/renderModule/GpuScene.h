@@ -23,6 +23,7 @@ namespace SFE::Render {
 			GBuffer, // opaque surfaces, grouped by pipeline and textures
 			Shadow,  // every caster, grouped by cutout and mask texture
 			Outline, // entities with OutlineComponent, one group
+			Glass,   // transparent surfaces, one group, drawn sorted by sortGlass
 			Count
 		};
 
@@ -44,14 +45,16 @@ namespace SFE::Render {
 		// The output of culling one list for one view, drawn from the same frame's command list.
 		struct View {
 			BufferHandle visible;   // SfeInstance records, bound at 3 by the draw
-			BufferHandle commands;  // one DrawIndexedArgs per batch
+			BufferHandle commands;  // one DrawIndexedArgs per batch (glass: per sorted instance)
+			BufferHandle keys;      // glass only: the sort keys
 			size_t visibleCapacity = 0;
 			size_t commandCapacity = 0;
+			size_t keyCapacity = 0;
 			// Per frame slot: the view parameters are written from the CPU while an earlier frame may still
 			// be reading its own copy.
 			std::array<BufferHandle, 2> params{};
 			std::array<DescriptorSetHandle, 2> sets{};
-			std::array<std::array<uint32_t, 7>, 2> boundIds{};
+			std::array<std::array<uint32_t, 8>, 2> boundIds{};
 		};
 
 		void init();
@@ -66,6 +69,11 @@ namespace SFE::Render {
 		bool cullFrustum(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum);
 		// Visible when the bounds touch any sphere (xyz centre, w radius). At most kMaxSpheres.
 		bool cullSpheres(CommandListHandle cmd, List list, View& view, const std::vector<Math::Vec4>& spheres);
+
+		// Culls the glass list and sorts what is left far to near into `view`: command i draws the i-th farthest
+		// instance, culled ones trail with no instances. Draw with drawSorted. Outside a render pass.
+		bool sortGlass(CommandListHandle cmd, View& view, const FrustumModule::Frustum& frustum, const Math::Vec3& cameraPos, const Math::Vec3& viewDir);
+		void drawSorted(CommandListHandle cmd, const View& view) const;
 
 		const std::vector<DrawGroup>& groups(List list) const { return mLists[static_cast<size_t>(list)].groups; }
 		// The group's indirect call. Pipeline, descriptor sets and the shared vertex and index buffers are the
@@ -87,6 +95,8 @@ namespace SFE::Render {
 		void rebuildOutline(GpuMaterialTable& materials);
 		void uploadMeshes();
 		bool cull(CommandListHandle cmd, List list, View& view, uint32_t mode, const float* shapes, uint32_t shapeCount);
+		// Grows the view's output buffers to `instances` / `commands` entries and writes its parameters for this slot.
+		uint32_t prepareView(View& view, uint32_t instances, uint32_t commands, uint32_t mode, const float* shapes, uint32_t shapeCount, uint32_t batchCount);
 
 		std::atomic<bool> mDirty{ true };
 		std::array<ListData, static_cast<size_t>(List::Count)> mLists;
@@ -99,5 +109,7 @@ namespace SFE::Render {
 
 		DescriptorSetLayoutHandle mCullLayout;
 		PipelineHandle mCullPipeline;
+		DescriptorSetLayoutHandle mGlassLayout;
+		PipelineHandle mGlassPipeline;
 	};
 }
