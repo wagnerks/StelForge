@@ -1,9 +1,11 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_material.glsl"
 layout(location = 0) in vec3 FragPos;
 layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in mat3 TBN;
 layout(location = 5) in vec2 TexCoords1;
+layout(location = 6) flat in uint vMaterial;
 
 layout(location = 0) out vec4 FragColor;
 
@@ -19,15 +21,15 @@ layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
 
 layout(SFE_SET(0, 15), std140) uniform PushConstants {
     vec3 viewPos;
-    float ior;
+    float _pad2;
     vec2 resolution;
-    float opacity;
+    float _pad3;
     float roughness;
     vec3 lightDir;
     float _pad0;
     vec3 lightColor;
     float _pad1;
-    vec3 tint;
+    vec3 _pad4;
     float sphereSpacing;
 } params;
 
@@ -149,7 +151,8 @@ void main() {
     }
     float NdotV = clamp(dot(N, V), 0.0, 1.0);
 
-    float ior = max(params.ior, 1.02);
+    SfeMaterial material = sfeMaterials[vMaterial];
+    float ior = max(material.ior, 1.02);
     float eta = 1.0 / ior;
     vec3 I = -V;
     vec3 R = reflect(I, N);
@@ -157,10 +160,10 @@ void main() {
     bool totalReflect = dot(T, T) <= 1e-6;
 
     // opacity drives colored absorption inside the volume, not surface alpha.
-    float density = clamp(params.opacity, 0.02, 1.0);
+    float density = clamp(material.opacity, 0.02, 1.0);
     float path = spherePathFactor(N, V);
     vec3 albedo = pow(max(texture(albedoMap, TexCoords).rgb, vec3(0.0)), vec3(2.2));
-    vec3 tint = max(params.tint * max(albedo, vec3(0.02)), vec3(0.02));
+    vec3 tint = max(material.tint * max(albedo, vec3(0.02)), vec3(0.02));
     vec3 absorb = (vec3(1.0) - tint) * density * 5.0 + vec3(0.015);
 
     float roughness = clamp(params.roughness, 0.01, 0.12);

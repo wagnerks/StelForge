@@ -1,5 +1,6 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_scene.glsl"
 // Cascade casters only. cascadeShadowMap.vs stays world-space because the point light pass shares
 // it and applies its own cube-face matrices in a geometry shader; this one applies the cascade
 // matrix here, which is what let the cascade geometry shader go away.
@@ -11,13 +12,10 @@ layout(location = 7) in vec2 aTexCoords1;
 
 layout(location = 1) out vec2 TexCoords;
 layout(location = 2) out vec2 TexCoords1;
+layout(location = 3) flat out uint vMaterial;
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
-};
-
-layout(SFE_SET(0, 3), std430) readonly buffer gpuIndex {
-    uint entToGpuIdx[];
 };
 
 const int MAX_BONES = 256;
@@ -32,13 +30,13 @@ layout(SFE_SET(0, 11), std140) uniform LightSpaceMatrices {
 };
 
 SFE_PUSH_BLOCK PushConstants {
-    float casterOpacity;
     int cascadeLayer;
-    float alphaCutoff;
 } params;
 
 void main() {
-    uint index = entToGpuIdx[SFE_INSTANCE_ID];
+    SfeInstance instance = sfeInstances[SFE_INSTANCE_ID];
+    uint index = instance.entity;
+    vMaterial = instance.material;
 
     mat4 BoneTransform = mat4(0.0);
     bool withBones = false;

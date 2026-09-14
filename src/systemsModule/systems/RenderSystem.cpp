@@ -151,6 +151,7 @@ namespace SFE::SystemsModule {
 				{ 1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
 				{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
 				{ 3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment },
+				{ 7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment },
 			};
 			frameSetLayout = rhi->createDescriptorSetLayout(frameLayout);
 			mRenderData.frameSetLayout = frameSetLayout;

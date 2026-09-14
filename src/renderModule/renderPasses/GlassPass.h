@@ -14,10 +14,10 @@ namespace SFE::Render::RenderPasses {
 			float viewPosX = 0.f;
 			float viewPosY = 0.f;
 			float viewPosZ = 0.f;
-			float ior = 1.52f;
+			float _pad2 = 0.f;
 			float resolutionX = 1.f;
 			float resolutionY = 1.f;
-			float opacity = 0.08f;
+			float _pad3 = 0.f;
 			float roughness = 0.05f;
 			float lightX = 0.f;
 			float lightY = -1.f;
@@ -27,9 +27,7 @@ namespace SFE::Render::RenderPasses {
 			float colorY = 1.f;
 			float colorZ = 1.f;
 			float _pad1 = 0.f;
-			float tintX = 1.f;
-			float tintY = 1.f;
-			float tintZ = 1.f;
+			float _pad4[3]{};
 			float sphereSpacing = 8.f;
 		};
 

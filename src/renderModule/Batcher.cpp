@@ -22,7 +22,7 @@ Batcher::Batcher()
 	auto* rhi = SFE::Engine::instance()->rhi();
 	mGpuFrames = rhi ? (std::max)(1u, (std::min)(2u, rhi->framesInFlight())) : 1u;
 	SFE::Render::BufferDesc desc;
-	desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
+	desc.size = sizeof(GpuInstance) * mInstanceCapacity;
 	desc.usage = SFE::Render::BufferUsage::Storage;
 	desc.cpuAccess = SFE::Render::CpuAccess::Write;
 	for (uint32_t i = 0; i < mGpuFrames; ++i) {
@@ -129,6 +129,7 @@ DrawObject& Batcher::batchFor(const SFE::RenderMeshData& meshData, const SFE::Co
 		obj.alphaDither = material.alphaDither;
 		obj.tint = material.tint;
 		obj.materialHash = key.materialHash;
+		obj.materialIndex = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->materials().indexFor(obj);
 		obj.entities.reserve(256);
 		obj.matrices.reserve(64);
 		mLastKey = key;
@@ -163,6 +164,7 @@ DrawObject& Batcher::batchForGlass(const SFE::RenderMeshData& meshData, const SF
 		obj.clearcoatRough = material.clearcoatRough;
 		obj.tint = material.tint;
 		obj.materialHash = key.materialHash;
+		obj.materialIndex = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->materials().indexFor(obj);
 		obj.entities.reserve(256);
 		obj.matrices.reserve(64);
 		mLastKey = key;
@@ -234,7 +236,7 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 	if (mIdsOffset > mInstanceCapacity) {
 		mInstanceCapacity = mIdsOffset + mIdsOffset / 2 + 1024;
 		SFE::Render::BufferDesc desc;
-		desc.size = sizeof(ecss::EntityId) * mInstanceCapacity;
+		desc.size = sizeof(GpuInstance) * mInstanceCapacity;
 		desc.usage = SFE::Render::BufferUsage::Storage;
 		desc.cpuAccess = SFE::Render::CpuAccess::Write;
 		for (uint32_t i = 0; i < mGpuFrames; ++i) {
@@ -244,6 +246,7 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 	}
 
 	const auto frameSet = renderSystem ? renderSystem->frameSetHandle() : SFE::Render::DescriptorSetHandle{};
+	const auto materialsBuffer = renderSystem ? renderSystem->materials().upload() : SFE::Render::BufferHandle{};
 
 	if (bindResources) {
 		auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
@@ -360,11 +363,10 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 		}
 
 		if (frameSet && batcherBuffer) {
-			rhi->updateDescriptorSets({ {
-				.set = frameSet,
-				.binding = 3,
-				.buffers{ {batcherBuffer} }
-			} });
+			rhi->updateDescriptorSets({
+				{ .set = frameSet, .binding = 3, .buffers{ {batcherBuffer} } },
+				{ .set = frameSet, .binding = 7, .buffers{ {materialsBuffer} } },
+			});
 		}
 		setHandle = materialSet;
 	}
@@ -373,11 +375,8 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 	// frame slot keeps the buffer handle constant; Vulkan alternates slots and so always rewrote it.
 	else if (setHandle && batcherBuffer) {
 		rhi->updateDescriptorSets({
-			{
-				.set = setHandle,
-				.binding = 3,
-				.buffers{ {batcherBuffer} }
-			}
+			{ .set = setHandle, .binding = 3, .buffers{ {batcherBuffer} } },
+			{ .set = setHandle, .binding = 7, .buffers{ {materialsBuffer} } },
 		});
 	}
 
@@ -400,7 +399,11 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &setHandle, 1);
 	}
 
-	rhi->cmdUpdateBuffer(cmd, batcherBuffer, sizeof(ecss::EntityId) * idsOffset, sizeof(ecss::EntityId) * entityCount, entityIds);
+	mInstanceScratch.resize(entityCount);
+	for (size_t i = 0; i < entityCount; ++i) {
+		mInstanceScratch[i] = { entityIds[i], objs.materialIndex };
+	}
+	rhi->cmdUpdateBuffer(cmd, batcherBuffer, sizeof(GpuInstance) * idsOffset, sizeof(GpuInstance) * entityCount, mInstanceScratch.data());
 
 	const auto* meshes = SFE::MeshVaoRegistry::instance();
 	rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);

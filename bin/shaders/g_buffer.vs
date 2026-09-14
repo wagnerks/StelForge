@@ -1,5 +1,6 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_scene.glsl"
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
@@ -13,6 +14,7 @@ layout(location = 0) out vec3 FragPos;
 layout(location = 1) out vec2 TexCoords;
 layout(location = 2) out mat3 TBN;
 layout(location = 5) out vec2 TexCoords1;
+layout(location = 6) flat out uint vMaterial;
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
@@ -25,10 +27,6 @@ layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
     mat4 bones[][MAX_BONES];
 };
 
-layout(SFE_SET(0, 3), std430) readonly buffer gpuIndex {
-    uint entToGpuIdx[];
-};
-
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
     mat4 view;
@@ -36,7 +34,9 @@ layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
 } matrices;
 
 void main() {
-    uint index = entToGpuIdx[SFE_INSTANCE_ID];
+    SfeInstance instance = sfeInstances[SFE_INSTANCE_ID];
+    uint index = instance.entity;
+    vMaterial = instance.material;
 
     mat4 BoneTransform = mat4(0.0);
     bool withBones = false;

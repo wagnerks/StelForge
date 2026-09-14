@@ -33,11 +33,10 @@ namespace {
 		}
 	}
 
+	// Caster opacity and cutoff come from the material table.
 	struct PointShadowPush {
 		int lightCount = 0;
-		float casterOpacity = 1.f;
-		float alphaCutoff = 0.f;
-		float pad2 = 0.f;
+		float pad[3]{};
 	};
 }
 
@@ -213,6 +212,7 @@ void PointLightPass::ensureGpu(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	mSetLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSet = rhi->allocateDescriptorSet(mSetLayout);
@@ -330,8 +330,6 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 		[this, lightCount](SFE::Render::CommandListHandle drawCmd, const DrawObject& obj) {
 			PointShadowPush pc;
 			pc.lightCount = lightCount;
-			pc.casterOpacity = (obj.opacity > 0.f && obj.opacity < 0.999f) ? obj.opacity : 1.f;
-			pc.alphaCutoff = obj.alphaFromMaps ? -0.18f : obj.cutoutCutoff();
 			if (auto* white = AssetsModule::TextureHandler::loadTexture("white.png")) {
 				auto diff = obj.alphaFromMaps ? obj.maskTexture() : obj.diffuseTexture();
 				if (!diff) {

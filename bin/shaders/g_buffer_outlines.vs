@@ -15,9 +15,7 @@ layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
     mat4 bones[][MAX_BONES];
 };
 
-layout(SFE_SET(0, 3), std430) readonly buffer gpuIndex {
-    uint entToGpuIdx[];
-};
+#include "sfe_scene.glsl"
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     mat4 projection;
@@ -26,7 +24,7 @@ layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
 } matrices;
 
 void main() {
-    uint index = entToGpuIdx[SFE_INSTANCE_ID];
+    uint index = sfeInstances[SFE_INSTANCE_ID].entity;
 
     mat4 BoneTransform = mat4(0.0);
     bool withBones = false;

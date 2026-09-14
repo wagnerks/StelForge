@@ -329,6 +329,7 @@ void CascadedShadowPass::initRender() {
 	shadowsLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	shadowsLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	shadowsLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
+	shadowsLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
 	shadowsLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
 	shadowsLayoutHandle = rhi->createDescriptorSetLayout(shadowsLayoutDesc);
@@ -477,11 +478,10 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		// A cascade with nothing to draw still has to open its pass: the clear lives in the render
 		// pass, and skipping it would leave last frame's depth in that layer.
 
+		// Caster opacity and cutoff come from the material table.
 		struct ShadowPush {
-			float casterOpacity = 1.f;
 			int cascadeLayer = 0;
-			float alphaCutoff = 0.f;
-			float pad = 0.f;
+			float pad[3]{};
 		};
 
 		RenderPassBeginInfo begin;
@@ -514,9 +514,7 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 			batcher->flushAll(cmd, shadowsSetDescHandle, {},
 				[this, layer, white, &boundDiffuse](SFE::Render::CommandListHandle drawCmd, const DrawObject& obj) {
 					ShadowPush pc;
-					pc.casterOpacity = (obj.opacity > 0.f && obj.opacity < 0.999f) ? obj.opacity : 1.f;
 					pc.cascadeLayer = static_cast<int>(layer);
-					pc.alphaCutoff = obj.alphaFromMaps ? -0.18f : obj.cutoutCutoff();
 
 					auto diff = obj.alphaFromMaps ? obj.maskTexture() : obj.diffuseTexture();
 					if (!diff && white) {

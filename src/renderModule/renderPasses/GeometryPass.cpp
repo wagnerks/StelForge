@@ -31,19 +31,6 @@
 
 using namespace SFE::Render::RenderPasses;
 
-namespace {
-	struct GBufferMaterialPC {
-		float roughness = 0.5f;
-		float metallic = 0.f;
-		float mapMask = 0.f;
-		float alphaCutoff = 0.f;
-		float uvSel = 0.f;
-		float specFactor = 1.f;
-		float clearcoat = 0.f;
-		float clearcoatRough = 0.04f;
-	};
-}
-
 void GeometryPass::fillBatcher(Batcher& batcher, const uint8_t nextRegistry, SystemsModule::RenderData& renderData) {
 	batcher.clear();
 
@@ -260,8 +247,6 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	}
 	pipelineDesc.shaders.vertex = Engine::instance()->rhi()->loadShader(ShaderStage::Vertex, "shaders/g_buffer.vs");
 	pipelineDesc.shaders.fragment = Engine::instance()->rhi()->loadShader(ShaderStage::Fragment, "shaders/g_buffer.fs");
-	pipelineDesc.pushConstantSize = static_cast<uint32_t>(sizeof(GBufferMaterialPC));
-	pipelineDesc.pushConstantStages = ShaderStage::Fragment;
 
 	Render::DescriptorSetLayoutDesc texLayoutDescGBuf;
 	texLayoutDescGBuf.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
@@ -389,22 +374,6 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	if (!curPassData->getBatcher().drawList.empty()) {
 		curPassData->getBatcher().flushAll(cmd, gBuffetLayoutSet, [this, fillMode](const std::string& vs, const std::string& fs) {
 			return getGBufferPipeline(vs, fs, fillMode);
-		}, [this, fillMode](Render::CommandListHandle drawCmd, const DrawObject& obj) {
-			const auto pipe = getGBufferPipeline(obj.vertexShader, obj.fragmentShader, fillMode);
-			GBufferMaterialPC pc;
-			pc.roughness = obj.roughness;
-			pc.metallic = obj.metallic;
-			pc.mapMask = obj.gBufferMapMask();
-			pc.uvSel = obj.gBufferUvSel();
-			pc.specFactor = obj.specFactor;
-			pc.clearcoat = obj.clearcoat;
-			pc.clearcoatRough = obj.clearcoatRough;
-			if (obj.alphaDither) {
-				pc.alphaCutoff = 1.78f;
-			} else {
-				pc.alphaCutoff = obj.cutoutCutoff();
-			}
-			Engine::instance()->rhi()->cmdPushConstants(drawCmd, pipe, ShaderStage::Fragment, &pc, sizeof(pc));
 		});
 	}
 	// The grid keeps its own pipeline, so it stays filled in wireframe mode -- which is what it

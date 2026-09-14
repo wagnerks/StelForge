@@ -142,6 +142,7 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layoutDesc.bindings.emplace_back(1, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(2, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, DescriptorType::StorageBuffer, ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(7, DescriptorType::StorageBuffer, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBuffer, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
@@ -225,9 +226,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	mParams.viewPosY = renderDataHandle.mCameraPos.y;
 	mParams.viewPosZ = renderDataHandle.mCameraPos.z;
 	mParams.roughness = renderDataHandle.graphics.glassRoughness;
-	mParams.tintX = 1.f;
-	mParams.tintY = 1.f;
-	mParams.tintZ = 1.f;
 	mParams.sphereSpacing = 8.f;
 	if (auto* chunks = ECSHandler::getSystem<SystemsModule::ChunksSystem>()) {
 		if (const auto* dd = static_cast<const SystemsModule::ChunksDebugData*>(chunks->getDebugData())) {
@@ -356,14 +354,9 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		ordered.push_back(item.batch);
 	}
 
-	auto beforeDraw = [this, rhi](Render::CommandListHandle drawCmd, const DrawObject& o) {
-		mParams.ior = o.ior > 1.f ? o.ior : 1.52f;
-		mParams.opacity = o.opacity > 0.f ? o.opacity : 0.22f;
-		mParams.tintX = o.tint.x;
-		mParams.tintY = o.tint.y;
-		mParams.tintZ = o.tint.z;
-		rhi->cmdUpdateBuffer(drawCmd, mParamsUBO, mParams);
-
+	// Per-material ior, opacity and tint come from the material table; the rest is the same for every draw.
+	rhi->cmdUpdateBuffer(cmd, mParamsUBO, mParams);
+	auto beforeDraw = [this, rhi](Render::CommandListHandle, const DrawObject& o) {
 		auto* white = AssetsModule::TextureHandler::loadTexture("white.png");
 		if (!white) {
 			return;

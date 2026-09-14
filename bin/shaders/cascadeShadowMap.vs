@@ -1,15 +1,14 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_scene.glsl"
 layout(location = 0) in vec3 aPos;
 layout(location = 5) in ivec4 aBoneIds;
 layout(location = 6) in vec4 aWeights;
 
+layout(location = 3) flat out uint vMaterial;
+
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
-};
-
-layout(SFE_SET(0, 3), std430) readonly buffer gpuIndex {
-    uint entToGpuIdx[];
 };
 
 const int MAX_BONES = 256;
@@ -20,7 +19,9 @@ layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
 };
 
 void main() {
-    uint index = entToGpuIdx[SFE_INSTANCE_ID];
+    SfeInstance instance = sfeInstances[SFE_INSTANCE_ID];
+    uint index = instance.entity;
+    vMaterial = instance.material;
 
     mat4 BoneTransform = mat4(0.0);
     bool withBones = false;

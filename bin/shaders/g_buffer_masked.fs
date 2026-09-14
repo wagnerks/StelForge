@@ -1,9 +1,11 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_material.glsl"
 layout(location = 0) in vec3 FragPos;
 layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in mat3 TBN;
 layout(location = 5) in vec2 TexCoords1;
+layout(location = 6) flat in uint vMaterial;
 
 layout(location = 0) out vec4 gPosition;
 layout(location = 1) out vec4 gNormal;
@@ -16,16 +18,7 @@ layout(SFE_SET(1, 4)) uniform sampler2D texture_roughness;
 layout(SFE_SET(1, 5)) uniform sampler2D texture_metallic;
 layout(SFE_SET(1, 6)) uniform sampler2D texture_subsurface;
 
-SFE_PUSH_BLOCK PushConstants {
-    float matRoughness;
-    float matMetallic;
-    float mapMask;
-    float alphaCutoff;
-    float uvSel;
-    float specFactor;
-    float clearcoat;
-    float clearcoatRough;
-} pc;
+#define pc sfeMaterials[vMaterial]
 
 vec2 uvOf(uint bit) {
     return ((uint(pc.uvSel + 0.5) & bit) != 0u) ? TexCoords1 : TexCoords;

@@ -48,6 +48,7 @@ struct DrawObject {
 	bool alphaDither = false;
 	SFE::Math::Vec3 tint{ 1.f, 1.f, 1.f };
 	uint64_t materialHash = 0;
+	uint32_t materialIndex = 0; // into RenderSystem::materials()
 
 	struct Matrices {
 		SFE::Math::Mat4* transform;
@@ -158,6 +159,12 @@ struct DrawObject {
 };
 
 
+// Mirrors SfeInstance in shaders/sfe_scene.glsl.
+struct GpuInstance {
+	ecss::EntityId entity = 0;
+	uint32_t material = 0;
+};
+
 class Batcher {
 public:
 	Batcher();
@@ -196,4 +203,5 @@ private:
 	SFE::Render::TextureHandle mDefaultGray{};
 	SFE::Render::DescriptorSetLayoutHandle mMaterialLayout{};
 	std::unordered_map<uint64_t, SFE::Render::DescriptorSetHandle> mCachedMaterialSets;
+	std::vector<GpuInstance> mInstanceScratch;
 };
