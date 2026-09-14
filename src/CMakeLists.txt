@@ -212,8 +212,10 @@ endif()
 # RHI conformance suite. Off by default: it fetches googletest and needs a GPU, neither of which
 # an ordinary build of the engine should pay for. Same shape as the ecss suite next door.
 option(SFE_BUILD_RHI_TESTS "Build the RHI conformance tests" OFF)
+# Game tests: the engine on the None backend, no window and no GPU, with a fixed frame step.
+option(SFE_BUILD_GAME_TESTS "Build the game tests (no rendering)" OFF)
 
-if(SFE_BUILD_RHI_TESTS)
+if(SFE_BUILD_RHI_TESTS OR SFE_BUILD_GAME_TESTS)
 	include(CTest)
 	include(FetchContent)
 	set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -226,7 +228,9 @@ if(SFE_BUILD_RHI_TESTS)
 	set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 	set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 	FetchContent_MakeAvailable(googletest)
+endif()
 
+if(SFE_BUILD_RHI_TESTS)
 	file(GLOB RHI_TEST_SOURCES CONFIGURE_DEPENDS "${ENGINE_PATH}/tests/*.cpp")
 	add_executable(rhi_tests ${RHI_TEST_SOURCES})
 	# Links the RHI and nothing else of the engine. The tests borrow only the header-only math types, through
@@ -255,4 +259,22 @@ if(SFE_BUILD_RHI_TESTS)
 	# The tests load their shaders through relative paths, so they only run from the asset root.
 	set_target_properties(rhi_tests PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin")
 	add_test(NAME rhi_tests COMMAND rhi_tests WORKING_DIRECTORY "${ENGINE_PATH}/bin")
+endif()
+
+if(SFE_BUILD_GAME_TESTS)
+	file(GLOB GAME_TEST_SOURCES CONFIGURE_DEPENDS "${ENGINE_PATH}/tests/game/*.cpp")
+	add_executable(game_tests ${GAME_TEST_SOURCES})
+	target_link_libraries(game_tests PRIVATE ${ENGINE_NAME} gtest)
+	target_include_directories(game_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${ENGINE_PATH}/tests/game")
+	set_target_properties(game_tests PROPERTIES
+		FOLDER Engine
+		CXX_STANDARD 23
+		VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin"
+	)
+	if(MSVC)
+		set_target_properties(game_tests PROPERTIES LINK_FLAGS "/SUBSYSTEM:CONSOLE")
+	endif()
+	# Links the whole engine, so it needs the native DLLs next to it like the apps.
+	sfe_stage_app(game_tests)
+	add_test(NAME game_tests COMMAND game_tests WORKING_DIRECTORY "${ENGINE_PATH}/bin")
 endif()

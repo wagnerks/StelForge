@@ -36,12 +36,13 @@ Approach: a third RHI backend, `None`, the same way as Unreal `-nullrhi` and God
 - [x] Editor `RuntimeWidget`: passes `none` through `STELFORGE_BACKEND` and shows "no picture" instead of an empty view.
 
 ## 5. Game tests
-- [ ] `game_tests` target (GoogleTest, like `rhi_tests`): one engine per process in None mode with a fixed step, plus helpers to step N frames and read components.
-- [ ] First tests:
-  - a spawned entity's rotation reaches `TransformMatComp` (catches today's `markDirty` race);
-  - an animation advances by exactly dt * ticks.
-- [ ] Runtime flag path: `StelForgeRuntime --backend none --fixed-dt 0.0166667 --frames 600` runs the default scene and exits 0.
+- [x] `game_tests` target (GoogleTest, like `rhi_tests`): one engine per process in None mode with a fixed step, plus helpers to step N frames and read components.
+- [x] First tests:
+  - a spawned entity's rotation reaches `TransformMatComp` (does not reproduce the `markDirty` race: it passes on the old code too, the window is too narrow);
+  - an animation advances by exactly dt * ticks;
+  - WorldTime advances in whole ticks under the fixed step.
+- [x] Runtime flag path: `StelForgeRuntime --backend none --fixed-dt 0.0166667 --frames 600` runs the default scene and exits 0.
 
 ## Open questions
-- Does RenderSystem keep running its passes against NullRHI, which costs CPU (culling prep, GpuScene), or skip frame recording when the backend is None? Start by running it; decide after measuring.
+- Resolved: RenderSystem keeps running its passes against NullRHI. That costs about 0.13 ms of CPU per frame, so there is no reason to skip them.
 - Linux CI: None mode does not touch GLFW, so no display is needed. That needs checking when a Linux build exists.
