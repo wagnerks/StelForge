@@ -32,8 +32,8 @@ Approach: a third RHI backend, `None`, the same way as Unreal `-nullrhi` and God
 - [x] `--frames N`: leave the loop after N frames with exit code 0.
 
 ## 4. Editor bridge
-- [ ] `--serve --backend none`: no embedding in the editor window (there is no window), no Frame packets (readback returns false), and input injection and the rest of the protocol unchanged.
-- [ ] Editor `RuntimeWidget`: passes `none` through `STELFORGE_BACKEND` and shows "no picture" instead of an empty view.
+- [x] `--serve --backend none`: no embedding in the editor window (there is no window), no Frame packets (readback returns false), and input injection and the rest of the protocol unchanged.
+- [x] Editor `RuntimeWidget`: passes `none` through `STELFORGE_BACKEND` and shows "no picture" instead of an empty view.
 
 ## 5. Game tests
 - [ ] `game_tests` target (GoogleTest, like `rhi_tests`): one engine per process in None mode with a fixed step, plus helpers to step N frames and read components.

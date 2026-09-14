@@ -291,7 +291,10 @@ namespace SFE::RuntimeBridge {
 			}
 			Json::Value status;
 			status["subscribed"] = true;
-			status["display"] = mEmbeddedHostMode ? "embed" : "stream";
+			// The None backend has no window to embed and no image to stream.
+			status["display"] = Render::activeGraphicsBackend() == Render::GraphicsBackend::None
+				? "none"
+				: mEmbeddedHostMode ? "embed" : "stream";
 			status["backend"] = Render::graphicsBackendName(Render::activeGraphicsBackend());
 			Json::StreamWriterBuilder builder;
 			builder["indentation"] = "";
