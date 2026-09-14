@@ -77,6 +77,7 @@ SFE_PUSH_BLOCK GlassStep {
     uint paddedCount; // power of two, the sort's range
     uint j;
     uint k;
+    uint base;        // first instance slot of the glass batch
 } step;
 
 const float kCulled = -3.0e38;
@@ -107,7 +108,7 @@ void main() {
             keys[i] = SortKey(kCulled, 0xFFFFFFFFu);
             return;
         }
-        SceneInstance instance = instances[i];
+        SceneInstance instance = instances[step.base + i];
         GpuMesh mesh = meshes[instance.mesh];
         mat4 m = model[instance.entity];
         vec3 localCenter = (mesh.boundsMin + mesh.boundsMax) * 0.5;
@@ -115,7 +116,7 @@ void main() {
         vec3 center = (m * vec4(localCenter, 1.0)).xyz;
         vec3 extents = abs(m[0].xyz) * localExtents.x + abs(m[1].xyz) * localExtents.y + abs(m[2].xyz) * localExtents.z;
         float depth = dot(m[3].xyz - view.shapes[6].xyz, view.shapes[7].xyz);
-        keys[i] = SortKey(visibleInView(center, extents) ? depth : kCulled, i);
+        keys[i] = SortKey(visibleInView(center, extents) ? depth : kCulled, step.base + i);
         return;
     }
 

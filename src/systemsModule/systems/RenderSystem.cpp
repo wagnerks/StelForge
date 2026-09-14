@@ -493,13 +493,13 @@ namespace SFE::SystemsModule {
 			markGpuDirty(mGpuDirtyBones, task.entity);
 		}
 		else if (task.type == MATERIAL_UPDATED) {
-			mScene.markDirty();
+			mScene.markEntity(task.entity);
 		}
 		else if (task.type == MESH_UPDATED) {
-			mScene.markDirty();
+			mScene.markEntity(task.entity);
 		}
 		else if (task.type == ENTITY_DESTROYED) {
-			mScene.markDirty();
+			mScene.markEntity(task.entity);
 		}
 	}
 

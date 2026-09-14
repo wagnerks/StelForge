@@ -17,19 +17,8 @@
 
 namespace SFE::Render {
 	namespace {
-		// Mirror the std430 structs in shaders/gpu_cull.cs.
-		struct SceneInstance {
-			uint32_t entity = 0;
-			uint32_t mesh = 0;
-			uint32_t material = 0;
-			uint32_t pad = 0;
-		};
-		struct Batch {
-			uint32_t firstInstance = 0;
-			uint32_t instanceCount = 0;
-			uint32_t mesh = 0;
-			uint32_t pad = 0;
-		};
+		using SceneInstance = GpuScene::InstanceRecord;
+		using Batch = GpuScene::BatchRecord;
 		struct CullParams {
 			uint32_t mode = 0; // 0: planes, 1: spheres
 			uint32_t shapeCount = 0;
@@ -148,15 +137,41 @@ namespace SFE::Render {
 		ComputePipelineDesc glassDesc;
 		glassDesc.compute = rhi->loadShader(ShaderStage::Compute, "shaders/gpu_glass.cs");
 		glassDesc.descriptorSetLayouts = { mGlassLayout };
-		glassDesc.pushConstantSize = 20;
+		glassDesc.pushConstantSize = 24;
 		mGlassPipeline = rhi->createComputePipeline(glassDesc);
 	}
 
 	void GpuScene::update(GpuMaterialTable& materials) {
-		const bool dirty = mDirty.exchange(false, std::memory_order_acq_rel);
-		if (dirty) {
-			rebuild(materials);
+		std::vector<ecss::EntityId> pending;
+		{
+			std::lock_guard lock(mPendingMutex);
+			pending.swap(mPending);
 		}
+
+		bool rebuilt = mDirty.exchange(false, std::memory_order_acq_rel);
+		if (!rebuilt) {
+			std::sort(pending.begin(), pending.end());
+			pending.erase(std::unique(pending.begin(), pending.end()), pending.end());
+			// Remove, then read again: a destroyed entity has nothing left to add, and a reused id adds its new self.
+			for (const auto entity : pending) {
+				removeEntity(entity);
+				addEntity(entity, materials);
+			}
+			// Moves leave holes behind; once they outnumber the live instances the list is packed again.
+			for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
+				auto& data = mLists[static_cast<size_t>(list)];
+				const size_t holes = data.instanceMirror.size() - data.liveInstances;
+				if (holes > (std::max)(size_t{ 4096 }, static_cast<size_t>(data.liveInstances))) {
+					compact(data);
+				}
+			}
+		}
+		if (rebuilt) {
+			rebuildAll(materials);
+		}
+		uploadList(mLists[static_cast<size_t>(List::GBuffer)], "GpuScene gbuffer");
+		uploadList(mLists[static_cast<size_t>(List::Shadow)], "GpuScene shadow");
+		uploadList(mLists[static_cast<size_t>(List::Glass)], "GpuScene glass");
 
 		// OutlineComponent is added and removed straight on the registry, with no event, so the outlined set
 		// is compared every frame. It is a handful of entities.
@@ -164,12 +179,12 @@ namespace SFE::Render {
 		for (auto [entity, outline] : ECSHandler::registry().view<const OutlineComponent>()) {
 			outlined.push_back(entity);
 		}
-		if (dirty || outlined != mOutlined) {
+		if (rebuilt || !pending.empty() || outlined != mOutlined) {
 			mOutlined = std::move(outlined);
 			rebuildOutline(materials);
 		}
 
-		// After the rebuilds: every mesh an instance refers to already exists by then.
+		// After the lists: every mesh an instance refers to already exists by then.
 		uploadMeshes();
 	}
 
@@ -191,86 +206,262 @@ namespace SFE::Render {
 		mMeshesUploaded = table.size();
 	}
 
-	void GpuScene::rebuild(GpuMaterialTable& materials) {
-		static const ComponentsModule::MaterialComponent kNoMaterial;
-
-		std::vector<Item> gbufferItems;
-		std::vector<DrawGroup> gbufferGroups;
-		std::unordered_map<std::string, uint32_t> gbufferByKey;
-
-		std::vector<Item> shadowItems;
-		std::vector<DrawGroup> shadowGroups;
-		std::unordered_map<uint64_t, uint32_t> shadowByKey;
-
-		std::vector<Item> glassItems;
-
-		auto& registry = ECSHandler::registry();
-		for (auto [entity, transform, meshComp, matComp] : registry.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>()) {
-			if (!transform || !meshComp) {
-				continue;
-			}
-			meshComp->forEachDrawMesh(matComp, [&](const RenderMeshData& mesh, const MaterialComponent* mat) {
-				const auto& material = mat ? *mat : kNoMaterial;
-				const bool transparent = mat && mat->transparent;
-				const uint32_t materialIndex = materials.indexFor(material);
-
-				// Shadow casters: a transparent one casts through the glass proxy when there is one.
-				const auto& caster = transparent && mGlassShadowProxy ? mGlassShadowProxy : mesh;
-				if (caster.indexCount != 0) {
-					const bool dithered = material.opacity > 0.f && material.opacity < 0.999f;
-					const float cutoff = MaterialRules::cutoutCutoff(material.alphaCutoff, material.alphaFromMaps, material.fragmentShader);
-					const bool cutout = material.alphaFromMaps || cutoff > 0.f || dithered;
-					const auto mask = !cutout ? TextureHandle{}
-						: material.alphaFromMaps ? MaterialRules::maskTexture(material.materials) : MaterialRules::diffuseTexture(material.materials);
-					const uint64_t key = (static_cast<uint64_t>(mask.id) << 2) | (cutout ? 1u : 0u) | (transparent ? 2u : 0u);
-					const auto [it, inserted] = shadowByKey.try_emplace(key, static_cast<uint32_t>(shadowGroups.size()));
-					if (inserted) {
-						DrawGroup group;
-						group.maskTexture = mask;
-						group.cutout = cutout;
-						group.transparent = transparent;
-						shadowGroups.push_back(std::move(group));
-					}
-					shadowItems.push_back({ it->second, { entity, caster.meshId, materialIndex, 0 } });
-				}
-
-				if (mesh.indexCount == 0) {
-					return;
-				}
-				if (transparent) {
-					glassItems.push_back({ 0, { entity, mesh.meshId, materialIndex, 0 } });
-					return;
-				}
-				const auto vs = material.vertexShader.empty() ? std::string(ComponentsModule::DefaultGBufferVS) : material.vertexShader;
-				const auto fs = material.fragmentShader.empty() ? std::string(ComponentsModule::DefaultGBufferFS) : material.fragmentShader;
-				const auto textureKey = MaterialRules::textureKey(material.materials);
-				const auto [it, inserted] = gbufferByKey.try_emplace(vs + '|' + fs + '|' + std::to_string(textureKey), static_cast<uint32_t>(gbufferGroups.size()));
-				if (inserted) {
-					DrawGroup group;
-					group.vertexShader = vs;
-					group.fragmentShader = fs;
-					group.textures = material.materials;
-					group.textureKey = textureKey;
-					gbufferGroups.push_back(std::move(group));
-				}
-				gbufferItems.push_back({ it->second, { entity, mesh.meshId, materialIndex, 0 } });
-			});
-		}
-
-		auto& gbuffer = mLists[static_cast<size_t>(List::GBuffer)];
-		pack(gbufferItems, gbufferGroups, gbuffer.instances, gbuffer.batches, gbuffer.instanceCount, gbuffer.batchCount, "GpuScene gbuffer");
-		gbuffer.groups = std::move(gbufferGroups);
-
-		auto& shadow = mLists[static_cast<size_t>(List::Shadow)];
-		pack(shadowItems, shadowGroups, shadow.instances, shadow.batches, shadow.instanceCount, shadow.batchCount, "GpuScene shadow");
-		shadow.groups = std::move(shadowGroups);
-
-		// Glass keeps registry order here; sortGlass orders it by depth every frame.
-		std::vector<DrawGroup> glassGroups(1);
-		auto& glass = mLists[static_cast<size_t>(List::Glass)];
-		pack(glassItems, glassGroups, glass.instances, glass.batches, glass.instanceCount, glass.batchCount, "GpuScene glass");		glass.groups = std::move(glassGroups);
+	void GpuScene::markEntity(const ecss::EntityId entity) {
+		std::lock_guard lock(mPendingMutex);
+		mPending.push_back(entity);
 	}
 
+	void GpuScene::rebuildAll(GpuMaterialTable& materials) {
+		for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
+			auto& data = mLists[static_cast<size_t>(list)];
+			data.groups.clear();
+			data.groupStates.clear();
+			data.groupByKey.clear();
+			data.instanceMirror.clear();
+			data.batchMirror.clear();
+			data.batchStates.clear();
+			data.liveInstances = 0;
+			// The mirrors are uploaded whole, into the buffers they already have when those are large enough.
+			data.instanceDirtyLo = 0;
+			data.instanceDirtyHi = UINT32_MAX;
+			data.batchDirtyLo = 0;
+			data.batchDirtyHi = UINT32_MAX;
+		}
+		mEntityRefs.clear();
+		for (auto [entity, transform, meshComp] : ECSHandler::registry().view<const ComponentsModule::TransformMatComp, const MeshComponent>()) {
+			if (transform && meshComp) {
+				addEntity(entity, materials);
+			}
+		}
+		// Adding one at a time grew every batch by doubling; lay them out again at the size they ended up.
+		for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
+			compact(mLists[static_cast<size_t>(list)]);
+		}
+	}
+
+	void GpuScene::compact(ListData& data) {
+		// Batches back to back, each with a quarter spare. Slots are local to their batch, so no reference moves.
+		std::vector<InstanceRecord> packed;
+		packed.reserve(data.liveInstances + data.liveInstances / 4 + data.batchMirror.size() * 4);
+		for (size_t b = 0; b < data.batchMirror.size(); ++b) {
+			auto& batch = data.batchMirror[b];
+			auto& state = data.batchStates[b];
+			if (state.capacity == 0) {
+				continue;
+			}
+			const auto start = static_cast<uint32_t>(packed.size());
+			packed.insert(packed.end(), data.instanceMirror.begin() + batch.firstInstance, data.instanceMirror.begin() + batch.firstInstance + batch.instanceCount);
+			state.capacity = batch.instanceCount + batch.instanceCount / 4 + 4;
+			packed.resize(start + state.capacity);
+			batch.firstInstance = start;
+		}
+		data.instanceMirror = std::move(packed);
+		data.instanceDirtyLo = 0;
+		data.instanceDirtyHi = UINT32_MAX;
+		data.batchDirtyLo = 0;
+		data.batchDirtyHi = UINT32_MAX;
+	}
+
+	void GpuScene::addEntity(const ecss::EntityId entity, GpuMaterialTable& materials) {
+		static const ComponentsModule::MaterialComponent kNoMaterial;
+		auto& registry = ECSHandler::registry();
+		const auto meshComp = registry.pinComponent<const MeshComponent>(entity);
+		if (!meshComp || !registry.hasComponent<ComponentsModule::TransformMatComp>(entity)) {
+			return;
+		}
+		const auto matComp = registry.pinComponent<const MaterialComponent>(entity);
+		auto& refs = mEntityRefs[entity];
+
+		meshComp->forEachDrawMesh(matComp.get(), [&](const RenderMeshData& mesh, const MaterialComponent* mat) {
+			const auto& material = mat ? *mat : kNoMaterial;
+			const bool transparent = mat && mat->transparent;
+			const uint32_t materialIndex = materials.indexFor(material);
+
+			// Shadow casters: a transparent one casts through the glass proxy when there is one.
+			const auto& caster = transparent && mGlassShadowProxy ? mGlassShadowProxy : mesh;
+			if (caster.indexCount != 0) {
+				const bool dithered = material.opacity > 0.f && material.opacity < 0.999f;
+				const float cutoff = MaterialRules::cutoutCutoff(material.alphaCutoff, material.alphaFromMaps, material.fragmentShader);
+				const bool cutout = material.alphaFromMaps || cutoff > 0.f || dithered;
+				DrawGroup group;
+				group.maskTexture = !cutout ? TextureHandle{}
+					: material.alphaFromMaps ? MaterialRules::maskTexture(material.materials) : MaterialRules::diffuseTexture(material.materials);
+				group.cutout = cutout;
+				group.transparent = transparent;
+				const auto key = std::to_string(group.maskTexture.id) + (cutout ? "|c" : "|o") + (transparent ? "t" : "s");
+				const auto index = groupFor(List::Shadow, key, std::move(group));
+				addInstance(refs, entity, List::Shadow, index, caster.meshId, { entity, caster.meshId, materialIndex, 0 });
+			}
+
+			if (mesh.indexCount == 0) {
+				return;
+			}
+			if (transparent) {
+				// Glass is one batch whatever the mesh: sortGlass orders every instance by depth.
+				const auto index = groupFor(List::Glass, "glass", DrawGroup{});
+				addInstance(refs, entity, List::Glass, index, 0, { entity, mesh.meshId, materialIndex, 0 });
+				return;
+			}
+			DrawGroup group;
+			group.vertexShader = material.vertexShader.empty() ? std::string(ComponentsModule::DefaultGBufferVS) : material.vertexShader;
+			group.fragmentShader = material.fragmentShader.empty() ? std::string(ComponentsModule::DefaultGBufferFS) : material.fragmentShader;
+			group.textures = material.materials;
+			group.textureKey = MaterialRules::textureKey(material.materials);
+			const auto key = group.vertexShader + '|' + group.fragmentShader + '|' + std::to_string(group.textureKey);
+			const auto index = groupFor(List::GBuffer, key, std::move(group));
+			addInstance(refs, entity, List::GBuffer, index, mesh.meshId, { entity, mesh.meshId, materialIndex, 0 });
+		});
+
+		if (refs.empty()) {
+			mEntityRefs.erase(entity);
+		}
+	}
+
+	void GpuScene::removeEntity(const ecss::EntityId entity) {
+		const auto it = mEntityRefs.find(entity);
+		if (it == mEntityRefs.end()) {
+			return;
+		}
+		// Each removal can move another slot into the hole and rewrites that slot's reference, this entity's own
+		// included, so every reference is read at the moment it is removed.
+		auto& refs = it->second;
+		for (size_t i = 0; i < refs.size(); ++i) {
+			removeInstance(refs[i]);
+		}
+		mEntityRefs.erase(it);
+	}
+
+	uint32_t GpuScene::groupFor(const List list, const std::string& key, DrawGroup&& prototype) {
+		auto& data = mLists[static_cast<size_t>(list)];
+		const auto [it, inserted] = data.groupByKey.try_emplace(key, static_cast<uint32_t>(data.groups.size()));
+		if (inserted) {
+			prototype.firstBatch = static_cast<uint32_t>(data.batchMirror.size());
+			prototype.batchCount = 0;
+			data.groups.push_back(std::move(prototype));
+			data.groupStates.push_back({});
+			growGroup(data, it->second, 4);
+		}
+		return it->second;
+	}
+
+	void GpuScene::addInstance(std::vector<InstanceRef>& refs, const ecss::EntityId entity, const List list, const uint32_t group,
+		const uint32_t batchKey, const InstanceRecord& record)
+	{
+		auto& data = mLists[static_cast<size_t>(list)];
+		auto& groupState = data.groupStates[group];
+		auto found = groupState.batchByKey.find(batchKey);
+		if (found == groupState.batchByKey.end()) {
+			if (data.groups[group].batchCount == groupState.batchCapacity) {
+				growGroup(data, group, groupState.batchCapacity * 2);
+			}
+			const uint32_t local = data.groups[group].batchCount++;
+			found = groupState.batchByKey.emplace(batchKey, local).first;
+			const uint32_t global = data.groups[group].firstBatch + local;
+			data.batchMirror[global] = { static_cast<uint32_t>(data.instanceMirror.size()), 0, record.mesh, 0 };
+			data.batchStates[global] = {};
+		}
+
+		const uint32_t global = data.groups[group].firstBatch + found->second;
+		auto& state = data.batchStates[global];
+		if (data.batchMirror[global].instanceCount == state.capacity) {
+			growBatch(data, global, (std::max)(state.capacity * 2, 4u));
+		}
+		auto& batch = data.batchMirror[global];
+		const uint32_t slot = batch.instanceCount++;
+		const uint32_t index = batch.firstInstance + slot;
+		data.instanceMirror[index] = record;
+		state.owners.push_back({ entity, static_cast<uint32_t>(refs.size()) });
+		refs.push_back({ list, group, found->second, slot });
+		++data.liveInstances;
+
+		data.instanceDirtyLo = (std::min)(data.instanceDirtyLo, index);
+		data.instanceDirtyHi = (std::max)(data.instanceDirtyHi, index + 1);
+		data.batchDirtyLo = (std::min)(data.batchDirtyLo, global);
+		data.batchDirtyHi = (std::max)(data.batchDirtyHi, global + 1);
+	}
+
+	void GpuScene::removeInstance(const InstanceRef& ref) {
+		auto& data = mLists[static_cast<size_t>(ref.list)];
+		const uint32_t global = data.groups[ref.group].firstBatch + ref.batch;
+		auto& batch = data.batchMirror[global];
+		auto& state = data.batchStates[global];
+		const uint32_t last = batch.instanceCount - 1;
+		if (ref.slot != last) {
+			// The last instance fills the hole, and its owner is told where it went.
+			data.instanceMirror[batch.firstInstance + ref.slot] = data.instanceMirror[batch.firstInstance + last];
+			const auto moved = state.owners[last];
+			state.owners[ref.slot] = moved;
+			mEntityRefs[moved.entity][moved.ref].slot = ref.slot;
+			const uint32_t index = batch.firstInstance + ref.slot;
+			data.instanceDirtyLo = (std::min)(data.instanceDirtyLo, index);
+			data.instanceDirtyHi = (std::max)(data.instanceDirtyHi, index + 1);
+		}
+		state.owners.pop_back();
+		--batch.instanceCount;
+		--data.liveInstances;
+		data.batchDirtyLo = (std::min)(data.batchDirtyLo, global);
+		data.batchDirtyHi = (std::max)(data.batchDirtyHi, global + 1);
+	}
+
+	void GpuScene::growBatch(ListData& data, const uint32_t batch, const uint32_t capacity) {
+		auto& record = data.batchMirror[batch];
+		const uint32_t start = static_cast<uint32_t>(data.instanceMirror.size());
+		data.instanceMirror.resize(start + capacity);
+		std::copy_n(data.instanceMirror.begin() + record.firstInstance, record.instanceCount, data.instanceMirror.begin() + start);
+		record.firstInstance = start;
+		data.batchStates[batch].capacity = capacity;
+		data.instanceDirtyLo = (std::min)(data.instanceDirtyLo, start);
+		data.instanceDirtyHi = (std::max)(data.instanceDirtyHi, start + capacity);
+		data.batchDirtyLo = (std::min)(data.batchDirtyLo, batch);
+		data.batchDirtyHi = (std::max)(data.batchDirtyHi, batch + 1);
+	}
+
+	void GpuScene::growGroup(ListData& data, const uint32_t group, const uint32_t capacity) {
+		auto& draw = data.groups[group];
+		const uint32_t first = static_cast<uint32_t>(data.batchMirror.size());
+		data.batchMirror.resize(first + capacity);
+		data.batchStates.resize(first + capacity);
+		for (uint32_t i = 0; i < draw.batchCount; ++i) {
+			data.batchMirror[first + i] = data.batchMirror[draw.firstBatch + i];
+			data.batchStates[first + i] = std::move(data.batchStates[draw.firstBatch + i]);
+			// The old slot stays behind as an empty batch: culled to a command with no instances.
+			data.batchMirror[draw.firstBatch + i] = {};
+		}
+		data.batchDirtyLo = (std::min)(data.batchDirtyLo, draw.batchCount ? draw.firstBatch : first);
+		data.batchDirtyHi = (std::max)(data.batchDirtyHi, first + capacity);
+		draw.firstBatch = first;
+		data.groupStates[group].batchCapacity = capacity;
+	}
+
+	void GpuScene::uploadList(ListData& data, const char* name) {
+		auto* rhi = Engine::instance()->rhi();
+		const auto upload = [&](BufferHandle& buffer, size_t& capacity, const size_t count, const size_t stride, const void* bytes,
+			uint32_t& lo, uint32_t& hi)
+		{
+			if (!buffer || count > capacity) {
+				retire(buffer);
+				capacity = (std::max)(capacity, size_t{ 256 });
+				while (capacity < count) {
+					capacity *= 2;
+				}
+				buffer = createBuffer(capacity * stride, BufferUsage::Storage, CpuAccess::None, nullptr, name);
+				lo = 0;
+				hi = static_cast<uint32_t>(count);
+			}
+			hi = (std::min)(hi, static_cast<uint32_t>(count));
+			if (lo < hi) {
+				rhi->updateBuffer(buffer, lo * stride, (hi - lo) * stride, static_cast<const uint8_t*>(bytes) + lo * stride);
+			}
+			lo = UINT32_MAX;
+			hi = 0;
+		};
+		upload(data.instances, data.instanceGpuCapacity, data.instanceMirror.size(), sizeof(InstanceRecord), data.instanceMirror.data(),
+			data.instanceDirtyLo, data.instanceDirtyHi);
+		upload(data.batches, data.batchGpuCapacity, data.batchMirror.size(), sizeof(BatchRecord), data.batchMirror.data(),
+			data.batchDirtyLo, data.batchDirtyHi);
+		data.instanceCount = static_cast<uint32_t>(data.instanceMirror.size());
+		data.batchCount = static_cast<uint32_t>(data.batchMirror.size());
+	}
 	void GpuScene::rebuildOutline(GpuMaterialTable& materials) {
 		static const ComponentsModule::MaterialComponent kNoMaterial;
 		const uint32_t materialIndex = materials.indexFor(kNoMaterial);
@@ -388,13 +579,14 @@ namespace SFE::Render {
 		const auto& data = mLists[static_cast<size_t>(List::Glass)];
 		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 		const auto transforms = renderSystem ? renderSystem->transformsBuffer() : BufferHandle{};
-		if (data.instanceCount == 0 || !mGlassPipeline || !mMeshes || !transforms) {
+		const auto [base, count] = glassRange();
+		if (count == 0 || !mGlassPipeline || !mMeshes || !transforms) {
 			return false;
 		}
 		auto* rhi = Engine::instance()->rhi();
 
 		uint32_t padded = 1;
-		while (padded < data.instanceCount) {
+		while (padded < count) {
 			padded <<= 1;
 		}
 		if (!view.keys || view.keyCapacity < padded) {
@@ -414,7 +606,7 @@ namespace SFE::Render {
 			shapes[24 + i] = cameraPos[i];
 			shapes[28 + i] = viewDir[i];
 		}
-		const uint32_t slot = prepareView(view, data.instanceCount, data.instanceCount, 0, shapes, 8, 0);
+		const uint32_t slot = prepareView(view, count, count, 0, shapes, 8, 0);
 		if (!view.sets[slot]) {
 			view.sets[slot] = rhi->allocateDescriptorSet(mGlassLayout);
 		}
@@ -440,8 +632,10 @@ namespace SFE::Render {
 			uint32_t paddedCount = 0;
 			uint32_t j = 0;
 			uint32_t k = 0;
+			uint32_t base = 0;
 		} step;
-		step.count = data.instanceCount;
+		step.count = count;
+		step.base = base;
 		step.paddedCount = padded;
 
 		rhi->cmdBindPipeline(cmd, mGlassPipeline);
@@ -461,7 +655,7 @@ namespace SFE::Render {
 			}
 		}
 		step.stage = 2;
-		dispatch(data.instanceCount);
+		dispatch(count);
 
 		rhi->cmdPipelineBarrier(cmd, {
 			PipelineStage::Compute,
@@ -472,8 +666,17 @@ namespace SFE::Render {
 		return true;
 	}
 
+	std::pair<uint32_t, uint32_t> GpuScene::glassRange() const {
+		const auto& data = mLists[static_cast<size_t>(List::Glass)];
+		if (data.groups.empty() || data.groups[0].batchCount == 0) {
+			return { 0, 0 };
+		}
+		const auto& batch = data.batchMirror[data.groups[0].firstBatch];
+		return { batch.firstInstance, batch.instanceCount };
+	}
+
 	void GpuScene::drawSorted(const CommandListHandle cmd, const View& view) const {
-		const auto count = mLists[static_cast<size_t>(List::Glass)].instanceCount;
+		const auto count = glassRange().second;
 		if (count == 0) {
 			return;
 		}
