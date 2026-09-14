@@ -532,10 +532,20 @@ namespace SFE::Render {
 		std::vector<VkPhysicalDevice> devices(deviceCount);
 		vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
 
+		// Prefer a discrete GPU. Enumeration lists the integrated one first on hybrid laptops, which ran Vulkan
+		// on the iGPU while OpenGL, steered by NvOptimusEnablement, ran on the discrete card.
+		int bestScore = -1;
 		for (const auto device : devices) {
-			if (isDeviceSuitable(device, m_surface)) {
+			if (!isDeviceSuitable(device, m_surface)) {
+				continue;
+			}
+			VkPhysicalDeviceProperties props{};
+			vkGetPhysicalDeviceProperties(device, &props);
+			const int score = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 2
+				: props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 1 : 0;
+			if (score > bestScore) {
+				bestScore = score;
 				m_physicalDevice = device;
-				break;
 			}
 		}
 
