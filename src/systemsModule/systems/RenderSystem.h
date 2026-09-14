@@ -166,6 +166,8 @@ namespace SFE::SystemsModule {
 
 		void prepareDataForNextFrame();
 		void uploadDirtyGpuData();
+		// Destroys the buffer once no frame still in flight can read it. Main thread only.
+		void retireBuffer(Render::BufferHandle buffer) { mRetiredBuffers.emplace_back(buffer, mRenderedFrames); }
 		bool allPassesReady() const;
 
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then

@@ -370,8 +370,8 @@ namespace SFE::SystemsModule {
 		}
 
 		auto* rhi = Engine::instance()->rhi();
-		mRetiredBuffers.emplace_back(transforms, mRenderedFrames);
-		mRetiredBuffers.emplace_back(bones, mRenderedFrames);
+		retireBuffer(transforms);
+		retireBuffer(bones);
 		createSceneBuffers(newCap);
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
 			rhi->updateDescriptorSets({

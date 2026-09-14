@@ -120,7 +120,7 @@ void CascadedShadowPass::prepare() {
 							continue;
 						}
 						meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
-							if (mat && mat->transparent && mGlassShadowMeshData.vertexBuffer) {
+							if (mat && mat->transparent && mGlassShadowMeshData) {
 								batcher.addToDrawList(mGlassShadowMeshData, mat, ent);
 							}
 							else {

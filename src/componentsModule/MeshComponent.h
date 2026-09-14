@@ -21,7 +21,7 @@ namespace SFE::ComponentsModule {
 					mat = &meshMaterials[i];
 				}
 				++i;
-				if (!node.value.vertexBuffer || (node.value.vertexCount == 0 && node.value.indexCount == 0)) {
+				if (!node.value) {
 					continue;
 				}
 				fn(node.value, mat);

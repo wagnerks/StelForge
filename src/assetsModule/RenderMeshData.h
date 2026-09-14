@@ -1,53 +1,21 @@
-﻿#pragma once
+#pragma once
 
-
-#include "renderModule/RenderHardwareInterface.h"
+#include <cstdint>
 
 namespace SFE {
+	// Where one mesh lives inside MeshVaoRegistry's shared vertex and index buffers. Holds no buffer handle:
+	// the shared buffers are replaced when they grow, and copies of this struct outlive that.
 	struct RenderMeshData {
-		friend bool operator<(const RenderMeshData& lhs, const RenderMeshData& rhs)
-		{
-			return lhs.vertexBuffer < rhs.vertexBuffer;
-		}
+		friend bool operator<(const RenderMeshData& lhs, const RenderMeshData& rhs) { return lhs.meshId < rhs.meshId; }
+		friend bool operator==(const RenderMeshData& lhs, const RenderMeshData& rhs) { return lhs.meshId == rhs.meshId; }
+		friend bool operator!=(const RenderMeshData& lhs, const RenderMeshData& rhs) { return !(lhs == rhs); }
 
-		friend bool operator<=(const RenderMeshData& lhs, const RenderMeshData& rhs)
-		{
-			return !(rhs < lhs);
-		}
+		explicit operator bool() const { return meshId != 0 && (vertexCount != 0 || indexCount != 0); }
 
-		friend bool operator>(const RenderMeshData& lhs, const RenderMeshData& rhs)
-		{
-			return rhs < lhs;
-		}
-
-		friend bool operator>=(const RenderMeshData& lhs, const RenderMeshData& rhs)
-		{
-			return !(lhs < rhs);
-		}
-
-		friend bool operator==(const RenderMeshData& lhs, const RenderMeshData& rhs)
-		{
-			return lhs.vertexBuffer == rhs.vertexBuffer;
-		}
-
-		friend bool operator!=(const RenderMeshData& lhs, const RenderMeshData& rhs)
-		{
-			return !(lhs == rhs);
-		}
-
-		//todo  guarantee lifetime somehow
-		Render::BufferHandle    vertexBuffer;
-		Render::BufferHandle    indexBuffer;
-
-		Render::IndexType   indexType = Render::IndexType::Uint32;
-
-		uint32_t            vertexOffsetBytes = 0; // смещение в VBO
-		uint32_t            indexOffsetBytes = 0; // смещение в IBO
-
-		uint32_t            vertexCount = 0;
-		uint32_t 			indexCount = 0;
-
-		void release();
-		~RenderMeshData();
+		uint32_t meshId = 0;       // 0: not uploaded
+		uint32_t firstVertex = 0;  // base vertex: indices are local to the mesh
+		uint32_t firstIndex = 0;
+		uint32_t vertexCount = 0;
+		uint32_t indexCount = 0;
 	};
 }

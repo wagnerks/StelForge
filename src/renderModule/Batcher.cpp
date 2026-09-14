@@ -1,8 +1,9 @@
-﻿#include "Batcher.h"
+#include "Batcher.h"
 
 #include <algorithm>
 
 #include "assetsModule/TextureHandler.h"
+#include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/Material.h"
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
@@ -95,11 +96,11 @@ namespace {
 	}
 
 	DrawBatchKey makeBatchKey(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
-		return { meshData.vertexBuffer.id, hashMaterial(material) };
+		return { meshData.meshId, hashMaterial(material) };
 	}
 
 	DrawBatchKey makeBatchKeyGlass(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
-		return { meshData.vertexBuffer.id, hashMaterialGlass(material) };
+		return { meshData.meshId, hashMaterialGlass(material) };
 	}
 }
 
@@ -175,7 +176,7 @@ DrawObject& Batcher::batchForGlass(const SFE::RenderMeshData& meshData, const SF
 }
 
 void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent& material, const SFE::Math::Mat4& transform, SFE::Math::Mat4* bonesTransforms) {
-	if (!meshData.vertexBuffer || (meshData.vertexCount == 0 && meshData.indexCount == 0)) {
+	if (!meshData) {
 		return;
 	}
 	auto& obj = batchFor(meshData, material);
@@ -187,7 +188,7 @@ void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsM
 
 void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent* material, ecss::EntityId id)
 {
-	if (!meshData.vertexBuffer || (meshData.vertexCount == 0 && meshData.indexCount == 0)) {
+	if (!meshData) {
 		return;
 	}
 	auto& obj = batchFor(meshData, material ? *material : emptyMaterial());
@@ -201,7 +202,7 @@ void Batcher::addToDrawList(SFE::RenderMeshData meshData, const SFE::ComponentsM
 
 void Batcher::addToDrawListGlass(SFE::RenderMeshData meshData, const SFE::ComponentsModule::MaterialComponent& material, ecss::EntityId id)
 {
-	if (!meshData.vertexBuffer || (meshData.vertexCount == 0 && meshData.indexCount == 0)) {
+	if (!meshData) {
 		return;
 	}
 	auto& obj = batchForGlass(meshData, material);
@@ -401,14 +402,16 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 
 	rhi->cmdUpdateBuffer(cmd, batcherBuffer, sizeof(ecss::EntityId) * idsOffset, sizeof(ecss::EntityId) * entityCount, entityIds);
 
-	rhi->cmdBindVertexBuffer(cmd, 0, objs.meshData.vertexBuffer, objs.meshData.vertexOffsetBytes);
-	rhi->cmdBindIndexBuffer(cmd, objs.meshData.indexBuffer, objs.meshData.indexType, objs.meshData.indexOffsetBytes);
+	const auto* meshes = SFE::MeshVaoRegistry::instance();
+	rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
+	rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), SFE::Render::IndexType::Uint32, 0);
+	const auto& mesh = objs.meshData;
 	const auto instanceCount = static_cast<uint32_t>(entityCount);
-	if (objs.meshData.indexCount) {
-		rhi->cmdDrawIndexed(cmd, objs.meshData.indexCount, instanceCount, 0, 0, static_cast<uint32_t>(idsOffset));
+	if (mesh.indexCount) {
+		rhi->cmdDrawIndexed(cmd, mesh.indexCount, instanceCount, mesh.firstIndex, static_cast<int32_t>(mesh.firstVertex), static_cast<uint32_t>(idsOffset));
 	}
 	else {
-		rhi->cmdDraw(cmd, objs.meshData.vertexCount, instanceCount, 0, static_cast<uint32_t>(idsOffset));
+		rhi->cmdDraw(cmd, mesh.vertexCount, instanceCount, mesh.firstVertex, static_cast<uint32_t>(idsOffset));
 	}
 
 	SFE::SystemsModule::RenderDebugInfo::instance()->objectsRendered += entityCount;
