@@ -107,6 +107,13 @@ namespace SFE::Render {
 			vkFreeDescriptorSets(m_device, m_descriptorPool, static_cast<uint32_t>(retired.size()), retired.data());
 			retired.clear();
 		}
+		std::erase_if(m_retiredBuffers, [this](RetiredBuffer& retired) {
+			if (--retired.waitsLeft > 0) {
+				return false;
+			}
+			vmaDestroyBuffer(m_allocator, retired.buffer, retired.allocation);
+			return true;
+		});
 		if (m_timestampPool != VK_NULL_HANDLE) {
 			vkResetQueryPool(m_device, m_timestampPool, m_currentFrame * kTimestampsPerFrame, kTimestampsPerFrame);
 			m_timestampStartWritten[m_currentFrame] = false;
@@ -279,7 +286,12 @@ namespace SFE::Render {
 						[id](const PendingBufferUpload& op) { return op.dstId == id; }),
 					m_uploadOps.end());
 			}
-			vmaDestroyBuffer(m_allocator, buffer.buffer, buffer.allocation);
+			if (m_inited) {
+				m_retiredBuffers.push_back({ buffer.buffer, buffer.allocation, kMaxFramesInFlight });
+			}
+			else {
+				vmaDestroyBuffer(m_allocator, buffer.buffer, buffer.allocation);
+			}
 		}
 	}
 

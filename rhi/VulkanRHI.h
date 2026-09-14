@@ -351,6 +351,14 @@ namespace SFE::Render
 		bool m_timestampPending[kMaxFramesInFlight]{};
 		// Sets replaced while still bound, freed once the frame that bound them has finished.
 		std::vector<VkDescriptorSet> m_retiredSets[kMaxFramesInFlight];
+		// Destroyed buffers an in-flight frame may still bind: freed after every frame recorded before the destroy
+		// has finished, which takes one wait per frame slot.
+		struct RetiredBuffer {
+			VkBuffer buffer = VK_NULL_HANDLE;
+			VmaAllocation allocation = VK_NULL_HANDLE;
+			int waitsLeft = 0;
+		};
+		std::vector<RetiredBuffer> m_retiredBuffers;
 		// Several lists can run in one frame; the frame keeps the first list's start and the last one's end.
 		bool m_timestampStartWritten[kMaxFramesInFlight]{};
 		bool m_timestampEndWritten[kMaxFramesInFlight]{};

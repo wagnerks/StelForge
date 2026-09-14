@@ -294,6 +294,11 @@ namespace SFE::Render {
 		}
 		m_buffers.clear();
 		m_freeBuffers.clear();
+		// The device is idle: nothing binds them any more.
+		for (const auto& retired : m_retiredBuffers) {
+			vmaDestroyBuffer(m_allocator, retired.buffer, retired.allocation);
+		}
+		m_retiredBuffers.clear();
 
 		for (auto& texture : m_textures) {
 			if (texture.live) {
