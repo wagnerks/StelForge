@@ -3,12 +3,13 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include <RenderModule/RenderHardwareInterface.h>
+#include <rhi/RenderHardwareInterface.h>
 
 namespace SFE::Render
 {
@@ -78,7 +79,7 @@ namespace SFE::Render
 
 	struct CmdBeginRenderPass {
 		RenderPassBeginInfo info{};
-		Math::Vec4 clearColors[8]{};
+		RhiVec4 clearColors[8]{};
 		float clearDepth = 1.f;
 		uint8_t clearStencil = 0;
 		bool hasOverrideColors = false;
@@ -236,25 +237,12 @@ namespace SFE::Render
 		bool mGpuQueriesReady = false;
 		double mLastGpuMs = 0.0;
 		TextureHandle m_presentBlitTexture{};
+		// A hidden window whose context shares objects with the main one, for runOnWorkerThread.
+		GLFWwindow* m_workerContext = nullptr;
+		std::mutex m_workerContextMutex;
 		GLuint m_presentReadGlFbo = 0;
 		uint32_t m_presentReadTexId = UINT32_MAX;
 
-		TextureHandle mDisplayTex[2]{};
-		FramebufferHandle mDisplayFbo[2]{};
-		TextureHandle mEditorViewTex{};
-		void* mDisplayGpuFence[2]{ nullptr, nullptr };
-		void* mDisplayEditorFence[2]{ nullptr, nullptr };
-		std::atomic<int> mDisplayPublished{ -1 };
-		int mDisplayWrite = 0;
-		int mDisplayW = 0;
-		int mDisplayH = 0;
-
-		FramebufferHandle mStreamReadFb{};
-		TextureHandle mStreamReadTex{};
-		int mStreamCaptureW = 0;
-		int mStreamCaptureH = 0;
-		void ensureStreamCaptureResources(int srcW, int srcH);
-		void destroyStreamCaptureResources();
 
 
 		GLuint m_prevFramebuffer = 0; // для сохранения/восстановления FBO в begin/endRenderPass
@@ -296,11 +284,9 @@ namespace SFE::Render
 		void endCommandList(CommandListHandle cmd) override;
 		void submit(CommandListHandle list) override;
 		void present() override;
+		void runOnWorkerThread(const std::function<void()>& work) override;
 		void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) override;
 		double lastGpuMs() const override { return mLastGpuMs; }
-		void publishDisplay(FramebufferHandle src) override;
-		uint64_t editorViewNativeId() override;
-		bool capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) override;
 		bool readbackTexture(TextureHandle tex, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer = 0) override;
 		TextureHandle presentSourceTexture() const override { return m_presentBlitTexture; }
 		void cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo) override;

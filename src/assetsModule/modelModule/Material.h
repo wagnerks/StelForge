@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include <unordered_map>
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE {
 	enum MaterialType : uint8_t {

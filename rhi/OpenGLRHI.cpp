@@ -1,4 +1,4 @@
-﻿#include <renderModule/openGLRHI.h>
+﻿#include <rhi/OpenGLRHI.h>
 
 #include <algorithm>
 #include <cstring>
@@ -8,10 +8,8 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
-#include <core/Engine.h>
 
-#include <logsModule/logger.h>
-#include <windowsModule/Window.h>
+#include "rhi/RhiLog.h"
 
 namespace SFE::Render
 {
@@ -646,7 +644,7 @@ namespace SFE::Render
 		if (slot >= gp->desc.layout.bindings.size())
 			return;
 
-		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage & BufferUsage::Vertex, "WRONG BUFFER TYPE BINDING");
+		RhiLog::check(buf->desc.usage & BufferUsage::Vertex, "WRONG BUFFER TYPE BINDING");
 		const auto& bindingDesc = gp->desc.layout.bindings[slot];
 		const GLsizei stride = static_cast<GLsizei>(bindingDesc.stride);
 		glVertexArrayVertexBuffer(
@@ -676,7 +674,7 @@ namespace SFE::Render
 			return;
 		}
 
-		SFE::LogsModule::Logger::LOG_FATAL(buf->desc.usage & BufferUsage::Index, "WRONG BUFFER TYPE BINDING");
+		RhiLog::check(buf->desc.usage & BufferUsage::Index, "WRONG BUFFER TYPE BINDING");
 		glVertexArrayElementBuffer(gp->vaoId, buf->id);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buf->id);
 		m_currentIndexType = type;
@@ -880,7 +878,7 @@ namespace SFE::Render
 	CommandListHandle OpenGLRHI::beginCommandList(CommandListType type)
 	{
 		if (m_openCommandList) {
-			LogsModule::Logger::LOG_ERROR("beginCommandList: the previous command list was never submitted");
+			RhiLog::error("beginCommandList: the previous command list was never submitted");
 		}
 		GLCommandList list{};
 		list.type = type;
@@ -1077,11 +1075,11 @@ namespace SFE::Render
 
 	void OpenGLRHI::present()
 	{
-		auto* window = hostWindow();
-		if (!window) {
+		const RhiSurface surface = hostSurface();
+		if (!surface.window) {
 			return;
 		}
-		if (hostPresentsToScreen() && window->isVisible() && m_presentBlitTexture) {
+		if (hostPresentsToScreen() && surface.visible && m_presentBlitTexture) {
 			glDisable(GL_SCISSOR_TEST);
 			const GLTexture* tex = getLive(textures, m_presentBlitTexture.id);
 			if (tex) {
@@ -1093,9 +1091,8 @@ namespace SFE::Render
 					glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex->id, 0);
 					m_presentReadTexId = m_presentBlitTexture.id;
 				}
-				const auto& screen = window->getScreenData();
-				const int dstW = screen.backbufferW > 0 ? screen.backbufferW : screen.renderW;
-				const int dstH = screen.backbufferH > 0 ? screen.backbufferH : screen.renderH;
+				const int dstW = surface.backbufferWidth > 0 ? surface.backbufferWidth : surface.renderWidth;
+				const int dstH = surface.backbufferHeight > 0 ? surface.backbufferHeight : surface.renderHeight;
 				const int srcW = static_cast<int>(tex->desc.width);
 				const int srcH = static_cast<int>(tex->desc.height);
 				if (srcW > 0 && srcH > 0 && dstW > 0 && dstH > 0 && m_presentReadGlFbo != 0) {
@@ -1107,179 +1104,24 @@ namespace SFE::Render
 			}
 		}
 		glFlush();
-		if (hostPresentsToScreen() && window->isVisible()) {
-			window->swapBuffers();
+		if (hostPresentsToScreen() && surface.visible) {
+			glfwSwapBuffers(surface.window);
 		}
 	}
 
-	static void deleteSync(void*& sync)
+	void OpenGLRHI::runOnWorkerThread(const std::function<void()>& work)
 	{
-		if (sync) {
-			glDeleteSync(static_cast<GLsync>(sync));
-			sync = nullptr;
-		}
-	}
-
-	void OpenGLRHI::publishDisplay(FramebufferHandle src)
-	{
-		const GLFramebuffer* srcFb = getLive(framebuffers, src.id);
-		if (!srcFb) {
+		std::lock_guard lock(m_workerContextMutex);
+		if (!m_workerContext) {
+			RhiLog::error("OpenGLRHI: no worker context; running on the calling thread without one");
+			work();
 			return;
 		}
-		const int w = srcFb->desc.width;
-		const int h = srcFb->desc.height;
-		if (w <= 0 || h <= 0) {
-			return;
-		}
-
-		if (!mDisplayTex[0] || mDisplayW != w || mDisplayH != h) {
-			for (int i = 0; i < 2; ++i) {
-				if (mDisplayFbo[i]) {
-					destroyFramebuffer(mDisplayFbo[i]);
-					mDisplayFbo[i] = {};
-				}
-				if (mDisplayTex[i]) {
-					destroyTexture(mDisplayTex[i]);
-					mDisplayTex[i] = {};
-				}
-				deleteSync(mDisplayGpuFence[i]);
-				deleteSync(mDisplayEditorFence[i]);
-			}
-
-			TextureDesc colorDesc;
-			colorDesc.width = w;
-			colorDesc.height = h;
-			colorDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
-			for (int i = 0; i < 2; ++i) {
-				mDisplayTex[i] = createTexture(colorDesc, nullptr);
-				FramebufferDesc fbDesc;
-				fbDesc.width = w;
-				fbDesc.height = h;
-				fbDesc.colorAttachments = { { mDisplayTex[i] } };
-				mDisplayFbo[i] = createFramebuffer(fbDesc);
-			}
-			mDisplayW = w;
-			mDisplayH = h;
-			mDisplayWrite = 0;
-			mDisplayPublished.store(-1, std::memory_order_release);
-		}
-
-		const int slot = mDisplayWrite;
-		if (mDisplayEditorFence[slot]) {
-			const GLenum wait = glClientWaitSync(static_cast<GLsync>(mDisplayEditorFence[slot]), 0, 0);
-			if (wait != GL_ALREADY_SIGNALED && wait != GL_CONDITION_SATISFIED) {
-				return;
-			}
-			deleteSync(mDisplayEditorFence[slot]);
-		}
-
-		execBlit(src, mDisplayFbo[slot], BlitMask::Color, BlitFilter::Nearest);
-		deleteSync(mDisplayGpuFence[slot]);
-		mDisplayGpuFence[slot] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-		glFlush();
-		mDisplayPublished.store(slot, std::memory_order_release);
-		mDisplayWrite = 1 - slot;
-	}
-
-	uint64_t OpenGLRHI::editorViewNativeId()
-	{
-		const int slot = mDisplayPublished.load(std::memory_order_acquire);
-		if (slot < 0 || slot > 1 || !mDisplayTex[slot]) {
-			return 0;
-		}
-
-		if (mDisplayGpuFence[slot]) {
-			glWaitSync(static_cast<GLsync>(mDisplayGpuFence[slot]), 0, GL_TIMEOUT_IGNORED);
-		}
-
-		const GLTexture* dst = mEditorViewTex ? getLive(textures, mEditorViewTex.id) : nullptr;
-		if (!dst || dst->desc.width != static_cast<uint32_t>(mDisplayW) || dst->desc.height != static_cast<uint32_t>(mDisplayH)) {
-			if (mEditorViewTex) {
-				destroyTexture(mEditorViewTex);
-				mEditorViewTex = {};
-			}
-			TextureDesc colorDesc;
-			colorDesc.width = mDisplayW;
-			colorDesc.height = mDisplayH;
-			colorDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
-			mEditorViewTex = createTexture(colorDesc, nullptr);
-			dst = getLive(textures, mEditorViewTex.id);
-		}
-		const GLTexture* src = getLive(textures, mDisplayTex[slot].id);
-		if (!src || !dst) {
-			return 0;
-		}
-		glCopyImageSubData(src->id, GL_TEXTURE_2D, 0, 0, 0, 0, dst->id, GL_TEXTURE_2D, 0, 0, 0, 0, mDisplayW, mDisplayH, 1);
-
-		deleteSync(mDisplayEditorFence[slot]);
-		mDisplayEditorFence[slot] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-		glFlush();
-		return dst->id;
-	}
-
-	bool OpenGLRHI::capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height)
-	{
-		// Synchronous, and from the slot that was published: the same frame Vulkan hands back.
-		const int published = mDisplayPublished.load(std::memory_order_acquire);
-		if (published < 0 || published > 1 || mDisplayW <= 0 || mDisplayH <= 0 || !mDisplayFbo[published]) {
-			return false;
-		}
-
-		ensureStreamCaptureResources(mDisplayW, mDisplayH);
-		execBlit(mDisplayFbo[published], mStreamReadFb, BlitMask::Color, BlitFilter::Linear);
-
-		const GLFramebuffer* streamFb = getLive(framebuffers, mStreamReadFb.id);
-		if (!streamFb) {
-			return false;
-		}
-
-		width = mStreamCaptureW;
-		height = mStreamCaptureH;
-		rgba.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u);
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, streamFb->id);
-		glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-		return true;
-	}
-
-	void OpenGLRHI::ensureStreamCaptureResources(int srcW, int srcH)
-	{
-		const int fullW = (std::max)(1, srcW);
-		const int fullH = (std::max)(1, srcH);
-		const int streamW = (std::min)(fullW, 1280);
-		const int streamH = (std::max)(1, fullH * streamW / fullW);
-		if (mStreamReadFb && mStreamCaptureW == streamW && mStreamCaptureH == streamH) {
-			return;
-		}
-
-		destroyStreamCaptureResources();
-		mStreamCaptureW = streamW;
-		mStreamCaptureH = streamH;
-
-		TextureDesc colorDesc;
-		colorDesc.width = streamW;
-		colorDesc.height = streamH;
-		colorDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
-		mStreamReadTex = createTexture(colorDesc, nullptr);
-		FramebufferDesc fbDesc;
-		fbDesc.width = streamW;
-		fbDesc.height = streamH;
-		fbDesc.colorAttachments = { { mStreamReadTex } };
-		mStreamReadFb = createFramebuffer(fbDesc);
-	}
-
-	void OpenGLRHI::destroyStreamCaptureResources()
-	{
-		if (mStreamReadFb) {
-			destroyFramebuffer(mStreamReadFb);
-			mStreamReadFb = {};
-		}
-		if (mStreamReadTex) {
-			destroyTexture(mStreamReadTex);
-			mStreamReadTex = {};
-		}
-		mStreamCaptureW = 0;
-		mStreamCaptureH = 0;
+		glfwMakeContextCurrent(m_workerContext);
+		work();
+		// Objects made here are used by the main context next; finish before handing them over.
+		glFinish();
+		glfwMakeContextCurrent(nullptr);
 	}
 
 	void OpenGLRHI::cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo)
@@ -1328,7 +1170,7 @@ namespace SFE::Render
 
 		const GLRenderPass* rpPtr = getLive(m_renderPasses, beginInfo.renderPass.id);
 		if (!rpPtr) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::beginRenderPass: invalid RenderPass handle");
+			RhiLog::fatal("OpenGLRHI::beginRenderPass: invalid RenderPass handle");
 			return;
 		}
 
@@ -1345,9 +1187,9 @@ namespace SFE::Render
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			// No host means no default framebuffer to size against, so the caller's extent is all
 			// there is. Only a headless RHI gets here with a null window.
-			auto* window = hostWindow();
-			const auto screenW = window ? static_cast<int>(window->getScreenData().width) : 0;
-			const auto screenH = window ? static_cast<int>(window->getScreenData().height) : 0;
+			const RhiSurface surface = hostSurface();
+			const auto screenW = surface.width;
+			const auto screenH = surface.height;
 			w = beginInfo.width > 0 ? beginInfo.width : screenW;
 			h = beginInfo.height > 0 ? beginInfo.height : screenH;
 		}
@@ -1357,7 +1199,7 @@ namespace SFE::Render
 			h = beginInfo.height > 0 ? beginInfo.height : static_cast<int>(fb->desc.height);
 		}
 		else {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::beginRenderPass: invalid Framebuffer handle");
+			RhiLog::fatal("OpenGLRHI::beginRenderPass: invalid Framebuffer handle");
 			return;
 		}
 
@@ -1380,7 +1222,7 @@ namespace SFE::Render
 			if (att.loadOp != AttachmentLoadOp::Clear)
 				continue;
 
-			Math::Vec4 color = att.clearColor;
+			RhiVec4 color = att.clearColor;
 			if (beginInfo.overrideClearColors) {
 				// предполагаем, что вызывающий гарантирует нужный размер массива
 				color = beginInfo.overrideClearColors[i];
@@ -1455,7 +1297,7 @@ namespace SFE::Render
 		// repeat, since an image and a buffer land in separate namespaces here, but a layout that only
 		// works on one backend is worse than one that is refused on both.
 		if (descriptorLayoutHasDuplicateBinding(desc)) {
-			LogsModule::Logger::LOG_ERROR(
+			RhiLog::error(
 				"createDescriptorSetLayout: a binding number is declared twice; one binding, one descriptor");
 			return {};
 		}
@@ -1526,7 +1368,7 @@ namespace SFE::Render
 				}
 			}
 			if (!declared) {
-				LogsModule::Logger::LOG_ERROR("updateDescriptorSets: set has no binding %u", w.binding);
+				RhiLog::error("updateDescriptorSets: set has no binding %u", w.binding);
 				continue;
 			}
 			const DescriptorType type = declared->type;
@@ -1649,7 +1491,7 @@ namespace SFE::Render
 					if (texId) {
 						glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, &texCmpMode);
 					}
-					SFE::LogsModule::Logger::LOG_ERROR(
+					RhiLog::error(
 						"DIAG unit %d: tex=%d sampler=%d cmpMode=0x%X cmpFunc=0x%X texCmpMode=0x%X (want mode 0x%X func 0x%X)",
 						unit, texId, samplerId, cmpMode, cmpFunc, texCmpMode,
 						static_cast<int>(GL_COMPARE_REF_TO_TEXTURE), static_cast<int>(GL_LEQUAL));
@@ -1669,13 +1511,13 @@ namespace SFE::Render
 		if (desc.shaders.vertex.id == UINT32_MAX ||
 			desc.shaders.fragment.id == UINT32_MAX)
 		{
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createGraphicsPipeline: vertex/fragment shader is required");
+			RhiLog::fatal("OpenGLRHI::createGraphicsPipeline: vertex/fragment shader is required");
 			return {};
 		}
 
 		GLuint program = glCreateProgram();
 		if (program == 0) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createGraphicsPipeline: glCreateProgram failed");
+			RhiLog::fatal("OpenGLRHI::createGraphicsPipeline: glCreateProgram failed");
 			return {};
 		}
 
@@ -1706,7 +1548,7 @@ namespace SFE::Render
 			log.resize(static_cast<size_t>(logLen));
 			glGetProgramInfoLog(program, logLen, nullptr, log.data());
 
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createGraphicsPipeline: link failed:\n%s", log.c_str());
+			RhiLog::fatal("OpenGLRHI::createGraphicsPipeline: link failed:\n%s", log.c_str());
 
 			glDeleteProgram(program);
 			return {};
@@ -1833,19 +1675,19 @@ namespace SFE::Render
 	PipelineHandle OpenGLRHI::createComputePipeline(const ComputePipelineDesc& desc)
 	{
 		if (desc.compute.id == UINT32_MAX) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: compute shader is required");
+			RhiLog::fatal("OpenGLRHI::createComputePipeline: compute shader is required");
 			return {};
 		}
 
 		GLuint program = glCreateProgram();
 		if (program == 0) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: glCreateProgram failed");
+			RhiLog::fatal("OpenGLRHI::createComputePipeline: glCreateProgram failed");
 			return {};
 		}
 
 		const GLShaderModule* mod = getLive(m_shaders, desc.compute.id);
 		if (!mod || mod->id == 0) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: invalid compute shader");
+			RhiLog::fatal("OpenGLRHI::createComputePipeline: invalid compute shader");
 			glDeleteProgram(program);
 			return {};
 		}
@@ -1862,7 +1704,7 @@ namespace SFE::Render
 			log.resize(static_cast<size_t>(logLen));
 			glGetProgramInfoLog(program, logLen, nullptr, log.data());
 
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI::createComputePipeline: link failed:\n%s", log.c_str());
+			RhiLog::fatal("OpenGLRHI::createComputePipeline: link failed:\n%s", log.c_str());
 			glDeleteProgram(program);
 			return {};
 		}
@@ -1915,7 +1757,7 @@ namespace SFE::Render
 		if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
 			return;
 		}
-		SFE::LogsModule::Logger::LOG_ERROR("GL DEBUG: %s", message);
+		RhiLog::error("GL DEBUG: %s", message);
 	}
 
 	void InitGLDebug()
@@ -1932,21 +1774,29 @@ namespace SFE::Render
 			return;
 		}
 
-		auto window = hostWindow();
-		if (!window) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "Try to initialize render without context, forgot to call createWindow?");
+		const RhiSurface surface = hostSurface();
+		if (!surface.window) {
+			RhiLog::fatal("Try to initialize render without context, forgot to call createWindow?");
 			return;
 		}
-		glfwMakeContextCurrent(window->getWindow());
-		LogsModule::Logger::LOG_FATAL(gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)), "Failed to initialize GLAD");
+		glfwMakeContextCurrent(surface.window);
+		// Created here, on the thread that owns the window: GLFW creates windows on that thread only.
+		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+		m_workerContext = glfwCreateWindow(1, 1, "rhi worker context", nullptr, surface.window);
+		glfwDefaultWindowHints();
+		glfwMakeContextCurrent(surface.window);
+		if (!m_workerContext) {
+			RhiLog::error("OpenGLRHI: failed to create the shared worker context");
+		}
+		RhiLog::check(gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)), "Failed to initialize GLAD");
 		// GPU-driven rendering draws through glMultiDrawElementsIndirectCount, which is core only from 4.6.
-		LogsModule::Logger::LOG_FATAL(GLAD_GL_VERSION_4_6, "OpenGLRHI: OpenGL 4.6 required, context is %d.%d", GLVersion.major, GLVersion.minor);
+		RhiLog::check(GLAD_GL_VERSION_4_6, "OpenGLRHI: OpenGL 4.6 required, context is %d.%d", GLVersion.major, GLVersion.minor);
 		// Intel's Windows driver reports 4.6 but exports the entry point only under its ARB name.
 		if (!glad_glMultiDrawElementsIndirectCount) {
 			glad_glMultiDrawElementsIndirectCount = reinterpret_cast<PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC>(
 				glfwGetProcAddress("glMultiDrawElementsIndirectCountARB"));
 		}
-		LogsModule::Logger::LOG_FATAL(glad_glMultiDrawElementsIndirectCount != nullptr, "OpenGLRHI: glMultiDrawElementsIndirectCount is not exported by the driver");
+		RhiLog::check(glad_glMultiDrawElementsIndirectCount != nullptr, "OpenGLRHI: glMultiDrawElementsIndirectCount is not exported by the driver");
 		m_inited = true;
 
 		// Off by default: GL_DEBUG_OUTPUT_SYNCHRONOUS costs real frame time. Uncomment to get
@@ -1955,7 +1805,7 @@ namespace SFE::Render
 		//InitGLDebug();
 
 
-		glViewport(0, 0, window->getScreenData().renderW, window->getScreenData().renderH);
+		glViewport(0, 0, surface.renderWidth, surface.renderHeight);
 		glClearColor(0,0,0,0);
 		glEnable(GL_CULL_FACE);
 		glEnable(GL_DEPTH_TEST);
@@ -1977,20 +1827,15 @@ namespace SFE::Render
 	void OpenGLRHI::cleanup()
 	{
 		if (m_inited) {
+			if (m_workerContext) {
+				std::lock_guard lock(m_workerContextMutex);
+				glfwDestroyWindow(m_workerContext);
+				m_workerContext = nullptr;
+			}
 			if (mGpuTimeQueries[0]) {
 				glDeleteQueries(2, mGpuTimeQueries);
 				mGpuTimeQueries[0] = 0;
 				mGpuTimeQueries[1] = 0;
-			}
-			for (int i = 0; i < 2; ++i) {
-				if (mDisplayGpuFence[i]) {
-					glDeleteSync(static_cast<GLsync>(mDisplayGpuFence[i]));
-					mDisplayGpuFence[i] = nullptr;
-				}
-				if (mDisplayEditorFence[i]) {
-					glDeleteSync(static_cast<GLsync>(mDisplayEditorFence[i]));
-					mDisplayEditorFence[i] = nullptr;
-				}
 			}
 			for (auto& gp : m_pipelines) {
 				if (!gp.live) {
@@ -2077,13 +1922,13 @@ namespace SFE::Render
 		std::vector<GLenum> drawBuffers;
 		drawBuffers.reserve(desc.colorAttachments.size());
 
-		SFE::LogsModule::Logger::LOG_FATAL(desc.colorAttachments.size() <= GL_MAX_COLOR_ATTACHMENTS,"Too many color attachments");
+		RhiLog::check(desc.colorAttachments.size() <= GL_MAX_COLOR_ATTACHMENTS,"Too many color attachments");
 
 		for (uint32_t i = 0; i < desc.colorAttachments.size(); ++i) {
 			const auto& att = desc.colorAttachments[i];
 			const GLTexture* tex = getLive(textures, att.texture.id);
 			if (!tex) {
-				SFE::LogsModule::Logger::LOG_FATAL(false, "Failed to create framebuffer object!");
+				RhiLog::fatal("Failed to create framebuffer object!");
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 				glDeleteFramebuffers(1, &fbo);
 				return {};
@@ -2127,7 +1972,7 @@ namespace SFE::Render
 			const auto& att = *desc.depthStencilAttachment;
 			const GLTexture* tex = getLive(textures, att.texture.id);
 			if (!tex) {
-				SFE::LogsModule::Logger::LOG_FATAL(false, "Failed to create framebuffer object!");
+				RhiLog::fatal("Failed to create framebuffer object!");
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 				glDeleteFramebuffers(1, &fbo);
 				return {};
@@ -2160,7 +2005,7 @@ namespace SFE::Render
 		}
 
 		if (const GLenum fbStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER); fbStatus != GL_FRAMEBUFFER_COMPLETE) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "Failed to create framebuffer object! status=0x%x", fbStatus);
+			RhiLog::fatal("Failed to create framebuffer object! status=0x%x", fbStatus);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDeleteFramebuffers(1, &fbo);
@@ -2262,13 +2107,13 @@ namespace SFE::Render
 	{
 		GLenum glStage = toGLShaderStage(desc.stage);
 		if (glStage == 0) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI: Unsupported shader stage");
+			RhiLog::fatal("OpenGLRHI: Unsupported shader stage");
 			return {};
 		}
 
 		GLuint shader = glCreateShader(glStage);
 		if (shader == 0) {
-			SFE::LogsModule::Logger::LOG_FATAL(false, "OpenGLRHI: glCreateShader failed");
+			RhiLog::fatal("OpenGLRHI: glCreateShader failed");
 			return {};
 		}
 
@@ -2288,8 +2133,7 @@ namespace SFE::Render
 			log.resize(logLength);
 			glGetShaderInfoLog(shader, logLength, nullptr, log.data());
 
-			SFE::LogsModule::Logger::LOG_FATAL(false,
-				"OpenGLRHI: Shader '%s' compilation failed:\n%s",
+			RhiLog::fatal("OpenGLRHI: Shader '%s' compilation failed:\n%s",
 				desc.name.c_str(),
 				log.c_str()
 			);
@@ -2638,11 +2482,10 @@ namespace SFE::Render
 	{
 		auto resolveFb = [this](FramebufferHandle handle, int& w, int& h) -> GLuint {
 			if (!handle) {
-				auto* window = hostWindow();
-				if (window) {
-					const auto& screen = window->getScreenData();
-					w = screen.backbufferW > 0 ? screen.backbufferW : screen.renderW;
-					h = screen.backbufferH > 0 ? screen.backbufferH : screen.renderH;
+				const RhiSurface surface = hostSurface();
+				if (surface.window) {
+					w = surface.backbufferWidth > 0 ? surface.backbufferWidth : surface.renderWidth;
+					h = surface.backbufferHeight > 0 ? surface.backbufferHeight : surface.renderHeight;
 				}
 				return 0;
 			}

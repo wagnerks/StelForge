@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include "core/NativeLibraries.h"
 #include "RhiTestFixture.h"
 
 // Same GPU as the runtime: without these OpenGL runs on the integrated GPU of a hybrid laptop while
@@ -11,11 +10,9 @@ extern "C"
 	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
 
-// Own entry point instead of gtest_main, for the same reason the two apps have one: the native
-// DLLs are delay-loaded out of <exe>/ThirdParty, and that directory has to be handed to the
-// loader before anything touches assimp or jsoncpp.
+// Own entry point instead of gtest_main: the RHI's log sink has to be installed before any test runs.
 int main(int argc, char** argv) {
-	SFE::NativeLibraries::init();
+	SFE::Render::setRhiLogSink(SFE::Render::Tests::captureRhiLog);
 	::testing::InitGoogleTest(&argc, argv);
 	::testing::AddGlobalTestEnvironment(new SFE::Render::Tests::GlfwEnvironment());
 	return RUN_ALL_TESTS();

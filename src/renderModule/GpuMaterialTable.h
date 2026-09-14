@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "componentsModule/MaterialComponent.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
 	// Mirrors SfeMaterial in shaders/sfe_material.glsl.

@@ -188,9 +188,6 @@ namespace SFE::SystemsModule {
 				markGpuDirty(mGpuDirtyBones, id);
 			}
 		}
-
-		// init gpu timer queries
-		//glGenQueries(2, mGpuTimeQueries);
 	}
 
 	namespace {
@@ -615,7 +612,6 @@ namespace SFE::SystemsModule {
 			}
 		}
 		if (Engine::instance()->publishEditorDisplay()) {
-			rhi->publishDisplay(mRenderData.frame.framebuffer(Render::FrameId::Final));
 			if (RuntimeBridge::RuntimeBridge::isAlive()) {
 				RuntimeBridge::RuntimeBridge::instance()->streamPresentedFrame();
 			}
@@ -630,9 +626,6 @@ namespace SFE::SystemsModule {
 	RenderSystem::~RenderSystem() {
 		for (const auto renderPass : mRenderPasses) {
 			delete renderPass;
-		}
-		if (mGpuTimeQueries[0]) {
-			//glDeleteQueries(2, mGpuTimeQueries);
 		}
 	}
 }

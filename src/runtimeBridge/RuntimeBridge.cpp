@@ -4,8 +4,8 @@
 #include "core/InputHandler.h"
 #include "editorProtocol/TcpSocket.h"
 #include "propertiesModule/PropertiesSystem.h"
-#include "renderModule/GraphicsBackend.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/GraphicsBackend.h"
+#include "rhi/RenderHardwareInterface.h"
 #include "windowsModule/Window.h"
 #ifdef _WIN32
 #include <windows.h>
@@ -366,6 +366,46 @@ namespace SFE::RuntimeBridge {
 		sendPacket(EditorProtocol::MessageType::WorldSnapshot, Json::writeString(builder, snapshot));
 	}
 
+	// The presented texture, read back and scaled to at most kStreamMaxWidth with a bilinear filter.
+	// Rows go out bottom-up (texture row 0 first), the order the editor draws them in.
+	bool RuntimeBridge::captureStreamFrame(Render::RenderHardwareInterface& rhi, std::vector<uint8_t>& rgba, int& width, int& height)
+	{
+		static constexpr int kStreamMaxWidth = 1280;
+		int srcW = 0;
+		int srcH = 0;
+		if (!rhi.readbackTexture(rhi.presentSourceTexture(), mFrameReadback, srcW, srcH) || srcW <= 0 || srcH <= 0) {
+			return false;
+		}
+		width = (std::min)(srcW, kStreamMaxWidth);
+		height = (std::max)(1, srcH * width / srcW);
+		rgba.resize(static_cast<size_t>(width) * height * 4u);
+
+		const float sx = static_cast<float>(srcW) / static_cast<float>(width);
+		const float sy = static_cast<float>(srcH) / static_cast<float>(height);
+		for (int y = 0; y < height; ++y) {
+			const float fy = (std::max)(0.f, (static_cast<float>(y) + 0.5f) * sy - 0.5f);
+			const int y0 = (std::min)(static_cast<int>(fy), srcH - 1);
+			const int y1 = (std::min)(y0 + 1, srcH - 1);
+			const float ty = fy - static_cast<float>(y0);
+			// Readback rows are top-down; the stream's row y is the texture's row y.
+			const uint8_t* row0 = mFrameReadback.data() + static_cast<size_t>(srcH - 1 - y0) * srcW * 4u;
+			const uint8_t* row1 = mFrameReadback.data() + static_cast<size_t>(srcH - 1 - y1) * srcW * 4u;
+			uint8_t* out = rgba.data() + static_cast<size_t>(y) * width * 4u;
+			for (int x = 0; x < width; ++x) {
+				const float fx = (std::max)(0.f, (static_cast<float>(x) + 0.5f) * sx - 0.5f);
+				const int x0 = (std::min)(static_cast<int>(fx), srcW - 1);
+				const int x1 = (std::min)(x0 + 1, srcW - 1);
+				const float tx = fx - static_cast<float>(x0);
+				for (int c = 0; c < 4; ++c) {
+					const float top = row0[x0 * 4 + c] + (row0[x1 * 4 + c] - row0[x0 * 4 + c]) * tx;
+					const float bottom = row1[x0 * 4 + c] + (row1[x1 * 4 + c] - row1[x0 * 4 + c]) * tx;
+					out[x * 4 + c] = static_cast<uint8_t>(top + (bottom - top) * ty + 0.5f);
+				}
+			}
+		}
+		return true;
+	}
+
 	void RuntimeBridge::streamPresentedFrame()
 	{
 		if (mEmbeddedHostMode || !mSubscribeFrames.load() || !mHasClient.load()) {
@@ -384,7 +424,7 @@ namespace SFE::RuntimeBridge {
 
 		int w = 0;
 		int h = 0;
-		if (!rhi->capturePublishedFrame(mFrameRgba, w, h)) {
+		if (!captureStreamFrame(*rhi, mFrameRgba, w, h)) {
 			return;
 		}
 

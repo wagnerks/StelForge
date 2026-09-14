@@ -467,7 +467,7 @@ namespace SFE::Render::Tests {
 			{ 36, 40, 44, 48 },
 		};
 
-		const Math::Vec4 kOverrideClears[kMrtCount] = {
+		const RhiVec4 kOverrideClears[kMrtCount] = {
 			{ unorm(52), unorm(56), unorm(60), unorm(64) },
 			{ unorm(68), unorm(72), unorm(76), unorm(80) },
 			{ unorm(84), unorm(88), unorm(92), unorm(96) },
@@ -542,7 +542,7 @@ namespace SFE::Render::Tests {
 		}
 
 		void runClearOnlyPass(RenderHardwareInterface& rhi, RenderPassHandle pass, FramebufferHandle fb,
-			const Math::Vec4* overrideColors, const float* overrideDepth) {
+			const RhiVec4* overrideColors, const float* overrideDepth) {
 			rhi.beginFrame();
 			const auto cmd = rhi.beginCommandList(CommandListType::Graphics);
 			RenderPassBeginInfo begin;
@@ -637,7 +637,7 @@ namespace SFE::Render::Tests {
 			"override: the depth attachment kept the baked clearDepth instead of taking the one this "
 			"begin supplied"));
 
-		const Math::Vec4 shortArray[kMrtCount] = { kOverrideClears[0], kTailSentinel, kTailSentinel };
+		const RhiVec4 shortArray[kMrtCount] = { kOverrideClears[0], kTailSentinel, kTailSentinel };
 		runClearOnlyPass(rhi(), pass, fb, shortArray, nullptr);
 		ASSERT_NO_FATAL_FAILURE(expectUniform(rhi(), targets[0], kOverrideExpected[0],
 			"short array: attachment 0, the one entry actually supplied, did not take its override"));

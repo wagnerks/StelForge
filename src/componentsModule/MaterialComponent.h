@@ -6,7 +6,7 @@
 #include "assetsModule/modelModule/Material.h"
 #include "ecss/Types.h"
 #include "mathModule/Forward.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::ComponentsModule {
 	constexpr int MaxMaterialTexturesCount = 10;

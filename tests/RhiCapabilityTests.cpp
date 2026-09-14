@@ -1,6 +1,5 @@
 #include "RhiTestFixture.h"
 
-#include "assetsModule/shaderModule/ShaderBase.h"
 
 namespace SFE::Render::Tests {
 
@@ -10,17 +9,15 @@ namespace SFE::Render::Tests {
 		EXPECT_EQ(rhi().backend(), first);
 	}
 
-	// One desc serves both backends only because each reads a different field: OpenGL compiles
-	// `source` and ignores `name` (OpenGLRHI.cpp:2343), Vulkan ignores `source` and loads
-	// shaders/vulkan/<basename of name>.spv (VulkanRHIPipelines.cpp:854-863). So the desc carries
-	// both the path and the preprocessed GLSL.
+	// A module built straight from a desc: both backends compile its include-expanded GLSL `source`,
+	// read here through the host exactly as loadShader reads it.
 	TEST_P(RhiBackendTest, ShaderModuleFromDescDrawsAndDestroysAfterPipelineCreation) {
 		auto& r = rhi();
-		auto makeDesc = [](ShaderStage stage, const char* path) {
+		auto makeDesc = [&r](ShaderStage stage, const char* path) {
 			ShaderModuleDesc desc;
 			desc.stage = stage;
 			desc.name = path;
-			desc.source = ShaderModule::ShaderBase::loadShaderCode(path);
+			desc.source = r.host()->loadShaderSource(path);
 			return desc;
 		};
 		const auto vs = r.createShaderModule(makeDesc(ShaderStage::Vertex, "shaders/rhi_test_triangle.vs"));
@@ -115,20 +112,20 @@ namespace SFE::Render::Tests {
 		r.setPresentBlitSource(a, SamplerHandle{});
 		EXPECT_EQ(r.presentSourceTexture().id, a.id);
 		runClearPass(r, pass, fbA);
-		ASSERT_TRUE(r.readbackPresentSource(pixels, w, h));
+		ASSERT_TRUE(r.readbackTexture(r.presentSourceTexture(), pixels, w, h));
 		EXPECT_EQ((Rgba{ pixels[0], pixels[1], pixels[2], pixels[3] }), (Rgba{ 255, 0, 0, 255 }));
 
 		r.setPresentBlitSource(b, SamplerHandle{});
 		EXPECT_EQ(r.presentSourceTexture().id, b.id);
 		runClearPass(r, greenPass, fbB);
-		ASSERT_TRUE(r.readbackPresentSource(pixels, w, h));
+		ASSERT_TRUE(r.readbackTexture(r.presentSourceTexture(), pixels, w, h));
 		EXPECT_EQ((Rgba{ pixels[0], pixels[1], pixels[2], pixels[3] }), (Rgba{ 0, 255, 0, 255 }));
 
 		// Neither destroyTexture clears the stored source, so the dead handle is still reported.
 		r.destroyFramebuffer(fbB);
 		r.destroyTexture(b);
 		EXPECT_EQ(r.presentSourceTexture().id, b.id);
-		EXPECT_FALSE(r.readbackPresentSource(pixels, w, h));
+		EXPECT_FALSE(r.readbackTexture(r.presentSourceTexture(), pixels, w, h));
 		runClearPass(r, pass, fbA);
 
 		r.setPresentBlitSource(TextureHandle{}, SamplerHandle{});
@@ -141,142 +138,15 @@ namespace SFE::Render::Tests {
 		r.destroyRenderPass(pass);
 	}
 
-	namespace {
-		struct SizedTarget {
-			TextureHandle tex;
-			FramebufferHandle fb;
-		};
-
-		SizedTarget makeSizedTarget(RenderHardwareInterface& rhi, RenderPassHandle pass, uint32_t size) {
-			TextureDesc tex;
-			tex.width = size;
-			tex.height = size;
-			tex.format = TextureFormat::RGBA8;
-			tex.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled | TextureUsage::TransferSrc;
-			SizedTarget out;
-			out.tex = rhi.createTexture(tex);
-			FramebufferDesc fb;
-			fb.width = size;
-			fb.height = size;
-			fb.layers = 1;
-			fb.renderPass = pass;
-			FramebufferAttachmentDesc att;
-			att.texture = out.tex;
-			fb.colorAttachments = { att };
-			out.fb = rhi.createFramebuffer(fb);
-			return out;
-		}
-
-		void clearSized(RenderHardwareInterface& rhi, RenderPassHandle pass, FramebufferHandle fb, uint32_t size) {
-			rhi.beginFrame();
-			const auto cmd = rhi.beginCommandList(CommandListType::Graphics);
-			RenderPassBeginInfo begin;
-			begin.renderPass = pass;
-			begin.framebuffer = fb;
-			begin.width = size;
-			begin.height = size;
-			rhi.cmdBeginRenderPass(cmd, begin);
-			rhi.cmdEndRenderPass(cmd);
-			rhi.endCommandList(cmd);
-			rhi.submit(cmd);
-			rhi.present();
-			rhi.waitIdle();
-		}
-
-	}
-
-	TEST_P(RhiBackendTest, PublishDisplayOnAHeadlessHostCapturesTheFramebufferAndLeavesTheDeviceUsable) {
-		auto& r = rhi();
-		std::vector<uint8_t> rgba;
-		int w = -1;
-		int h = -1;
-
-		EXPECT_EQ(r.editorViewNativeId(), 0u);
-		EXPECT_FALSE(r.capturePublishedFrame(rgba, w, h));
-		EXPECT_EQ(w, -1);
-		EXPECT_EQ(h, -1);
-		EXPECT_TRUE(rgba.empty());
-
-		// Nothing is live to publish yet: no framebuffer, and no present blit source to fall back to.
-		r.publishDisplay({});
-		EXPECT_EQ(r.editorViewNativeId(), 0u);
-		EXPECT_FALSE(r.capturePublishedFrame(rgba, w, h));
-
-		const auto red = makeClearPass(r, { 1.f, 0.f, 0.f, 1.f });
-		const auto green = makeClearPass(r, { 0.f, 1.f, 0.f, 1.f });
-		const auto small = makeSizedTarget(r, red, 4);
-		const auto large = makeSizedTarget(r, green, 8);
-		ASSERT_TRUE(small.tex);
-		ASSERT_TRUE(small.fb);
-		ASSERT_TRUE(large.tex);
-		ASSERT_TRUE(large.fb);
-
-		auto expectUniform = [&](int size, Rgba color) {
-			ASSERT_TRUE(r.capturePublishedFrame(rgba, w, h));
-			EXPECT_EQ(w, size);
-			EXPECT_EQ(h, size);
-			ASSERT_EQ(rgba.size(), static_cast<size_t>(size) * size * 4);
-			for (size_t i = 0; i < rgba.size(); i += 4) {
-				ASSERT_EQ((Rgba{ rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3] }), color) << "byte " << i;
-			}
-		};
-
-		clearSized(r, red, small.fb, 4);
-		r.publishDisplay(small.fb);
-		EXPECT_NE(r.editorViewNativeId(), 0u);
-		r.waitIdle();
-		expectUniform(4, { 255, 0, 0, 255 });
-
-		// A different size makes both backends drop and rebuild their display textures.
-		clearSized(r, green, large.fb, 8);
-		r.publishDisplay(large.fb);
-		EXPECT_NE(r.editorViewNativeId(), 0u);
-		r.waitIdle();
-		expectUniform(8, { 0, 255, 0, 255 });
-
-		// Back to the first size, so the rebuild runs over textures that were themselves rebuilt.
-		clearSized(r, red, small.fb, 4);
-		r.publishDisplay(small.fb);
-		EXPECT_NE(r.editorViewNativeId(), 0u);
-		r.waitIdle();
-		expectUniform(4, { 255, 0, 0, 255 });
-
-		// With something published, a null framebuffer still leaves the last frame capturable.
-		r.publishDisplay({});
-		EXPECT_NE(r.editorViewNativeId(), 0u);
-		r.waitIdle();
-		expectUniform(4, { 255, 0, 0, 255 });
-
-		const auto blue = makeClearPass(r, { 0.f, 0.f, 1.f, 1.f });
-		const auto after = makeColorArray(r, 1);
-		ASSERT_TRUE(after);
-		const auto afterFb = makeLayerFramebuffer(r, blue, after, 0);
-		runClearPass(r, blue, afterFb);
-		Rgba px;
-		ASSERT_TRUE(readPixel(r, after, 0, px));
-		EXPECT_EQ(px, (Rgba{ 0, 0, 255, 255 }));
-
-		r.setPresentBlitSource(TextureHandle{}, SamplerHandle{});
-		r.destroyFramebuffer(afterFb);
-		r.destroyTexture(after);
-		r.destroyFramebuffer(large.fb);
-		r.destroyTexture(large.tex);
-		r.destroyFramebuffer(small.fb);
-		r.destroyTexture(small.tex);
-		r.destroyRenderPass(blue);
-		r.destroyRenderPass(green);
-		r.destroyRenderPass(red);
-	}
-
 	// Vulkan shares one VkShaderModule per SPIR-V name and reference-counts it; OpenGL compiles a
 	// fresh shader per create. Either way each create must behave as its own module.
 	TEST_P(RhiBackendTest, ShaderModulesFromTheSameDescAreIndependentAndRecreatable) {
 		auto& r = rhi();
-		auto makeDesc = [](ShaderStage stage, const char* path) {
+		auto makeDesc = [&r](ShaderStage stage, const char* path) {
 			ShaderModuleDesc desc;
 			desc.stage = stage;
 			desc.name = path;
-			desc.source = ShaderModule::ShaderBase::loadShaderCode(path);
+			desc.source = r.host()->loadShaderSource(path);
 			return desc;
 		};
 		const auto vsDesc = makeDesc(ShaderStage::Vertex, "shaders/rhi_test_triangle.vs");

@@ -2,7 +2,7 @@
 
 #include "core/Engine.h"
 #include "logsModule/logger.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
 
 
 namespace SFE {
@@ -10,26 +10,6 @@ namespace SFE {
 
 	ThreadPool::~ThreadPool() {
 		shutdown();
-	}
-
-	void ThreadPool::ensureLoadingContext() {
-		if (Render::activeGraphicsBackend() == Render::GraphicsBackend::Vulkan) {
-			return;
-		}
-		if (mShuttingDown.load(std::memory_order_acquire) || mLoadingWindow) {
-			return;
-		}
-		auto* main = Engine::instance()->getMainWindow();
-		if (!main) {
-			return;
-		}
-		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-		mLoadingWindow = glfwCreateWindow(1, 1, "loading", nullptr, main);
-		glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-		glfwMakeContextCurrent(main);
-		if (!mLoadingWindow) {
-			SFE::LogsModule::Logger::LOG_ERROR("ThreadPool:: failed to create shared loading GL context");
-		}
 	}
 
 	void ThreadPool::drainSync() {
@@ -64,18 +44,12 @@ namespace SFE {
 		mLoadingWorkers.join();
 		drainSync();
 
-		if (mLoadingWindow) {
-			glfwMakeContextCurrent(nullptr);
-			glfwDestroyWindow(mLoadingWindow);
-			mLoadingWindow = nullptr;
-		}
 	}
 
 	void ThreadPool::syncUpdate() {
 		if (mShuttingDown.load(std::memory_order_acquire)) {
 			return;
 		}
-		ensureLoadingContext();
 		drainSync();
 	}
 
@@ -102,16 +76,6 @@ namespace SFE {
 	}
 
 	std::shared_future<void> ThreadPool::addLoadingTask(std::function<void()>&& task) {
-		return mLoadingWorkers.addTask([this, task]() {
-			std::lock_guard lock(mLoadingGlMtx);
-			if (!mLoadingWindow) {
-				SFE::LogsModule::Logger::LOG_ERROR("ThreadPool:: loading GL context is null");
-				task();
-				return;
-			}
-			glfwMakeContextCurrent(mLoadingWindow);
-			task();
-			glfwMakeContextCurrent(nullptr);
-		});
+		return mLoadingWorkers.addTask(std::move(task));
 	}
 }

@@ -200,7 +200,6 @@ namespace SFE {
 		// Blocks until every worker pool is empty, pumping main-thread tasks meanwhile. A capture calls it
 		// before each frame so asynchronous work, asset loading above all, lands on a fixed frame.
 		void waitIdle();
-		void ensureLoadingContext();
 		void shutdown();
 		bool isShuttingDown() const { return mShuttingDown.load(std::memory_order_acquire); }
 
@@ -220,9 +219,7 @@ namespace SFE {
 
 		std::queue<std::packaged_task<void()>> mSyncTasks;
 		std::mutex mSyncMtx;
-		std::mutex mLoadingGlMtx;
 		std::atomic<bool> mShuttingDown{ false };
 
-		GLFWwindow* mLoadingWindow = nullptr;
 	};
 }

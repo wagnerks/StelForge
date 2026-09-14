@@ -8,7 +8,7 @@
 #include "core/Engine.h"
 #include "core/FileSystem.h"
 #include "logsModule/logger.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
 	namespace {
@@ -144,8 +144,8 @@ namespace SFE::Render {
 		std::vector<uint8_t> rgba;
 		int width = 0;
 		int height = 0;
-		if (!rhi->readbackPresentSource(rgba, width, height)) {
-			LogsModule::Logger::LOG_ERROR("FrameCapture: readbackPresentSource failed (%s)",
+		if (!rhi->readbackTexture(rhi->presentSourceTexture(), rgba, width, height)) {
+			LogsModule::Logger::LOG_ERROR("FrameCapture: reading the present source failed (%s)",
 				graphicsBackendName(rhi->backend()));
 			return false;
 		}

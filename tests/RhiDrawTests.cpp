@@ -1239,7 +1239,22 @@ namespace SFE::Render::Tests {
 	}
 }
 
-#include "assetsModule/modelModule/Vertex.h"
+namespace SFE::Render::Tests {
+	// The engine's SFE::Vertex3D (assetsModule/modelModule/Vertex.h), copied so the suite links nothing
+	// but the RHI. Field order and types must stay the same as the engine's for this test to mean anything.
+	struct Vertex3D {
+		Math::Vec3 position;
+		Math::Vec2 texCoords;
+		Math::Vec3 normal;
+		Math::Vec3 tangent;
+		Math::Vec3 biTangent;
+		int boneIDs[4]{ -1, -1, -1, -1 };
+		float weights[4]{ 0.f, 0.f, 0.f, 0.f };
+		Math::Vec4 color;
+		Math::Vec2 texCoords1;
+	};
+	static_assert(offsetof(Vertex3D, texCoords1) == 104);
+}
 
 namespace SFE::Render::Tests {
 	// The cascade shadow pass's vertex layout, attribute for attribute: eight locations over one

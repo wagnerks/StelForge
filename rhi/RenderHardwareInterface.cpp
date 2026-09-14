@@ -1,6 +1,4 @@
-﻿#include "RenderHardwareInterface.h"
-
-#include "assetsModule/shaderModule/ShaderBase.h"
+﻿#include "rhi/RenderHardwareInterface.h"
 
 #include <cstddef>
 
@@ -9,8 +7,8 @@ namespace SFE::Render {
 		ShaderModuleDesc desc;
 		desc.stage = stage;
 		desc.name = std::string(path);
-		if (backend() == GraphicsBackend::OpenGL) {
-			desc.source = ShaderModule::ShaderBase::loadShaderCode(path);
+		if (m_host) {
+			desc.source = m_host->loadShaderSource(path);
 		}
 		return createShaderModule(desc);
 	}

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE {
 	namespace SystemsModule {

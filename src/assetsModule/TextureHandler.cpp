@@ -1,13 +1,12 @@
 ﻿#include "TextureHandler.h"
 
-#include <glad/glad.h>
 #include <stb_image.h>
 #include <algorithm>
 #include <string>
 
 #include "AssetsManager.h"
 #include "core/FileSystem.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
 #include "core/Engine.h"
 #include "multithreading/ThreadPool.h"
 #include "logsModule/logger.h"
@@ -82,11 +81,11 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::RESOURCE_LOADING>([id = texture->assetId, desc, data, samplerDesc]()mutable {
 			auto tex = AssetsManager::instance()->getAsset<Texture>(id);
 
-			tex->texture = SFE::Engine::instance()->rhi()->createTexture(desc, data);
-			tex->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
-			if (SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::OpenGL) {
-				glFinish();
-			}
+			auto* rhi = SFE::Engine::instance()->rhi();
+			rhi->runOnWorkerThread([&] {
+				tex->texture = rhi->createTexture(desc, data);
+				tex->sampler = rhi->createSampler(samplerDesc);
+			});
 
 			stbi_image_free(data);
 		});

@@ -3,7 +3,7 @@
 #include "componentsModule/CascadeShadowComponent.h"
 #include "ecss/Types.h"
 #include "mathModule/Forward.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 #include <algorithm>
 #include <string>

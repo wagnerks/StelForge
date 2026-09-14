@@ -21,7 +21,7 @@
 #include "componentsModule/TreeComponent.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
 #include "multithreading/ThreadPool.h"
 #include "componentsModule/CameraComponent.h"
 #include "mathModule/VectorOperations.h"

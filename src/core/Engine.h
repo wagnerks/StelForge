@@ -8,8 +8,8 @@
 #include "FileSystem.h"
 #include "InputHandler.h"
 #include "containersModule/Singleton.h"
-#include "renderModule/GraphicsBackend.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/GraphicsBackend.h"
+#include "rhi/RenderHardwareInterface.h"
 
 class Camera;
 
@@ -114,9 +114,11 @@ namespace SFE {
 		class RhiHostAdapter final : public Render::RhiHost {
 		public:
 			explicit RhiHostAdapter(Engine* engine) : mEngine(engine) {}
-			Render::Window* window() const override { return mEngine->getWindow(); }
+			Render::RhiSurface surface() const override;
 			bool presentToScreen() const override { return mEngine->presentToScreen(); }
-			bool publishEditorDisplay() const override { return mEngine->publishEditorDisplay(); }
+			std::string loadShaderSource(std::string_view path) const override;
+			std::filesystem::path shaderCacheDir() const override;
+			void onShaderCompile(std::string_view name, bool finished) const override;
 		private:
 			Engine* mEngine = nullptr;
 		};

@@ -7,7 +7,7 @@
 
 #include "Asset.h"
 #include "containersModule/Singleton.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace AssetsModule {
 	class Texture : public Asset {

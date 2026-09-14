@@ -9,3 +9,4 @@ bin/imgui.ini
 imgui.ini
 Microsoft.DTfW.DHL.manifest
 .*/
+bin/shaders/vulkan/*.spv.hash

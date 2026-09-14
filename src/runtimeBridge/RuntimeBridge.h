@@ -32,6 +32,10 @@
 
 
 
+namespace SFE::Render {
+	class RenderHardwareInterface;
+}
+
 namespace SFE::RuntimeBridge {
 
 
@@ -131,6 +135,8 @@ namespace SFE::RuntimeBridge {
 		std::vector<uint8_t> mRecvBuffer;
 
 		std::vector<uint8_t> mFrameRgba;
+		std::vector<uint8_t> mFrameReadback;
+		bool captureStreamFrame(Render::RenderHardwareInterface& rhi, std::vector<uint8_t>& rgba, int& width, int& height);
 
 		bool mAppliedRemoteDisplay = false;
 

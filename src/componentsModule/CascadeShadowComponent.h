@@ -6,7 +6,7 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "mathModule/Projection.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 
 namespace SFE::ComponentsModule {

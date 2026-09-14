@@ -10,7 +10,7 @@
 #include "assetsModule/RenderMeshData.h"
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "componentsModule/MaterialComponent.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
 	class GpuMaterialTable;

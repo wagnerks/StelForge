@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "componentsModule/MaterialComponent.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
 	// The material texture bindings (DIFFUSE..SUBSURFACE): the engine's default for every slot first,

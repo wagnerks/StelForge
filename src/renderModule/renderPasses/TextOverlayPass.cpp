@@ -2,7 +2,7 @@
 
 #include "core/Engine.h"
 #include "renderModule/FrameBlackboard.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
 #include "renderModule/TextRenderer.h"
 #include "systemsModule/systems/RenderSystem.h"
 

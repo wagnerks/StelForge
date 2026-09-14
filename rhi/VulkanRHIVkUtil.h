@@ -2,7 +2,7 @@
 
 #include <vulkan/vulkan.h>
 
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render::VulkanVkUtil {
 	inline VkFormat toVkFormat(TextureFormat format) {

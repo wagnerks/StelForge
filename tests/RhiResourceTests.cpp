@@ -1,6 +1,7 @@
 #include "RhiTestFixture.h"
 
 #include <cstring>
+#include <thread>
 
 // Resource lifecycle: create, use, destroy, create again. No pipeline and no shaders, so this is
 // the part of the interface that can be pinned down before the drawing half has anything to stand
@@ -49,6 +50,42 @@ namespace SFE::Render::Tests {
 		// Shutdown paths double-free by accident often enough that this must not be a crash.
 		rhi().destroyTexture(tex);
 		SUCCEED();
+	}
+
+	// A loader thread creates a texture through runOnWorkerThread; the main thread then reads it. On
+	// OpenGL that is the shared worker context, and the texture must be complete when the call returns.
+	TEST_P(RhiBackendTest, TextureCreatedOnAWorkerThreadIsUsableOnTheMainThread) {
+		const std::vector<uint8_t> source = {
+			255,   0,   0, 255,    0, 255,   0, 255,
+			  0,   0, 255, 255,  255, 255, 255, 255,
+		};
+		TextureHandle tex;
+		std::thread loader([&] {
+			rhi().runOnWorkerThread([&] {
+				TextureDesc desc;
+				desc.width = 2;
+				desc.height = 2;
+				desc.format = TextureFormat::RGBA8;
+				desc.usage = TextureUsage::Sampled | TextureUsage::TransferSrc;
+				tex = rhi().createTexture(desc, source.data());
+			});
+		});
+		loader.join();
+		ASSERT_TRUE(tex);
+
+		std::vector<uint8_t> pixels;
+		int w = 0;
+		int h = 0;
+		ASSERT_TRUE(rhi().readbackTexture(tex, pixels, w, h));
+		ASSERT_EQ(pixels.size(), source.size());
+		// Readback rows are top-down, the upload's first row is the bottom one.
+		std::vector<uint8_t> flipped(source.size());
+		const size_t rowBytes = 2u * 4u;
+		std::memcpy(flipped.data(), source.data() + rowBytes, rowBytes);
+		std::memcpy(flipped.data() + rowBytes, source.data(), rowBytes);
+		EXPECT_EQ(pixels, flipped);
+
+		rhi().destroyTexture(tex);
 	}
 
 	TEST_P(RhiBackendTest, TextureInitialDataReadsBackUnchanged) {

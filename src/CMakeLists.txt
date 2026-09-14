@@ -33,6 +33,9 @@ endif()
 
 message("-- engine as library")
 add_library(${ENGINE_NAME} STATIC ${SRC})
+# Extends the RHI value types with the engine's math types; see rhi/RhiTypes.h.
+target_compile_definitions(${ENGINE_NAME} PUBLIC SFE_RHI_USER_CONFIG="core/RhiConfig.h")
+target_link_libraries(${ENGINE_NAME} PUBLIC sfe_rhi)
 
 if(EDITOR)
 	target_compile_definitions(${ENGINE_NAME} PRIVATE EDITOR_ENABLED)
@@ -85,32 +88,18 @@ target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/jsoncpp/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glm")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/stb")
-target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/vma")
 
 #target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
 
 find_package(OpenGL REQUIRED)
-find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
-if(MSVC AND TARGET Vulkan::shaderc_combined)
-	set_property(TARGET Vulkan::shaderc_combined PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
-	set_property(TARGET Vulkan::shaderc_combined PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
-endif()
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glfw/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/assimp/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/freetype/include")
 
 
-if(Vulkan_INCLUDE_DIRS)
-    target_include_directories(${ENGINE_NAME} PUBLIC ${Vulkan_INCLUDE_DIRS})
-elseif(Vulkan_INCLUDE_DIR)
-    target_include_directories(${ENGINE_NAME} PUBLIC ${Vulkan_INCLUDE_DIR})
-endif()
 
-target_link_libraries(${ENGINE_NAME} 
-	PRIVATE 
-		Vulkan::Vulkan
-		Vulkan::shaderc_combined
+target_link_libraries(${ENGINE_NAME}
 	PUBLIC
 		glad
 		imgui
@@ -240,16 +229,29 @@ if(SFE_BUILD_RHI_TESTS)
 
 	file(GLOB RHI_TEST_SOURCES CONFIGURE_DEPENDS "${ENGINE_PATH}/tests/*.cpp")
 	add_executable(rhi_tests ${RHI_TEST_SOURCES})
-	target_include_directories(rhi_tests PRIVATE "${ENGINE_PATH}/tests")
-	target_link_libraries(rhi_tests PRIVATE ${ENGINE_NAME} gtest)
+	# Links the RHI and nothing else of the engine. The tests borrow only the header-only math types, through
+	# the same RhiTypes extension the engine uses, for their push-constant structs.
+	target_link_libraries(rhi_tests PRIVATE sfe_rhi gtest)
+	target_include_directories(rhi_tests PRIVATE
+		"${ENGINE_PATH}/tests"
+		"${CMAKE_CURRENT_SOURCE_DIR}"
+		"${ENGINE_PATH}/lib/glm"
+	)
+	target_compile_definitions(rhi_tests PRIVATE SFE_RHI_USER_CONFIG="core/RhiConfig.h")
+	set_target_properties(rhi_tests PROPERTIES CXX_STANDARD 23)
 	# A console subsystem, unlike the editor: the suite reports through stdout.
 	if(MSVC)
 		set_target_properties(rhi_tests PROPERTIES LINK_FLAGS "/SUBSYSTEM:CONSOLE")
+		# The project links with /NODEFAULTLIB:MSVCRT and names the CRT explicitly; the engine target does
+		# that for its consumers, and the suite no longer links the engine.
+		target_link_libraries(rhi_tests PRIVATE MSVCRT)
 	endif()
-	# Staged like any other app here, so the native DLLs are delay-loaded and copied next to the
-	# exe. Without it the loader cannot resolve assimp or jsoncpp and the suite dies at startup
-	# with 0xC0000135, before a single test runs.
-	sfe_stage_app(rhi_tests)
+	set_target_properties(rhi_tests PROPERTIES
+		RUNTIME_OUTPUT_DIRECTORY "${SFE_STAGE_ROOT}/rhi_tests/$<CONFIG>"
+		RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${SFE_STAGE_ROOT}/rhi_tests/RelWithDebInfo"
+		RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SFE_STAGE_ROOT}/rhi_tests/Release"
+		RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SFE_STAGE_ROOT}/rhi_tests/Debug"
+	)
 	# The tests load their shaders through relative paths, so they only run from the asset root.
 	set_target_properties(rhi_tests PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin")
 	add_test(NAME rhi_tests COMMAND rhi_tests WORKING_DIRECTORY "${ENGINE_PATH}/bin")

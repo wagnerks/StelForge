@@ -3,7 +3,7 @@
 #include "renderModule/FrameBlackboard.h"
 #include "renderModule/GpuScene.h"
 #include "renderModule/MaterialTextures.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render::RenderPasses {

@@ -5,7 +5,7 @@
 #include "Mesh.h"
 #include "assetsModule/RenderMeshData.h"
 #include "containersModule/Singleton.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE {
 	// One entry per meshId, as the GPU culling reads it (std430 GpuMesh in shaders/gpu_cull.cs).

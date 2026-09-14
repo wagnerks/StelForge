@@ -1,4 +1,4 @@
-﻿#include "VulkanRHI.h"
+﻿#include "rhi/VulkanRHI.h"
 
 #include <algorithm>
 #include <array>
@@ -6,38 +6,38 @@
 #include <fstream>
 #include <vector>
 
-#include "VulkanRHIVkUtil.h"
-#include "core/Engine.h"
-#include "core/FileSystem.h"
-#include "logsModule/logger.h"
-#include "renderModule/SpirvCompiler.h"
+#include "rhi/VulkanRHIVkUtil.h"
+#include "rhi/RhiLog.h"
+#include "rhi/SpirvCompiler.h"
 
 using namespace SFE::Render::VulkanVkUtil;
 
 namespace SFE::Render {
 	namespace {
-		std::vector<uint32_t> loadSpirvBytes(const std::string& name, ShaderStage stage) {
-			ensureSpirvUpToDate(stage, name);
-			const std::string path = FileSystem::resolve("shaders/vulkan/" + name + ".spv").string();
-			std::ifstream file(path, std::ios::binary | std::ios::ate);
-			if (!file) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: SPIR-V not found: %s", path.c_str());
-				return {};
-			}
-			const auto size = file.tellg();
-			if (size <= 0 || (size % 4) != 0) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid SPIR-V size for %s", path.c_str());
-				return {};
-			}
-			std::vector<uint32_t> code(static_cast<size_t>(size / 4));
-			file.seekg(0);
-			file.read(reinterpret_cast<char*>(code.data()), size);
-			return code;
-		}
+		// The present blit belongs to the backend, so its shaders live here rather than in a content
+		// directory the host may not have.
+		constexpr const char* kBlitVertexSource = R"(#version 450 core
+layout(location = 0) out vec2 vUV;
+void main() {
+    const vec2 positions[3] = vec2[](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+    const vec2 uvs[3] = vec2[](vec2(0.0, 1.0), vec2(2.0, 1.0), vec2(0.0, -1.0));
+    vUV = uvs[gl_VertexIndex];
+    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+}
+)";
+
+		constexpr const char* kBlitFragmentSource = R"(#version 450 core
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out vec4 outColor;
+layout(set = 0, binding = 0) uniform sampler2D sourceTex;
+void main() {
+    outColor = vec4(texture(sourceTex, vUV).rgb, 1.0);
+}
+)";
 
 		VkShaderModule createVkShaderModule(VkDevice device, const std::vector<uint32_t>& code) {
 			if (code.empty()) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: empty SPIR-V");
+				RhiLog::fatal("VulkanRHI: empty SPIR-V");
 				return VK_NULL_HANDLE;
 			}
 			VkShaderModuleCreateInfo createInfo{};
@@ -46,7 +46,7 @@ namespace SFE::Render {
 			createInfo.pCode = code.data();
 			VkShaderModule module = VK_NULL_HANDLE;
 			if (vkCreateShaderModule(device, &createInfo, nullptr, &module) != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateShaderModule failed");
+				RhiLog::fatal("VulkanRHI: vkCreateShaderModule failed");
 			}
 			return module;
 		}
@@ -263,166 +263,22 @@ namespace SFE::Render {
 		m_backbufferHandle.id = storeResource(m_framebuffers, m_freeFramebuffers, std::move(fb));
 	}
 
-	void VulkanRHI::ensureDisplayTextures(const uint32_t width, const uint32_t height) {
-		if (m_displayTex[0] && m_displayW == static_cast<int>(width) && m_displayH == static_cast<int>(height)) {
-			return;
-		}
-		for (auto& tex : m_displayTex) {
-			if (tex) {
-				destroyTexture(tex);
-				tex = {};
-			}
-		}
-		TextureDesc desc;
-		desc.width = width;
-		desc.height = height;
-		desc.format = TextureFormat::RGBA8;
-		desc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled | TextureUsage::TransferSrc | TextureUsage::TransferDst;
-		for (auto& tex : m_displayTex) {
-			tex = createTexture(desc, nullptr);
-		}
-		if (!m_displaySampler) {
-			SamplerDesc samplerDesc;
-			samplerDesc.minFilter = FilterMode::Linear;
-			samplerDesc.magFilter = FilterMode::Linear;
-			m_displaySampler = createSampler(samplerDesc);
-		}
-		m_displayW = static_cast<int>(width);
-		m_displayH = static_cast<int>(height);
-		m_displayWrite = 0;
-		m_displayPublished.store(-1, std::memory_order_release);
-	}
-
-	void VulkanRHI::publishDisplay(const FramebufferHandle src) {
-		TextureHandle srcHandle{};
-		uint32_t w = 0;
-		uint32_t h = 0;
-		if (src) {
-			const auto* srcFb = getLive(m_framebuffers, src.id);
-			if (!srcFb || srcFb->desc.colorAttachments.empty()) {
-				return;
-			}
-			srcHandle = srcFb->desc.colorAttachments[0].texture;
-			w = srcFb->desc.width;
-			h = srcFb->desc.height;
-		}
-		else {
-			srcHandle = m_presentBlitTexture;
-		}
-		auto* srcTex = getLive(m_textures, srcHandle.id);
-		if (!srcTex) {
-			return;
-		}
-		if (w == 0) w = srcTex->desc.width;
-		if (h == 0) h = srcTex->desc.height;
-		w = (std::max)(1u, w);
-		h = (std::max)(1u, h);
-		ensureDisplayTextures(w, h);
-		// It can create the display textures, which invalidates every pointer into m_textures.
-		srcTex = getLive(m_textures, srcHandle.id);
-
-		const int slot = m_displayWrite;
-		auto* dstTex = getLive(m_textures, m_displayTex[slot].id);
-		if (!srcTex || !dstTex) {
-			return;
-		}
-
-		if (m_inlineDisplayBlit) {
-			return;
-		}
-
-		finishPendingScene();
-
-		executeImmediate([&](VkCommandBuffer cmd) {
-			blitTextureToTexture(cmd, *srcTex, *dstTex);
-		});
-
-		setPresentBlitSource(m_displayTex[slot], m_displaySampler ? m_displaySampler : m_presentBlitSampler);
-		m_displayPublished.store(slot, std::memory_order_release);
-		m_displayWrite = 1 - slot;
-	}
-
-	uint64_t VulkanRHI::editorViewNativeId() {
-		const int slot = m_displayPublished.load(std::memory_order_acquire);
-		if (slot < 0 || slot > 1 || !m_displayTex[slot]) {
-			return 0;
-		}
-		return getNativeTextureId(m_displayTex[slot]);
-	}
-
-	bool VulkanRHI::capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) {
-		const int slot = m_displayPublished.load(std::memory_order_acquire);
-		if (slot < 0 || slot > 1 || m_displayW <= 0 || m_displayH <= 0 || !m_displayTex[slot]) {
-			return false;
-		}
-		auto* tex = getLive(m_textures, m_displayTex[slot].id);
-		if (!tex) {
-			return false;
-		}
-
-		width = m_displayW;
-		height = m_displayH;
-		const VkDeviceSize byteSize = static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) * 4u;
-		VkBuffer staging = VK_NULL_HANDLE;
-		VmaAllocation stagingAlloc = VK_NULL_HANDLE;
-		VmaAllocationInfo mappedInfo{};
-		{
-			VkBufferCreateInfo bufferInfo{};
-			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-			bufferInfo.size = byteSize;
-			bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-			VmaAllocationCreateInfo allocInfo{};
-			allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-			allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-			if (vmaCreateBuffer(m_allocator, &bufferInfo, &allocInfo, &staging, &stagingAlloc, &mappedInfo) != VK_SUCCESS) {
-				return false;
-			}
-		}
-
-		executeImmediate([&](VkCommandBuffer cmd) {
-			ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-			VkBufferImageCopy region{};
-			region.bufferOffset = 0;
-			region.bufferRowLength = 0;
-			region.bufferImageHeight = 0;
-			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			region.imageSubresource.mipLevel = 0;
-			region.imageSubresource.baseArrayLayer = 0;
-			region.imageSubresource.layerCount = 1;
-			region.imageOffset = { 0, 0, 0 };
-			region.imageExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
-			vkCmdCopyImageToBuffer(cmd, tex->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &region);
-			ensureTextureLayout(cmd, *tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		});
-
-		if (!mappedInfo.pMappedData) {
-			destroyStagingBuffer(staging, stagingAlloc);
-			return false;
-		}
-		vmaInvalidateAllocation(m_allocator, stagingAlloc, 0, VK_WHOLE_SIZE);
-		rgba.resize(static_cast<size_t>(byteSize));
-		std::memcpy(rgba.data(), mappedInfo.pMappedData, static_cast<size_t>(byteSize));
-		destroyStagingBuffer(staging, stagingAlloc);
-		return true;
-	}
-
 	void VulkanRHI::createSceneCommandPool() {
 		VkCommandPoolCreateInfo poolInfo{};
 		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 		poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 		poolInfo.queueFamilyIndex = m_graphicsQueueFamily;
 		if (vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_sceneCommandPool) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create scene command pool");
+			RhiLog::fatal("VulkanRHI: failed to create scene command pool");
 		}
 
 		VkFenceCreateInfo fenceInfo{};
 		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 		if (vkCreateFence(m_device, &fenceInfo, nullptr, &m_sceneFence) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create scene fence");
+			RhiLog::fatal("VulkanRHI: failed to create scene fence");
 		}
 		if (vkCreateFence(m_device, &fenceInfo, nullptr, &m_uploadFence) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create upload fence");
+			RhiLog::fatal("VulkanRHI: failed to create upload fence");
 		}
 
 		VkCommandBufferAllocateInfo allocInfo{};
@@ -433,13 +289,26 @@ namespace SFE::Render {
 		if (vkAllocateCommandBuffers(m_device, &allocInfo, m_sceneCmds) != VK_SUCCESS) {
 			m_sceneCmds[0] = VK_NULL_HANDLE;
 			m_sceneCmds[1] = VK_NULL_HANDLE;
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to allocate scene command buffers");
+			RhiLog::fatal("VulkanRHI: failed to allocate scene command buffers");
 		}
 	}
 
+	std::vector<uint32_t> VulkanRHI::compileShader(const ShaderStage stage, const std::string& name, const std::string& source) {
+		const RhiHost* h = host();
+		auto code = compileSpirv(stage, name, source, h ? h->shaderCacheDir() : std::filesystem::path{}, [&] {
+			if (h) {
+				h->onShaderCompile(name, false);
+			}
+		});
+		if (h) {
+			h->onShaderCompile(name, true);
+		}
+		return code;
+	}
+
 	void VulkanRHI::createBlitPipeline() {
-		const auto vertCode = loadSpirvBytes("blit.vs", ShaderStage::Vertex);
-		const auto fragCode = loadSpirvBytes("blit.fs", ShaderStage::Fragment);
+		const auto vertCode = compileShader(ShaderStage::Vertex, "vulkan_blit.vs", kBlitVertexSource);
+		const auto fragCode = compileShader(ShaderStage::Fragment, "vulkan_blit.fs", kBlitFragmentSource);
 		const VkShaderModule vertModule = createVkShaderModule(m_device, vertCode);
 		const VkShaderModule fragModule = createVkShaderModule(m_device, fragCode);
 
@@ -454,7 +323,7 @@ namespace SFE::Render {
 		layoutInfo.bindingCount = 1;
 		layoutInfo.pBindings = &samplerBinding;
 		if (vkCreateDescriptorSetLayout(m_device, &layoutInfo, nullptr, &m_blitSetLayout) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: blit descriptor set layout failed");
+			RhiLog::fatal("VulkanRHI: blit descriptor set layout failed");
 		}
 
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -462,7 +331,7 @@ namespace SFE::Render {
 		pipelineLayoutInfo.setLayoutCount = 1;
 		pipelineLayoutInfo.pSetLayouts = &m_blitSetLayout;
 		if (vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr, &m_blitPipelineLayout) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: blit pipeline layout failed");
+			RhiLog::fatal("VulkanRHI: blit pipeline layout failed");
 		}
 
 		VkSamplerCreateInfo samplerInfo{};
@@ -473,7 +342,7 @@ namespace SFE::Render {
 		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		if (vkCreateSampler(m_device, &samplerInfo, nullptr, &m_blitDefaultSampler) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: blit sampler failed");
+			RhiLog::fatal("VulkanRHI: blit sampler failed");
 		}
 
 		VkDescriptorSetAllocateInfo allocInfo{};
@@ -483,7 +352,7 @@ namespace SFE::Render {
 		allocInfo.descriptorSetCount = kMaxFramesInFlight;
 		allocInfo.pSetLayouts = blitLayouts;
 		if (vkAllocateDescriptorSets(m_device, &allocInfo, m_blitDescriptorSets) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: blit descriptor set allocation failed");
+			RhiLog::fatal("VulkanRHI: blit descriptor set allocation failed");
 		}
 
 		VkPipelineShaderStageCreateInfo stages[2]{};
@@ -546,7 +415,7 @@ namespace SFE::Render {
 		pipelineInfo.subpass = 0;
 
 		if (vkCreateGraphicsPipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &m_blitPipeline) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: blit pipeline creation failed");
+			RhiLog::fatal("VulkanRHI: blit pipeline creation failed");
 		}
 
 		vkDestroyShaderModule(m_device, vertModule, nullptr);
@@ -758,7 +627,7 @@ namespace SFE::Render {
 			viewInfo.subresourceRange.layerCount = 1;
 			VkImageView view = VK_NULL_HANDLE;
 			if (vkCreateImageView(m_device, &viewInfo, nullptr, &view) != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateImageView failed for layer %u", att.layer);
+				RhiLog::fatal("VulkanRHI: vkCreateImageView failed for layer %u", att.layer);
 				return tex.view;
 			}
 			resource.ownedViews.push_back(view);
@@ -770,7 +639,7 @@ namespace SFE::Render {
 		for (const auto& color : resource.desc.colorAttachments) {
 			const auto* tex = getLive(m_textures, color.texture.id);
 			if (!tex || !tex->view) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid color attachment texture");
+				RhiLog::fatal("VulkanRHI: invalid color attachment texture");
 				return false;
 			}
 			attachments.push_back(viewFor(color, *tex));
@@ -778,7 +647,7 @@ namespace SFE::Render {
 		if (resource.desc.depthStencilAttachment.has_value()) {
 			const auto* tex = getLive(m_textures, resource.desc.depthStencilAttachment->texture.id);
 			if (!tex || !tex->view) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: invalid depth attachment texture");
+				RhiLog::fatal("VulkanRHI: invalid depth attachment texture");
 				return false;
 			}
 			attachments.push_back(viewFor(*resource.desc.depthStencilAttachment, *tex));
@@ -794,7 +663,7 @@ namespace SFE::Render {
 		framebufferInfo.layers = inferFramebufferLayers(resource.desc);
 
 		if (vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &resource.framebuffer) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateFramebuffer failed");
+			RhiLog::fatal("VulkanRHI: vkCreateFramebuffer failed");
 			return false;
 		}
 		resource.vkRenderPass = vkPass;
@@ -840,7 +709,11 @@ namespace SFE::Render {
 				return it->second;
 			}
 		}
-		const auto code = loadSpirvBytes(spvName, desc.stage);
+		const auto code = compileShader(desc.stage, desc.name, desc.source);
+		if (code.empty()) {
+			RhiLog::fatal("VulkanRHI: shader %s did not compile", desc.name.c_str());
+			return {};
+		}
 		VkShaderModuleResource resource{};
 		resource.module = createVkShaderModule(m_device, code);
 		resource.desc = desc;
@@ -957,7 +830,7 @@ namespace SFE::Render {
 		resource.desc = desc;
 		resource.live = true;
 		if (vkCreateRenderPass(m_device, &renderPassInfo, nullptr, &resource.renderPass) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: createRenderPass failed");
+			RhiLog::fatal("VulkanRHI: createRenderPass failed");
 		}
 
 		RenderPassHandle handle{};
@@ -1018,7 +891,7 @@ namespace SFE::Render {
 		const auto* tessCtrl = desc.shaders.tessControl.id != UINT32_MAX ? getLive(m_shaders, desc.shaders.tessControl.id) : nullptr;
 		const auto* tessEval = desc.shaders.tessEval.id != UINT32_MAX ? getLive(m_shaders, desc.shaders.tessEval.id) : nullptr;
 		if (!vert || !frag) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: createGraphicsPipeline requires vertex/fragment shaders");
+			RhiLog::fatal("VulkanRHI: createGraphicsPipeline requires vertex/fragment shaders");
 			return {};
 		}
 
@@ -1031,7 +904,7 @@ namespace SFE::Render {
 			renderPass = getLive(m_renderPasses, local.renderPass.id);
 		}
 		if (!renderPass) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: createGraphicsPipeline requires renderPass");
+			RhiLog::fatal("VulkanRHI: createGraphicsPipeline requires renderPass");
 			return {};
 		}
 
@@ -1057,7 +930,7 @@ namespace SFE::Render {
 				if (ownedRp) {
 					destroyRenderPass(ownedRp);
 				}
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: pipeline layout creation failed");
+				RhiLog::fatal("VulkanRHI: pipeline layout creation failed");
 				return {};
 			}
 		}
@@ -1219,7 +1092,7 @@ namespace SFE::Render {
 			if (ownedRp) {
 				destroyRenderPass(ownedRp);
 			}
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateGraphicsPipelines failed for %s", vert->desc.name.c_str());
+			RhiLog::fatal("VulkanRHI: vkCreateGraphicsPipelines failed for %s", vert->desc.name.c_str());
 			return {};
 		}
 
@@ -1231,7 +1104,7 @@ namespace SFE::Render {
 	PipelineHandle VulkanRHI::createComputePipeline(const ComputePipelineDesc& desc) {
 		const auto* compute = getLive(m_shaders, desc.compute.id);
 		if (!compute) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: createComputePipeline requires compute shader");
+			RhiLog::fatal("VulkanRHI: createComputePipeline requires compute shader");
 			return {};
 		}
 
@@ -1248,7 +1121,7 @@ namespace SFE::Render {
 			layoutInfo.pushConstantRangeCount = desc.pushConstantSize > 0 ? 1u : 0u;
 			layoutInfo.pPushConstantRanges = desc.pushConstantSize > 0 ? &pushRange : nullptr;
 			if (vkCreatePipelineLayout(m_device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: compute pipeline layout creation failed");
+				RhiLog::fatal("VulkanRHI: compute pipeline layout creation failed");
 				return {};
 			}
 		}
@@ -1271,7 +1144,7 @@ namespace SFE::Render {
 		resource.live = true;
 		if (vkCreateComputePipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &resource.pipeline) != VK_SUCCESS) {
 			vkDestroyPipelineLayout(m_device, pipelineLayout, nullptr);
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateComputePipelines failed");
+			RhiLog::fatal("VulkanRHI: vkCreateComputePipelines failed");
 			return {};
 		}
 
@@ -1303,7 +1176,7 @@ namespace SFE::Render {
 			return;
 		}
 		if (!pass || !fb || fb->swapchainTarget) {
-			LogsModule::Logger::LOG_ERROR("VulkanRHI: cmdBeginRenderPass rejected: %s",
+			RhiLog::error("VulkanRHI: cmdBeginRenderPass rejected: %s",
 				fb && fb->swapchainTarget ? "the backbuffer cannot be a render pass target" : "invalid render pass or framebuffer");
 			return;
 		}
@@ -1333,7 +1206,7 @@ namespace SFE::Render {
 		clearValues.reserve(pass->desc.colorAttachmentCount + (pass->desc.hasDepthStencil ? 1u : 0u));
 		for (uint32_t i = 0; i < pass->desc.colorAttachmentCount; ++i) {
 			VkClearValue value{};
-			const Math::Vec4 color = beginInfo.overrideClearColors ? beginInfo.overrideClearColors[i] : pass->desc.colorAttachments[i].clearColor;
+			const RhiVec4 color = beginInfo.overrideClearColors ? beginInfo.overrideClearColors[i] : pass->desc.colorAttachments[i].clearColor;
 			value.color = { { color.x, color.y, color.z, color.w } };
 			clearValues.push_back(value);
 		}
@@ -1514,7 +1387,7 @@ namespace SFE::Render {
 		}
 		if (!list->activeFramebuffer) {
 			// A draw recorded outside a render pass faults in the driver instead of failing validation.
-			LogsModule::Logger::LOG_ERROR("VulkanRHI: %s outside a render pass, dropped", command);
+			RhiLog::error("VulkanRHI: %s outside a render pass, dropped", command);
 			return nullptr;
 		}
 		return list;

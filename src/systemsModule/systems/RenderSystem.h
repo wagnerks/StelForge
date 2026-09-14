@@ -268,7 +268,6 @@ namespace SFE::SystemsModule {
 		std::atomic<bool> mWorldMutating{ false };
 
 		// GPU/CPU profiling data
-		unsigned int mGpuTimeQueries[2] {0,0};
 		int mCurrentGpuQuery = 0;
 		double mLastGpuTimeMs = 0.0; // result from previous frame
 		std::chrono::high_resolution_clock::time_point mCpuFrameStart; // per RenderSystem update

@@ -7,7 +7,7 @@
 
 #include "mathModule/Forward.h"
 #include "mathModule/Quaternion.h"
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
 	class Utils {

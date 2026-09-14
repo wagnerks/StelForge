@@ -6,7 +6,7 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "assetsModule/modelModule/Vertex.h"
 #include "core/Engine.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
 #include "renderModule/TextRenderer.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/RenderSystem.h"

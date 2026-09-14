@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
 	// Deterministic frame grab for backend comparison: reads the exact image present() would

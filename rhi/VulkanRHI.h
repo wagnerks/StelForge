@@ -14,7 +14,7 @@
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
 #include "vk_mem_alloc.h"
 
-#include "renderModule/RenderHardwareInterface.h"
+#include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render
 {
@@ -178,9 +178,6 @@ namespace SFE::Render
 		void submit(CommandListHandle list) override;
 		void present() override;
 		double lastGpuMs() const override { return mLastGpuMs; }
-		void publishDisplay(FramebufferHandle src) override;
-		uint64_t editorViewNativeId() override;
-		bool capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) override;
 		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) override;
 		void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) override;
 		void updateCubeMip(TextureHandle tex, uint32_t mip, const void* packed6Faces, size_t faceBytes) override;
@@ -236,7 +233,6 @@ namespace SFE::Render
 		void blitTextureToTexture(VkCommandBuffer cmd, VkTextureResource& src, VkTextureResource& dst);
 		void blitToSwapchain(VkCommandBuffer cmd, VkTextureResource& src);
 		void ensureBackbufferHandle();
-		void ensureDisplayTextures(uint32_t width, uint32_t height);
 		void executeImmediate(const std::function<void(VkCommandBuffer)>& fn);
 		void createDescriptorPool();
 		void destroyDescriptorPool();
@@ -341,7 +337,6 @@ namespace SFE::Render
 		bool m_swapchainAcquired = false;
 		bool m_inlinePresent = false;
 		bool m_presentedThisFrame = false;
-		bool m_inlineDisplayBlit = false;
 		bool m_swapchainBlitted = false;
 		bool m_frameWaited = false;
 		FramebufferHandle m_backbufferHandle{};
@@ -367,13 +362,6 @@ namespace SFE::Render
 		bool m_uploadsFlushed = false;
 		std::vector<PendingBufferUpload> m_uploadOps;
 
-		TextureHandle m_displayTex[2]{};
-		SamplerHandle m_displaySampler{};
-		int m_displayW = 0;
-		int m_displayH = 0;
-		int m_displayWrite = 0;
-		std::atomic<int> m_displayPublished{ -1 };
-
 		std::vector<VkSemaphore> m_imageAvailableSemaphores;
 		std::vector<VkSemaphore> m_renderFinishedSemaphores;
 		std::vector<VkFence> m_inFlightFences;
@@ -393,6 +381,8 @@ namespace SFE::Render
 		CommandListHandle m_openCommandList{};
 		VkRecordedCommandList* listInPass(CommandListHandle cmd, const char* command);
 		void finishPendingScene();
+		bool swapchainOutOfDate() const;
+		std::vector<uint32_t> compileShader(ShaderStage stage, const std::string& name, const std::string& source);
 		bool boundInUnfinishedList(VkDescriptorSet set) const;
 		void detachBoundSet(VkDescriptorSetResource& set, const VkDescriptorSetLayoutResource& layout);
 		std::vector<uint32_t> m_freeCommandLists;

@@ -1,18 +1,23 @@
 #pragma once
 
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include <GLFW/glfw3.h>
 
-#include "renderModule/GraphicsBackend.h"
-#include "renderModule/OpenGLRHI.h"
-#include "renderModule/RenderHardwareInterface.h"
-#include "renderModule/VulkanRHI.h"
-#include "windowsModule/Window.h"
+#include "rhi/GraphicsBackend.h"
+#include "rhi/RenderHardwareInterface.h"
+#include "rhi/RhiLog.h"
+#include "rhi/RhiFactory.h"
 
 namespace SFE::Render::Tests {
 
@@ -102,16 +107,87 @@ namespace SFE::Render::Tests {
 	// and here it is answered by a hidden window and "present nothing".
 	class TestRhiHost final : public RhiHost {
 	public:
-		explicit TestRhiHost(Window* window) : mWindow(window) {}
-		Window* window() const override { return mWindow; }
+		explicit TestRhiHost(GLFWwindow* window) : mWindow(window) {}
+		RhiSurface surface() const override {
+			RhiSurface surface;
+			surface.window = mWindow;
+			if (surface.window) {
+				glfwGetWindowSize(surface.window, &surface.width, &surface.height);
+				glfwGetFramebufferSize(surface.window, &surface.backbufferWidth, &surface.backbufferHeight);
+				surface.renderWidth = surface.width;
+				surface.renderHeight = surface.height;
+			}
+			return surface;
+		}
 		// A test renders to its own targets and reads them back. Presenting would need a swapchain
 		// and a visible window, and would tell us nothing about the calls under test.
 		bool presentToScreen() const override { return false; }
-		bool publishEditorDisplay() const override { return false; }
+
+		// The suite's own reader, so shader loading needs nothing from the engine's asset system:
+		// paths are relative to the working directory (engine/bin), and #include "x" resolves next to
+		// the including file, then under shaders/.
+		std::string loadShaderSource(std::string_view path) const override {
+			std::unordered_set<std::string> seen;
+			return expand(std::filesystem::path(path), seen);
+		}
+		std::filesystem::path shaderCacheDir() const override { return "shaders/vulkan"; }
 
 	private:
-		Window* mWindow = nullptr;
+		static std::string expand(const std::filesystem::path& path, std::unordered_set<std::string>& seen) {
+			if (!seen.insert(path.lexically_normal().generic_string()).second) {
+				return {};
+			}
+			std::ifstream in(path, std::ios::binary);
+			if (!in) {
+				return {};
+			}
+			const std::string text(std::istreambuf_iterator<char>(in), {});
+			std::string out;
+			size_t pos = 0;
+			while (pos < text.size()) {
+				size_t end = text.find('\n', pos);
+				end = end == std::string::npos ? text.size() : end + 1;
+				const std::string_view line(text.data() + pos, end - pos);
+				const auto directive = line.find("#include");
+				const auto open = line.find('"');
+				const auto close = open == std::string_view::npos ? open : line.find('"', open + 1);
+				if (directive != std::string_view::npos && line.find_first_not_of(" \t") == directive && close != std::string_view::npos) {
+					const std::filesystem::path name(line.substr(open + 1, close - open - 1));
+					auto resolved = path.parent_path() / name;
+					if (!std::filesystem::exists(resolved)) {
+						resolved = std::filesystem::path("shaders") / name;
+					}
+					out += expand(resolved, seen);
+				}
+				else {
+					out.append(line);
+				}
+				pos = end;
+			}
+			return out;
+		}
+
+
+		GLFWwindow* mWindow = nullptr;
 	};
+
+	// Everything the RHI logged, installed as its log sink by main(). A test fails on any Vulkan
+	// validation error it caused (the backend logs those as Fatal). Validation warnings -- a vertex
+	// attribute the shader does not read -- and the RHI's own errors are left to the tests, since
+	// several provoke them on purpose.
+	struct RhiLogCapture {
+		std::mutex mutex;
+		std::vector<std::pair<RhiLogLevel, std::string>> messages;
+	};
+	inline RhiLogCapture& rhiLogCapture() {
+		static RhiLogCapture capture;
+		return capture;
+	}
+	inline void captureRhiLog(const RhiLogLevel level, const char* message) {
+		auto& capture = rhiLogCapture();
+		std::lock_guard lock(capture.mutex);
+		capture.messages.emplace_back(level, message);
+	}
 
 	// GLFW is brought up once for the whole process rather than once per test. Cycling
 	// glfwInit/glfwTerminate around every test made Vulkan's device creation fault intermittently a
@@ -147,28 +223,33 @@ namespace SFE::Render::Tests {
 
 	protected:
 		void SetUp() override {
+			{
+				auto& capture = rhiLogCapture();
+				std::lock_guard lock(capture.mutex);
+				capture.messages.clear();
+			}
 			if (!glfwReady()) {
 				GTEST_SKIP() << "glfwInit failed: no display";
 			}
 
 			// Hidden, and for Vulkan without a client API: it owns its own surface and must not be
 			// handed a GL context.
-			WindowHints hints = GetParam() == GraphicsBackend::Vulkan
-				? WindowHints({ { VISIBLE, false } }, { { CLIENT_API, GLFW_NO_API } })
-				: WindowHints({ { VISIBLE, false } });
-			mWindow = std::make_unique<Window>(64, 64, "rhi tests", nullptr, hints);
-			if (!mWindow->getWindow()) {
+			glfwDefaultWindowHints();
+			glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+			if (GetParam() == GraphicsBackend::Vulkan) {
+				glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+			}
+			mWindow = glfwCreateWindow(64, 64, "rhi tests", nullptr, nullptr);
+			glfwDefaultWindowHints();
+			if (!mWindow) {
 				GTEST_SKIP() << "window creation failed";
 			}
 
-			mHost = std::make_unique<TestRhiHost>(mWindow.get());
-			if (GetParam() == GraphicsBackend::Vulkan) {
-				mRhi = std::make_unique<VulkanRHI>();
+			mHost = std::make_unique<TestRhiHost>(mWindow);
+			if (GetParam() == GraphicsBackend::OpenGL) {
+				glfwMakeContextCurrent(mWindow);
 			}
-			else {
-				glfwMakeContextCurrent(mWindow->getWindow());
-				mRhi = std::make_unique<OpenGLRHI>();
-			}
+			mRhi = createRhi(GetParam());
 			mRhi->setHost(mHost.get());
 			mRhi->init();
 		}
@@ -183,14 +264,25 @@ namespace SFE::Render::Tests {
 			// Release the GL context before its window dies. Leaving it current leaves the GL driver's
 			// thread state behind, and the next Vulkan test creates its device on that thread.
 			glfwMakeContextCurrent(nullptr);
-			mWindow.reset();
+			if (mWindow) {
+				glfwDestroyWindow(mWindow);
+				mWindow = nullptr;
+			}
+
+			auto& capture = rhiLogCapture();
+			std::lock_guard lock(capture.mutex);
+			for (const auto& [level, message] : capture.messages) {
+				if (level == RhiLogLevel::Fatal && message.rfind("Vulkan validation", 0) == 0) {
+					ADD_FAILURE() << message;
+				}
+			}
 		}
 
 		RenderHardwareInterface& rhi() { return *mRhi; }
 
 
 	private:
-		std::unique_ptr<Window> mWindow;
+		GLFWwindow* mWindow = nullptr;
 		std::unique_ptr<TestRhiHost> mHost;
 		std::unique_ptr<RenderHardwareInterface> mRhi;
 	};

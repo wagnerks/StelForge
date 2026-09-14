@@ -9,7 +9,7 @@
 #include "core/Engine.h"
 #include "mathModule/MatrixOperations.h"
 #include "mathModule/Utils.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "windowsModule/Window.h"
 

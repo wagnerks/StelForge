@@ -3,7 +3,7 @@
 #include "core/Engine.h"
 #include "runtimeBridge/RuntimeBridge.h"
 #include "renderModule/FrameCapture.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
 #include "windowsModule/Window.h"
 #include "core/ECSHandler.h"
 #include "systemsModule/systems/CameraSystem.h"

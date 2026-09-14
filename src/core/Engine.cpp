@@ -8,11 +8,12 @@
 
 #include "Core.h"
 #include "InputHandler.h"
+#include "assetsModule/shaderModule/ShaderBase.h"
 #include "logsModule/logger.h"
 #include "multithreading/ThreadPool.h"
-#include "renderModule/GraphicsBackend.h"
-#include "renderModule/OpenGLRHI.h"
-#include "renderModule/VulkanRHI.h"
+#include "rhi/GraphicsBackend.h"
+#include "rhi/RhiLog.h"
+#include "rhi/RhiFactory.h"
 #include "renderModule/TextRenderer.h"
 
 namespace SFE {
@@ -50,9 +51,6 @@ namespace SFE {
 			reproTrace("initThread rhi");
 			mRHI->init();
 			reproTrace("initThread rhi ok");
-		}
-		if (mRHI) {
-			ThreadPool::instance()->ensureLoadingContext();
 		}
 		reproTrace("initThread core");
 		mCore.init();
@@ -169,14 +167,15 @@ namespace SFE {
 
 	Engine::Engine()
 	{
-		switch (activeGraphicsBackend()) {
-		case GraphicsBackend::Vulkan:
-			mRHI = new Render::VulkanRHI();
-			break;
-		default:
-			mRHI = new Render::OpenGLRHI();
-			break;
-		}
+		Render::setRhiLogSink([](const Render::RhiLogLevel level, const char* message) {
+			switch (level) {
+			case Render::RhiLogLevel::Info: LogsModule::Logger::LOG_INFO("%s", message); break;
+			case Render::RhiLogLevel::Warning: LogsModule::Logger::LOG_WARNING("%s", message); break;
+			case Render::RhiLogLevel::Error: LogsModule::Logger::LOG_ERROR("%s", message); break;
+			case Render::RhiLogLevel::Fatal: LogsModule::Logger::LOG_FATAL(false, "%s", message); break;
+			}
+		});
+		mRHI = Render::createRhi(activeGraphicsBackend()).release();
 		mRHI->setHost(&mRhiHost);
 		LogsModule::Logger::LOG_INFO("Engine backend: %s", graphicsBackendName(activeGraphicsBackend()));
 	}
@@ -219,6 +218,40 @@ namespace SFE {
 			if (remain > 0.002) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
+		}
+	}
+
+	Render::RhiSurface Engine::RhiHostAdapter::surface() const {
+		Render::RhiSurface surface;
+		auto* window = mEngine->getWindow();
+		if (!window || !window->getWindow()) {
+			return surface;
+		}
+		const auto& screen = window->getScreenData();
+		surface.window = window->getWindow();
+		surface.visible = window->isVisible();
+		surface.width = screen.width;
+		surface.height = screen.height;
+		surface.renderWidth = screen.renderW;
+		surface.renderHeight = screen.renderH;
+		surface.backbufferWidth = screen.backbufferW;
+		surface.backbufferHeight = screen.backbufferH;
+		return surface;
+	}
+
+	std::string Engine::RhiHostAdapter::loadShaderSource(std::string_view path) const {
+		return ShaderModule::ShaderBase::loadShaderCode(path);
+	}
+
+	std::filesystem::path Engine::RhiHostAdapter::shaderCacheDir() const {
+		return FileSystem::resolve("shaders/vulkan");
+	}
+
+	// Log only. Retitling the window from here ran inside a frame, where the resulting window message
+	// reached ImGui's GLFW hook mid-frame and crashed.
+	void Engine::RhiHostAdapter::onShaderCompile(std::string_view name, bool finished) const {
+		if (!finished) {
+			LogsModule::Logger::LOG_INFO("compiling shader %s", std::string(name).c_str());
 		}
 	}
 }

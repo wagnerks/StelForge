@@ -1,4 +1,4 @@
-﻿#include "VulkanRHI.h"
+﻿#include "rhi/VulkanRHI.h"
 
 #include <algorithm>
 #include <array>
@@ -14,10 +14,8 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include "core/Engine.h"
-#include "logsModule/logger.h"
-#include "renderModule/SpirvCompiler.h"
-#include "windowsModule/Window.h"
+#include "rhi/RhiLog.h"
+#include "rhi/SpirvCompiler.h"
 
 namespace SFE::Render {
 	namespace {
@@ -54,10 +52,10 @@ namespace SFE::Render {
 			}
 			++logged;
 			if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-				LogsModule::Logger::LOG_FATAL(false, "Vulkan validation: %s", data->pMessage);
+				RhiLog::fatal("Vulkan validation: %s", data->pMessage);
 			}
 			else if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-				LogsModule::Logger::LOG_ERROR("Vulkan validation: %s", data->pMessage);
+				RhiLog::error("Vulkan validation: %s", data->pMessage);
 			}
 			return VK_FALSE;
 		}
@@ -233,21 +231,10 @@ namespace SFE::Render {
 			return;
 		}
 
-		auto* window = hostWindow();
-		if (!window || !window->getWindow()) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI::init: window is not created");
+		if (!hostSurface().window) {
+			RhiLog::fatal("VulkanRHI::init: window is not created");
 			return;
 		}
-
-		compileDirtySpirv();
-
-		const auto previousResize = window->onFramebufferResize;
-		window->onFramebufferResize = [this, previousResize](int width, int height) {
-			if (previousResize) {
-				previousResize(width, height);
-			}
-			m_framebufferResized = true;
-		};
 
 		createInstance();
 		createSurface();
@@ -262,7 +249,7 @@ namespace SFE::Render {
 		uploadPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
 		uploadPoolInfo.queueFamilyIndex = m_graphicsQueueFamily;
 		if (vkCreateCommandPool(m_device, &uploadPoolInfo, nullptr, &m_uploadCommandPool) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create upload command pool");
+			RhiLog::fatal("VulkanRHI: failed to create upload command pool");
 		}
 
 		createSwapchain();
@@ -280,7 +267,7 @@ namespace SFE::Render {
 
 		ensureBackbufferHandle();
 		m_inited = true;
-		LogsModule::Logger::LOG_INFO("VulkanRHI initialized (full pipeline)");
+		RhiLog::info("VulkanRHI initialized (full pipeline)");
 	}
 
 	void VulkanRHI::waitIdle() {
@@ -495,7 +482,7 @@ namespace SFE::Render {
 		}
 
 		if (vkCreateInstance(&createInfo, nullptr, &m_instance) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateInstance failed");
+			RhiLog::fatal("VulkanRHI: vkCreateInstance failed");
 		}
 		if (useValidation) {
 			setupDebugMessenger();
@@ -511,14 +498,14 @@ namespace SFE::Render {
 		auto info = makeDebugMessengerInfo();
 		if (create(m_instance, &info, nullptr, &m_debugMessenger) != VK_SUCCESS) {
 			m_debugMessenger = VK_NULL_HANDLE;
-			LogsModule::Logger::LOG_ERROR("VulkanRHI: debug messenger create failed");
+			RhiLog::error("VulkanRHI: debug messenger create failed");
 		}
 	}
 
 	void VulkanRHI::createSurface() {
-		auto* glfwWindow = hostWindow() ? hostWindow()->getWindow() : nullptr;
+		auto* glfwWindow = hostSurface().window;
 		if (glfwCreateWindowSurface(m_instance, glfwWindow, nullptr, &m_surface) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: glfwCreateWindowSurface failed");
+			RhiLog::fatal("VulkanRHI: glfwCreateWindowSurface failed");
 		}
 	}
 
@@ -526,7 +513,7 @@ namespace SFE::Render {
 		uint32_t deviceCount = 0;
 		vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
 		if (deviceCount == 0) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: no Vulkan-capable GPU found");
+			RhiLog::fatal("VulkanRHI: no Vulkan-capable GPU found");
 		}
 
 		std::vector<VkPhysicalDevice> devices(deviceCount);
@@ -550,7 +537,7 @@ namespace SFE::Render {
 		}
 
 		if (m_physicalDevice == VK_NULL_HANDLE) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: no suitable Vulkan GPU found");
+			RhiLog::fatal("VulkanRHI: no suitable Vulkan GPU found");
 		}
 	}
 
@@ -617,15 +604,14 @@ namespace SFE::Render {
 		vkGetPhysicalDeviceFeatures2(m_physicalDevice, &features2);
 
 		if (!depthClipControl.depthClipControl) {
-			LogsModule::Logger::LOG_FATAL(false,
-				"VulkanRHI: VK_EXT_depth_clip_control required so shaders keep OpenGL clip Z [-1, 1]");
+			RhiLog::fatal("VulkanRHI: VK_EXT_depth_clip_control required so shaders keep OpenGL clip Z [-1, 1]");
 		}
 		// GPU-driven rendering: compute writes the draw count, shaders read gl_DrawID / gl_BaseInstance.
 		// Glass picks its albedo out of a sampler array by an index that is constant within each draw.
 		if (!supported12.drawIndirectCount || !supported11.shaderDrawParameters
 			|| !supportedFeatures.multiDrawIndirect || !supportedFeatures.drawIndirectFirstInstance
 			|| !supportedFeatures.shaderSampledImageArrayDynamicIndexing) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: drawIndirectCount, shaderDrawParameters, multiDrawIndirect, drawIndirectFirstInstance and shaderSampledImageArrayDynamicIndexing are required");
+			RhiLog::fatal("VulkanRHI: drawIndirectCount, shaderDrawParameters, multiDrawIndirect, drawIndirectFirstInstance and shaderSampledImageArrayDynamicIndexing are required");
 		}
 		deviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 
@@ -659,7 +645,7 @@ namespace SFE::Render {
 		createInfo.pNext = &enabled11;
 
 		if (vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateDevice failed");
+			RhiLog::fatal("VulkanRHI: vkCreateDevice failed");
 		}
 
 		vkGetDeviceQueue(m_device, indices.graphics, 0, &m_graphicsQueue);
@@ -678,7 +664,7 @@ namespace SFE::Render {
 		info.vulkanApiVersion = VK_API_VERSION_1_2;
 		info.pVulkanFunctions = &fns;
 		if (vmaCreateAllocator(&info, &m_allocator) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vmaCreateAllocator failed");
+			RhiLog::fatal("VulkanRHI: vmaCreateAllocator failed");
 		}
 	}
 
@@ -694,7 +680,7 @@ namespace SFE::Render {
 		info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 		if (vkCreatePipelineCache(m_device, &info, nullptr, &m_pipelineCache) != VK_SUCCESS) {
 			m_pipelineCache = VK_NULL_HANDLE;
-			LogsModule::Logger::LOG_ERROR("VulkanRHI: vkCreatePipelineCache failed");
+			RhiLog::error("VulkanRHI: vkCreatePipelineCache failed");
 		}
 	}
 
@@ -712,7 +698,7 @@ namespace SFE::Render {
 		const auto support = querySwapchainSupport(m_physicalDevice, m_surface);
 		const auto surfaceFormat = chooseSwapSurfaceFormat(support.formats);
 		const auto presentMode = chooseSwapPresentMode(support.presentModes);
-		const auto extent = chooseSwapExtent(support.capabilities, hostWindow()->getWindow());
+		const auto extent = chooseSwapExtent(support.capabilities, hostSurface().window);
 
 		uint32_t imageCount = support.capabilities.minImageCount + 1;
 		if (support.capabilities.maxImageCount > 0 && imageCount > support.capabilities.maxImageCount) {
@@ -752,7 +738,7 @@ namespace SFE::Render {
 		createInfo.oldSwapchain = VK_NULL_HANDLE;
 
 		if (vkCreateSwapchainKHR(m_device, &createInfo, nullptr, &m_swapchain) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateSwapchainKHR failed");
+			RhiLog::fatal("VulkanRHI: vkCreateSwapchainKHR failed");
 		}
 
 		uint32_t swapImageCount = 0;
@@ -784,7 +770,7 @@ namespace SFE::Render {
 			createInfo.subresourceRange.layerCount = 1;
 
 			if (vkCreateImageView(m_device, &createInfo, nullptr, &m_swapchainImageViews[i]) != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateImageView failed");
+				RhiLog::fatal("VulkanRHI: vkCreateImageView failed");
 			}
 		}
 	}
@@ -827,7 +813,7 @@ namespace SFE::Render {
 		renderPassInfo.pDependencies = &dependency;
 
 		if (vkCreateRenderPass(m_device, &renderPassInfo, nullptr, &m_swapchainRenderPass) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateRenderPass failed");
+			RhiLog::fatal("VulkanRHI: vkCreateRenderPass failed");
 		}
 	}
 
@@ -846,7 +832,7 @@ namespace SFE::Render {
 			framebufferInfo.layers = 1;
 
 			if (vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapchainFramebuffers[i]) != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateFramebuffer failed");
+				RhiLog::fatal("VulkanRHI: vkCreateFramebuffer failed");
 			}
 		}
 	}
@@ -858,7 +844,7 @@ namespace SFE::Render {
 		poolInfo.queueFamilyIndex = m_graphicsQueueFamily;
 
 		if (vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkCreateCommandPool failed");
+			RhiLog::fatal("VulkanRHI: vkCreateCommandPool failed");
 		}
 	}
 
@@ -883,7 +869,7 @@ namespace SFE::Render {
 		info.queryType = VK_QUERY_TYPE_TIMESTAMP;
 		info.queryCount = kMaxFramesInFlight * kTimestampsPerFrame;
 		if (vkCreateQueryPool(m_device, &info, nullptr, &m_timestampPool) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_ERROR("VulkanRHI: failed to create timestamp query pool");
+			RhiLog::error("VulkanRHI: failed to create timestamp query pool");
 			m_timestampPool = VK_NULL_HANDLE;
 		}
 	}
@@ -931,7 +917,7 @@ namespace SFE::Render {
 		for (int i = 0; i < kMaxFramesInFlight; ++i) {
 			if (vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]) != VK_SUCCESS ||
 				vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]) != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create sync objects");
+				RhiLog::fatal("VulkanRHI: failed to create sync objects");
 			}
 		}
 	}
@@ -957,7 +943,7 @@ namespace SFE::Render {
 		semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 		for (size_t i = 0; i < imageCount; ++i) {
 			if (vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]) != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: failed to create swapchain sync objects");
+				RhiLog::fatal("VulkanRHI: failed to create swapchain sync objects");
 			}
 		}
 	}
@@ -971,7 +957,7 @@ namespace SFE::Render {
 		allocInfo.commandBufferCount = static_cast<uint32_t>(m_commandBuffers.size());
 
 		if (vkAllocateCommandBuffers(m_device, &allocInfo, m_commandBuffers.data()) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkAllocateCommandBuffers failed");
+			RhiLog::fatal("VulkanRHI: vkAllocateCommandBuffers failed");
 		}
 	}
 
@@ -1006,9 +992,10 @@ namespace SFE::Render {
 	void VulkanRHI::recreateSwapchain() {
 		int width = 0;
 		int height = 0;
-		glfwGetFramebufferSize(hostWindow()->getWindow(), &width, &height);
+		auto* glfwWindow = hostSurface().window;
+		glfwGetFramebufferSize(glfwWindow, &width, &height);
 		while (width == 0 || height == 0) {
-			glfwGetFramebufferSize(hostWindow()->getWindow(), &width, &height);
+			glfwGetFramebufferSize(glfwWindow, &width, &height);
 			glfwWaitEvents();
 		}
 
@@ -1033,7 +1020,7 @@ namespace SFE::Render {
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
 		if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkBeginCommandBuffer failed");
+			RhiLog::fatal("VulkanRHI: vkBeginCommandBuffer failed");
 		}
 
 		VkRenderPassBeginInfo renderPassInfo{};
@@ -1051,7 +1038,7 @@ namespace SFE::Render {
 		vkCmdEndRenderPass(cmd);
 
 		if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkEndCommandBuffer failed");
+			RhiLog::fatal("VulkanRHI: vkEndCommandBuffer failed");
 		}
 	}
 
@@ -1072,12 +1059,11 @@ namespace SFE::Render {
 		m_swapchainAcquired = false;
 		m_inlinePresent = false;
 		m_presentedThisFrame = false;
-		m_inlineDisplayBlit = false;
 		m_swapchainBlitted = false;
 		if (!m_inited || m_swapchain == VK_NULL_HANDLE) {
 			return false;
 		}
-		if (m_framebufferResized) {
+		if (m_framebufferResized || swapchainOutOfDate()) {
 			recreateSwapchain();
 		}
 
@@ -1096,7 +1082,7 @@ namespace SFE::Render {
 			return false;
 		}
 		if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkAcquireNextImageKHR failed");
+			RhiLog::fatal("VulkanRHI: vkAcquireNextImageKHR failed");
 			return false;
 		}
 		if (imageIndex < m_imagesInFlight.size() && m_imagesInFlight[imageIndex] != VK_NULL_HANDLE
@@ -1120,7 +1106,7 @@ namespace SFE::Render {
 		VkSemaphore waitSemaphores[] = { m_imageAvailableSemaphores[m_currentFrame] };
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 		if (m_acquiredImageIndex >= m_renderFinishedSemaphores.size()) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: swapchain image index out of range");
+			RhiLog::fatal("VulkanRHI: swapchain image index out of range");
 			return;
 		}
 		VkSemaphore signalSemaphores[] = { m_renderFinishedSemaphores[m_acquiredImageIndex] };
@@ -1148,7 +1134,7 @@ namespace SFE::Render {
 			std::lock_guard lock(m_queueMutex);
 			const VkResult submitResult = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]);
 			if (submitResult != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkQueueSubmit failed (%d)", static_cast<int>(submitResult));
+				RhiLog::fatal("VulkanRHI: vkQueueSubmit failed (%d)", static_cast<int>(submitResult));
 			}
 			presentResult = vkQueuePresentKHR(m_presentQueue, &presentInfo);
 		}
@@ -1156,7 +1142,7 @@ namespace SFE::Render {
 			m_framebufferResized = true;
 		}
 		else if (presentResult != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkQueuePresentKHR failed (%d)", static_cast<int>(presentResult));
+			RhiLog::fatal("VulkanRHI: vkQueuePresentKHR failed (%d)", static_cast<int>(presentResult));
 		}
 
 		m_presentedThisFrame = true;
@@ -1182,8 +1168,16 @@ namespace SFE::Render {
 		m_pendingSceneCmd = {};
 	}
 
+	// The swapchain follows the host's backbuffer size. It used to hook the engine window's resize
+	// callback; asking the surface each frame needs no window class and no callback chain.
+	bool VulkanRHI::swapchainOutOfDate() const {
+		const RhiSurface surface = hostSurface();
+		return surface.window && (surface.backbufferWidth != static_cast<int>(m_swapchainExtent.width)
+			|| surface.backbufferHeight != static_cast<int>(m_swapchainExtent.height));
+	}
+
 	void VulkanRHI::drawFrame() {
-		if (m_framebufferResized) {
+		if (m_framebufferResized || swapchainOutOfDate()) {
 			recreateSwapchain();
 		}
 
@@ -1201,7 +1195,7 @@ namespace SFE::Render {
 			return;
 		}
 		if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkAcquireNextImageKHR failed");
+			RhiLog::fatal("VulkanRHI: vkAcquireNextImageKHR failed");
 		}
 
 		if (imageIndex < m_imagesInFlight.size() && m_imagesInFlight[imageIndex] != VK_NULL_HANDLE
@@ -1219,7 +1213,7 @@ namespace SFE::Render {
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkBeginCommandBuffer failed");
+			RhiLog::fatal("VulkanRHI: vkBeginCommandBuffer failed");
 		}
 
 		if (m_presentBlitTexture) {
@@ -1241,13 +1235,13 @@ namespace SFE::Render {
 		}
 
 		if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkEndCommandBuffer failed");
+			RhiLog::fatal("VulkanRHI: vkEndCommandBuffer failed");
 		}
 
 		VkSemaphore waitSemaphores[] = { m_imageAvailableSemaphores[m_currentFrame] };
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 		if (imageIndex >= m_renderFinishedSemaphores.size()) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: swapchain image index out of range");
+			RhiLog::fatal("VulkanRHI: swapchain image index out of range");
 		}
 		VkSemaphore signalSemaphores[] = { m_renderFinishedSemaphores[imageIndex] };
 
@@ -1274,7 +1268,7 @@ namespace SFE::Render {
 			std::lock_guard lock(m_queueMutex);
 			const VkResult submitResult = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]);
 			if (submitResult != VK_SUCCESS) {
-				LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkQueueSubmit failed (%d)", static_cast<int>(submitResult));
+				RhiLog::fatal("VulkanRHI: vkQueueSubmit failed (%d)", static_cast<int>(submitResult));
 			}
 			presentResult = vkQueuePresentKHR(m_presentQueue, &presentInfo);
 		}
@@ -1282,7 +1276,7 @@ namespace SFE::Render {
 			m_framebufferResized = true;
 		}
 		else if (presentResult != VK_SUCCESS) {
-			LogsModule::Logger::LOG_FATAL(false, "VulkanRHI: vkQueuePresentKHR failed");
+			RhiLog::fatal("VulkanRHI: vkQueuePresentKHR failed");
 		}
 
 		m_currentFrame = (m_currentFrame + 1) % kMaxFramesInFlight;

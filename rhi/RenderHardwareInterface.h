@@ -1,13 +1,16 @@
 ﻿#pragma once
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "mathModule/Forward.h"
-#include "renderModule/GraphicsBackend.h"
+#include "rhi/GraphicsBackend.h"
+#include "rhi/RhiTypes.h"
+
+struct GLFWwindow;
 
 namespace SFE::Render
 {
@@ -259,8 +262,8 @@ namespace SFE::Render
 	// Descriptions
 	struct ShaderModuleDesc {
 		ShaderStage stage;
-		std::string name;     // logic name
-		std::string source;   // GLSL/HLSL text or SPIR-V bytes as string
+		std::string name;     // identifies the shader in messages and, on Vulkan, in the binary cache
+		std::string source;   // include-expanded GLSL; both backends compile this text
 	};
 
 	struct TextureDesc {
@@ -331,7 +334,7 @@ namespace SFE::Render
 	struct RenderPassColorAttachmentDesc {
 		AttachmentLoadOp  loadOp = AttachmentLoadOp::Clear;
 		AttachmentStoreOp storeOp = AttachmentStoreOp::Store;
-		Math::Vec4        clearColor{ 0.f, 0.f, 0.f, 1.f };
+		RhiVec4           clearColor{ 0.f, 0.f, 0.f, 1.f };
 		TextureFormat     format = TextureFormat::RGBA8; // Vulkan: attachment format
 	};
 
@@ -358,7 +361,7 @@ namespace SFE::Render
 		int                x = 0, y = 0;
 		int                width = 0, height = 0;
 
-		const Math::Vec4* overrideClearColors = nullptr; // size >= colorAttachmentCount
+		const RhiVec4* overrideClearColors = nullptr; // size >= colorAttachmentCount
 		const float* overrideClearDepth = nullptr;
 		const uint8_t* overrideClearStencil = nullptr;
 	};
@@ -462,19 +465,34 @@ namespace SFE::Render
 		return false;
 	}
 
-	class Window;
+	// The window a backend draws into, as the host sees it now. GLFW is the windowing layer both
+	// backends are written against; the host's own window class stays on its side.
+	struct RhiSurface {
+		GLFWwindow* window = nullptr;   // null: nothing to present to
+		bool visible = false;
+		int width = 0;                  // window size
+		int height = 0;
+		int renderWidth = 0;            // resolution frames are rendered at
+		int renderHeight = 0;
+		int backbufferWidth = 0;        // default framebuffer, in pixels
+		int backbufferHeight = 0;
+	};
 
 	// Everything the RHI needs from whoever owns it. It used to call Engine::instance() for these
-	// three things, which meant a backend could not be created without a whole engine standing
+	// things, which meant a backend could not be created without a whole engine standing
 	// behind it, and that is what made the RHI untestable on its own. The owner implements this;
 	// a test implements it with a stub and no engine at all.
 	class RhiHost {
 	public:
 		virtual ~RhiHost() = default;
-		// Null when there is nothing to present to: offscreen rendering, tests.
-		virtual Window* window() const = 0;
+		virtual RhiSurface surface() const = 0;
 		virtual bool presentToScreen() const = 0;
-		virtual bool publishEditorDisplay() const = 0;
+		// Include-expanded GLSL for a path as given to loadShader; empty when it does not exist.
+		virtual std::string loadShaderSource(std::string_view path) const = 0;
+		// Where a backend may cache compiled shader binaries. Empty: compile every time.
+		virtual std::filesystem::path shaderCacheDir() const { return {}; }
+		// Around a shader compile that could not use the cache, which can take a moment on a cold start.
+		virtual void onShaderCompile(std::string_view name, bool finished) const { (void)name; (void)finished; }
 	};
 
 	class RenderHardwareInterface {
@@ -495,8 +513,14 @@ namespace SFE::Render
 		virtual void init() = 0;
 		virtual void cleanup() = 0;
 		virtual void waitIdle() {}
+		// Runs `work` on the calling thread with the RHI usable there -- resource uploads from a loader
+		// thread -- and returns once the GPU has finished it. Calls are serialised. OpenGL makes a context
+		// shared with the main one current around it; a backend without thread affinity just runs it.
+		virtual void runOnWorkerThread(const std::function<void()>& work) { work(); }
 
 		virtual GraphicsBackend backend() const { return GraphicsBackend::OpenGL; }
+		// The texture present() puts on the window. The only presentation state the RHI keeps: streaming
+		// or capturing a frame is the host's job, built on readbackTexture and cmdBlit.
 		virtual void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) { (void)texture; (void)sampler; }
 		virtual void beginFrame() {}
 		virtual uint32_t frameInFlight() const { return 0; }
@@ -513,7 +537,7 @@ namespace SFE::Render
 
 		virtual ShaderModuleHandle createShaderModule(const ShaderModuleDesc& desc) = 0;
 		virtual void destroyShaderModule(ShaderModuleHandle handle) = 0;
-		// Backend-agnostic: OpenGL loads GLSL from path; Vulkan loads shaders/vulkan/{basename}.spv
+		// Reads the source through the host and creates a module from it; the same text on both backends.
 		ShaderModuleHandle loadShader(ShaderStage stage, std::string_view path);
 
 		virtual FramebufferHandle createFramebuffer(const FramebufferDesc& desc) = 0;
@@ -582,19 +606,12 @@ namespace SFE::Render
 		virtual void submit(CommandListHandle list) = 0;
 		virtual void present() = 0;
 		virtual double lastGpuMs() const { return 0.0; }
-		virtual void publishDisplay(FramebufferHandle src) { (void)src; }
-		virtual uint64_t editorViewNativeId() { return 0; }
-		virtual bool capturePublishedFrame(std::vector<uint8_t>& rgba, int& width, int& height) { (void)rgba; (void)width; (void)height; return false; }
-
 		// Exact readback of one colour texture -- full resolution, no rescale, converted to RGBA8
 		// with rows top-down on every backend, so two backends' dumps compare pixel for pixel.
-		// capturePublishedFrame() is the editor streaming path and caps width at 1280 on OpenGL,
-		// so it cannot serve this purpose.
 		// `layer` picks the slice of an array texture (shadow cascades); ignored for plain 2D.
 		virtual bool readbackTexture(TextureHandle tex, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer = 0) { (void)tex; (void)rgba; (void)width; (void)height; (void)layer; return false; }
 		// The texture present() blits to the screen.
 		virtual TextureHandle presentSourceTexture() const { return {}; }
-		bool readbackPresentSource(std::vector<uint8_t>& rgba, int& width, int& height) { return readbackTexture(presentSourceTexture(), rgba, width, height); }
 
 		virtual void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) = 0;
 		virtual void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) = 0;
@@ -620,9 +637,8 @@ namespace SFE::Render
 			cmdUpdateBuffer(cmd, handle, offset, sizeof(T), static_cast<const void*>(&data));
 		}
 	protected:
-		Window* hostWindow() const { return m_host ? m_host->window() : nullptr; }
+		RhiSurface hostSurface() const { return m_host ? m_host->surface() : RhiSurface{}; }
 		bool hostPresentsToScreen() const { return m_host && m_host->presentToScreen(); }
-		bool hostPublishesEditorDisplay() const { return m_host && m_host->publishEditorDisplay(); }
 
 	private:
 		RhiHost* m_host = nullptr;

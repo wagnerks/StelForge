@@ -27,6 +27,7 @@ endif()
 add_subdirectory(lib/glad/)
 add_subdirectory(lib/imgui/)
 
+add_subdirectory(rhi)
 add_subdirectory(src)
 #add_subdirectory(src/submodules/JoltPhysics/Build)
 
