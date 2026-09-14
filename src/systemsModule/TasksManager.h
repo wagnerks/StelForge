@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <array>
 #include <initializer_list>
+#include <atomic>
 #include <queue>
 #include <unordered_map>
 #include <vector>
@@ -39,7 +40,15 @@ namespace SFE::SystemsModule {
 		void addWorker(TaskWorker* worker, TaskType type);
 
 	private:
-		std::array<std::vector<TaskWorker*>, TaskType::COUNT> workers{};
+		// Systems subscribe on the main thread while workers already notify from theirs, and a notify can
+		// notify again from inside a worker, so no lock: a fixed array that is only appended to, published
+		// through the count once the slot is written.
+		static constexpr size_t kMaxWorkersPerType = 16;
+		struct Workers {
+			std::array<std::atomic<TaskWorker*>, kMaxWorkersPerType> slots{};
+			std::atomic<size_t> count = 0;
+		};
+		std::array<Workers, TaskType::COUNT> workers{};
 	};
 
 	struct TaskWorker {
