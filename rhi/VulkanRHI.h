@@ -25,6 +25,7 @@ namespace SFE::Render
 		void* mapped = nullptr;
 		bool deviceLocal = false;
 		bool persistentMapped = false;
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
@@ -42,24 +43,28 @@ namespace SFE::Render
 		VkFormat format = VK_FORMAT_UNDEFINED;
 		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		TextureDesc desc{};
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
 	struct VkSamplerResource {
 		VkSampler sampler = VK_NULL_HANDLE;
 		SamplerDesc desc{};
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
 	struct VkDescriptorSetLayoutResource {
 		VkDescriptorSetLayout layout = VK_NULL_HANDLE;
 		DescriptorSetLayoutDesc desc{};
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
 	struct VkDescriptorSetResource {
 		VkDescriptorSet set = VK_NULL_HANDLE;
 		DescriptorSetLayoutHandle layoutHandle{};
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
@@ -72,6 +77,7 @@ namespace SFE::Render
 		int passWidth = 0;
 		int passHeight = 0;
 		bool recording = false;
+		uint32_t generation = 0;
 		bool live = false;
 		bool submitted = false;
 		std::vector<PipelineBarrier> barriers;
@@ -83,6 +89,7 @@ namespace SFE::Render
 		ShaderModuleDesc desc{};
 		// Modules are shared per SPIR-V name; every create is one reference, every destroy drops one.
 		uint32_t refs = 0;
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
@@ -93,12 +100,14 @@ namespace SFE::Render
 		ComputePipelineDesc computeDesc{};
 		RenderPassHandle ownedRenderPass{};
 		bool isCompute = false;
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
 	struct VkRenderPassResource {
 		VkRenderPass renderPass = VK_NULL_HANDLE;
 		RenderPassDesc desc{};
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
@@ -111,6 +120,7 @@ namespace SFE::Render
 		// view covers the whole array, so rendering through it would ignore the requested layer.
 		std::vector<VkImageView> ownedViews;
 		bool swapchainTarget = false;
+		uint32_t generation = 0;
 		bool live = false;
 	};
 
@@ -184,13 +194,19 @@ namespace SFE::Render
 		uint64_t getNativeTextureId(TextureHandle tex) const override;
 
 	private:
+		// Ids carry the slot's generation (see handleSlot): descriptor writes are cached by id, and a set written
+		// for a destroyed resource must not look up to date for the one that reuses its slot.
 		template<typename T>
 		static uint32_t storeResource(std::vector<T>& pool, std::vector<uint32_t>& freeList, T value) {
 			if (!freeList.empty()) {
-				const uint32_t id = freeList.back();
+				const uint32_t slot = freeList.back();
 				freeList.pop_back();
-				pool[id] = std::move(value);
-				return id;
+				value.generation = pool[slot].generation;
+				pool[slot] = std::move(value);
+				return slot | (pool[slot].generation << kHandleSlotBits);
+			}
+			if (pool.size() >= kHandleSlotMask) {
+				return UINT32_MAX;
 			}
 			pool.push_back(std::move(value));
 			return static_cast<uint32_t>(pool.size() - 1);
@@ -198,27 +214,32 @@ namespace SFE::Render
 
 		template<typename T>
 		static T* getLive(std::vector<T>& pool, uint32_t id) {
-			if (id >= pool.size() || !pool[id].live) {
+			const uint32_t slot = handleSlot(id);
+			if (slot >= pool.size() || !pool[slot].live || pool[slot].generation != handleGeneration(id)) {
 				return nullptr;
 			}
-			return &pool[id];
+			return &pool[slot];
 		}
 
 		template<typename T>
 		static const T* getLive(const std::vector<T>& pool, uint32_t id) {
-			if (id >= pool.size() || !pool[id].live) {
+			const uint32_t slot = handleSlot(id);
+			if (slot >= pool.size() || !pool[slot].live || pool[slot].generation != handleGeneration(id)) {
 				return nullptr;
 			}
-			return &pool[id];
+			return &pool[slot];
 		}
 
 		template<typename T>
 		static bool recycleResource(std::vector<T>& pool, std::vector<uint32_t>& freeList, uint32_t id) {
-			if (id >= pool.size() || !pool[id].live) {
+			if (!getLive(pool, id)) {
 				return false;
 			}
-			pool[id] = T{};
-			freeList.push_back(id);
+			const uint32_t slot = handleSlot(id);
+			const uint32_t generation = (pool[slot].generation + 1) & kHandleGenerationMask;
+			pool[slot] = T{};
+			pool[slot].generation = generation;
+			freeList.push_back(slot);
 			return true;
 		}
 

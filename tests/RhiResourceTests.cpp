@@ -25,9 +25,10 @@ namespace SFE::Render::Tests {
 
 		// A destroyed slot must be handed out again. Vulkan once reset the slot before recycling it,
 		// which made recycling a no-op: every texture and buffer id leaked and the pools only grew.
+		// The id itself may differ in its generation bits, so a cache keyed by id sees a new resource.
 		const auto second = makeColorArray(rhi(), 1);
 		EXPECT_TRUE(second);
-		EXPECT_EQ(second.id, first.id);
+		EXPECT_EQ(handleSlot(second.id), handleSlot(first.id));
 		rhi().destroyTexture(second);
 
 		BufferDesc bufferDesc;
@@ -39,7 +40,12 @@ namespace SFE::Render::Tests {
 		rhi().destroyBuffer(firstBuffer);
 		const auto secondBuffer = rhi().createBuffer(bufferDesc);
 		EXPECT_TRUE(secondBuffer);
-		EXPECT_EQ(secondBuffer.id, firstBuffer.id);
+		EXPECT_EQ(handleSlot(secondBuffer.id), handleSlot(firstBuffer.id));
+		if (GetParam() == GraphicsBackend::Vulkan) {
+			// Vulkan sets hold the native object: a pass that skips rewriting a set because the buffer id did
+			// not change would keep the freed buffer bound.
+			EXPECT_NE(secondBuffer.id, firstBuffer.id);
+		}
 		rhi().destroyBuffer(secondBuffer);
 	}
 

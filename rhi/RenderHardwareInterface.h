@@ -16,6 +16,15 @@ namespace SFE::Render
 {
 #define IS_VALID_FUNC operator bool() const { return id != UINT32_MAX; }
 
+	// A handle id is a pool slot in the low bits and the slot's generation in the high bits. Destroyed
+	// slots are handed out again, but with a new generation, so an id cached for a destroyed resource never
+	// equals the id of the one that took its slot.
+	inline constexpr uint32_t kHandleSlotBits = 20;
+	inline constexpr uint32_t kHandleSlotMask = (1u << kHandleSlotBits) - 1;
+	inline constexpr uint32_t kHandleGenerationMask = (1u << (32 - kHandleSlotBits)) - 1;
+	inline constexpr uint32_t handleSlot(uint32_t id) { return id & kHandleSlotMask; }
+	inline constexpr uint32_t handleGeneration(uint32_t id) { return id >> kHandleSlotBits; }
+
 	// Handles
 	struct DescriptorSetLayoutHandle	{ uint32_t id = UINT32_MAX; IS_VALID_FUNC };
 	struct DescriptorSetHandle			{ uint32_t id = UINT32_MAX; IS_VALID_FUNC };

@@ -283,7 +283,7 @@ namespace SFE::Render {
 			if (id < m_buffers.size() && &m_buffers[id] == &buffer) {
 				m_uploadOps.erase(
 					std::remove_if(m_uploadOps.begin(), m_uploadOps.end(),
-						[id](const PendingBufferUpload& op) { return op.dstId == id; }),
+						[id](const PendingBufferUpload& op) { return handleSlot(op.dstId) == id; }),
 					m_uploadOps.end());
 			}
 			if (m_inited) {

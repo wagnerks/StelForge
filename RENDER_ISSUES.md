@@ -78,7 +78,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [ ] The camera matrix is read on the main thread (`RenderSystem.cpp:258`) while the transform worker writes `mTransform` and `mRotateQuaternion` (`TransformComponent.cpp:94`). A pin prevents moves, not writes. `mDirty` is a plain `bool` shared by setter threads and the worker. A moving camera can get a half-written view matrix for a frame. `PropertiesSystem.cpp:204` calls `reloadTransform` on the spawning thread in parallel with the worker.
 
 ## 21. Descriptor caches compare handle ids, and Vulkan reuses ids
-- [ ] `CascadedShadowPass.cpp:336`, `PointLightPass.cpp:234`, `GpuScene.cpp:551/614` skip the set update when the ids are unchanged. `VulkanRHI::recycleResource` (`rhi/VulkanRHI.h:216`) reuses freed ids with no generation. A pass skipped while a buffer is replaced twice can see the same id and keep a set pointing at a destroyed buffer (undefined behaviour or device lost). Frequent outline buffer re-creation makes reuse faster.
+- [x] `CascadedShadowPass.cpp:336`, `PointLightPass.cpp:234`, `GpuScene.cpp:551/614` skip the set update when the ids are unchanged. `VulkanRHI::recycleResource` (`rhi/VulkanRHI.h:216`) reuses freed ids with no generation. A pass skipped while a buffer is replaced twice can see the same id and keep a set pointing at a destroyed buffer (undefined behaviour or device lost). Frequent outline buffer re-creation makes reuse faster.
 - Fix: a generation counter in handles, or invalidate caches on retire.
 
 ## 22. Possible out-of-bounds transform read for one frame
