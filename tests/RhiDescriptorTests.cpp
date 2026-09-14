@@ -59,7 +59,7 @@ namespace SFE::Render::Tests {
 		// draw really depends on the bind rather than on some leftover binding.
 		std::vector<uint8_t> drawWithSets(RenderHardwareInterface& rhi, TextureHandle target,
 			RenderPassHandle pass, PipelineHandle pipeline, const DescriptorSetHandle* sets,
-			uint32_t setCount, uint32_t firstSet = 0) {
+			uint32_t setCount, uint32_t firstSet = 0, const uint32_t* dynamicOffsets = nullptr, uint32_t dynamicOffsetCount = 0) {
 			FramebufferDesc fbDesc;
 			fbDesc.width = kSize;
 			fbDesc.height = kSize;
@@ -86,7 +86,7 @@ namespace SFE::Render::Tests {
 			if (setCount > 0) {
 				// After the pipeline: Vulkan resolves the pipeline layout out of the handle passed here,
 				// and OpenGL's own bind paths already require that order.
-				rhi.cmdBindDescriptorSets(cmd, pipeline, firstSet, sets, setCount);
+				rhi.cmdBindDescriptorSets(cmd, pipeline, firstSet, sets, setCount, dynamicOffsets, dynamicOffsetCount);
 			}
 			rhi.cmdDraw(cmd, 3, 1, 0, 0);
 			rhi.cmdEndRenderPass(cmd);
@@ -628,6 +628,71 @@ namespace SFE::Render::Tests {
 		rhi().destroyGraphicsPipeline(pipeline);
 		rhi().destroyBuffer(bufferB);
 		rhi().destroyBuffer(bufferA);
+		rhi().freeDescriptorSet(set);
+		rhi().destroyDescriptorSetLayout(layout);
+		rhi().destroyRenderPass(pass);
+		rhi().destroyTexture(target);
+	}
+
+	// Per-frame data through allocTransient and a dynamic uniform binding: the set is written once, and
+	// each draw picks its allocation by the offset passed at bind. Two allocations in one frame must not
+	// overlap, the offset must reach the shader on both backends, and a later frame's allocation must be
+	// readable through the same unchanged set.
+	TEST_P(RhiBackendTest, TransientAllocationsReachTheShaderThroughADynamicOffset) {
+		const Math::Vec4 kColorA{ k255(32), k255(96), k255(160), 1.f };
+		const Math::Vec4 kColorB{ k255(200), k255(16), k255(64), 1.f };
+		const Math::Vec4 kColorC{ k255(8), k255(240), k255(120), 1.f };
+
+		const auto target = makeTarget(rhi());
+		ASSERT_TRUE(target);
+		const auto pass = makePass(rhi(), { 1.f, 0.f, 1.f, 1.f });
+		ASSERT_TRUE(pass);
+
+		DescriptorSetLayoutDesc layoutDesc;
+		layoutDesc.bindings.push_back({ 0, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment });
+		const auto layout = rhi().createDescriptorSetLayout(layoutDesc);
+		ASSERT_TRUE(layout);
+		const auto set = rhi().allocateDescriptorSet(layout);
+		ASSERT_TRUE(set);
+		const auto pipeline = makeDescriptorPipeline(rhi(), pass, "shaders/rhi_test_uniform.fs", { layout });
+		ASSERT_TRUE(pipeline) << "pipeline creation failed";
+
+		const auto expectEveryPixel = [&](const std::vector<uint8_t>& pixels, const Rgba& expected, const char* what) {
+			ASSERT_FALSE(pixels.empty()) << "readback failed";
+			for (int y = 0; y < kSize; ++y) {
+				for (int x = 0; x < kSize; ++x) {
+					EXPECT_EQ(pixelAt(pixels, x, y), expected) << "pixel (" << x << ", " << y << "): " << what;
+				}
+			}
+		};
+
+		// Frame one: two allocations, drawn through the second so the offset is not zero.
+		const auto a = rhi().allocTransient(kColorA);
+		const auto b = rhi().allocTransient(kColorB);
+		ASSERT_TRUE(a);
+		ASSERT_TRUE(b);
+		ASSERT_EQ(a.buffer.id, b.buffer.id) << "two small allocations of one frame should share the transient buffer";
+		EXPECT_NE(a.offset, b.offset);
+		rhi().updateDescriptorSets({ { .set = set, .binding = 0, .buffers{ { a.buffer, 0, sizeof(Math::Vec4) } } } });
+		expectEveryPixel(drawWithSets(rhi(), target, pass, pipeline, &set, 1, 0, &b.offset, 1), { 200, 16, 64, 255 },
+			"the second allocation did not reach the shader at its dynamic offset");
+
+		// Frame two: a new allocation through the set written in frame one.
+		const auto c = rhi().allocTransient(kColorC);
+		ASSERT_TRUE(c);
+		ASSERT_EQ(c.buffer.id, a.buffer.id) << "the transient buffer changed, so the set written for it would be stale";
+		expectEveryPixel(drawWithSets(rhi(), target, pass, pipeline, &set, 1, 0, &c.offset, 1), { 8, 240, 120, 255 },
+			"a later frame's allocation did not reach the shader through the unchanged set");
+
+		// Frame three: two allocations again, drawn through the first, so the second did not overwrite it.
+		const auto d = rhi().allocTransient(kColorA);
+		const auto e = rhi().allocTransient(kColorB);
+		ASSERT_TRUE(d);
+		ASSERT_TRUE(e);
+		expectEveryPixel(drawWithSets(rhi(), target, pass, pipeline, &set, 1, 0, &d.offset, 1), { 32, 96, 160, 255 },
+			"the first allocation was overwritten by the second");
+
+		rhi().destroyGraphicsPipeline(pipeline);
 		rhi().freeDescriptorSet(set);
 		rhi().destroyDescriptorSetLayout(layout);
 		rhi().destroyRenderPass(pass);

@@ -157,6 +157,7 @@ namespace SFE::Render
 		void updateBuffer(BufferHandle handle, size_t offset, size_t size, const void* data) override;
 		void* mapBuffer(BufferHandle handle, MapMode mode) override;
 		void unmapBuffer(BufferHandle handle) override;
+		TransientAllocation allocTransient(size_t size) override;
 
 		PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
 		PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override;
@@ -230,6 +231,23 @@ namespace SFE::Render
 		std::vector<GLCommandList> m_commandLists;
 		CommandListHandle m_openCommandList{};
 		std::vector<uint32_t> m_freeCommandLists;
+
+		// allocTransient: the data is kept on the CPU and uploaded before the list that reads it is replayed.
+		// A replayed list has issued its commands, and GL commands see a buffer as it was when issued, so the
+		// region is reused from the start after every submit. The vector is only resized between submits, so
+		// no allocation's pointer moves; one that does not fit gets a buffer of its own until the submit.
+		struct TransientOverflow {
+			BufferHandle buffer;
+			std::vector<uint8_t> data;
+		};
+		BufferHandle m_transientBuffer{};
+		std::vector<uint8_t> m_transientData;
+		size_t m_transientUsed = 0;
+		size_t m_transientPeak = 0;
+		size_t m_transientAlign = 16;
+		std::vector<TransientOverflow> m_transientOverflow;
+		void uploadTransient();
+		void resetTransient();
 
 		bool m_inited = false;
 		GLuint mGpuTimeQueries[2]{ 0, 0 };
@@ -311,7 +329,8 @@ namespace SFE::Render
 		DescriptorSetHandle allocateDescriptorSet(DescriptorSetLayoutHandle layout) override;
 		void freeDescriptorSet(DescriptorSetHandle set) override;
 		void updateDescriptorSets(const std::vector<WriteDescriptor>& writes) override;
-		void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount) override;
+		void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount,
+			const uint32_t* dynamicOffsets = nullptr, uint32_t dynamicOffsetCount = 0) override;
 		FramebufferHandle getBackbufferFramebuffer() override;
 	};
 }

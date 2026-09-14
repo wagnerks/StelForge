@@ -158,6 +158,7 @@ namespace SFE::Render
 		void destroyBuffer(BufferHandle handle) override;
 		void updateBuffer(BufferHandle handle, size_t offset = 0, size_t size = 0, const void* data = nullptr) override;
 		void* mapBuffer(BufferHandle handle, MapMode mode) override;
+		TransientAllocation allocTransient(size_t size) override;
 		void unmapBuffer(BufferHandle handle) override;
 		RenderPassHandle createRenderPass(const RenderPassDesc& desc) override;
 		void destroyRenderPass(RenderPassHandle renderPass) override;
@@ -173,7 +174,8 @@ namespace SFE::Render
 		void cmdBindPipeline(CommandListHandle cmd, PipelineHandle pipeline) override;
 		void cmdBindVertexBuffer(CommandListHandle cmd, uint32_t slot, BufferHandle handle, uint32_t offset = 0) override;
 		void cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset = 0) override;
-		void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount) override;
+		void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount,
+			const uint32_t* dynamicOffsets = nullptr, uint32_t dynamicOffsetCount = 0) override;
 		void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, ShaderStage stages, const void* data, uint32_t size) override;
 		void cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstVertex = 0, uint32_t firstInstance = 0) override;
 		void cmdDrawIndexed(CommandListHandle cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t vertexOffset = 0, uint32_t firstInstance = 0) override;
@@ -380,6 +382,17 @@ namespace SFE::Render
 			int waitsLeft = 0;
 		};
 		std::vector<RetiredBuffer> m_retiredBuffers;
+		// allocTransient: one mapped buffer with a region per frame slot, so a set written for it once stays
+		// valid while each frame writes its own region. An allocation that does not fit gets a buffer of its
+		// own, destroyed when the slot comes round again, and the region grows to the peak at that point.
+		BufferHandle m_transientBuffer{};
+		VkDeviceSize m_transientRegion = 0;
+		VkDeviceSize m_transientAlign = 16;
+		VkDeviceSize m_transientPeak = 0;
+		VkDeviceSize m_transientUsed[kMaxFramesInFlight]{};
+		std::vector<BufferHandle> m_transientOverflow[kMaxFramesInFlight];
+		BufferHandle createTransientBuffer(VkDeviceSize size);
+		void resetTransient();
 		// Several lists can run in one frame; the frame keeps the first list's start and the last one's end.
 		bool m_timestampStartWritten[kMaxFramesInFlight]{};
 		bool m_timestampEndWritten[kMaxFramesInFlight]{};

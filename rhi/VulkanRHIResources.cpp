@@ -114,6 +114,8 @@ namespace SFE::Render {
 			vmaDestroyBuffer(m_allocator, retired.buffer, retired.allocation);
 			return true;
 		});
+		// After the retired buffers: what this retires must wait its own full round.
+		resetTransient();
 		if (m_timestampPool != VK_NULL_HANDLE) {
 			vkResetQueryPool(m_device, m_timestampPool, m_currentFrame * kTimestampsPerFrame, kTimestampsPerFrame);
 			m_timestampStartWritten[m_currentFrame] = false;
@@ -252,10 +254,12 @@ namespace SFE::Render {
 	}
 
 	void VulkanRHI::createDescriptorPool() {
-		const std::array<VkDescriptorPoolSize, 3> poolSizes{ {
+		const std::array<VkDescriptorPoolSize, 5> poolSizes{ {
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2048 },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2048 },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 512 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 512 },
 		} };
 
 		VkDescriptorPoolCreateInfo poolInfo{};
@@ -293,6 +297,92 @@ namespace SFE::Render {
 				vmaDestroyBuffer(m_allocator, buffer.buffer, buffer.allocation);
 			}
 		}
+	}
+
+	BufferHandle VulkanRHI::createTransientBuffer(const VkDeviceSize size) {
+		// Not createBuffer: that puts a large storage buffer in device-local memory, and this one is written
+		// through its mapping.
+		VkBufferResource resource{};
+		resource.desc.size = size;
+		resource.desc.usage = BufferUsage::Uniform | BufferUsage::Storage | BufferUsage::Vertex | BufferUsage::Index;
+		resource.desc.cpuAccess = CpuAccess::Write;
+		resource.desc.debugName = "Transient";
+		resource.live = true;
+
+		VkBufferCreateInfo bufferInfo{};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = size;
+		bufferInfo.usage = toVkBufferUsage(resource.desc.usage);
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		VmaAllocationCreateInfo allocInfo{};
+		allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+		VmaAllocationInfo mapped{};
+		if (vmaCreateBuffer(m_allocator, &bufferInfo, &allocInfo, &resource.buffer, &resource.allocation, &mapped) != VK_SUCCESS
+			|| !mapped.pMappedData) {
+			RhiLog::fatal("VulkanRHI: a mapped transient buffer of %zu bytes could not be created", static_cast<size_t>(size));
+			return {};
+		}
+		resource.mapped = mapped.pMappedData;
+		resource.persistentMapped = true;
+		BufferHandle handle{};
+		handle.id = storeResource(m_buffers, m_freeBuffers, std::move(resource));
+		return handle;
+	}
+
+	void VulkanRHI::resetTransient() {
+		// This slot's previous frame has finished: its region and overflow buffers are free again.
+		for (const auto overflow : m_transientOverflow[m_currentFrame]) {
+			destroyBuffer(overflow);
+		}
+		m_transientOverflow[m_currentFrame].clear();
+		m_transientUsed[m_currentFrame] = 0;
+		if (!m_transientBuffer || m_transientPeak <= m_transientRegion) {
+			return;
+		}
+		// Too small last time. The other slot's frame may still read the old buffer; destroyBuffer keeps it
+		// until that has finished, and the next allocation creates one sized to the peak.
+		destroyBuffer(m_transientBuffer);
+		m_transientBuffer = {};
+		m_transientRegion = 0;
+	}
+
+	TransientAllocation VulkanRHI::allocTransient(const size_t size) {
+		if (size == 0) {
+			return {};
+		}
+		waitForInFlightFrame();
+		if (!getLive(m_buffers, m_transientBuffer.id)) {
+			VkPhysicalDeviceProperties props{};
+			vkGetPhysicalDeviceProperties(m_physicalDevice, &props);
+			m_transientAlign = (std::max)({ props.limits.minUniformBufferOffsetAlignment, props.limits.minStorageBufferOffsetAlignment, VkDeviceSize{ 16 } });
+			VkDeviceSize region = VkDeviceSize{ 1 } << 20;
+			while (region < m_transientPeak) {
+				region *= 2;
+			}
+			m_transientBuffer = createTransientBuffer(region * kMaxFramesInFlight);
+			m_transientRegion = m_transientBuffer ? region : 0;
+			for (auto& used : m_transientUsed) {
+				used = 0;
+			}
+		}
+
+		auto& used = m_transientUsed[m_currentFrame];
+		const VkDeviceSize offset = (used + m_transientAlign - 1) & ~(m_transientAlign - 1);
+		m_transientPeak = (std::max)(m_transientPeak, offset + size);
+		if (offset + size > m_transientRegion) {
+			const auto overflow = createTransientBuffer(size);
+			const auto* buffer = getLive(m_buffers, overflow.id);
+			if (!buffer) {
+				return {};
+			}
+			m_transientOverflow[m_currentFrame].push_back(overflow);
+			return { overflow, 0, buffer->mapped };
+		}
+		used = offset + size;
+		const VkDeviceSize base = m_currentFrame * m_transientRegion + offset;
+		const auto* buffer = getLive(m_buffers, m_transientBuffer.id);
+		return { m_transientBuffer, static_cast<uint32_t>(base), static_cast<uint8_t*>(buffer->mapped) + base };
 	}
 
 	BufferHandle VulkanRHI::createBuffer(const BufferDesc& desc, const void* initialData) {
@@ -1150,6 +1240,12 @@ namespace SFE::Render {
 				for (const auto& buf : write.buffers) {
 					const auto* buffer = getLive(m_buffers, buf.buffer.id);
 					if (!buffer) {
+						ok = false;
+						break;
+					}
+					if (isDynamicDescriptor(type) && buf.range == 0) {
+						// The whole buffer plus a dynamic offset past zero would run off its end.
+						RhiLog::error("updateDescriptorSets: dynamic binding %u needs a range", write.binding);
 						ok = false;
 						break;
 					}

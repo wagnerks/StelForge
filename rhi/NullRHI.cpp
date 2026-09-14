@@ -24,4 +24,13 @@ namespace SFE::Render {
 		memory.resize(size->second);
 		return memory.data();
 	}
+
+	TransientAllocation NullRHI::allocTransient(const size_t size) {
+		auto& memory = mTransient.emplace_back(size == 0 ? 1 : size);
+		return { mTransientBuffer, 0, memory.data() };
+	}
+
+	void NullRHI::beginFrame() {
+		mTransient.clear();
+	}
 }

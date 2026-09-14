@@ -39,6 +39,8 @@ namespace SFE::Render {
 		void updateBuffer(BufferHandle, size_t = 0, size_t = 0, const void* = nullptr) override {}
 		void* mapBuffer(BufferHandle handle, MapMode mode) override;
 		void unmapBuffer(BufferHandle) override {}
+		TransientAllocation allocTransient(size_t size) override;
+		void beginFrame() override;
 
 		RenderPassHandle createRenderPass(const RenderPassDesc&) override { return { nextId() }; }
 		void destroyRenderPass(RenderPassHandle) override {}
@@ -58,7 +60,7 @@ namespace SFE::Render {
 		void cmdBindPipeline(CommandListHandle, PipelineHandle) override {}
 		void cmdBindVertexBuffer(CommandListHandle, uint32_t, BufferHandle, uint32_t = 0) override {}
 		void cmdBindIndexBuffer(CommandListHandle, BufferHandle, IndexType, uint32_t = 0) override {}
-		void cmdBindDescriptorSets(CommandListHandle, PipelineHandle, uint32_t, const DescriptorSetHandle*, uint32_t) override {}
+		void cmdBindDescriptorSets(CommandListHandle, PipelineHandle, uint32_t, const DescriptorSetHandle*, uint32_t, const uint32_t* = nullptr, uint32_t = 0) override {}
 		void cmdPushConstants(CommandListHandle, PipelineHandle, ShaderStage = ShaderStage::Vertex | ShaderStage::Fragment, const void* = nullptr, uint32_t = 0) override {}
 
 		void cmdDraw(CommandListHandle, uint32_t, uint32_t = 1, uint32_t = 0, uint32_t = 0) override {}
@@ -84,6 +86,9 @@ namespace SFE::Render {
 		uint32_t nextId() { return mNextId.fetch_add(1, std::memory_order_relaxed); }
 
 		std::atomic<uint32_t> mNextId{ 0 };
+		// Memory for allocTransient, dropped at the next frame: nothing reads it.
+		std::vector<std::vector<uint8_t>> mTransient;
+		BufferHandle mTransientBuffer{ nextId() };
 		FramebufferHandle mBackbuffer{ nextId() };
 
 		std::mutex mBuffersMutex;

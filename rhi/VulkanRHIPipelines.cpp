@@ -1366,7 +1366,7 @@ void main() {
 	}
 
 	void VulkanRHI::cmdBindDescriptorSets(const CommandListHandle cmd, const PipelineHandle pipeline, const uint32_t firstSet,
-		const DescriptorSetHandle* sets, const uint32_t setCount)
+		const DescriptorSetHandle* sets, const uint32_t setCount, const uint32_t* dynamicOffsets, const uint32_t dynamicOffsetCount)
 	{
 		auto* list = getLive(m_commandLists, cmd.id);
 		if (!list || !sets || setCount == 0) {
@@ -1399,7 +1399,7 @@ void main() {
 			return;
 		}
 		vkCmdBindDescriptorSets(list->cmd, bindPoint, layout, firstSet,
-			static_cast<uint32_t>(vkSets.size()), vkSets.data(), 0, nullptr);
+			static_cast<uint32_t>(vkSets.size()), vkSets.data(), dynamicOffsets ? dynamicOffsetCount : 0, dynamicOffsets);
 		list->boundSets.insert(list->boundSets.end(), vkSets.begin(), vkSets.end());
 	}
 

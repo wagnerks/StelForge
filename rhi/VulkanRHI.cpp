@@ -299,6 +299,11 @@ namespace SFE::Render {
 			vmaDestroyBuffer(m_allocator, retired.buffer, retired.allocation);
 		}
 		m_retiredBuffers.clear();
+		m_transientBuffer = {};
+		m_transientRegion = 0;
+		for (auto& overflow : m_transientOverflow) {
+			overflow.clear();
+		}
 
 		for (auto& texture : m_textures) {
 			if (texture.live) {

@@ -969,9 +969,11 @@ namespace SFE::Render
 		}
 
 		list->recording = false;
+		uploadTransient();
 		for (const auto& command : list->commands) {
 			executeCommand(command);
 		}
+		resetTransient();
 		recycleResource(m_commandLists, m_freeCommandLists, handle.id);
 
 		if (mGpuTimeQueries[0]) {
@@ -1397,6 +1399,16 @@ namespace SFE::Render
 
 			switch (type)
 			{
+			case DescriptorType::UniformBufferDynamic:
+			case DescriptorType::StorageBufferDynamic:
+				if (std::any_of(w.buffers.begin(), w.buffers.end(), [](const DescriptorBufferInfo& b) { return b.range == 0; })) {
+					// Vulkan needs the range, so it is required on both.
+					RhiLog::error("updateDescriptorSets: dynamic binding %u needs a range", w.binding);
+					break;
+				}
+				slot->buffers = w.buffers;
+				break;
+
 			case DescriptorType::UniformBuffer:
 			case DescriptorType::StorageBuffer:
 				slot->buffers = w.buffers;
@@ -1410,7 +1422,8 @@ namespace SFE::Render
 	}
 
 
-	void OpenGLRHI::cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle, uint32_t, const DescriptorSetHandle* sets, uint32_t setCount)
+	void OpenGLRHI::cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle, uint32_t, const DescriptorSetHandle* sets, uint32_t setCount,
+		const uint32_t* dynamicOffsets, const uint32_t dynamicOffsetCount)
 	{
 		GLCommandList* list = recordingList(cmd);
 		if (!list || !sets || setCount == 0) {
@@ -1418,12 +1431,34 @@ namespace SFE::Render
 		}
 
 		CmdBindDescriptorSets rec;
+		uint32_t nextOffset = 0;
 		for (uint32_t i = 0; i < setCount; ++i) {
 			const GLDescriptorSet* set = getLive(m_descriptorSets, sets[i].id);
 			if (!set) {
 				continue;
 			}
+			const size_t first = rec.bindings.size();
 			rec.bindings.insert(rec.bindings.end(), set->bindings.begin(), set->bindings.end());
+
+			// As Vulkan takes them: the set's dynamic descriptors in ascending binding number, one offset each.
+			std::vector<GLDescriptorBindingData*> dynamic;
+			for (size_t b = first; b < rec.bindings.size(); ++b) {
+				if (isDynamicDescriptor(rec.bindings[b].type)) {
+					dynamic.push_back(&rec.bindings[b]);
+				}
+			}
+			std::sort(dynamic.begin(), dynamic.end(), [](const auto* a, const auto* b) { return a->binding < b->binding; });
+			for (auto* binding : dynamic) {
+				for (auto& buffer : binding->buffers) {
+					if (dynamicOffsets && nextOffset < dynamicOffsetCount) {
+						buffer.offset += dynamicOffsets[nextOffset];
+					}
+					++nextOffset;
+				}
+			}
+		}
+		if (nextOffset != (dynamicOffsets ? dynamicOffsetCount : 0)) {
+			RhiLog::error("cmdBindDescriptorSets: %u dynamic offsets for %u dynamic descriptors", dynamicOffsets ? dynamicOffsetCount : 0, nextOffset);
 		}
 		list->commands.emplace_back(std::move(rec));
 	}
@@ -1456,6 +1491,19 @@ namespace SFE::Render
 					if (!glb)
 						continue;
 					glBindBufferBase(GL_SHADER_STORAGE_BUFFER, b.binding + i, glb->id);
+				}
+				break;
+
+			case DescriptorType::UniformBufferDynamic:
+			case DescriptorType::StorageBufferDynamic:
+				for (uint32_t i = 0; i < b.buffers.size(); ++i)
+				{
+					const auto& info = b.buffers[i];
+					const auto* glb = getLive(m_buffers, info.buffer.id);
+					if (!glb)
+						continue;
+					glBindBufferRange(b.type == DescriptorType::UniformBufferDynamic ? GL_UNIFORM_BUFFER : GL_SHADER_STORAGE_BUFFER,
+						b.binding + i, glb->id, static_cast<GLintptr>(info.offset), static_cast<GLsizeiptr>(info.range));
 				}
 				break;
 
@@ -1847,6 +1895,11 @@ namespace SFE::Render
 				mGpuTimeQueries[0] = 0;
 				mGpuTimeQueries[1] = 0;
 			}
+			// Freed with every other buffer below.
+			m_transientBuffer = {};
+			m_transientData.clear();
+			m_transientUsed = 0;
+			m_transientOverflow.clear();
 			for (auto& gp : m_pipelines) {
 				if (!gp.live) {
 					continue;
@@ -2640,6 +2693,72 @@ namespace SFE::Render
 			static_cast<GLintptr>(offset),
 			static_cast<GLsizeiptr>(size),
 			data);
+	}
+
+	TransientAllocation OpenGLRHI::allocTransient(size_t size)
+	{
+		if (size == 0) {
+			return {};
+		}
+		if (!getLive(m_buffers, m_transientBuffer.id)) {
+			GLint uniformAlign = 0;
+			GLint storageAlign = 0;
+			glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &uniformAlign);
+			glGetIntegerv(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, &storageAlign);
+			m_transientAlign = (std::max)({ size_t{ 16 }, static_cast<size_t>(uniformAlign), static_cast<size_t>(storageAlign) });
+			size_t capacity = size_t{ 1 } << 20;
+			while (capacity < m_transientPeak) {
+				capacity *= 2;
+			}
+			BufferDesc desc;
+			desc.size = capacity;
+			desc.usage = BufferUsage::Uniform | BufferUsage::Storage | BufferUsage::Vertex | BufferUsage::Index;
+			desc.cpuAccess = CpuAccess::Write;
+			desc.debugName = "Transient";
+			m_transientBuffer = createBuffer(desc, nullptr);
+			m_transientData.assign(m_transientBuffer ? capacity : 0, 0);
+			m_transientUsed = 0;
+		}
+
+		const size_t offset = (m_transientUsed + m_transientAlign - 1) & ~(m_transientAlign - 1);
+		m_transientPeak = (std::max)(m_transientPeak, offset + size);
+		if (offset + size > m_transientData.size()) {
+			BufferDesc desc;
+			desc.size = size;
+			desc.usage = BufferUsage::Uniform | BufferUsage::Storage | BufferUsage::Vertex | BufferUsage::Index;
+			desc.cpuAccess = CpuAccess::Write;
+			desc.debugName = "Transient overflow";
+			auto& overflow = m_transientOverflow.emplace_back();
+			overflow.buffer = createBuffer(desc, nullptr);
+			overflow.data.assign(size, 0);
+			return { overflow.buffer, 0, overflow.data.data() };
+		}
+		m_transientUsed = offset + size;
+		return { m_transientBuffer, static_cast<uint32_t>(offset), m_transientData.data() + offset };
+	}
+
+	void OpenGLRHI::uploadTransient()
+	{
+		if (m_transientUsed > 0) {
+			execUpdateBuffer(m_transientBuffer, 0, m_transientUsed, m_transientData.data());
+		}
+		for (const auto& overflow : m_transientOverflow) {
+			execUpdateBuffer(overflow.buffer, 0, overflow.data.size(), overflow.data.data());
+		}
+	}
+
+	void OpenGLRHI::resetTransient()
+	{
+		m_transientUsed = 0;
+		for (const auto& overflow : m_transientOverflow) {
+			destroyBuffer(overflow.buffer);
+		}
+		m_transientOverflow.clear();
+		if (m_transientBuffer && m_transientPeak > m_transientData.size()) {
+			// Too small for the list just replayed: the next allocation makes one sized to the peak.
+			destroyBuffer(m_transientBuffer);
+			m_transientBuffer = {};
+		}
 	}
 
 	void* OpenGLRHI::mapBuffer(BufferHandle handle, MapMode mode)

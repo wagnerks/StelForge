@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -266,7 +267,13 @@ namespace SFE::Render
 		AccessMask dstAccess = AccessMask::None;
 	};
 
-	enum class DescriptorType : uint8_t { UniformBuffer, StorageBuffer,	CombinedImageSampler, };
+	// The *Dynamic buffer types take their offset at cmdBindDescriptorSets instead of at the write, so a set
+	// written once can point at a new allocTransient range every frame. Their write must give the range.
+	enum class DescriptorType : uint8_t { UniformBuffer, StorageBuffer,	CombinedImageSampler, UniformBufferDynamic, StorageBufferDynamic, };
+
+	inline bool isDynamicDescriptor(DescriptorType type) {
+		return type == DescriptorType::UniformBufferDynamic || type == DescriptorType::StorageBufferDynamic;
+	}
 
 	// Descriptions
 	struct ShaderModuleDesc {
@@ -440,6 +447,17 @@ namespace SFE::Render
 	// at most once in a layout, so (set, binding) already names the descriptor. Carrying a second copy
 	// of the type only allowed the caller to contradict the layout -- which OpenGL silently ignored and
 	// Vulkan handed to the driver, where it read pImageInfo through a buffer descriptor and faulted.
+	// Memory that lives for one frame: per-pass constants, vertices drawn once. Write it through `data`
+	// before the list that reads it is submitted; it stays valid until that frame has finished on the GPU,
+	// while the next frame writes elsewhere. Bind it as a *Dynamic descriptor (written once with
+	// range = size, `offset` passed to cmdBindDescriptorSets) or as a vertex or index buffer at `offset`.
+	struct TransientAllocation {
+		BufferHandle buffer;
+		uint32_t     offset = 0;
+		void*        data = nullptr;
+		explicit operator bool() const { return data != nullptr; }
+	};
+
 	struct WriteDescriptor {
 		DescriptorSetHandle set; // in which set to write
 		uint32_t            binding = 0; // binding in shader layout
@@ -561,6 +579,17 @@ namespace SFE::Render
 		virtual void* mapBuffer(BufferHandle handle, MapMode mode) = 0;
 		virtual void  unmapBuffer(BufferHandle handle) = 0;
 
+		// See TransientAllocation. Aligned for use as a uniform or storage buffer.
+		virtual TransientAllocation allocTransient(size_t size) = 0;
+		template<typename T>
+		TransientAllocation allocTransient(const T& value) {
+			const auto allocation = allocTransient(sizeof(T));
+			if (allocation) {
+				std::memcpy(allocation.data, &value, sizeof(T));
+			}
+			return allocation;
+		}
+
 		virtual RenderPassHandle createRenderPass(const RenderPassDesc& desc) = 0;
 		virtual void destroyRenderPass(RenderPassHandle renderPass) = 0;
 
@@ -582,7 +611,9 @@ namespace SFE::Render
 
 		virtual void cmdBindVertexBuffer(CommandListHandle cmd, uint32_t slot, BufferHandle handle, uint32_t offset = 0) = 0;
 		virtual void cmdBindIndexBuffer(CommandListHandle cmd, BufferHandle handle, IndexType type, uint32_t offset = 0) = 0;
-		virtual void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount) = 0;
+		// One dynamic offset per *Dynamic binding of the sets, set by set and in ascending binding number.
+		virtual void cmdBindDescriptorSets(CommandListHandle cmd, PipelineHandle layout, uint32_t firstSet, const DescriptorSetHandle* sets, uint32_t setCount,
+			const uint32_t* dynamicOffsets = nullptr, uint32_t dynamicOffsetCount = 0) = 0;
 		virtual void cmdPushConstants(CommandListHandle cmd, PipelineHandle pipeline, ShaderStage stages = ShaderStage::Vertex | ShaderStage::Fragment, const void* data = nullptr, uint32_t size = 0) = 0;
 
 		virtual void cmdDraw(CommandListHandle cmd, uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstVertex = 0, uint32_t firstInstance = 0) = 0;
