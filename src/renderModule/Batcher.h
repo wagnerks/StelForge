@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <functional>
 #include <string>
@@ -12,6 +12,7 @@
 #include "componentsModule/MeshComponent.h"
 #include "containersModule/Vector.h"
 #include "ecss/Types.h"
+#include "renderModule/MaterialRules.h"
 #include "renderModule/RenderHardwareInterface.h"
 
 struct DrawBatchKey {
@@ -61,100 +62,16 @@ struct DrawObject {
 
 	void sortTransformAccordingToView(const SFE::Math::Vec3& viewPos);
 
-	bool usesAlphaCutout() const {
-		return fragmentShader == SFE::ComponentsModule::DefaultGBufferMaskedFS;
-	}
-
 	float cutoutCutoff() const {
-		if (alphaCutoff > 0.f) {
-			return alphaCutoff;
-		}
-		if (alphaFromMaps) {
-			return 0.18f;
-		}
-		if (usesAlphaCutout()) {
-			return 0.4f;
-		}
-		return 0.f;
+		return SFE::Render::MaterialRules::cutoutCutoff(alphaCutoff, alphaFromMaps, fragmentShader);
 	}
 
 	SFE::Render::TextureHandle diffuseTexture() const {
-		for (uint8_t i = 0; i < materialData.materialsCount; ++i) {
-			if (materialData.material[i].slot == SFE::DIFFUSE) {
-				return materialData.material[i].texture;
-			}
-		}
-		return {};
+		return SFE::Render::MaterialRules::diffuseTexture(materialData);
 	}
 
 	SFE::Render::TextureHandle maskTexture() const {
-		SFE::Render::TextureHandle spec{};
-		SFE::Render::TextureHandle rough{};
-		for (uint8_t i = 0; i < materialData.materialsCount; ++i) {
-			const auto& slot = materialData.material[i];
-			if (slot.slot == SFE::ROUGHNESS) {
-				rough = slot.texture;
-			}
-			else if (slot.slot == SFE::SPECULAR) {
-				spec = slot.texture;
-			}
-		}
-		if (rough) {
-			return rough;
-		}
-		if (spec) {
-			return spec;
-		}
-		return diffuseTexture();
-	}
-
-	float gBufferMapMask() const {
-		float mask = 0.f;
-		for (uint8_t i = 0; i < materialData.materialsCount; ++i) {
-			const int slot = materialData.material[i].slot;
-			if (slot == SFE::ROUGHNESS) {
-				mask += 1.f;
-			}
-			else if (slot == SFE::METALLIC) {
-				mask += 2.f;
-			}
-			else if (slot == SFE::SPECULAR) {
-				mask += 4.f;
-			}
-		}
-		if (alphaFromMaps) {
-			mask += 8.f;
-		}
-		return mask;
-	}
-
-	float gBufferUvSel() const {
-		float sel = 0.f;
-		for (uint8_t i = 0; i < materialData.materialsCount; ++i) {
-			if (materialData.material[i].uvSet < 1) {
-				continue;
-			}
-			const int slot = materialData.material[i].slot;
-			if (slot == SFE::DIFFUSE) {
-				sel += 1.f;
-			}
-			else if (slot == SFE::NORMALS) {
-				sel += 2.f;
-			}
-			else if (slot == SFE::SPECULAR) {
-				sel += 4.f;
-			}
-			else if (slot == SFE::ROUGHNESS) {
-				sel += 8.f;
-			}
-			else if (slot == SFE::METALLIC) {
-				sel += 16.f;
-			}
-			else if (slot == SFE::SUBSURFACE) {
-				sel += 32.f;
-			}
-		}
-		return sel;
+		return SFE::Render::MaterialRules::maskTexture(materialData);
 	}
 };
 
@@ -199,8 +116,6 @@ private:
 	// group drawn from one list needs its own region, addressed through firstInstance.
 	size_t mIdsOffset = 0;
 	int mIdsFrame = -1;
-	SFE::Render::TextureHandle mDefaultBlack{};
-	SFE::Render::TextureHandle mDefaultGray{};
 	SFE::Render::DescriptorSetLayoutHandle mMaterialLayout{};
 	std::unordered_map<uint64_t, SFE::Render::DescriptorSetHandle> mCachedMaterialSets;
 	std::vector<GpuInstance> mInstanceScratch;

@@ -135,7 +135,7 @@ namespace SFE::SystemsModule {
 		};
 	}
 
-	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, MATERIAL_UPDATED, MESH_UPDATED }) {
+	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, MATERIAL_UPDATED, MESH_UPDATED, ENTITY_DESTROYED }) {
 		auto* rhi = Engine::instance()->rhi();
 		if (!Engine::instance()->temporalAccumulation()) {
 			mRenderData.graphics.taa = false;
@@ -158,6 +158,7 @@ namespace SFE::SystemsModule {
 		}
 
 		createSceneBuffers(maxDrawSize);
+		mScene.init();
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
 			createGpuFrameResources(slot);
 		}
@@ -188,11 +189,7 @@ namespace SFE::SystemsModule {
 			if (live.hasComponent<MeshComponent>(id)) {
 				markDirty<MeshComponent>(id);
 			}
-			if (auto matComp = live.pinComponent<ComponentsModule::TransformMatComp>(id)) {
-				// A reload that finished before we subscribed never refreshed the copy, so take it from the source.
-				if (const auto transform = live.pinComponent<const TransformComponent>(id)) {
-					matComp->mTransform = transform->getTransform();
-				}
+			if (live.hasComponent<ComponentsModule::TransformMatComp>(id)) {
 				markDirty<ComponentsModule::TransformMatComp>(id);
 				markGpuDirty(mGpuDirtyTransforms, id);
 			}
@@ -293,7 +290,21 @@ namespace SFE::SystemsModule {
 		mRenderData.rotate();
 
 		if (frameLock) {
+			if (mRefreshTransforms) {
+				// A reload that finished before we subscribed -- or while the constructor ran -- never reached
+				// notify, so the copies are taken from the source once, now that every later reload does.
+				mRefreshTransforms = false;
+				auto& live = ECSHandler::registry();
+				for (auto [id, matComp, transform] : live.view<ComponentsModule::TransformMatComp, const TransformComponent>()) {
+					if (matComp && transform) {
+						matComp->mTransform = transform->getTransform();
+						markDirty<ComponentsModule::TransformMatComp>(id);
+						markGpuDirty(mGpuDirtyTransforms, id);
+					}
+				}
+			}
 			uploadDirtyGpuData();
+			mScene.update(mMaterials);
 		}
 
 		renderFrame();
@@ -596,9 +607,14 @@ namespace SFE::SystemsModule {
 		}
 		else if (task.type == MATERIAL_UPDATED) {
 			markDirty<ComponentsModule::MaterialComponent>(task.entity);
+			mScene.markDirty();
 		}
 		else if (task.type == MESH_UPDATED) {
 			markDirty<ComponentsModule::MeshComponent>(task.entity);
+			mScene.markDirty();
+		}
+		else if (task.type == ENTITY_DESTROYED) {
+			mScene.markDirty();
 		}
 	}
 

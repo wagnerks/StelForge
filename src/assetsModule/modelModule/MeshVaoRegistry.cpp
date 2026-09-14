@@ -1,5 +1,6 @@
 #include "MeshVaoRegistry.h"
 
+#include <algorithm>
 #include <chrono>
 
 #include "core/ECSHandler.h"
@@ -76,6 +77,37 @@ namespace SFE {
 		mVertexUsed = static_cast<uint32_t>(vertexEnd);
 		mIndexUsed = static_cast<uint32_t>(indexEnd);
 		upload(mesh, data);
+
+		GpuMesh entry;
+		entry.firstIndex = data.firstIndex;
+		entry.indexCount = data.indexCount;
+		entry.firstVertex = data.firstVertex;
+		entry.vertexCount = data.vertexCount;
+		if (!mesh->vertices.empty()) {
+			for (int i = 0; i < 3; ++i) {
+				entry.boundsMin[i] = entry.boundsMax[i] = mesh->vertices.front().position[i];
+			}
+			for (const auto& v : mesh->vertices) {
+				for (int i = 0; i < 3; ++i) {
+					entry.boundsMin[i] = (std::min)(entry.boundsMin[i], v.position[i]);
+					entry.boundsMax[i] = (std::max)(entry.boundsMax[i], v.position[i]);
+				}
+				if (v.boneIDs[0] >= 0) {
+					entry.skinned = 1;
+				}
+			}
+		}
+		mMeshTable.push_back(entry);
+	}
+
+	std::vector<GpuMesh> MeshVaoRegistry::meshTable() {
+		std::lock_guard lock(mMutex);
+		return mMeshTable;
+	}
+
+	size_t MeshVaoRegistry::meshCount() {
+		std::lock_guard lock(mMutex);
+		return mMeshTable.size();
 	}
 
 	void MeshVaoRegistry::grow(const size_t vertexCapacity, const size_t indexCapacity) {

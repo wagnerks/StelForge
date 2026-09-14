@@ -16,6 +16,7 @@
 #include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/FrameBlackboard.h"
 #include "renderModule/GpuMaterialTable.h"
+#include "renderModule/GpuScene.h"
 
 namespace SFE {
 	namespace Render {
@@ -170,6 +171,8 @@ namespace SFE::SystemsModule {
 		// Destroys the buffer once no frame still in flight can read it. Main thread only.
 		void retireBuffer(Render::BufferHandle buffer) { mRetiredBuffers.emplace_back(buffer, mRenderedFrames); }
 		Render::GpuMaterialTable& materials() { return mMaterials; }
+		Render::GpuScene& scene() { return mScene; }
+		Render::BufferHandle transformsBuffer() const { return transforms; }
 		bool allPassesReady() const;
 
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
@@ -349,6 +352,8 @@ namespace SFE::SystemsModule {
 		// Buffers replaced by a capacity grow, destroyed once no in-flight frame can still read them.
 		std::vector<std::pair<Render::BufferHandle, int>> mRetiredBuffers;
 		Render::GpuMaterialTable mMaterials;
+		Render::GpuScene mScene;
+		bool mRefreshTransforms = true;
 
 		Render::BufferHandle transforms;
 		Render::BufferHandle bones;

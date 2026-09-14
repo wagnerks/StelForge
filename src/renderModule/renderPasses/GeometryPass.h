@@ -8,6 +8,7 @@
 
 #include "assetsModule/TextureHandler.h"
 #include "logsModule/logger.h"
+#include "renderModule/GpuScene.h"
 #include "renderModule/RenderHardwareInterface.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
@@ -56,7 +57,7 @@ namespace SFE::Render::RenderPasses {
 		void initGrid(Render::DescriptorSetLayoutHandle frameLayout);
 		void drawGrid(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
 
-		void fillBatcher(Batcher& batcher, uint8_t nextRegistry, SystemsModule::RenderData& renderData);
+		void drawScene(CommandListHandle cmd, PolygonFillMode fillMode, BufferHandle materials);
 
 		bool mInited = false;
 		Data mFrames[2];
@@ -73,6 +74,12 @@ namespace SFE::Render::RenderPasses {
 		bool needClearOutlines = true;
 
 		RenderPassDataContainer mOutlineData;
+
+		GpuScene::View mCameraView;
+		std::unordered_map<uint64_t, DescriptorSetHandle> mTextureSets;
+		// Per frame set: the visible-instance and material buffers last written, so a set is rewritten
+		// only when one of them was replaced.
+		std::unordered_map<uint32_t, std::pair<uint32_t, uint32_t>> mFrameSetBuffers;
 
 		GraphicsPipelineDesc mGBufferPipelineDesc;
 		std::unordered_map<std::string, PipelineHandle> mGBufferPipelines;

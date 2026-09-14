@@ -8,6 +8,18 @@
 #include "renderModule/RenderHardwareInterface.h"
 
 namespace SFE {
+	// One entry per meshId, as the GPU culling reads it (std430 GpuMesh in shaders/gpu_cull.cs).
+	struct GpuMesh {
+		uint32_t firstIndex = 0;
+		uint32_t indexCount = 0;
+		uint32_t firstVertex = 0;
+		uint32_t vertexCount = 0;
+		float boundsMin[3]{};
+		uint32_t skinned = 0;
+		float boundsMax[3]{};
+		float pad = 0.f;
+	};
+
 	// Every mesh shares one vertex buffer and one index buffer, so a draw differs from the next only in
 	// its ranges -- which is what lets one indirect call cover many meshes.
 	class MeshVaoRegistry : public Singleton<MeshVaoRegistry> {
@@ -19,6 +31,10 @@ namespace SFE {
 		Render::BufferHandle vertexBuffer() const { return mVertexBuffer; }
 		Render::BufferHandle indexBuffer() const { return mIndexBuffer; }
 
+		// Indexed by meshId; entry 0 is unused. Grows only, so its size doubles as a version.
+		std::vector<GpuMesh> meshTable();
+		size_t meshCount();
+
 	private:
 		void allocate(Mesh<Vertex3D>* mesh, RenderMeshData& data);
 		void grow(size_t vertexCapacity, size_t indexCapacity);
@@ -26,6 +42,7 @@ namespace SFE {
 
 		std::mutex mMutex;
 		std::unordered_map<Mesh<Vertex3D>*, RenderMeshData> mMeshVAO;
+		std::vector<GpuMesh> mMeshTable{ 1 };
 
 		Render::BufferHandle mVertexBuffer;
 		Render::BufferHandle mIndexBuffer;

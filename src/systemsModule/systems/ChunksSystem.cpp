@@ -184,7 +184,7 @@ namespace SFE::SystemsModule {
 	void ChunksSystem::unloadChunk(const Chunk& chunk) {
 		auto ids = detachChunk(chunk);
 		if (!ids.empty()) {
-			ECSHandler::registry().destroyEntities(ids);
+			ECSHandler::destroyEntities(ids);
 		}
 	}
 

@@ -2,38 +2,40 @@
 
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "renderModule/Batcher.h"
+#include "renderModule/MaterialRules.h"
 #include "systemsModule/systems/RenderSystem.h"
 
 namespace SFE::Render {
 	namespace {
 		// The rules the passes used to apply per draw, resolved once per material.
-		GpuMaterial makeGpuMaterial(const DrawObject& obj) {
+		GpuMaterial makeGpuMaterial(const ComponentsModule::MaterialComponent& src) {
+			const float cutoff = MaterialRules::cutoutCutoff(src.alphaCutoff, src.alphaFromMaps, src.fragmentShader);
 			GpuMaterial m;
-			m.roughness = obj.roughness;
-			m.metallic = obj.metallic;
-			m.mapMask = obj.gBufferMapMask();
-			m.alphaCutoff = obj.alphaDither ? 1.78f : obj.cutoutCutoff();
-			m.uvSel = obj.gBufferUvSel();
-			m.specFactor = obj.specFactor;
-			m.clearcoat = obj.clearcoat;
-			m.clearcoatRough = obj.clearcoatRough;
-			m.tint[0] = obj.tint.x;
-			m.tint[1] = obj.tint.y;
-			m.tint[2] = obj.tint.z;
-			m.opacity = obj.opacity > 0.f ? obj.opacity : 0.22f;
-			m.ior = obj.ior > 1.f ? obj.ior : 1.52f;
-			m.casterOpacity = (obj.opacity > 0.f && obj.opacity < 0.999f) ? obj.opacity : 1.f;
-			m.shadowCutoff = obj.alphaFromMaps ? -0.18f : obj.cutoutCutoff();
+			m.roughness = src.roughness;
+			m.metallic = src.metallic;
+			m.mapMask = MaterialRules::gBufferMapMask(src.materials, src.alphaFromMaps);
+			m.alphaCutoff = src.alphaDither ? 1.78f : cutoff;
+			m.uvSel = MaterialRules::gBufferUvSel(src.materials);
+			m.specFactor = src.specFactor;
+			m.clearcoat = src.clearcoat;
+			m.clearcoatRough = src.clearcoatRough;
+			m.tint[0] = src.tint.x;
+			m.tint[1] = src.tint.y;
+			m.tint[2] = src.tint.z;
+			m.opacity = src.opacity > 0.f ? src.opacity : 0.22f;
+			m.ior = src.ior > 1.f ? src.ior : 1.52f;
+			m.casterOpacity = (src.opacity > 0.f && src.opacity < 0.999f) ? src.opacity : 1.f;
+			m.shadowCutoff = src.alphaFromMaps ? -0.18f : cutoff;
 			return m;
 		}
 	}
 
-	uint32_t GpuMaterialTable::indexFor(const DrawObject& obj) {
+	uint32_t GpuMaterialTable::indexFor(const ComponentsModule::MaterialComponent& material) {
+		const auto hash = MaterialRules::materialHash(material);
 		std::lock_guard lock(mMutex);
-		const auto [it, inserted] = mIndexByHash.try_emplace(obj.materialHash, static_cast<uint32_t>(mEntries.size()));
+		const auto [it, inserted] = mIndexByHash.try_emplace(hash, static_cast<uint32_t>(mEntries.size()));
 		if (inserted) {
-			mEntries.push_back(makeGpuMaterial(obj));
+			mEntries.push_back(makeGpuMaterial(material));
 		}
 		return it->second;
 	}

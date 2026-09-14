@@ -7,6 +7,7 @@
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
+#include "renderModule/MaterialTextures.h"
 #include "renderModule/Utils.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CameraComponent.h"
@@ -31,53 +32,6 @@
 
 using namespace SFE::Render::RenderPasses;
 
-void GeometryPass::fillBatcher(Batcher& batcher, const uint8_t nextRegistry, SystemsModule::RenderData& renderData) {
-	batcher.clear();
-
-	ecss::Ranges<ecss::EntityId> entities;
-	{
-		const auto octreeSys = ECSHandler::getSystem<SystemsModule::OcTreeSystem>();
-		if (octreeSys) {
-			entities = octreeSys->collectVisibleRanges(renderData.mNextCamFrustum);
-		}
-	}
-
-	auto addMeshes = [&](auto&& viewObjs) -> size_t {
-		size_t considered = 0;
-		size_t visible = 0;
-		for (auto [ent, transform, meshComp, matComp] : viewObjs) {
-			if (!meshComp || !transform) {
-				continue;
-			}
-			++considered;
-			size_t added = 0;
-			meshComp->forEachDrawMesh(matComp, [&](const SFE::RenderMeshData& mesh, const MaterialComponent* mat) {
-				if (mat && mat->transparent) {
-					return;
-				}
-				batcher.addToDrawList(mesh, mat, ent);
-				++added;
-			});
-			if (added > 0) {
-				++visible;
-			}
-		}
-		auto* info = SystemsModule::RenderDebugInfo::instance();
-		info->cullConsidered = considered;
-		info->cullVisible = visible;
-		return visible;
-	};
-
-	auto& drawReg = ECSHandler::drawRegistry(nextRegistry);
-	size_t visible = 0;
-	if (!entities.empty()) {
-		visible = addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>(entities));
-	}
-	else {
-		addMeshes(drawReg.view<const ComponentsModule::TransformMatComp, const MeshComponent, const MaterialComponent>());
-	}
-}
-
 void GeometryPass::prepare() {
 	auto curPassData = getContainer().getCurrentPassData();
 	auto outlineData = mOutlineData.getCurrentPassData();
@@ -96,7 +50,6 @@ void GeometryPass::prepare() {
 			return;
 		}
 		outlineData->getBatcher().clear();
-		fillBatcher(curPassData->getBatcher(), nextRegistry, renderData);
 
 		ecss::Ranges<ecss::EntityId> entities;
 		{
@@ -369,12 +322,15 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	geometryPassBegin.width = Engine::instance()->getWindow()->getScreenData().renderW;
 	geometryPassBegin.height = Engine::instance()->getWindow()->getScreenData().renderH;
 
+	// Culling is a compute dispatch, so it is recorded before the render pass opens.
+	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+	const auto materials = renderSystem->materials().upload();
+	const bool sceneVisible = renderSystem->scene().cull(cmd, mCameraView, renderDataHandle.mCamFrustum, renderSystem->transformsBuffer());
+
 	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
 	const auto fillMode = wireframe ? PolygonFillMode::Line : PolygonFillMode::Fill;
-	if (!curPassData->getBatcher().drawList.empty()) {
-		curPassData->getBatcher().flushAll(cmd, gBuffetLayoutSet, [this, fillMode](const std::string& vs, const std::string& fs) {
-			return getGBufferPipeline(vs, fs, fillMode);
-		});
+	if (sceneVisible) {
+		drawScene(cmd, fillMode, materials);
 	}
 	// The grid keeps its own pipeline, so it stays filled in wireframe mode -- which is what it
 	// already did, since binding a pipeline reset the polygon mode on OpenGL anyway.
@@ -473,6 +429,47 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 			rhi->cmdEndRenderPass(cmd);
 		}
 		needClearOutlines = false;
+	}
+}
+
+void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode fillMode, const BufferHandle materials) {
+	auto* rhi = Engine::instance()->rhi();
+	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+	const auto frameSet = renderSystem->frameSetHandle();
+
+	auto& written = mFrameSetBuffers[frameSet.id];
+	if (written.first != mCameraView.visible.id || written.second != materials.id) {
+		written = { mCameraView.visible.id, materials.id };
+		rhi->updateDescriptorSets({
+			{ .set = frameSet, .binding = 3, .buffers{ { mCameraView.visible } } },
+			{ .set = frameSet, .binding = 7, .buffers{ { materials } } },
+		});
+	}
+
+	const auto* meshes = SFE::MeshVaoRegistry::instance();
+	PipelineHandle bound{};
+	for (const auto& group : renderSystem->scene().groups()) {
+		if (group.batchCount == 0) {
+			continue;
+		}
+		const auto pipeline = getGBufferPipeline(group.vertexShader, group.fragmentShader, fillMode);
+		if (pipeline.id != bound.id) {
+			bound = pipeline;
+			rhi->cmdBindPipeline(cmd, pipeline);
+			// After the pipeline: OpenGL keeps the vertex and index buffers on the pipeline's VAO.
+			rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
+			rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
+		}
+
+		auto& textures = mTextureSets[group.textureKey];
+		if (!textures) {
+			textures = rhi->allocateDescriptorSet(gBuffetLayout);
+			rhi->updateDescriptorSets(materialTextureWrites(textures, group.textures));
+		}
+		const DescriptorSetHandle sets[] = { frameSet, textures };
+		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
+		rhi->cmdDrawIndexedIndirect(cmd, mCameraView.commands, group.firstBatch * GpuScene::kCommandStride, group.batchCount, GpuScene::kCommandStride);
+		SystemsModule::RenderDebugInfo::instance()->drawCalls++;
 	}
 }
 

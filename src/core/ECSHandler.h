@@ -55,6 +55,19 @@ public:
 		}
 	}
 	
+	// Use these instead of the registry's own: they tell the systems that keep per-entity state.
+	inline static void destroyEntity(ecss::EntityId entity) {
+		SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ENTITY_DESTROYED });
+		instance()->mRegistry.destroyEntity(entity);
+	}
+
+	inline static void destroyEntities(std::vector<ecss::EntityId>& entities) {
+		for (const auto entity : entities) {
+			SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ENTITY_DESTROYED });
+		}
+		instance()->mRegistry.destroyEntities(entities);
+	}
+
 	inline static auto& drawRegistry(uint8_t index = 0) {
 		return instance()->mDrawRegistry[index];
 	}

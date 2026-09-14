@@ -5,9 +5,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "componentsModule/MaterialComponent.h"
 #include "renderModule/RenderHardwareInterface.h"
-
-struct DrawObject;
 
 namespace SFE::Render {
 	// Mirrors SfeMaterial in shaders/sfe_material.glsl.
@@ -29,12 +28,12 @@ namespace SFE::Render {
 	};
 	static_assert(sizeof(GpuMaterial) == 64, "must match the std430 SfeMaterial");
 
-	// One entry per distinct material, keyed by the batcher's material hash. Entries are appended and
+	// One entry per distinct material, keyed by MaterialRules::materialHash. Entries are appended and
 	// never move, so an index handed out stays valid; the buffer holds them all on the GPU.
 	class GpuMaterialTable {
 	public:
 		// Any thread.
-		uint32_t indexFor(const DrawObject& obj);
+		uint32_t indexFor(const ComponentsModule::MaterialComponent& material);
 		// Main thread. Uploads entries added since the last call and returns the buffer to bind.
 		BufferHandle upload();
 

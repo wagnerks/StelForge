@@ -5,6 +5,7 @@
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/Material.h"
+#include "renderModule/MaterialTextures.h"
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
 #include "systemsModule/systems/RenderSystem.h"
@@ -37,41 +38,6 @@ namespace {
 		return kEmpty;
 	}
 
-	static uint64_t hashMaterial(const SFE::ComponentsModule::MaterialComponent& material) {
-		uint64_t h = 1469598103934665603ull;
-		auto mix = [&](uint64_t v) {
-			h ^= v;
-			h *= 1099511628211ull;
-		};
-		mix(material.transparent ? 1ull : 0ull);
-		mix(material.alphaFromMaps ? 1ull : 0ull);
-		mix(material.alphaDither ? 1ull : 0ull);
-		mix(static_cast<uint64_t>(material.opacity * 4096.f));
-		mix(static_cast<uint64_t>(material.ior * 4096.f));
-		mix(static_cast<uint64_t>(material.roughness * 4096.f));
-		mix(static_cast<uint64_t>(material.metallic * 4096.f));
-		mix(static_cast<uint64_t>(material.alphaCutoff * 4096.f));
-		mix(static_cast<uint64_t>(material.specFactor * 4096.f));
-		mix(static_cast<uint64_t>(material.clearcoat * 4096.f));
-		mix(static_cast<uint64_t>(material.clearcoatRough * 4096.f));
-		mix(static_cast<uint64_t>(material.tint.x * 4096.f));
-		mix(static_cast<uint64_t>(material.tint.y * 4096.f));
-		mix(static_cast<uint64_t>(material.tint.z * 4096.f));
-		mix(material.materials.materialsCount);
-		for (uint8_t i = 0; i < material.materials.materialsCount; ++i) {
-			const auto& slot = material.materials.material[i];
-			mix((static_cast<uint64_t>(slot.slot) << 32) | slot.texture.id);
-			mix(static_cast<uint64_t>(slot.uvSet));
-		}
-		if (material.vertexShader != SFE::ComponentsModule::DefaultGBufferVS) {
-			mix(std::hash<std::string>{}(material.vertexShader));
-		}
-		if (material.fragmentShader != SFE::ComponentsModule::DefaultGBufferFS) {
-			mix(std::hash<std::string>{}(material.fragmentShader));
-		}
-		return h;
-	}
-
 	static uint64_t hashMaterialGlass(const SFE::ComponentsModule::MaterialComponent& material) {
 		uint64_t h = 1469598103934665603ull;
 		auto mix = [&](uint64_t v) {
@@ -96,7 +62,7 @@ namespace {
 	}
 
 	DrawBatchKey makeBatchKey(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
-		return { meshData.meshId, hashMaterial(material) };
+		return { meshData.meshId, SFE::Render::MaterialRules::materialHash(material) };
 	}
 
 	DrawBatchKey makeBatchKeyGlass(const SFE::RenderMeshData& meshData, const SFE::ComponentsModule::MaterialComponent& material) {
@@ -129,7 +95,7 @@ DrawObject& Batcher::batchFor(const SFE::RenderMeshData& meshData, const SFE::Co
 		obj.alphaDither = material.alphaDither;
 		obj.tint = material.tint;
 		obj.materialHash = key.materialHash;
-		obj.materialIndex = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->materials().indexFor(obj);
+		obj.materialIndex = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->materials().indexFor(material);
 		obj.entities.reserve(256);
 		obj.matrices.reserve(64);
 		mLastKey = key;
@@ -164,7 +130,7 @@ DrawObject& Batcher::batchForGlass(const SFE::RenderMeshData& meshData, const SF
 		obj.clearcoatRough = material.clearcoatRough;
 		obj.tint = material.tint;
 		obj.materialHash = key.materialHash;
-		obj.materialIndex = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->materials().indexFor(obj);
+		obj.materialIndex = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>()->materials().indexFor(material);
 		obj.entities.reserve(256);
 		obj.matrices.reserve(64);
 		mLastKey = key;
@@ -249,117 +215,17 @@ void Batcher::flushEntitiesInternal(SFE::Render::CommandListHandle cmd, SFE::Ren
 	const auto materialsBuffer = renderSystem ? renderSystem->materials().upload() : SFE::Render::BufferHandle{};
 
 	if (bindResources) {
-		auto defaultTex = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
-		auto defaultNormal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png");
-
-		if (!mDefaultBlack) {
-			SFE::Render::TextureDesc solidDesc;
-			solidDesc.width = 1;
-			solidDesc.height = 1;
-			solidDesc.format = SFE::Render::TextureFormat::RGBA8;
-			const uint8_t blackPx[4] = { 0, 0, 0, 255 };
-			mDefaultBlack = rhi->createTexture(solidDesc, blackPx);
-			const uint8_t grayPx[4] = { 128, 128, 128, 255 };
-			mDefaultGray = rhi->createTexture(solidDesc, grayPx);
-		}
-
 		SFE::Render::DescriptorSetHandle materialSet = setHandle;
 		if (mMaterialLayout) {
 			auto& cached = mCachedMaterialSets[objs.materialHash];
 			if (!cached) {
 				cached = rhi->allocateDescriptorSet(mMaterialLayout);
-				std::vector<SFE::Render::WriteDescriptor> writes {
-				{
-					.set = cached,
-					.binding = SFE::DIFFUSE,
-					.images{ {defaultTex->texture, defaultTex->sampler} }
-				},
-				{
-					.set = cached,
-					.binding = SFE::NORMALS,
-					.images{ {defaultNormal->texture, defaultNormal->sampler} }
-				},
-				{
-					.set = cached,
-					.binding = SFE::SPECULAR,
-					.images{ {mDefaultBlack, defaultTex->sampler} }
-				},
-				{
-					.set = cached,
-					.binding = SFE::ROUGHNESS,
-					.images{ {mDefaultGray, defaultTex->sampler} }
-				},
-				{
-					.set = cached,
-					.binding = SFE::METALLIC,
-					.images{ {mDefaultBlack, defaultTex->sampler} }
-				},
-				{
-					.set = cached,
-					.binding = SFE::SUBSURFACE,
-					.images{ {mDefaultBlack, defaultTex->sampler} }
-				},
-				};
-				for (auto i = 0; i < objs.materialData.materialsCount; i++) {
-					const auto& mat = objs.materialData.material[i];
-					if (!mat.texture) {
-						continue;
-					}
-					writes.push_back(SFE::Render::WriteDescriptor{
-						.set = cached,
-						.binding = static_cast<uint32_t>(mat.slot),
-						.images{ {mat.texture, defaultTex->sampler} }
-						});
-				}
-				rhi->updateDescriptorSets(writes);
+				rhi->updateDescriptorSets(SFE::Render::materialTextureWrites(cached, objs.materialData));
 			}
 			materialSet = cached;
 		}
 		else if (setHandle) {
-			std::vector<SFE::Render::WriteDescriptor> writes {
-			{
-				.set = setHandle,
-				.binding = SFE::DIFFUSE,
-				.images{ {defaultTex->texture, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::NORMALS,
-				.images{ {defaultNormal->texture, defaultNormal->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::SPECULAR,
-				.images{ {mDefaultBlack, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::ROUGHNESS,
-				.images{ {mDefaultGray, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::METALLIC,
-				.images{ {mDefaultBlack, defaultTex->sampler} }
-			},
-			{
-				.set = setHandle,
-				.binding = SFE::SUBSURFACE,
-				.images{ {mDefaultBlack, defaultTex->sampler} }
-			},
-			};
-			for (auto i = 0; i < objs.materialData.materialsCount; i++) {
-				const auto& mat = objs.materialData.material[i];
-				if (!mat.texture) {
-					continue;
-				}
-				writes.push_back(SFE::Render::WriteDescriptor{
-					.set = setHandle,
-					.binding = static_cast<uint32_t>(mat.slot),
-					.images{ {mat.texture, defaultTex->sampler} }
-					});
-			}
-			rhi->updateDescriptorSets(writes);
+			rhi->updateDescriptorSets(SFE::Render::materialTextureWrites(setHandle, objs.materialData));
 		}
 
 		if (frameSet && batcherBuffer) {
