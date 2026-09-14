@@ -24,9 +24,10 @@ namespace SFE::ComponentsModule {
 		setPos({ mPos.x, mPos.y, z });
 	}
 	void TransformComponent::setPos(const Math::Vec3& pos) {
-		if (mPos != pos) {	markDirty(); }
-
-		mPos = pos;
+		if (mPos != pos) {
+			mPos = pos;
+			markDirty();
+		}
 	}
 
 	//x - pitch, y - yaw, z - roll
@@ -44,9 +45,10 @@ namespace SFE::ComponentsModule {
 		setRotate({ mRotate.x, mRotate.y, z });
 	}
 	void TransformComponent::setRotate(const SFE::Math::Vec3& rotate) {
-		if (this->mRotate != rotate) { markDirty(); }
-
-		this->mRotate = rotate;
+		if (mRotate != rotate) {
+			mRotate = rotate;
+			markDirty();
+		}
 	}
 
 	const Math::Vec3& TransformComponent::getScale() const {
@@ -67,9 +69,10 @@ namespace SFE::ComponentsModule {
 		setScale({ mScale.x, mScale.y, z });
 	}
 	void TransformComponent::setScale(const SFE::Math::Vec3& scale) {
-		if (mScale != scale) { markDirty();	}
-
-		mScale = scale;
+		if (mScale != scale) {
+			mScale = scale;
+			markDirty();
+		}
 	}
 
 	const Math::Mat4& TransformComponent::getTransform() const {
@@ -140,6 +143,9 @@ namespace SFE::ComponentsModule {
 		return -mTransform[2];
 	}
 
+	// Setters call this after writing the value. TransformSystem reloads on a worker as soon as it is notified,
+	// and a reload that ran between the flag and the write rebuilt the matrix from the old value and cleared the
+	// flag, so the new one was never applied: a random handful of spawned models kept their unrotated matrix.
 	void TransformComponent::markDirty() {
 		if (mDirty) {
 			return;
