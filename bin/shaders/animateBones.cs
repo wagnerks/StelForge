@@ -42,11 +42,16 @@ struct AnimInstance {
     float animTime;
     int entityId;
     int boneCount;
+    int boneStride;
 };
 
 layout(SFE_SET(0, 25), std430) readonly buffer AnimInstances {
     AnimInstance instances[];
 };
+
+// Bone world matrices without the offset, boneStride rows per instance, indexed by bone. A local array of
+// them cost NVIDIA's GL driver ~20 ms for a thousand characters.
+layout(SFE_SET(0, 26), std430) buffer Worlds { mat4 worlds[]; };
 
 mat4 quatToMat(vec4 q) {
     float x = q.x, y = q.y, z = q.z, w = q.w;
@@ -79,34 +84,37 @@ mat4 localTRS(vec3 t, vec4 q, vec3 s) {
     return T * R * S;
 }
 
+// The key before the first one later than t, or the second to last when none is: binary searches over
+// the first `cnt` keys, which are sorted by time.
+int keyIndex(int lo, int cnt) {
+    return lo == cnt ? cnt - 2 : lo - 1;
+}
+
 int findKey(float t, int off, int cnt) {
-    int index = 1;
-    for (; index < cnt; ++index) {
-        if (t < posKeys[off + index].time) {
-            return index - 1;
-        }
+    int lo = 1, hi = cnt;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (t < posKeys[off + mid].time) hi = mid; else lo = mid + 1;
     }
-    return cnt - 2;
+    return keyIndex(lo, cnt);
 }
 
 int findQuatKey(float t, int off, int cnt) {
-    int index = 1;
-    for (; index < cnt; ++index) {
-        if (t < rotKeys[off + index].time) {
-            return index - 1;
-        }
+    int lo = 1, hi = cnt;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (t < rotKeys[off + mid].time) hi = mid; else lo = mid + 1;
     }
-    return cnt - 2;
+    return keyIndex(lo, cnt);
 }
 
 int findSclKey(float t, int off, int cnt) {
-    int index = 1;
-    for (; index < cnt; ++index) {
-        if (t < sclKeys[off + index].time) {
-            return index - 1;
-        }
+    int lo = 1, hi = cnt;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (t < sclKeys[off + mid].time) hi = mid; else lo = mid + 1;
     }
-    return cnt - 2;
+    return keyIndex(lo, cnt);
 }
 
 vec3 lerpVec3Keys(int off, int cnt, float t) {
@@ -175,7 +183,7 @@ vec4 lerpQuatKeys(int off, int cnt, float t) {
 
 void main() {
     AnimInstance inst = instances[gl_WorkGroupID.x];
-    mat4 worlds[MAX_BONES];
+    int row = int(gl_WorkGroupID.x) * inst.boneStride;
     for (int i = 0; i < inst.boneCount; ++i) {
         int bi = order[i];
         BoneDesc b = bones[bi];
@@ -201,9 +209,9 @@ void main() {
             }
         }
 
-        mat4 parent = (b.parent < 0) ? inst.armatureTransform : worlds[b.parent];
+        mat4 parent = (b.parent < 0) ? inst.armatureTransform : worlds[row + b.parent];
         mat4 world = parent * local;
-        worlds[b.boneId] = world;
+        worlds[row + bi] = world;
         outBones[inst.entityId * MAX_BONES + b.boneId] = world * b.offset;
     }
 }

@@ -53,7 +53,7 @@ namespace {
 		float animTime = 0.f;
 		int entityId = 0;
 		int boneCount = 0;
-		int pad = 0;
+		int boneStride = 0; // the clip's bones: the instance's rows in the worlds buffer
 	};
 	static_assert(sizeof(AnimPush) == 80);
 
@@ -89,6 +89,7 @@ void AnimationComputePass::init(SystemsModule::RenderData&) {
 		{ 23, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 24, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 25, DescriptorType::StorageBuffer, ShaderStage::Compute },
+		{ 26, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 2,  DescriptorType::StorageBuffer, ShaderStage::Compute },
 	};
 	mSetLayout = rhi->createDescriptorSetLayout(layout);
@@ -135,7 +136,7 @@ AnimationComputePass::GpuClip* AnimationComputePass::packClip(const AssetsModule
 			desc.parent = -1;
 		}
 		else {
-			desc.parent = static_cast<int>(armature.bones[bone.parentBoneIdx].id);
+			desc.parent = static_cast<int>(bone.parentBoneIdx);
 		}
 
 		const auto* keys = animation->getBoneAnimationInfo(bone.name);
@@ -249,6 +250,7 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		inst.animTime = animationComp->mCurrentTime;
 		inst.entityId = static_cast<int>(entityId);
 		inst.boneCount = std::min(clip->boneCount, kMaxBones);
+		inst.boneStride = clip->boneCount;
 
 		auto& batch = batches[anim];
 		batch.clip = clip;
@@ -272,6 +274,7 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		if (count > batch.clip->instanceCapacity) {
 			batch.clip->instanceCapacity = count + count / 2;
 			batch.clip->instances = createStorage(rhi, sizeof(AnimPush) * batch.clip->instanceCapacity, nullptr, "AnimInstances");
+			batch.clip->worlds = createStorage(rhi, sizeof(Math::Mat4) * batch.clip->instanceCapacity * batch.clip->boneCount, nullptr, "AnimBoneWorlds");
 		}
 		rhi->cmdUpdateBuffer(cmd, batch.clip->instances, 0, count * sizeof(AnimPush), batch.instances.data());
 		rhi->updateDescriptorSets({
@@ -281,6 +284,7 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 			{ mSet, 23, {{ batch.clip->sclKeys }} },
 			{ mSet, 24, {{ batch.clip->order }} },
 			{ mSet, 25, {{ batch.clip->instances }} },
+			{ mSet, 26, {{ batch.clip->worlds }} },
 			{ mSet, 2,  {{ renderDataHandle.bonesSSBO }} },
 		});
 		rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);

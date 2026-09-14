@@ -28,6 +28,8 @@ namespace SFE::Render::RenderPasses {
 			// Per clip: cmdUpdateBuffer writes at the call, so two clips dispatched in one list must not
 			// share an instance buffer -- every dispatch would read the last clip's instances.
 			BufferHandle instances;
+			// Bone world matrices without the offset, boneCount per instance: children read their parent's here.
+			BufferHandle worlds;
 			size_t instanceCapacity = 0;
 			int boneCount = 0;
 		};
