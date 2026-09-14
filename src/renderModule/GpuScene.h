@@ -81,6 +81,8 @@ namespace SFE::Render {
 		void drawSorted(CommandListHandle cmd, const View& view) const;
 
 		const std::vector<DrawGroup>& groups(List list) const { return mLists[static_cast<size_t>(list)].groups; }
+		// The largest entity id any instance has referred to: the culls read its transform.
+		ecss::EntityId maxEntity() const { return mMaxEntity; }
 		// The group's indirect call. Pipeline, descriptor sets and the shared vertex and index buffers are the
 		// caller's.
 		void draw(CommandListHandle cmd, const View& view, const DrawGroup& group) const;
@@ -166,6 +168,7 @@ namespace SFE::Render {
 		std::atomic<bool> mDirty{ true };
 		std::array<ListData, static_cast<size_t>(List::Count)> mLists;
 		std::unordered_map<ecss::EntityId, std::vector<InstanceRef>> mEntityRefs;
+		ecss::EntityId mMaxEntity = 0;
 		std::mutex mPendingMutex;
 		std::vector<ecss::EntityId> mPending;
 		std::vector<ecss::EntityId> mOutlined;

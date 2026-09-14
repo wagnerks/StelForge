@@ -283,6 +283,9 @@ namespace SFE::SystemsModule {
 			}
 			uploadDirtyGpuData();
 			mScene.update(mMaterials);
+			// An entity can join the scene after this frame's dirty transforms were taken, its id past the
+			// buffer; the grow uploads every live transform, its own included.
+			ensureGpuCapacity(mScene.maxEntity());
 		}
 
 		renderFrame();
@@ -483,8 +486,14 @@ namespace SFE::SystemsModule {
 
 	void RenderSystem::notify(Task task) {
 		if (task.type == TRAHSFORM_RELOADED) {
-			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(task.entity, static_cast<TransformComponent*>(task.customData)->getTransform());
+			auto& registry = ECSHandler::registry();
+			const bool first = !registry.hasComponent<ComponentsModule::TransformMatComp>(task.entity);
+			registry.addComponent<ComponentsModule::TransformMatComp>(task.entity, static_cast<TransformComponent*>(task.customData)->getTransform());
 			markGpuDirty(mGpuDirtyTransforms, task.entity);
+			if (first) {
+				// The scene skips an entity with no transform yet, so one whose mesh came first is read again now.
+				mScene.markEntity(task.entity);
+			}
 		}
 		else if (task.type == ARMATURE_UPDATED) {
 			markGpuDirty(mGpuDirtyBones, task.entity);

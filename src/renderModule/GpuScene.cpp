@@ -314,7 +314,9 @@ namespace SFE::Render {
 
 		if (refs.empty()) {
 			mEntityRefs.erase(entity);
+			return;
 		}
+		mMaxEntity = (std::max)(mMaxEntity, entity);
 	}
 
 	void GpuScene::removeEntity(const ecss::EntityId entity) {
