@@ -218,7 +218,7 @@ namespace SFE::Render::Tests {
 		// Names the instantiated cases "Backends/RhiBackendTest.Foo/OpenGL" instead of "/0", so a
 		// failure says which backend broke without counting indices.
 		static std::string backendName(const ::testing::TestParamInfo<GraphicsBackend>& info) {
-			return info.param == GraphicsBackend::Vulkan ? "Vulkan" : "OpenGL";
+			return graphicsBackendName(info.param);
 		}
 
 	protected:

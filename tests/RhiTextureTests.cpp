@@ -1271,7 +1271,7 @@ namespace SFE::Render::Tests {
 	// level is judged on its own filter and errors do not accumulate down the chain. Tolerance 1: a
 	// 2x2 average falls on .25/.5/.75, and a correct implementation may resolve .5 either way.
 	TEST_P(RhiBackendTest, GeneratedMipLevelsMatchA2x2BoxFilter) {
-		const char* backend = GetParam() == GraphicsBackend::Vulkan ? "Vulkan" : "OpenGL";
+		const char* backend = graphicsBackendName(GetParam());
 
 		SamplerDesc samplerDesc;
 		samplerDesc.minFilter = FilterMode::LinearMipmapLinear;
@@ -1538,7 +1538,7 @@ namespace SFE::Render::Tests {
 	// backend to run, against the first backend's bytes. Only the latter is asserted: tolerance 1,
 	// the rounding two correct implementations may differ by.
 	TEST_P(RhiBackendTest, BilinearSamplingMatchesAcrossBackendsAtSubTexelUvs) {
-		const char* backend = GetParam() == GraphicsBackend::Vulkan ? "Vulkan" : "OpenGL";
+		const char* backend = graphicsBackendName(GetParam());
 		const auto source = bilinearSource();
 
 		TextureDesc texDesc;

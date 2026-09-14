@@ -83,7 +83,9 @@ namespace {
 int main(int argc, char** argv)
 {
 	SFE::NativeLibraries::init();
-	SFE::Render::configureGraphicsBackend(argc, argv);
+	if (!SFE::Render::configureGraphicsBackend(argc, argv)) {
+		return 2;
+	}
 
 	bool serveEditor = false;
 	bool visibleWindow = true;
