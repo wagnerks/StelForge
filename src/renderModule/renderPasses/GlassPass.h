@@ -38,9 +38,14 @@ namespace SFE::Render::RenderPasses {
 		TextureHandle mSceneCopy{};
 		SamplerHandle mSampler{};
 		FramebufferHandle mSceneCopyFbo{};
+		// Final and depth both alternate between frames, so there is one framebuffer per pair they come in.
+		struct GlassTarget {
+			TextureHandle finalTex;
+			TextureHandle depthTex;
+			FramebufferHandle fbo;
+		};
+		std::vector<GlassTarget> mGlassTargets;
 		FramebufferHandle mGlassFbo{};
-		TextureHandle mFinalTex{};
-		TextureHandle mDepthTex{};
 		PipelineHandle mPipeline{};
 		RenderPassHandle mRenderPass{};
 		DescriptorSetLayoutHandle mLayout{};

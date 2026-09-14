@@ -121,8 +121,11 @@ void GlassPass::ensureTargets(SystemsModule::RenderData& renderDataHandle) {
 	if (!finalTex || !depthTex) {
 		return;
 	}
-	if (mGlassFbo && mFinalTex.id == finalTex.id && mDepthTex.id == depthTex.id) {
-		return;
+	for (const auto& target : mGlassTargets) {
+		if (target.finalTex.id == finalTex.id && target.depthTex.id == depthTex.id) {
+			mGlassFbo = target.fbo;
+			return;
+		}
 	}
 
 	auto* rhi = Engine::instance()->rhi();
@@ -136,8 +139,7 @@ void GlassPass::ensureTargets(SystemsModule::RenderData& renderDataHandle) {
 	glassFb.colorAttachments = { { finalTex } };
 	glassFb.depthStencilAttachment = { .texture = depthTex };
 	mGlassFbo = rhi->createFramebuffer(glassFb);
-	mFinalTex = finalTex;
-	mDepthTex = depthTex;
+	mGlassTargets.push_back({ finalTex, depthTex, mGlassFbo });
 }
 
 void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -194,13 +196,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		w.buffers.push_back({ mParamsUBO });
 		writes.push_back(std::move(w));
 	}
-	if (frame.texture(FrameId::IblIrradiance)) {
-		WriteDescriptor w{};
-		w.set = mSet;
-		w.binding = 12;
-		w.images.push_back({ frame.texture(FrameId::IblIrradiance), frame.sampler(FrameId::IblIrradiance) });
-		writes.push_back(std::move(w));
-	}
 	if (frame.texture(FrameId::IblPrefilter)) {
 		WriteDescriptor w{};
 		w.set = mSet;
@@ -227,13 +222,6 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		w.set = mSet;
 		w.binding = 2;
 		w.buffers.push_back({ renderDataHandle.bonesSSBO });
-		writes.push_back(std::move(w));
-	}
-	if (frame.texture(FrameId::IblBrdf)) {
-		WriteDescriptor w{};
-		w.set = mSet;
-		w.binding = 14;
-		w.images.push_back({ frame.texture(FrameId::IblBrdf), frame.sampler(FrameId::IblBrdf) });
 		writes.push_back(std::move(w));
 	}
 	// The glass albedo textures as one array, so every glass instance draws from the same set.
