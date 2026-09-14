@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "GameTestFixture.h"
+#include "EngineTestFixture.h"
 #include "core/NativeLibraries.h"
 
 // Own entry point: the native DLLs (assimp, jsoncpp) are delay-loaded out of <exe>/ThirdParty and the loader has to
@@ -8,6 +8,6 @@
 int main(int argc, char** argv) {
 	SFE::NativeLibraries::init();
 	testing::InitGoogleTest(&argc, argv);
-	testing::AddGlobalTestEnvironment(new SFE::GameTests::GameEnvironment);
+	testing::AddGlobalTestEnvironment(new SFE::EngineTests::EngineEnvironment);
 	return RUN_ALL_TESTS();
 }

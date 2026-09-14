@@ -1,14 +1,14 @@
 #include <cmath>
 #include <vector>
 
-#include "GameTestFixture.h"
+#include "EngineTestFixture.h"
 #include "assetsModule/modelModule/Animation.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "ecss/Registry.h"
 #include "systemsModule/systems/WorldTimeSystem.h"
 
-namespace SFE::GameTests {
+namespace SFE::EngineTests {
 	using ComponentsModule::AnimationComponent;
 	using ComponentsModule::TransformComponent;
 	using ComponentsModule::TransformMatComp;
@@ -16,7 +16,7 @@ namespace SFE::GameTests {
 	// Position and rotation set on new entities reach the matrix the renderer reads, through the transform events
 	// and TransformSystem's worker. Not a reproducer for the markDirty race fixed alongside this suite: that window
 	// is too narrow to hit on demand, and the test passes on the old code too.
-	TEST(GameTest, SpawnedTransformsReachTheRenderCopy) {
+	TEST(EngineTest, SpawnedTransformsReachTheRenderCopy) {
 		auto& registry = ECSHandler::registry();
 		std::vector<ecss::EntityId> ids;
 		for (int i = 0; i < 256; ++i) {
@@ -45,7 +45,7 @@ namespace SFE::GameTests {
 	}
 
 	// With a fixed frame step an animation moves by exactly frames * step * ticks per second.
-	TEST(GameTest, AnimationAdvancesByTheFrameStep) {
+	TEST(EngineTest, AnimationAdvancesByTheFrameStep) {
 		auto& registry = ECSHandler::registry();
 		// The default world spawns its animated characters from the chunk loader, which is asynchronous.
 		ecss::EntityId animated = ecss::INVALID_ID;
@@ -91,7 +91,7 @@ namespace SFE::GameTests {
 	}
 
 	// Tick systems step from the frame under a fixed step: world time (1 tick a second) moves in whole seconds.
-	TEST(GameTest, WorldTimeTicksFromTheFrameStep) {
+	TEST(EngineTest, WorldTimeTicksFromTheFrameStep) {
 		auto* worldTime = ECSHandler::getSystem<SystemsModule::WorldTimeSystem>();
 		ASSERT_NE(worldTime, nullptr);
 		const float before = worldTime->getWorldTime();

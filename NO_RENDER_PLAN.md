@@ -1,6 +1,6 @@
 # No-render mode plan
 
-Goal: run the engine with no window and no GPU, to run game tests without a picture. What must work:
+Goal: run the engine with no window and no GPU, to run engine unit tests without a picture (game tests will later be part of the runtime itself). What must work:
 - game systems and ECS;
 - asset loading on the CPU;
 - the editor bridge (`--serve`);
@@ -35,8 +35,8 @@ Approach: a third RHI backend, `None`, the same way as Unreal `-nullrhi` and God
 - [x] `--serve --backend none`: no embedding in the editor window (there is no window), no Frame packets (readback returns false), and input injection and the rest of the protocol unchanged.
 - [x] Editor `RuntimeWidget`: passes `none` through `STELFORGE_BACKEND` and shows "no picture" instead of an empty view.
 
-## 5. Game tests
-- [x] `game_tests` target (GoogleTest, like `rhi_tests`): one engine per process in None mode with a fixed step, plus helpers to step N frames and read components.
+## 5. Engine unit tests
+- [x] `engine_tests` target (GoogleTest, like `rhi_tests`): one engine per process in None mode with a fixed step, plus helpers to step N frames and read components.
 - [x] First tests:
   - a spawned entity's rotation reaches `TransformMatComp` (does not reproduce the `markDirty` race: it passes on the old code too, the window is too narrow);
   - an animation advances by exactly dt * ticks;
