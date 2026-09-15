@@ -15,6 +15,8 @@ Known problems in the GPU-driven renderer, most urgent first.
 ## 4. Skinned bounds are a static inflated AABB
 - [ ] The box is the bind pose plus a margin. A pose that reaches past it (a wide swing, a fall) gets the part that sticks out culled by frustum culling now, and by occlusion culling once it exists.
 - Fix: compute the AABB per frame in `animateBones.cs` from bone world positions. Add a per-bone radius (the farthest vertex weighted to the bone in bind pose, computed once at load) scaled by the bone's world axes, and write the result into a bounds buffer the cull reads. Costs a few percent of a 0.1–0.2 ms pass and 24 bytes per character.
+- Tried (cec243f, reverted in 1fe15ae): one pose box per entity cost 0.5–0.8 ms of GPU time on the character scene, measured with old and new runtimes alternated in rotating order. The compute was free; the loss was culling. Every submesh took the whole body's box instead of its own inflated one, so small submeshes (eyes, hair, clothing) passed far more views, the shadow cascades above all. For the vampire the pose box was 135×130×91 against a 135×106×34 mesh box.
+- Next attempt: a box per submesh. Give each bone a mask of the submeshes it influences and grow only those boxes. Keep one box slot per skinned submesh before the entity's bones, and let the mesh table's `skinned` field carry the submesh index the cull reads it by.
 
 ## 5. No occlusion culling
 - [ ] Nothing writes `OcclusionComponent::occluded`: the flag is always false. `AnimationComputePass` reads it, while `GeometryPass` and `CascadedShadowPass` only include the header.
