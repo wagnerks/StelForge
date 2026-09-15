@@ -244,7 +244,51 @@ namespace SFE::Render {
 		}
 	}
 
+	bool GpuScene::validate() const {
+		for (const auto& [entity, refs] : mEntityRefs) {
+			for (const auto& ref : refs) {
+				const auto& data = mLists[static_cast<size_t>(ref.list)];
+				if (ref.group >= data.groups.size() || ref.batch >= data.groups[ref.group].batchCount) {
+					return false;
+				}
+				const uint32_t global = data.groups[ref.group].firstBatch + ref.batch;
+				if (global >= data.batchMirror.size() || ref.slot >= data.batchMirror[global].instanceCount) {
+					return false;
+				}
+				const auto& batch = data.batchMirror[global];
+				if (batch.firstInstance + ref.slot >= data.instanceMirror.size()
+					|| data.instanceMirror[batch.firstInstance + ref.slot].entity != entity
+					|| data.batchStates[global].owners[ref.slot].entity != entity) {
+					return false;
+				}
+			}
+		}
+		for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
+			const auto& data = mLists[static_cast<size_t>(list)];
+			size_t live = 0;
+			size_t ownedInstances = 0;
+			for (size_t b = 0; b < data.batchMirror.size(); ++b) {
+				if (data.batchStates[b].owners.size() != data.batchMirror[b].instanceCount
+					|| data.batchMirror[b].instanceCount > data.batchStates[b].capacity) {
+					return false;
+				}
+				live += data.batchMirror[b].instanceCount;
+				ownedInstances += data.batchStates[b].capacity;
+			}
+			size_t ownedBatches = 0;
+			for (const auto& state : data.groupStates) {
+				ownedBatches += state.batchCapacity;
+			}
+			if (live != data.liveInstances || ownedInstances != data.ownedInstances || ownedBatches != data.ownedBatches
+				|| data.ownedInstances > data.instanceMirror.size() || data.ownedBatches > data.batchMirror.size()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	void GpuScene::compact(ListData& data) {
+		++mCompactions;
 		// Groups back to back and their batches with them, each with a quarter spare. References hold a group,
 		// a batch inside it and a slot inside that, so none of them moves.
 		std::vector<InstanceRecord> packed;

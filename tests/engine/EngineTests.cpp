@@ -3,9 +3,12 @@
 
 #include "EngineTestFixture.h"
 #include "assetsModule/modelModule/Animation.h"
+#include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "ecss/Registry.h"
+#include "systemsModule/TasksManager.h"
+#include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/systems/WorldTimeSystem.h"
 
 namespace SFE::EngineTests {
@@ -88,6 +91,76 @@ namespace SFE::EngineTests {
 		}
 		const auto animation = registry.pinComponent<const AnimationComponent>(animated);
 		EXPECT_FLOAT_EQ(animation->mCurrentTime, expected);
+	}
+
+	// GpuScene under the load its incremental layout is worst at: thousands of meshes with one instance each, then
+	// rounds of mass destroy and respawn. Every reference must still lead to its own instance, and once the churn
+	// stops no frame may pack the lists again (the check used to count compact's own spare as holes and repack
+	// every frame past about a thousand batches).
+	TEST(EngineTest, GpuSceneStaysConsistentUnderChurn) {
+		auto& registry = ECSHandler::registry();
+		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		ASSERT_NE(renderSystem, nullptr);
+		auto& scene = renderSystem->scene();
+
+		// Mesh ids past anything the world loads, so the batches are ours alone. Nothing is drawn on this backend,
+		// so a mesh only has to look uploaded.
+		constexpr uint32_t kFirstMesh = 1u << 20;
+		const auto spawn = [&](uint32_t mesh) {
+			const auto id = registry.takeEntity();
+			registry.addComponent<TransformComponent>(id, id);
+			auto meshComp = registry.addComponent<MeshComponent>(id);
+			meshComp->meshGraph.root().value = { kFirstMesh + mesh, 0, 0, 3, 3 };
+			SystemsModule::TasksManager::instance()->notify({ id, SystemsModule::MESH_UPDATED });
+			return id;
+		};
+
+		std::vector<ecss::EntityId> ids;
+		for (uint32_t i = 0; i < 3000; ++i) {
+			ids.push_back(spawn(i));
+		}
+		step(3);
+		ASSERT_TRUE(scene.validate());
+		size_t batches = 0;
+		for (const auto& group : scene.groups(Render::GpuScene::List::GBuffer)) {
+			batches += group.batchCount;
+		}
+		ASSERT_GE(batches, 3000u) << "the spawned meshes never reached the scene, so nothing below is tested";
+
+		auto compactions = scene.compactions();
+		step(30);
+		EXPECT_EQ(scene.compactions(), compactions) << "the lists were packed again with nothing changing";
+
+		uint32_t seed = 12345;
+		const auto next = [&] {
+			seed = seed * 1664525u + 1013904223u;
+			return seed >> 8;
+		};
+		for (int round = 0; round < 20; ++round) {
+			for (int i = 0; i < 200 && !ids.empty(); ++i) {
+				const size_t victim = next() % ids.size();
+				ECSHandler::destroyEntity(ids[victim]);
+				ids[victim] = ids.back();
+				ids.pop_back();
+			}
+			for (int i = 0; i < 200; ++i) {
+				ids.push_back(spawn(next() % 4000));
+			}
+			step();
+			ASSERT_TRUE(scene.validate()) << "round " << round;
+		}
+
+		step(2);
+		compactions = scene.compactions();
+		step(30);
+		EXPECT_EQ(scene.compactions(), compactions) << "the lists kept being packed after the churn stopped";
+		EXPECT_TRUE(scene.validate());
+
+		for (const auto id : ids) {
+			ECSHandler::destroyEntity(id);
+		}
+		step(2);
+		EXPECT_TRUE(scene.validate());
 	}
 
 	// Tick systems step from the frame under a fixed step: world time (1 tick a second) moves in whole seconds.
