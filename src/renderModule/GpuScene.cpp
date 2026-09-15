@@ -1,4 +1,4 @@
-#include "GpuScene.h"
+﻿#include "GpuScene.h"
 
 #include <algorithm>
 #include <cstring>
@@ -44,8 +44,8 @@ namespace SFE::Render {
 			uint32_t dstOffset = 0;
 			uint32_t dstWidth = 0;
 			uint32_t dstHeight = 0;
-			uint32_t fromTexture = 0;
-			uint32_t pad = 0;
+			uint32_t fromTexture = 0; // 0 the level below, 1 a depth texture, 2 a layer of a depth array
+			uint32_t layer = 0;
 		};
 
 		constexpr uint32_t kLocalSize = 16;
@@ -106,6 +106,7 @@ namespace SFE::Render {
 		hizLayout.bindings = {
 			{ 1, DescriptorType::CombinedImageSampler, ShaderStage::Compute },
 			{ 2, DescriptorType::StorageBuffer, ShaderStage::Compute },
+			{ 3, DescriptorType::CombinedImageSampler, ShaderStage::Compute },
 		};
 		mHizLayout = rhi->createDescriptorSetLayout(hizLayout);
 		ComputePipelineDesc hizDesc;
@@ -113,6 +114,20 @@ namespace SFE::Render {
 		hizDesc.descriptorSetLayouts = { mHizLayout };
 		hizDesc.pushConstantSize = sizeof(HizStep);
 		mHizPipeline = rhi->createComputePipeline(hizDesc);
+
+		TextureDesc emptyDepth;
+		emptyDepth.width = 1;
+		emptyDepth.height = 1;
+		emptyDepth.format = TextureFormat::DEPTH_COMPONENT32;
+		emptyDepth.usage = TextureUsage::Sampled | TextureUsage::DepthStencilAttachment;
+		mEmptyDepth = rhi->createTexture(emptyDepth);
+		emptyDepth.dimension = TextureDimension::Array;
+		emptyDepth.arrayLayers = 1;
+		mEmptyDepthArray = rhi->createTexture(emptyDepth);
+		SamplerDesc emptySampler;
+		emptySampler.minFilter = FilterMode::Nearest;
+		emptySampler.magFilter = FilterMode::Nearest;
+		mEmptySampler = rhi->createSampler(emptySampler);
 
 		DescriptorSetLayoutDesc glassLayout;
 		glassLayout.bindings = {
@@ -646,7 +661,8 @@ namespace SFE::Render {
 		return cull(cmd, list, view, params);
 	}
 
-	void GpuScene::buildDepthPyramid(const CommandListHandle cmd, View& view, const TextureHandle depth, const SamplerHandle sampler, const uint32_t width, const uint32_t height) {
+	void GpuScene::buildDepthPyramid(const CommandListHandle cmd, View& view, const TextureHandle depth, const SamplerHandle sampler, const uint32_t width, const uint32_t height,
+		const uint32_t layer) {
 		auto* rhi = Engine::instance()->rhi();
 		if (!mHizPipeline || !depth || width == 0 || height == 0) {
 			return;
@@ -686,12 +702,14 @@ namespace SFE::Render {
 		if (!view.pyramidSets[slot]) {
 			view.pyramidSets[slot] = rhi->allocateDescriptorSet(mHizLayout);
 		}
-		const std::array<uint32_t, 2> ids = { depth.id, view.pyramid.id };
+		const bool fromArray = layer != UINT32_MAX;
+		const std::array<uint32_t, 3> ids = { depth.id, view.pyramid.id, fromArray ? 1u : 0u };
 		if (ids != view.pyramidBoundIds[slot]) {
 			view.pyramidBoundIds[slot] = ids;
 			rhi->updateDescriptorSets({
-				{ .set = view.pyramidSets[slot], .binding = 1, .images{ { depth, sampler } } },
+				{ .set = view.pyramidSets[slot], .binding = 1, .images{ { fromArray ? mEmptyDepth : depth, fromArray ? mEmptySampler : sampler } } },
 				{ .set = view.pyramidSets[slot], .binding = 2, .buffers{ { view.pyramid } } },
+				{ .set = view.pyramidSets[slot], .binding = 3, .images{ { fromArray ? depth : mEmptyDepthArray, fromArray ? sampler : mEmptySampler } } },
 			});
 		}
 
@@ -701,7 +719,8 @@ namespace SFE::Render {
 			HizStep step;
 			const auto [w, h] = levelSize(level);
 			if (level == 0) {
-				step.fromTexture = 1;
+				step.fromTexture = fromArray ? 2u : 1u;
+				step.layer = fromArray ? layer : 0u;
 				step.srcWidth = width;
 				step.srcHeight = height;
 			}

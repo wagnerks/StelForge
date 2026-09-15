@@ -69,7 +69,7 @@ namespace SFE::Render {
 			uint32_t levels = 0;
 			std::array<uint32_t, 16> levelOffsets{};
 			std::vector<DescriptorSetHandle> pyramidSets;
-			std::vector<std::array<uint32_t, 2>> pyramidBoundIds;
+			std::vector<std::array<uint32_t, 3>> pyramidBoundIds;
 		};
 
 		void init();
@@ -94,7 +94,9 @@ namespace SFE::Render {
 		// Nothing visible is lost: an instance hidden last frame is tested against this frame's depth.
 		// Outside a render pass, like cullFrustum.
 		bool cullVisibleLastFrame(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum);
-		void buildDepthPyramid(CommandListHandle cmd, View& view, TextureHandle depth, SamplerHandle sampler, uint32_t width, uint32_t height);
+		// `layer` names a layer of a depth array (a shadow cascade); leave it out for a plain depth texture.
+		void buildDepthPyramid(CommandListHandle cmd, View& view, TextureHandle depth, SamplerHandle sampler, uint32_t width, uint32_t height,
+			uint32_t layer = UINT32_MAX);
 		bool cullOccluded(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum, const Math::Mat4& viewProj);
 
 		// Culls the glass list and sorts what is left far to near into `view`: command i draws the i-th farthest
@@ -245,6 +247,11 @@ namespace SFE::Render {
 		DescriptorSetLayoutHandle mHizLayout;
 		PipelineHandle mHizPipeline;
 		BufferHandle mEmptyBuffer; // bound where a cull without occlusion has no buffer
+		// The pyramid's layout has both a plain depth texture and a depth array; whichever the build does not read
+		// gets one of these, since every binding of a set has to hold something.
+		TextureHandle mEmptyDepth;
+		TextureHandle mEmptyDepthArray;
+		SamplerHandle mEmptySampler;
 		DescriptorSetLayoutHandle mGlassLayout;
 		PipelineHandle mGlassPipeline;
 	};

@@ -5,6 +5,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(SFE_SET(0, 1)) uniform sampler2D depthTexture;
+layout(SFE_SET(0, 3)) uniform sampler2DArray depthArray;
 layout(SFE_SET(0, 2), std430) buffer Pyramid {
     float depths[];
 };
@@ -16,8 +17,8 @@ SFE_PUSH_BLOCK HizStep {
     uint dstOffset;
     uint dstWidth;
     uint dstHeight;
-    uint fromTexture;
-    uint _pad;
+    uint fromTexture; // 0 the level below, 1 depthTexture, 2 one layer of depthArray
+    uint layer;
 } step;
 
 void main() {
@@ -32,9 +33,16 @@ void main() {
     for (uint y = 0u; y < h; ++y) {
         for (uint x = 0u; x < w; ++x) {
             uvec2 s = p * 2u + uvec2(x, y);
-            float d = step.fromTexture != 0u
-                ? texelFetch(depthTexture, ivec2(s), 0).r
-                : depths[step.srcOffset + s.y * step.srcWidth + s.x];
+            float d;
+            if (step.fromTexture == 1u) {
+                d = texelFetch(depthTexture, ivec2(s), 0).r;
+            }
+            else if (step.fromTexture == 2u) {
+                d = texelFetch(depthArray, ivec3(s, step.layer), 0).r;
+            }
+            else {
+                d = depths[step.srcOffset + s.y * step.srcWidth + s.x];
+            }
             farthest = max(farthest, d);
         }
     }

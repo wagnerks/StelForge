@@ -23,6 +23,8 @@ namespace SFE::PropertiesModule {
 		static ecss::EntityId spawnDefaultScene();
 		static void spawnSphereGrid(int chunkX, int chunkZ, float chunkSize, float spacing);
 		static void spawnVampireGrid(int chunkX, int chunkZ, float chunkSize, float spacing);
+		// Walled rooms with characters inside, for testing occlusion culling.
+		static void spawnRoomGrid(int chunkX, int chunkZ, float chunkSize, float roomSize);
 		static Json::Value serializeEntities(const std::vector<ecss::EntityId>& entities);
 		static Json::Value serializeWorldSnapshot(const Json::Value& request);
 		static std::vector<ecss::EntityId> loadEntities(const Json::Value& root);

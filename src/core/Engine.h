@@ -78,12 +78,14 @@ namespace SFE {
 		bool temporalAccumulation() const { return mTemporalAccumulation; }
 		// World chunks spawn the glass sphere grid instead of the character grid: the scene that has glass.
 		void setProceduralSpheres(bool enabled) { mProceduralSpheres = enabled; }
+		void setProceduralRooms(bool enabled) { mProceduralRooms = enabled; }
 		// Non-zero: every frame advances exactly this many seconds, as fast as it can, and tick systems step
 		// from the frame instead of their own wall-clock threads -- frame N is the same world on every run.
 		// Set before initThread.
 		void setFixedDeltaTime(float seconds) { mFixedDeltaTime = seconds; }
 		float fixedDeltaTime() const { return mFixedDeltaTime; }
 		bool proceduralSpheres() const { return mProceduralSpheres; }
+		bool proceduralRooms() const { return mProceduralRooms; }
 
 	protected:
 		Engine();
@@ -111,6 +113,7 @@ namespace SFE {
 		int mLightingDebugTerm = 0;
 		bool mTemporalAccumulation = true;
 		bool mProceduralSpheres = false;
+		bool mProceduralRooms = false;
 		float mFixedDeltaTime = 0.f;
 		std::string mPassDumpDir;
 

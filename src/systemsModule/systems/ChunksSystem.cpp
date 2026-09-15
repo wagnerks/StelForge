@@ -66,6 +66,7 @@ namespace SFE::SystemsModule {
 		FileSystem::createDirectories("world/chunks");
 		seedIfEmpty();
 		debugData.proceduralSpheres = Engine::instance()->proceduralSpheres();
+		debugData.proceduralRooms = Engine::instance()->proceduralRooms();
 
 		if (!Engine::instance()->rhi()) {
 			return;
@@ -171,6 +172,11 @@ namespace SFE::SystemsModule {
 
 	void ChunksSystem::loadChunk(const Chunk& chunk) {
 		if (!debugData.mCreate) {
+			return;
+		}
+		if (debugData.proceduralRooms) {
+			PropertiesModule::PropertiesSystem::spawnRoomGrid(
+				chunk.x, chunk.z, CHUNK_SIZE, debugData.roomSize);
 			return;
 		}
 		if (debugData.proceduralSpheres) {

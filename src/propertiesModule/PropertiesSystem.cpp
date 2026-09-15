@@ -107,6 +107,46 @@ namespace SFE::PropertiesModule {
 				kPath, std::move(tree), AssetsModule::Armature{}, std::vector<AssetsModule::Animation>{});
 		}
 
+		// A cube from -1 to 1, one quad per face so the normals are flat.
+		AssetsModule::Model* getOrCreateUnitBox() {
+			constexpr const char* kPath = "builtin:box";
+			if (auto* existing = AssetsModule::AssetsManager::instance()->getAsset<AssetsModule::Model>(kPath)) {
+				return existing;
+			}
+
+			const Math::Vec3 normals[6] = { {1.f,0.f,0.f}, {-1.f,0.f,0.f}, {0.f,1.f,0.f}, {0.f,-1.f,0.f}, {0.f,0.f,1.f}, {0.f,0.f,-1.f} };
+			const Math::Vec3 tangents[6] = { {0.f,0.f,-1.f}, {0.f,0.f,1.f}, {1.f,0.f,0.f}, {1.f,0.f,0.f}, {1.f,0.f,0.f}, {-1.f,0.f,0.f} };
+
+			SFE::MeshObject3D meshObj;
+			for (int face = 0; face < 6; ++face) {
+				const auto n = normals[face];
+				const auto t = tangents[face];
+				const auto b = Math::cross(n, t);
+				const unsigned first = static_cast<unsigned>(meshObj.mesh.vertices.size());
+				for (int corner = 0; corner < 4; ++corner) {
+					const float u = (corner == 1 || corner == 2) ? 1.f : 0.f;
+					const float v = (corner >= 2) ? 1.f : 0.f;
+					SFE::Vertex3D vert{};
+					vert.position = n + t * (u * 2.f - 1.f) + b * (v * 2.f - 1.f);
+					vert.normal = n;
+					vert.tangent = t;
+					vert.biTangent = b;
+					vert.texCoords = { u, v };
+					vert.texCoords1 = vert.texCoords;
+					meshObj.mesh.vertices.push_back(vert);
+				}
+				for (const unsigned idx : { 0u, 1u, 2u, 0u, 2u, 3u }) {
+					meshObj.mesh.indices.push_back(first + idx);
+				}
+			}
+			meshObj.aabb = SFE::FrustumModule::AABB({ -1.f, -1.f, -1.f }, { 1.f, 1.f, 1.f });
+
+			SFE::Tree<SFE::MeshObject3D> tree;
+			tree.value = std::move(meshObj);
+			return AssetsModule::AssetsManager::instance()->createAsset<AssetsModule::Model>(
+				kPath, std::move(tree), AssetsModule::Armature{}, std::vector<AssetsModule::Animation>{});
+		}
+
 		void markGlass(ecss::EntityId entity, float opacity, float ior, const Math::Vec3& tint);
 
 		ecss::EntityId spawnModelEntity(AssetsModule::Model* model, const char* path, const Math::Vec3& pos, const Math::Vec3& scale, bool glass,
@@ -595,6 +635,67 @@ namespace SFE::PropertiesModule {
 					phase = clipDuration * static_cast<float>(h & 1023u) / 1024.f;
 				}
 				spawnDancingVampire({ x, 0.f, z }, 180.f, phase);
+			}
+		}
+	}
+
+	// Rooms of solid walls with a doorway and a roof, a few dancing characters in each: what is inside one room is
+	// hidden from the camera and from the sun by the room in front of it, which is what occlusion culling is for.
+	void PropertiesSystem::spawnRoomGrid(const int chunkX, const int chunkZ, const float chunkSize, float roomSize) {
+		if (roomSize < 48.f) {
+			roomSize = 48.f;
+		}
+		auto* box = getOrCreateUnitBox();
+		if (!box) {
+			return;
+		}
+		auto* sampleModel = AssetsModule::ModelLoader::instance()->load("models/vampire.fbx");
+		const AssetsModule::Animation* sampleClip = pickPlaybackClip(sampleModel);
+		const float clipDuration = sampleClip ? sampleClip->getDuration() : 0.f;
+
+		const int rooms = (std::max)(1, static_cast<int>(chunkSize / roomSize));
+		const float originX = static_cast<float>(chunkX) * chunkSize;
+		const float originZ = static_cast<float>(chunkZ) * chunkSize;
+
+		// A character stands about 18 units tall, so the walls have to clear that to hide anyone behind them.
+		constexpr float kWallHeight = 26.f;
+		constexpr float kWallThickness = 1.5f;
+		constexpr float kDoorWidth = 14.f;
+		// The gap between rooms is a street, so the camera starts outside and looks along one.
+		constexpr float kStreet = 16.f;
+
+		const auto spawnBox = [&](const Math::Vec3& center, const Math::Vec3& halfSize) {
+			spawnModelEntity(box, "builtin:box", center, halfSize, false);
+		};
+
+		for (int i = 0; i < rooms; ++i) {
+			for (int j = 0; j < rooms; ++j) {
+				const float cx = originX + (static_cast<float>(i) + 0.5f) * roomSize;
+				const float cz = originZ + (static_cast<float>(j) + 0.5f) * roomSize;
+				const float half = roomSize * 0.5f - kStreet;
+				const float segment = (half - kDoorWidth * 0.5f) * 0.5f;
+				const float segmentCenter = kDoorWidth * 0.5f + segment;
+
+				// Three solid walls and a fourth with a doorway in the middle, so the inside is visible from one side only.
+				spawnBox({ cx, kWallHeight * 0.5f, cz - half }, { half, kWallHeight * 0.5f, kWallThickness });
+				spawnBox({ cx - half, kWallHeight * 0.5f, cz }, { kWallThickness, kWallHeight * 0.5f, half });
+				spawnBox({ cx + half, kWallHeight * 0.5f, cz }, { kWallThickness, kWallHeight * 0.5f, half });
+				spawnBox({ cx - segmentCenter, kWallHeight * 0.5f, cz + half }, { segment, kWallHeight * 0.5f, kWallThickness });
+				spawnBox({ cx + segmentCenter, kWallHeight * 0.5f, cz + half }, { segment, kWallHeight * 0.5f, kWallThickness });
+				// The roof hides the room from the sun as well, so the shadow cascades have something to cull too.
+				spawnBox({ cx, kWallHeight, cz }, { half + kWallThickness, kWallThickness, half + kWallThickness });
+
+				if (!sampleModel) {
+					continue;
+				}
+				for (int k = 0; k < 3; ++k) {
+					const uint32_t h = static_cast<uint32_t>(chunkX * rooms + i) * 374761393u
+						+ static_cast<uint32_t>(chunkZ * rooms + j) * 668265263u + static_cast<uint32_t>(k) * 2654435761u;
+					const float phase = clipDuration > 0.f ? clipDuration * static_cast<float>(h & 1023u) / 1024.f : 0.f;
+					const float dx = (static_cast<float>(k) - 1.f) * (half * 0.5f);
+					const float dz = static_cast<float>((h >> 10) & 7u) * 0.5f - 2.f;
+					spawnDancingVampire({ cx + dx, 0.f, cz + dz }, 180.f, phase);
+				}
 			}
 		}
 	}

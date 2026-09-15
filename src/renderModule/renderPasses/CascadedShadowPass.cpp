@@ -184,6 +184,8 @@ void CascadedShadowPass::initRender() {
 	rpDesc.depthAttachment.storeOp = AttachmentStoreOp::Store;
 	rpDesc.depthAttachment.format = TextureFormat::DEPTH_COMPONENT32;
 	renderPass = rhi->createRenderPass(rpDesc);
+	rpDesc.depthAttachment.loadOp = AttachmentLoadOp::Load;
+	loadRenderPass = rhi->createRenderPass(rpDesc);
 
 	// One framebuffer per layer, not one layered framebuffer: with the geometry shader gone the
 	// layer comes from the attachment, and every cascade is its own render pass anyway now that
@@ -310,7 +312,7 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		for (auto* plane : { &frustum.leftFace, &frustum.rightFace, &frustum.topFace, &frustum.bottomFace, &frustum.nearFace, &frustum.farFace }) {
 			plane->distance += 16.f;
 		}		const bool visible = layer < shadowsComp->cascades.size()
-			&& scene.cullFrustum(cmd, GpuScene::List::Shadow, cascade.view, frustum);
+			&& scene.cullVisibleLastFrame(cmd, GpuScene::List::Shadow, cascade.view, frustum);
 
 		if (visible) {
 			if (!cascade.set) {
@@ -341,7 +343,7 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		begin.height = static_cast<int>(shadowsComp->resolution.y);
 		rhi->cmdBeginRenderPass(cmd, begin);
 
-		if (visible) {
+		const auto drawCasters = [&](const bool secondPhase) {
 			struct ShadowPush {
 				int cascadeLayer = 0;
 				float pad[3]{};
@@ -364,11 +366,30 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 				}
 				const DescriptorSetHandle sets[] = { cascade.set, mMaskSets.get(mTextureLayout, 4, group.maskTexture) };
 				rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2, &matrices.offset, 1);
-				scene.draw(cmd, cascade.view, group);
+				scene.draw(cmd, cascade.view, group, secondPhase);
 			}
+		};
+
+		if (visible) {
+			drawCasters(false);
 		}
 
 		rhi->cmdEndRenderPass(cmd);
+
+		// A caster hidden from the light is inside another caster's shadow, so its own shadow adds nothing: the
+		// cascade's depth culls the rest of them the way the camera's depth culls what it cannot see.
+		if (visible) {
+			scene.buildDepthPyramid(cmd, cascade.view, lightDepthMa, lightDepthSampler,
+				static_cast<uint32_t>(shadowsComp->resolution.x), static_cast<uint32_t>(shadowsComp->resolution.y), static_cast<uint32_t>(layer));
+			const bool occludedVisible = layer < mData.lightSpaceMatrices.size()
+				&& scene.cullOccluded(cmd, GpuScene::List::Shadow, cascade.view, frustum, mData.lightSpaceMatrices[layer]);
+			begin.renderPass = loadRenderPass;
+			rhi->cmdBeginRenderPass(cmd, begin);
+			if (occludedVisible) {
+				drawCasters(true);
+			}
+			rhi->cmdEndRenderPass(cmd);
+		}
 	}
 
 	{

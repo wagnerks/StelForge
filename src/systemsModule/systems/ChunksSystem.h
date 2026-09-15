@@ -12,6 +12,8 @@ namespace SFE::SystemsModule {
 		bool mClear = true;
 		bool mChunksDraw = false;
 		bool proceduralSpheres = false;
+		bool proceduralRooms = false;
+		float roomSize = 84.f;
 		float sphereSpacing = 8.f;
 		int currentX = 0;
 		int currentZ = 0;

@@ -42,6 +42,7 @@ namespace SFE::Render::RenderPasses {
 		PipelineHandle pipelineOpaque;
 		PipelineHandle pipelineCutout;
 		RenderPassHandle renderPass;
+		RenderPassHandle loadRenderPass; // the second occlusion phase draws over the first one's depth
 
 		// Set 0 holds the buffers and differs per cascade (each has its own visible list); set 1 holds the
 		// caster's mask texture and is shared by every cascade.

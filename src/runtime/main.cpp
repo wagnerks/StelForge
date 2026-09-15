@@ -97,6 +97,7 @@ int main(int argc, char** argv)
 	int lightingDebugTerm = 0;
 	bool temporalAccumulation = true;
 	bool proceduralSpheres = false;
+	bool proceduralRooms = false;
 	// Timing run: average the frame and per-pass times over the last two thirds of this many frames, write
 	// them to perfOut and exit. An ordinary run, not a capture, so nothing waits for the GPU between frames.
 	int perfFrames = 0;
@@ -143,6 +144,9 @@ int main(int argc, char** argv)
 		}
 		else if (arg == "--no-taa") {
 			temporalAccumulation = false;
+		}
+		else if (arg == "--rooms") {
+			proceduralRooms = true;
 		}
 		else if (arg == "--spheres") {
 			proceduralSpheres = true;
@@ -288,6 +292,7 @@ int main(int argc, char** argv)
 	engine->setLightingDebugTerm(lightingDebugTerm);
 	engine->setTemporalAccumulation(temporalAccumulation);
 	engine->setProceduralSpheres(proceduralSpheres);
+	engine->setProceduralRooms(proceduralRooms);
 	engine->setFixedDeltaTime(fixedDeltaTime);
 	if (!capturePath.empty() && !passDumpDir.empty()) {
 		const std::filesystem::path requested(passDumpDir);
@@ -298,6 +303,13 @@ int main(int argc, char** argv)
 	crashLog("initThread");
 	engine->initThread();
 	crashLog("initThread ok");
+
+	// Down a street, where the walls stand between the camera and most of the scene: the point of the scene is that
+	// three quarters of it is behind something. --camera still overrides this.
+	if (proceduralRooms && cameraPos.empty() && cameraRot.empty()) {
+		cameraPos = "0,14,150";
+		cameraRot = "-2,0,0";
+	}
 
 	// Place the camera from the command line so a capture can frame whatever is being
 	// investigated without editing and rebuilding CameraSystem's defaults.
