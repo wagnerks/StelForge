@@ -49,14 +49,15 @@ void main() {
     if ((uvBits & 1u) == 0u && (uvBits & 6u) != 0u) {
         mask = min(mask, texture(texture_diffuse1, TexCoords1).a);
     }
+    float cutoutFade = sfeCutoutFade(texture_diffuse1, diffLod);
     if (cutoff > 1.0) {
-        float cov = clamp(cutoff - 1.0, 0.05, 1.0);
+        float cov = mix(clamp(cutoff - 1.0, 0.05, 1.0), 1.0, cutoutFade);
         mask = min(mask, cov);
         float d = sfeCutoutDither(texture_diffuse1, uvDiff, diffLod);
         if (mask < d) {
             discard;
         }
-    } else if (mask < cutoff) {
+    } else if (mask < cutoff * (1.0 - cutoutFade)) {
         discard;
     }
     vec4 diff = texture(texture_diffuse1, uvDiff);
@@ -86,7 +87,7 @@ void main() {
     }
     specF = min(specF, 0.18);
 
-    gAlbedoSpec.a = clamp(roughness, 0.04, 1.0);
+    gAlbedoSpec.a = clamp(sfeFilteredRoughness(geomN, roughness, 1.0), 0.04, 1.0);
     gPosition.a = sfePackGBufferPbr(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(pc.clearcoat, 0.0, 1.0), clamp(pc.clearcoatRough, 0.04, 1.0));
     gVelocity = sfeVelocity(vClip, vPrevClip);
 }

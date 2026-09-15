@@ -48,14 +48,15 @@ void main() {
     if ((uvBits & 1u) == 0u && (uvBits & 6u) != 0u) {
         mask = min(mask, texture(texture_diffuse1, TexCoords1).a);
     }
+    float cutoutFade = sfeCutoutFade(texture_diffuse1, diffLod);
     if (pc.alphaCutoff > 1.0) {
-        float cov = clamp(pc.alphaCutoff - 1.0, 0.05, 1.0);
+        float cov = mix(clamp(pc.alphaCutoff - 1.0, 0.05, 1.0), 1.0, cutoutFade);
         mask = min(mask, cov);
         float d = sfeCutoutDither(texture_diffuse1, uvDiff, diffLod);
         if (mask < d) {
             discard;
         }
-    } else if (pc.alphaCutoff > 0.0 && mask < pc.alphaCutoff) {
+    } else if (pc.alphaCutoff > 0.0 && mask < pc.alphaCutoff * (1.0 - cutoutFade)) {
         discard;
     }
     vec4 diff = texture(texture_diffuse1, uvDiff);
@@ -68,10 +69,15 @@ void main() {
 
     vec3 nSample = texture(normalMap, uvNrm).rgb;
     vec3 Nw;
+    // 1 where the map says nothing: then only the geometry spreads the normal inside the pixel.
+    float normalLen = 1.0;
     if (dot(nSample, nSample) < 0.02) {
         Nw = normalize(TBN[2]);
     } else {
         vec3 nts = nSample * 2.0 - 1.0;
+        // Before normalising: the mip handed back an average of several texels, and how much shorter that
+        // average is says how much the normals under this pixel disagree.
+        normalLen = min(1.0, length(nts));
         Nw = normalize(TBN * nts);
     }
     if (pc.clearcoat > 0.5) {
@@ -124,7 +130,7 @@ void main() {
         specF = min(specF, 0.18);
     }
 
-    gAlbedoSpec.a = clamp(roughness, 0.04, 1.0);
+    gAlbedoSpec.a = clamp(sfeFilteredRoughness(Nw, roughness, normalLen), 0.04, 1.0);
     gPosition.a = sfePackGBufferPbr(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(pc.clearcoat, 0.0, 1.0), clamp(pc.clearcoatRough, 0.04, 1.0));
     gVelocity = sfeVelocity(vClip, vPrevClip);
 }

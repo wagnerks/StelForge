@@ -78,6 +78,11 @@ float sfePackGBufferPbr(float metallic, float specFactor, float clearcoat, float
 
 
 
+// Rec. 709 luminance, the weighting every pass here already used inline.
+float sfeLuma(vec3 color) {
+    return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
 float sfeSkinSss(vec3 albedo, float metallic) {
     float luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
     float warm = clamp((albedo.r - albedo.g) * 3.5, 0.0, 1.0);
