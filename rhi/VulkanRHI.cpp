@@ -582,6 +582,11 @@ namespace SFE::Render {
 		if (supportedFeatures.samplerAnisotropy) {
 			deviceFeatures.samplerAnisotropy = VK_TRUE;
 			m_samplerAnisotropy = true;
+			VkPhysicalDeviceProperties props{};
+			vkGetPhysicalDeviceProperties(m_physicalDevice, &props);
+			// A sampler asking for more than the device allows is invalid, so a caller can ask for 16 without
+			// knowing what it runs on. OpenGL clamps to GL_MAX_TEXTURE_MAX_ANISOTROPY the same way.
+			m_maxAnisotropy = props.limits.maxSamplerAnisotropy;
 		}
 		if (supportedFeatures.geometryShader) {
 			deviceFeatures.geometryShader = VK_TRUE;

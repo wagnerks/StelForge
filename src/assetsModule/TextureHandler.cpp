@@ -131,10 +131,11 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	samplerDesc.addressU = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressV = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressW = SFE::Render::AddressMode::Repeat;
-	// Left at 1 on purpose. It sharpens a surface seen at a glancing angle, but the two backends implement
-	// the filter differently: at 8x the frame comparison goes from 0.8% of pixels differing to 6.7%, for a
-	// change of about 3% of pixels in the image itself. Raise it here if that trade is worth making.
-	samplerDesc.maxAnisotropy = 1.f;
+	// Without it a surface seen at a glancing angle picks the mip for the axis it is stretched along and
+	// loses the detail on the other one, which looks like a smeared, low resolution texture. Both backends
+	// clamp this to what the device allows. It is also the one piece of texture filtering the two implement
+	// differently, so the frame comparison shows about 6% of pixels differing at the horizon rather than 1%.
+	samplerDesc.maxAnisotropy = 16.f;
 
 
 	if (SFE::Engine::isMainThread()) {

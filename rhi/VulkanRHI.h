@@ -318,6 +318,7 @@ namespace SFE::Render
 		bool m_inited = false;
 		bool m_framebufferResized = false;
 		bool m_samplerAnisotropy = false;
+		float m_maxAnisotropy = 1.f;
 		bool m_fillModeNonSolid = false;
 		bool m_hostQueryReset = false;
 		bool m_negativeOneToOneDepth = false;

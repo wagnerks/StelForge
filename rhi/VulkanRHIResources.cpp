@@ -1015,7 +1015,7 @@ namespace SFE::Render {
 		samplerInfo.addressModeW = toVkAddressMode(desc.addressW);
 		const bool aniso = m_samplerAnisotropy && desc.maxAnisotropy > 1.f;
 		samplerInfo.anisotropyEnable = aniso ? VK_TRUE : VK_FALSE;
-		samplerInfo.maxAnisotropy = aniso ? desc.maxAnisotropy : 1.f;
+		samplerInfo.maxAnisotropy = aniso ? (std::min)(desc.maxAnisotropy, m_maxAnisotropy) : 1.f;
 		samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
 		samplerInfo.unnormalizedCoordinates = VK_FALSE;
 		samplerInfo.compareEnable = desc.compareOp != CompareOp::None ? VK_TRUE : VK_FALSE;
