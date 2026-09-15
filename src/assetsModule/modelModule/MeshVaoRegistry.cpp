@@ -56,8 +56,13 @@ namespace SFE {
 	}
 
 	void MeshVaoRegistry::allocate(Mesh<Vertex3D>* mesh, RenderMeshData& data) {
+		size_t lodIndices = 0;
+		for (const auto& level : mesh->lodIndices) {
+			lodIndices += level.size();
+		}
 		const size_t vertexEnd = static_cast<size_t>(mVertexUsed) + mesh->vertices.size();
-		const size_t indexEnd = static_cast<size_t>(mIndexUsed) + mesh->indices.size();
+		// The coarser levels sit right behind the full one in the same allocation, over the same vertices.
+		const size_t indexEnd = static_cast<size_t>(mIndexUsed) + mesh->indices.size() + lodIndices;
 		// Offsets are uint32 in RenderMeshData, the mesh table and the draw commands. Past that a mesh is left
 		// unuploaded (meshId 0, never drawn) instead of wrapping onto the start of the buffers.
 		if (vertexEnd > UINT32_MAX || indexEnd > UINT32_MAX) {
@@ -81,6 +86,7 @@ namespace SFE {
 		data.firstIndex = mIndexUsed;
 		data.vertexCount = static_cast<uint32_t>(mesh->vertices.size());
 		data.indexCount = static_cast<uint32_t>(mesh->indices.size());
+		data.lodCount = 1u + static_cast<uint32_t>(mesh->lodIndices.size());
 		mVertexUsed = static_cast<uint32_t>(vertexEnd);
 		mIndexUsed = static_cast<uint32_t>(indexEnd);
 		upload(mesh, data);
@@ -104,7 +110,21 @@ namespace SFE {
 				}
 			}
 		}
+		entry.lodCount = data.lodCount;
 		mMeshTable.push_back(entry);
+
+		// One id per level, consecutive, so a caller holding the full detail id reaches the rest by adding to
+		// it. Bounds and skinning are the mesh's own and do not change with the level.
+		uint32_t levelFirstIndex = data.firstIndex + data.indexCount;
+		for (size_t level = 0; level < mesh->lodIndices.size(); ++level) {
+			GpuMesh coarse = entry;
+			coarse.firstIndex = levelFirstIndex;
+			coarse.indexCount = static_cast<uint32_t>(mesh->lodIndices[level].size());
+			coarse.lodIndex = static_cast<uint32_t>(level) + 1u;
+			levelFirstIndex += coarse.indexCount;
+			mMeshTable.push_back(coarse);
+			++mNextMeshId;
+		}
 	}
 
 	std::vector<GpuMesh> MeshVaoRegistry::meshTable(const size_t first) {
@@ -166,6 +186,12 @@ namespace SFE {
 		if (!mesh->indices.empty()) {
 			rhi->updateBuffer(mIndexBuffer, static_cast<size_t>(data.firstIndex) * sizeof(unsigned int),
 				mesh->indices.size() * sizeof(unsigned int), mesh->indices.data());
+		}
+		size_t offset = static_cast<size_t>(data.firstIndex) + mesh->indices.size();
+		for (const auto& level : mesh->lodIndices) {
+			rhi->updateBuffer(mIndexBuffer, offset * sizeof(unsigned int),
+				level.size() * sizeof(unsigned int), level.data());
+			offset += level.size();
 		}
 	}
 }

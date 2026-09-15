@@ -17,7 +17,9 @@ namespace SFE {
 		float boundsMin[3]{};
 		uint32_t skinned = 0; // 0 rigid, 1 skinned, 2 + n skinned with pose bounds in slot n
 		float boundsMax[3]{};
-		float pad = 0.f;
+		uint32_t lodIndex = 0;  // 0 is the full detail mesh
+		uint32_t lodCount = 1;  // levels in this mesh's chain, the same in every entry of it
+		uint32_t pad[3]{};
 	};
 
 	// Every mesh shares one vertex buffer and one index buffer, so a draw differs from the next only in

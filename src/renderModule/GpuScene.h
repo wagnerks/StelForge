@@ -223,6 +223,7 @@ namespace SFE::Render {
 		bool cull(CommandListHandle cmd, List list, View& view, CullParams& params);
 		// Grows the view's output buffers to `instances` / `commands` entries and writes its parameters. Returns the
 		// index of this frame's (and phase's) params and set.
+		static void fillLodOrigin(CullParams& params);
 		uint32_t prepareView(View& view, uint32_t instances, uint32_t commands, const CullParams& params);
 
 		std::atomic<bool> mDirty{ true };

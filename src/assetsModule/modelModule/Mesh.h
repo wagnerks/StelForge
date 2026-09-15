@@ -15,6 +15,10 @@ namespace SFE {
 
 		std::vector<unsigned int> indices;
 		std::vector<VertexType> vertices;
+		// Coarser index sets over the same vertices, each about half the triangles of the one before it.
+		// A distant model drawn from these has triangles bigger than a pixel, which is the only thing that
+		// stops its silhouette from boiling; no amount of temporal filtering fixes geometry that small.
+		std::vector<std::vector<unsigned int>> lodIndices;
 		// Skinned meshes of a model: 1 + the slot its pose bounds are written to (Armature::poseBoundsCount). 0 for
 		// a rigid mesh, or a skinned one without pose bounds.
 		uint32_t poseBounds = 0;

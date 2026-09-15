@@ -16,7 +16,11 @@ struct GpuMesh {
     vec3 boundsMin;
     uint skinned;
     vec3 boundsMax;
-    float _pad;
+    uint lodIndex;
+    uint lodCount;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
 };
 layout(SFE_SET(0, 26), std430) readonly buffer Meshes {
     GpuMesh meshes[];
@@ -80,7 +84,21 @@ layout(SFE_SET(0, 31), std430) readonly buffer CullView {
     uint depthHeight;
     uint levels;
     uint levelOffsets[16];
+    // xyz the player camera, w the pixels a unit of radius covers a unit away.
+    vec4 lodOrigin;
 } view;
+
+// Which level of a chain belongs on screen at this size. The bands are in pixels of screen height, so they
+// hold whatever the resolution, the field of view or the model's own scale: a level is dropped once its
+// triangles are near the size of a pixel, which is the point where drawing more of them buys nothing and
+// costs a boiling silhouette.
+uint lodForSize(float pixels, uint lodCount) {
+    uint level = 0u;
+    if (pixels < 180.0) { level = 1u; }
+    if (pixels < 70.0)  { level = 2u; }
+    if (pixels < 25.0)  { level = 3u; }
+    return min(level, lodCount - 1u);
+}
 
 // Per instance slot: 1 when it passed the occlusion test last frame. A slot that changed owner can hold
 // anything, which only decides the phase it is drawn in.
@@ -203,7 +221,14 @@ void main() {
         if (inflate) {
             extents += vec3(max(extents.x, max(extents.y, extents.z)) * kSkinnedInflate);
         }
+        // The mesh table holds one entry per level and the scene registers the instance once under each, so
+        // every batch is asked whether this instance belongs to it at this distance and exactly one says yes.
         bool draw = visibleInView(center, extents);
+        if (mesh.lodCount > 1u) {
+            float radius = length(extents);
+            float distance = max(length(center - view.lodOrigin.xyz), 1e-3);
+            draw = draw && lodForSize(radius * view.lodOrigin.w / distance, mesh.lodCount) == mesh.lodIndex;
+        }
         if (view.occlusion == 1u) {
             draw = draw && lastVisible[slot] == 1u;
         }

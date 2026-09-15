@@ -10,3 +10,6 @@
 [submodule "lib/imgui"]
 	path = lib/imgui
 	url = https://github.com/wagnerks/imgui
+[submodule "src/submodules/meshoptimizer"]
+	path = src/submodules/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git

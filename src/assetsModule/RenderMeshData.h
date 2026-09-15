@@ -17,5 +17,8 @@ namespace SFE {
 		uint32_t firstIndex = 0;
 		uint32_t vertexCount = 0;
 		uint32_t indexCount = 0;
+		// Levels in the chain including this one. The coarser levels are the mesh ids right after this one,
+		// so a caller walks them without another lookup.
+		uint32_t lodCount = 1;
 	};
 }

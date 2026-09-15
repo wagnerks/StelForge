@@ -1,4 +1,5 @@
 ﻿#include "Model.h"
+#include "MeshLod.h"
 
 #include "MeshUtils.h"
 #include "MeshVaoRegistry.h"
@@ -87,6 +88,8 @@ namespace AssetsModule {
 
 	void Model::bindMeshes() {
 		for (auto& node : mMeshTree) {
+			// Before the upload: the registry puts the whole chain in the index buffer in one go.
+			SFE::buildMeshLods(node.value.mesh);
 			SFE::MeshVaoRegistry::instance()->initMesh(&node.value.mesh);
 		}
 

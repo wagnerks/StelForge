@@ -30,12 +30,16 @@ namespace SFE::Render {
 		uint32_t depthHeight = 0;
 		uint32_t levels = 0;
 		uint32_t levelOffsets[16]{};
+		// xyz the player camera, w the pixels one unit of radius covers at one unit of distance. Every view
+		// gets the player's, shadow cascades included: a cascade that picked its levels from the light's
+		// distance would draw the coarsest mesh into the shadow right under the camera.
+		float lodOrigin[4]{};
 	};
 
 	namespace {
 		using SceneInstance = GpuScene::InstanceRecord;
 		using Batch = GpuScene::BatchRecord;
-		static_assert(sizeof(GpuMesh) == 48 && sizeof(SceneInstance) == 16 && sizeof(Batch) == 16);
+		static_assert(sizeof(GpuMesh) == 64 && sizeof(SceneInstance) == 16 && sizeof(Batch) == 16);
 
 		struct HizStep {
 			uint32_t srcOffset = 0;
@@ -394,7 +398,10 @@ namespace SFE::Render {
 				group.transparent = transparent;
 				const auto key = std::to_string(group.maskTexture.id) + (cutout ? "|c" : "|o") + (transparent ? "t" : "s");
 				const auto index = groupFor(List::Shadow, key, std::move(group));
-				addInstance(refs, entity, List::Shadow, index, caster.meshId, { entity, caster.meshId, materialIndex(), boneOffset });
+				for (uint32_t level = 0; level < (std::max)(1u, caster.lodCount); ++level) {
+					const uint32_t levelMesh = caster.meshId + level;
+					addInstance(refs, entity, List::Shadow, index, levelMesh, { entity, levelMesh, materialIndex(), boneOffset });
+				}
 			}
 
 			if (mesh.indexCount == 0) {
@@ -413,7 +420,13 @@ namespace SFE::Render {
 			group.textureKey = MaterialRules::textureKey(material.materials);
 			const auto key = group.vertexShader + '|' + group.fragmentShader + '|' + std::to_string(group.textureKey);
 			const auto index = groupFor(List::GBuffer, key, std::move(group));
-			addInstance(refs, entity, List::GBuffer, index, mesh.meshId, { entity, mesh.meshId, materialIndex(), boneOffset });
+			// Once under every level of the chain. The levels are consecutive mesh ids, they share the draw
+			// group, and the culling keeps the one whose level matches the size on screen, so this costs a
+			// slot per level and a draw whose instance count is zero for the levels not in use.
+			for (uint32_t level = 0; level < (std::max)(1u, mesh.lodCount); ++level) {
+				const uint32_t levelMesh = mesh.meshId + level;
+				addInstance(refs, entity, List::GBuffer, index, levelMesh, { entity, levelMesh, materialIndex(), boneOffset });
+			}
 		});
 
 		// Outlined entities draw every submesh again into the outline list, with no material of their own.
@@ -750,8 +763,25 @@ namespace SFE::Render {
 		return count != 0 && cull(cmd, list, view, params);
 	}
 
+	// Where the levels are chosen from, and how many pixels of screen height a unit of radius covers a unit
+	// away. The player's camera and projection whatever the view being culled: a shadow cascade picking its
+	// levels from the light would put the coarsest mesh in the shadow directly under the camera.
+	void GpuScene::fillLodOrigin(CullParams& params) {
+		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		if (!renderSystem) {
+			return;
+		}
+		const auto& data = renderSystem->getRenderData();
+		const auto& screen = Engine::instance()->getWindow()->getScreenData();
+		params.lodOrigin[0] = data.mCameraPos.x;
+		params.lodOrigin[1] = data.mCameraPos.y;
+		params.lodOrigin[2] = data.mCameraPos.z;
+		// projection[1][1] is 1 / tan(fovY / 2).
+		params.lodOrigin[3] = static_cast<float>(screen.renderH) * 0.5f * data.current.projection[1][1];
+	}
+
 	uint32_t GpuScene::prepareView(View& view, const uint32_t instances, const uint32_t commands, const CullParams& params) {
-		static_assert(sizeof(CullParams) == 416);
+		static_assert(sizeof(CullParams) == 432);
 		auto* rhi = Engine::instance()->rhi();
 		if (!view.visible || view.visibleCapacity < instances) {
 			retire(view.visible);
@@ -794,6 +824,7 @@ namespace SFE::Render {
 			view.lastVisibleCapacity = data.instanceCount + data.instanceCount / 2;
 			view.lastVisible = createBuffer(view.lastVisibleCapacity * sizeof(uint32_t), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene last visible");
 		}
+		fillLodOrigin(params);
 		view.secondPhaseOffset = data.batchCount;
 		const uint32_t slot = prepareView(view, data.instanceCount, occlusion ? data.batchCount * 2 : data.batchCount, params);
 		if (!view.sets[slot]) {

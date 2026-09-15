@@ -8,7 +8,7 @@ file(GLOB_RECURSE SRC
 	"${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
 )
 
-set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss)
+set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss ${CMAKE_CURRENT_SOURCE_DIR}/submodules/meshoptimizer)
 # file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/*")
 # list(REMOVE_ITEM SRC ${SUBMODULES_FILES})
 # file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss/*")
@@ -60,6 +60,10 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC})
 
 add_subdirectory(submodules/ecss)
 target_link_libraries(${ENGINE_NAME} PUBLIC ecss)
+
+# Mesh simplification for the LOD chain the loader builds.
+add_subdirectory(submodules/meshoptimizer)
+target_link_libraries(${ENGINE_NAME} PRIVATE meshoptimizer)
 
 # ecss is header-only and templated, so every translation unit that opens a view has to
 # parse the whole thing, and only a fifth of that is ecss's own code -- the rest is the
