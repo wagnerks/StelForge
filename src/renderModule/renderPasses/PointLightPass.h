@@ -20,6 +20,7 @@ namespace SFE::Render::RenderPasses {
 		void collectLights(const FrustumModule::Frustum& camFrustum, const Math::Vec3& cameraPos, std::vector<Math::Mat4>& matrices, std::vector<Math::Vec4>& spheres, std::vector<ecss::SectorId>& entities);
 		void ensureGpu(SystemsModule::RenderData& renderDataHandle);
 
+		std::vector<Math::Vec4> mSpheres; // this frame's light spheres, kept so they do not allocate every frame
 		FramebufferHandle lightFramebuffer;
 		TextureHandle mLightDepthMaps;
 		SamplerHandle mLightDepthMapsSampler;

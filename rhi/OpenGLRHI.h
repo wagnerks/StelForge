@@ -1,6 +1,8 @@
 ﻿#pragma once
 
+#include <array>
 #include <atomic>
+#include <memory>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -70,10 +72,14 @@ namespace SFE::Render
 		std::vector<DescriptorImageInfo>  images;
 	};
 
+	using GLDescriptorBindings = std::vector<GLDescriptorBindingData>;
+
 	struct GLDescriptorSet
 	{
 		DescriptorSetLayoutDesc layout{};
-		std::vector<GLDescriptorBindingData> bindings;
+		// Shared with the binds recorded from it: a bind keeps the contents it saw, and a later write copies
+		// them first instead of every bind copying them.
+		std::shared_ptr<GLDescriptorBindings> bindings = std::make_shared<GLDescriptorBindings>();
 		bool live = false;
 	};
 
@@ -90,8 +96,17 @@ namespace SFE::Render
 	struct CmdBindPipeline { PipelineHandle pipeline; };
 	struct CmdBindVertexBuffer { uint32_t slot = 0; BufferHandle handle; uint32_t offset = 0; };
 	struct CmdBindIndexBuffer { BufferHandle handle; IndexType type = IndexType::Uint16; uint32_t offset = 0; };
-	struct CmdBindDescriptorSets { std::vector<GLDescriptorBindingData> bindings; };
-	struct CmdPushConstants { std::vector<uint8_t> data; };
+	struct CmdBindDescriptorSets {
+		static constexpr size_t kMaxSets = 4;
+		static constexpr size_t kMaxDynamic = 16;
+		std::array<std::shared_ptr<const GLDescriptorBindings>, kMaxSets> sets{};
+		uint8_t setCount = 0;
+		// Dynamic offsets by set and binding number, applied when the bind is replayed.
+		struct DynamicOffset { uint8_t set = 0; uint32_t binding = 0; uint32_t element = 0; uint32_t offset = 0; };
+		std::array<DynamicOffset, kMaxDynamic> dynamic{};
+		uint8_t dynamicCount = 0;
+	};
+	struct CmdPushConstants { uint32_t offset = 0; uint32_t size = 0; }; // into GLCommandList::pushData
 	struct CmdDraw { uint32_t vertexCount = 0, instanceCount = 1, firstVertex = 0, firstInstance = 0; };
 	struct CmdDrawIndexed { uint32_t indexCount = 0, instanceCount = 1, firstIndex = 0; int32_t vertexOffset = 0; uint32_t firstInstance = 0; };
 	struct CmdDrawIndirect { BufferHandle buffer; size_t offset = 0; uint32_t drawCount = 1; uint32_t stride = 16; };
@@ -127,6 +142,7 @@ namespace SFE::Render
 		bool recording = false;
 		bool live = false;
 		std::vector<GLCommand> commands;
+		std::vector<uint8_t> pushData;
 	};
 
 	class OpenGLRHI : public RenderHardwareInterface
@@ -248,6 +264,10 @@ namespace SFE::Render
 		std::vector<TransientOverflow> m_transientOverflow;
 		// Buffers destroyed while a list was open, destroyed after its submit.
 		std::vector<uint32_t> m_pendingBufferDestroys;
+		// A submitted list's storage, handed to the next one so recording does not grow it from empty every frame.
+		std::vector<GLCommand> m_spareCommands;
+		const GLCommandList* m_replayingList = nullptr; // for commands that refer to the list's own storage
+		std::vector<uint8_t> m_sparePushData;
 		void uploadTransient();
 		void resetTransient();
 
@@ -292,7 +312,7 @@ namespace SFE::Render
 		void execPushConstants(const void* data, uint32_t size);
 		void execBlit(FramebufferHandle src, FramebufferHandle dst, BlitMask mask, BlitFilter filter);
 		void execSetScissor(int32_t x, int32_t y, uint32_t width, uint32_t height);
-		void execBindDescriptorSets(const std::vector<GLDescriptorBindingData>& bindings);
+		void execBindDescriptorSets(const CmdBindDescriptorSets& bind);
 		void execUpdateBuffer(BufferHandle handle, size_t offset, size_t size, const void* data);
 		void execPipelineBarrier(const PipelineBarrier& barrier);
 

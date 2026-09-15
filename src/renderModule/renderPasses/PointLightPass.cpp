@@ -195,7 +195,7 @@ void PointLightPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 	FUNCTION_BENCHMARK;
 
 	auto& matrices = data.matrices;
-	std::vector<Math::Vec4> spheres;
+	auto& spheres = mSpheres;
 	collectLights(renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, matrices, spheres, data.shadowEntities);
 	if (matrices.empty()) {
 		publish(renderDataHandle);

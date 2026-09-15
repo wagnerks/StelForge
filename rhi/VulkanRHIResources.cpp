@@ -1172,19 +1172,15 @@ namespace SFE::Render {
 	}
 
 	void VulkanRHI::updateDescriptorSets(const std::vector<WriteDescriptor>& writes) {
-		std::vector<VkWriteDescriptorSet> vkWrites;
-		std::vector<VkDescriptorBufferInfo> bufferInfos;
-		std::vector<VkDescriptorImageInfo> imageInfos;
-		// Where each accepted write's infos begin. The pointers are filled in only after every
-		// push_back is done: an array descriptor pushes more than one info, and taking the address of
-		// an element while the vector can still grow dangles the moment it reallocates.
-		struct InfoSpan {
-			size_t first = 0;
-			bool images = false;
-		};
-		std::vector<InfoSpan> spans;
-		vkWrites.reserve(writes.size());
-		spans.reserve(writes.size());
+		// Scratch kept between calls, so a frame's writes do not allocate.
+		auto& vkWrites = m_writeScratch.writes;
+		auto& bufferInfos = m_writeScratch.buffers;
+		auto& imageInfos = m_writeScratch.images;
+		auto& spans = m_writeScratch.spans;
+		vkWrites.clear();
+		bufferInfos.clear();
+		imageInfos.clear();
+		spans.clear();
 
 		for (const auto& write : writes) {
 			auto* setObj = getLive(m_descriptorSets, write.set.id);

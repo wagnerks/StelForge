@@ -1233,19 +1233,16 @@ void main() {
 		list->passWidth = beginInfo.width;
 		list->passHeight = beginInfo.height;
 
-		std::vector<VkClearValue> clearValues;
-		clearValues.reserve(pass->desc.colorAttachmentCount + (pass->desc.hasDepthStencil ? 1u : 0u));
-		for (uint32_t i = 0; i < pass->desc.colorAttachmentCount; ++i) {
-			VkClearValue value{};
+		std::array<VkClearValue, std::size(RenderPassDesc{}.colorAttachments) + 1> clearValues{};
+		uint32_t clearCount = 0;
+		for (uint32_t i = 0; i < pass->desc.colorAttachmentCount && clearCount < clearValues.size(); ++i) {
 			const RhiVec4 color = beginInfo.overrideClearColors ? beginInfo.overrideClearColors[i] : pass->desc.colorAttachments[i].clearColor;
-			value.color = { { color.x, color.y, color.z, color.w } };
-			clearValues.push_back(value);
+			clearValues[clearCount++].color = { { color.x, color.y, color.z, color.w } };
 		}
 		if (pass->desc.hasDepthStencil) {
-			VkClearValue value{};
+			auto& value = clearValues[clearCount++];
 			value.depthStencil.depth = beginInfo.overrideClearDepth ? *beginInfo.overrideClearDepth : pass->desc.depthAttachment.clearDepth;
 			value.depthStencil.stencil = beginInfo.overrideClearStencil ? *beginInfo.overrideClearStencil : pass->desc.depthAttachment.clearStencil;
-			clearValues.push_back(value);
 		}
 
 		VkRenderPassBeginInfo rpBegin{};
@@ -1257,8 +1254,8 @@ void main() {
 			static_cast<uint32_t>((std::max)(1, beginInfo.width)),
 			static_cast<uint32_t>((std::max)(1, beginInfo.height))
 		};
-		rpBegin.clearValueCount = static_cast<uint32_t>(clearValues.size());
-		rpBegin.pClearValues = clearValues.empty() ? nullptr : clearValues.data();
+		rpBegin.clearValueCount = clearCount;
+		rpBegin.pClearValues = clearCount ? clearValues.data() : nullptr;
 		vkCmdBeginRenderPass(list->cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
 
 		VkViewport viewport{};
@@ -1386,21 +1383,24 @@ void main() {
 			return;
 		}
 
-		std::vector<VkDescriptorSet> vkSets;
-		vkSets.reserve(setCount * 2);
+		std::array<VkDescriptorSet, 8> vkSets{};
+		if (setCount > vkSets.size()) {
+			RhiLog::error("cmdBindDescriptorSets: %u sets, at most %zu", setCount, vkSets.size());
+			return;
+		}
 		for (uint32_t i = 0; i < setCount; ++i) {
 			const auto* set = getLive(m_descriptorSets, sets[i].id);
 			if (!set) {
 				return;
 			}
-			vkSets.push_back(set->set);
+			vkSets[i] = set->set;
 		}
 		if (layout == VK_NULL_HANDLE || list->cmd == VK_NULL_HANDLE || !list->recording) {
 			return;
 		}
 		vkCmdBindDescriptorSets(list->cmd, bindPoint, layout, firstSet,
-			static_cast<uint32_t>(vkSets.size()), vkSets.data(), dynamicOffsets ? dynamicOffsetCount : 0, dynamicOffsets);
-		list->boundSets.insert(list->boundSets.end(), vkSets.begin(), vkSets.end());
+			setCount, vkSets.data(), dynamicOffsets ? dynamicOffsetCount : 0, dynamicOffsets);
+		list->boundSets.insert(list->boundSets.end(), vkSets.begin(), vkSets.begin() + setCount);
 	}
 
 	void VulkanRHI::cmdPushConstants(const CommandListHandle cmd, const PipelineHandle pipeline, const ShaderStage stages, const void* data, const uint32_t size) {

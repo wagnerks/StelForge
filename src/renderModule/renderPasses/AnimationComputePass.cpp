@@ -208,7 +208,12 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		GpuClip* clip = nullptr;
 		std::vector<AnimPush> instances;
 	};
-	std::unordered_map<const AssetsModule::Animation*, ClipBatch> batches;
+	// Kept across frames with the instances cleared, so gathering them does not allocate every frame. Main thread.
+	static std::unordered_map<const AssetsModule::Animation*, ClipBatch> batches;
+	bool anyInstances = false;
+	for (auto& [_, batch] : batches) {
+		batch.instances.clear();
+	}
 
 	for (auto [entityId, animationComp, armatureComp] : ECSHandler::registry().view<
 		ComponentsModule::AnimationComponent,
@@ -264,9 +269,10 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		auto& batch = batches[anim];
 		batch.clip = clip;
 		batch.instances.push_back(inst);
+		anyInstances = true;
 	}
 
-	if (batches.empty()) {
+	if (!anyInstances) {
 		return;
 	}
 

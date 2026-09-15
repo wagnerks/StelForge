@@ -588,7 +588,7 @@ namespace SFE::Render {
 
 	bool GpuScene::cullSpheres(const CommandListHandle cmd, const List list, View& view, const std::vector<Math::Vec4>& spheres) {
 		const auto count = static_cast<uint32_t>((std::min)(spheres.size(), size_t{ kMaxSpheres }));
-		std::vector<float> shapes(count * 4);
+		std::array<float, kMaxSpheres * 4> shapes{};
 		for (uint32_t i = 0; i < count; ++i) {
 			for (int c = 0; c < 4; ++c) {
 				shapes[i * 4 + c] = spheres[i][c];

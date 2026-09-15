@@ -393,6 +393,18 @@ namespace SFE::Render
 			int waitsLeft = 0;
 		};
 		std::vector<RetiredBuffer> m_retiredBuffers;
+		// updateDescriptorSets' working storage. Where each accepted write's infos begin: the pointers are filled
+		// in only after every push_back, since an array descriptor pushes several infos and the vectors can grow.
+		struct DescriptorWriteScratch {
+			struct InfoSpan {
+				size_t first = 0;
+				bool images = false;
+			};
+			std::vector<VkWriteDescriptorSet> writes;
+			std::vector<VkDescriptorBufferInfo> buffers;
+			std::vector<VkDescriptorImageInfo> images;
+			std::vector<InfoSpan> spans;
+		} m_writeScratch;
 		// allocTransient: one mapped buffer with a region per frame slot, so a set written for it once stays
 		// valid while each frame writes its own region. An allocation that does not fit gets a buffer of its
 		// own, destroyed when the slot comes round again, and the region grows to the peak at that point.

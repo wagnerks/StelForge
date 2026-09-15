@@ -121,7 +121,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [x] After uploads are flushed at `beginCommandList`, `updateBuffer` to a device-local buffer and `cmdUpdateBuffer` run `executeImmediate`: submit and wait on a fence (`VulkanRHIResources.cpp:131-143`, `:1362`). `GpuMaterialTable::upload()` is called from inside passes (`GeometryPass.cpp:263`), so a new material makes the GPU wait mid-frame. Copies queued earlier run at submit, after the immediate one, so the order of two writes to the same range is inverted compared with GL (no current caller does that).
 
 ## 31. Allocations per draw and per frame
-- [ ] GL `cmdBindDescriptorSets` deep-copies the bindings' vectors on every bind (`OpenGLRHI.cpp:1420`), the command list starts from zero capacity every frame, and push constants allocate. Vulkan allocates a vector per bind (`VulkanRHIPipelines.cpp:1389`), per render pass (`:1236`) and 4 per `updateDescriptorSets`. Passes allocate too: GlassPass `writes`, AnimationComputePass `unordered_map`, PointLightPass `matrices`/`spheres`/`candidates`, `GpuScene::cullSpheres` `shapes`.
+- [x] GL `cmdBindDescriptorSets` deep-copies the bindings' vectors on every bind (`OpenGLRHI.cpp:1420`), the command list starts from zero capacity every frame, and push constants allocate. Vulkan allocates a vector per bind (`VulkanRHIPipelines.cpp:1389`), per render pass (`:1236`) and 4 per `updateDescriptorSets`. Passes allocate too: GlassPass `writes`, AnimationComputePass `unordered_map`, PointLightPass `matrices`/`spheres`/`candidates`, `GpuScene::cullSpheres` `shapes`.
 
 ## 32. `GlassPass` writes bindings its layout does not have
 - [x] `GlassPass.cpp:197-203, 232-238` write bindings 12 and 14, which the layout (`:77-87`) lacks. Both backends log "set has no binding" twice per frame, and the log spam hides real errors.
@@ -131,5 +131,5 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [x] Not verified: Vulkan `runOnWorkerThread` has no lock, and `TextureHandler.cpp:75` calls `createTexture` on the calling thread. If textures load off the main thread, the resource arrays and the upload command pool are used from two threads.
 
 ## 34. Housekeeping
-- [ ] `bin/compare/**` outputs are tracked in git, so every `compare-backends.ps1` run dirties the tree. Ignore them.
-- [ ] `scripts/compare-backends.ps1` (editor repo) is untracked.
+- [x] `bin/compare/**` outputs are tracked in git, so every `compare-backends.ps1` run dirties the tree. Ignore them.
+- [x] `scripts/compare-backends.ps1` (editor repo) is untracked.

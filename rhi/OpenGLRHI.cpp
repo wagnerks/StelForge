@@ -885,6 +885,8 @@ namespace SFE::Render
 		list.type = type;
 		list.recording = true;
 		list.live = true;
+		list.commands.swap(m_spareCommands);
+		list.pushData.swap(m_sparePushData);
 
 		CommandListHandle handle;
 		handle.id = storeResource(m_commandLists, m_freeCommandLists, std::move(list));
@@ -919,10 +921,10 @@ namespace SFE::Render
 				execBindIndexBuffer(recorded.handle, recorded.type, recorded.offset);
 			}
 			else if constexpr (std::is_same_v<T, CmdBindDescriptorSets>) {
-				execBindDescriptorSets(recorded.bindings);
+				execBindDescriptorSets(recorded);
 			}
 			else if constexpr (std::is_same_v<T, CmdPushConstants>) {
-				execPushConstants(recorded.data.data(), static_cast<uint32_t>(recorded.data.size()));
+				execPushConstants(m_replayingList->pushData.data() + recorded.offset, recorded.size);
 			}
 			else if constexpr (std::is_same_v<T, CmdDraw>) {
 				execDraw(recorded.vertexCount, recorded.instanceCount, recorded.firstVertex, recorded.firstInstance);
@@ -970,10 +972,16 @@ namespace SFE::Render
 
 		list->recording = false;
 		uploadTransient();
+		m_replayingList = list;
 		for (const auto& command : list->commands) {
 			executeCommand(command);
 		}
+		m_replayingList = nullptr;
 		resetTransient();
+		list->commands.clear();
+		list->pushData.clear();
+		m_spareCommands.swap(list->commands);
+		m_sparePushData.swap(list->pushData);
 		recycleResource(m_commandLists, m_freeCommandLists, handle.id);
 		for (const auto id : std::exchange(m_pendingBufferDestroys, {})) {
 			destroyBuffer({ id });
@@ -1283,10 +1291,9 @@ namespace SFE::Render
 			return;
 		}
 
-		CmdPushConstants rec;
-		rec.data.resize(size);
-		std::memcpy(rec.data.data(), data, size);
-		list->commands.emplace_back(std::move(rec));
+		CmdPushConstants rec{ static_cast<uint32_t>(list->pushData.size()), size };
+		list->pushData.insert(list->pushData.end(), static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
+		list->commands.emplace_back(rec);
 	}
 
 	void OpenGLRHI::execPushConstants(const void* data, uint32_t size)
@@ -1341,12 +1348,12 @@ namespace SFE::Render
 		GLDescriptorSet set{};
 		set.layout = layoutObj->desc;
 		set.live = true;
-		set.bindings.reserve(set.layout.bindings.size());
+		set.bindings->reserve(set.layout.bindings.size());
 		for (const auto& b : set.layout.bindings) {
 			GLDescriptorBindingData data;
 			data.binding = b.binding;
 			data.type = b.type;
-			set.bindings.push_back(std::move(data));
+			set.bindings->push_back(std::move(data));
 		}
 
 		DescriptorSetHandle h;
@@ -1388,16 +1395,19 @@ namespace SFE::Render
 			}
 			const DescriptorType type = declared->type;
 
+			if (set->bindings.use_count() > 1) {
+				set->bindings = std::make_shared<GLDescriptorBindings>(*set->bindings);
+			}
 			GLDescriptorBindingData* slot = nullptr;
-			for (auto& b : set->bindings) {
+			for (auto& b : *set->bindings) {
 				if (b.binding == w.binding) {
 					slot = &b;
 					break;
 				}
 			}
 			if (!slot) {
-				set->bindings.push_back({ w.binding, type, {}, {} });
-				slot = &set->bindings.back();
+				set->bindings->push_back({ w.binding, type, {}, {} });
+				slot = &set->bindings->back();
 			}
 
 			switch (type)
@@ -1433,6 +1443,10 @@ namespace SFE::Render
 			return;
 		}
 
+		if (setCount > CmdBindDescriptorSets::kMaxSets) {
+			RhiLog::error("cmdBindDescriptorSets: %u sets, at most %zu", setCount, CmdBindDescriptorSets::kMaxSets);
+			return;
+		}
 		CmdBindDescriptorSets rec;
 		uint32_t nextOffset = 0;
 		for (uint32_t i = 0; i < setCount; ++i) {
@@ -1440,21 +1454,22 @@ namespace SFE::Render
 			if (!set) {
 				continue;
 			}
-			const size_t first = rec.bindings.size();
-			rec.bindings.insert(rec.bindings.end(), set->bindings.begin(), set->bindings.end());
+			const auto setIndex = rec.setCount++;
+			rec.sets[setIndex] = set->bindings;
 
 			// As Vulkan takes them: the set's dynamic descriptors in ascending binding number, one offset each.
-			std::vector<GLDescriptorBindingData*> dynamic;
-			for (size_t b = first; b < rec.bindings.size(); ++b) {
-				if (isDynamicDescriptor(rec.bindings[b].type)) {
-					dynamic.push_back(&rec.bindings[b]);
+			std::array<const GLDescriptorBindingData*, CmdBindDescriptorSets::kMaxDynamic> dynamic{};
+			size_t dynamicInSet = 0;
+			for (const auto& binding : *set->bindings) {
+				if (isDynamicDescriptor(binding.type) && dynamicInSet < dynamic.size()) {
+					dynamic[dynamicInSet++] = &binding;
 				}
 			}
-			std::sort(dynamic.begin(), dynamic.end(), [](const auto* a, const auto* b) { return a->binding < b->binding; });
-			for (auto* binding : dynamic) {
-				for (auto& buffer : binding->buffers) {
-					if (dynamicOffsets && nextOffset < dynamicOffsetCount) {
-						buffer.offset += dynamicOffsets[nextOffset];
+			std::sort(dynamic.begin(), dynamic.begin() + dynamicInSet, [](const auto* a, const auto* b) { return a->binding < b->binding; });
+			for (size_t d = 0; d < dynamicInSet; ++d) {
+				for (uint32_t element = 0; element < dynamic[d]->buffers.size(); ++element) {
+					if (dynamicOffsets && nextOffset < dynamicOffsetCount && rec.dynamicCount < rec.dynamic.size()) {
+						rec.dynamic[rec.dynamicCount++] = { setIndex, dynamic[d]->binding, element, dynamicOffsets[nextOffset] };
 					}
 					++nextOffset;
 				}
@@ -1466,8 +1481,22 @@ namespace SFE::Render
 		list->commands.emplace_back(std::move(rec));
 	}
 
-	void OpenGLRHI::execBindDescriptorSets(const std::vector<GLDescriptorBindingData>& bindings)
+	void OpenGLRHI::execBindDescriptorSets(const CmdBindDescriptorSets& bind)
 	{
+		for (uint8_t setIndex = 0; setIndex < bind.setCount; ++setIndex) {
+			if (!bind.sets[setIndex]) {
+				continue;
+			}
+		const auto& bindings = *bind.sets[setIndex];
+		const auto dynamicOffset = [&](const GLDescriptorBindingData& b, uint32_t element) -> uint32_t {
+			for (uint8_t d = 0; d < bind.dynamicCount; ++d) {
+				const auto& entry = bind.dynamic[d];
+				if (entry.set == setIndex && entry.binding == b.binding && entry.element == element) {
+					return entry.offset;
+				}
+			}
+			return 0;
+		};
 		// Для OpenGL считаем:
 		// texture unit = binding + index in the array, matching how GLSL assigns consecutive units to
 		// the elements of a `uniform sampler2D tex[N]` declared at that binding
@@ -1506,7 +1535,7 @@ namespace SFE::Render
 					if (!glb)
 						continue;
 					glBindBufferRange(b.type == DescriptorType::UniformBufferDynamic ? GL_UNIFORM_BUFFER : GL_SHADER_STORAGE_BUFFER,
-						b.binding + i, glb->id, static_cast<GLintptr>(info.offset), static_cast<GLsizeiptr>(info.range));
+						b.binding + i, glb->id, static_cast<GLintptr>(info.offset + dynamicOffset(b, i)), static_cast<GLsizeiptr>(info.range));
 				}
 				break;
 
@@ -1527,7 +1556,7 @@ namespace SFE::Render
 				break;
 			}
 		}
-
+		}
 	}
 
 	FramebufferHandle OpenGLRHI::getBackbufferFramebuffer()
