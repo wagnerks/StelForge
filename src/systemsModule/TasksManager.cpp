@@ -1,26 +1,25 @@
 #include "TasksManager.h"
 
-#include <cassert>
-
 namespace SFE::SystemsModule {
 	void TasksManager::notify(Task task) const {
-		const auto& list = workers[task.type];
-		const auto count = list.count.load(std::memory_order_acquire);
-		for (size_t i = 0; i < count; ++i) {
-			list.slots[i].load(std::memory_order_acquire)->notify(task);//probably this should batch tasks into system, and after some accumulation should be called notify to wake up the worker
+		const auto list = workers[task.type].load(std::memory_order_acquire);
+		if (!list) {
+			return;
+		}
+		for (const auto worker : *list) {
+			worker->notify(task);//probably this should batch tasks into system, and after some accumulation should be called notify to wake up the worker
 		}
 	}
 
 	void TasksManager::addWorker(TaskWorker* worker, TaskType type) {
-		// Subscribers are added from the main thread only, so the append itself needs no lock.
-		auto& list = workers[type];
-		const auto count = list.count.load(std::memory_order_acquire);
-		assert(count < kMaxWorkersPerType);
-		if (count >= kMaxWorkersPerType) {
-			return;
-		}
-		list.slots[count].store(worker, std::memory_order_release);
-		list.count.store(count + 1, std::memory_order_release);
+		auto& slot = workers[type];
+		auto current = slot.load(std::memory_order_acquire);
+		std::shared_ptr<const Workers> next;
+		do {
+			auto copy = current ? std::make_shared<Workers>(*current) : std::make_shared<Workers>();
+			copy->push_back(worker);
+			next = std::move(copy);
+		} while (!slot.compare_exchange_weak(current, next, std::memory_order_acq_rel));
 	}
 }
 
