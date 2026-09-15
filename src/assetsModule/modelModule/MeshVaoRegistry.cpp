@@ -5,6 +5,7 @@
 
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
+#include "logsModule/logger.h"
 #include "multithreading/ThreadPool.h"
 #include "systemsModule/systems/RenderSystem.h"
 
@@ -57,6 +58,12 @@ namespace SFE {
 	void MeshVaoRegistry::allocate(Mesh<Vertex3D>* mesh, RenderMeshData& data) {
 		const size_t vertexEnd = static_cast<size_t>(mVertexUsed) + mesh->vertices.size();
 		const size_t indexEnd = static_cast<size_t>(mIndexUsed) + mesh->indices.size();
+		// Offsets are uint32 in RenderMeshData, the mesh table and the draw commands. Past that a mesh is left
+		// unuploaded (meshId 0, never drawn) instead of wrapping onto the start of the buffers.
+		if (vertexEnd > UINT32_MAX || indexEnd > UINT32_MAX) {
+			LogsModule::Logger::LOG_ERROR("MeshVaoRegistry: shared buffers are full (%zu vertices, %zu indices), mesh not uploaded", vertexEnd, indexEnd);
+			return;
+		}
 		if (!mVertexBuffer || vertexEnd > mVertexCapacity || indexEnd > mIndexCapacity) {
 			size_t vertexCapacity = mVertexCapacity ? mVertexCapacity : kInitialVertices;
 			size_t indexCapacity = mIndexCapacity ? mIndexCapacity : kInitialIndices;

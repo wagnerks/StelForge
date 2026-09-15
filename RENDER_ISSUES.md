@@ -87,6 +87,9 @@ Known problems in the GPU-driven renderer, most urgent first.
 
 ## 23. Shared mesh buffers never free anything
 - [ ] `MeshVaoRegistry.cpp:57-79, 113-153`: allocation only appends, with no free or reuse. Offsets are `uint32` and wrap silently. Every growth re-uploads all meshes from their CPU copies, so all geometry stays in RAM forever. On Vulkan a growth mid-frame turns into one blocking submit per mesh.
+- [x] Offsets past `uint32` are refused with an error instead of wrapping onto the start of the buffers.
+- [x] A mid-frame growth would now show up in the log (see 30); meshes are uploaded by SYNC tasks outside frame recording.
+- [ ] Freeing needs an asset lifecycle the engine does not have yet: models are never unloaded, so there is nothing to free. When they are, free ranges per mesh like the bone pool, and copy buffer to buffer on growth instead of keeping every mesh's CPU copy.
 
 ## 24. Retired buffers and the frames-in-flight constant
 - [x] Retired buffers are freed only in `uploadDirtyGpuData`: never at shutdown (`~RenderSystem`, `RenderSystem.cpp:626`), and they pile up during long loads.
