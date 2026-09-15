@@ -115,7 +115,9 @@ void main() {
         vec3 localExtents = (mesh.boundsMax - mesh.boundsMin) * 0.5;
         vec3 center = (m * vec4(localCenter, 1.0)).xyz;
         vec3 extents = abs(m[0].xyz) * localExtents.x + abs(m[1].xyz) * localExtents.y + abs(m[2].xyz) * localExtents.z;
-        float depth = dot(m[3].xyz - view.shapes[6].xyz, view.shapes[7].xyz);
+        // The bounds' centre, not the entity origin: submeshes of one entity, and imported glass whose pivot
+        // sits at the origin, would all share one depth and fall back to slot order.
+        float depth = dot(center - view.shapes[6].xyz, view.shapes[7].xyz);
         keys[i] = SortKey(visibleInView(center, extents) ? depth : kCulled, step.base + i);
         return;
     }
