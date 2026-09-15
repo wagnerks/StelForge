@@ -119,6 +119,11 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 	mParams.anisotropy = renderDataHandle.graphics.volumetricAnisotropy;
 	mParams.intensity = renderDataHandle.graphics.volumetricIntensity;
 	mParams.maxDistance = renderDataHandle.graphics.volumetricDistance;
+	{
+		const auto& screen = Engine::instance()->getWindow()->getScreenData();
+		mParams.resX = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
+		mParams.resY = screen.renderH > 0 ? static_cast<float>(screen.renderH) : 1.f;
+	}
 	if (csm) {
 		mParams.lightX = csm->lightDirection.x;
 		mParams.lightY = csm->lightDirection.y;

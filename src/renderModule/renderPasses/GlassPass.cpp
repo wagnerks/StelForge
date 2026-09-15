@@ -158,6 +158,11 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	mParams.viewPosY = renderDataHandle.mCameraPos.y;
 	mParams.viewPosZ = renderDataHandle.mCameraPos.z;
 	mParams.roughness = renderDataHandle.graphics.glassRoughness;
+	{
+		const auto& screen = Engine::instance()->getWindow()->getScreenData();
+		mParams.resolutionX = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
+		mParams.resolutionY = screen.renderH > 0 ? static_cast<float>(screen.renderH) : 1.f;
+	}
 	mParams.sphereSpacing = 8.f;
 	if (auto* chunks = ECSHandler::getSystem<SystemsModule::ChunksSystem>()) {
 		if (const auto* dd = static_cast<const SystemsModule::ChunksDebugData*>(chunks->getDebugData())) {
