@@ -14,10 +14,6 @@ struct BoneDesc {
     int sclOff;
     int sclCnt;
     int boneId;
-    float radius;
-    float _p0;
-    float _p1;
-    float _p2;
 };
 
 struct Vec3Key {
@@ -186,9 +182,6 @@ vec4 lerpQuatKeys(int off, int cnt, float t) {
 void main() {
     AnimInstance inst = instances[gl_WorkGroupID.x];
     int row = int(gl_WorkGroupID.x) * inst.boneStride;
-    // The pose's bounds in model space: every vertex lies within its bones' radii of their joints.
-    vec3 lo = vec3(3.0e38);
-    vec3 hi = vec3(-3.0e38);
     for (int i = 0; i < inst.boneCount; ++i) {
         int bi = order[i];
         BoneDesc b = bones[bi];
@@ -219,12 +212,5 @@ void main() {
         worlds[row + bi] = world;
         precise mat4 skin = world * b.offset;
         outBones[inst.boneOffset + b.boneId] = skin;
-
-        float scale = sqrt(max(dot(world[0].xyz, world[0].xyz), max(dot(world[1].xyz, world[1].xyz), dot(world[2].xyz, world[2].xyz))));
-        vec3 reach = vec3(b.radius * scale);
-        lo = min(lo, world[3].xyz - reach);
-        hi = max(hi, world[3].xyz + reach);
     }
-    // RenderSystem keeps one matrix before an entity's bones for this; the cull reads it.
-    outBones[inst.boneOffset - 1] = mat4(vec4(lo, 1.0), vec4(hi, 1.0), vec4(0.0), vec4(0.0));
 }

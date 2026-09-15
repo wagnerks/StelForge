@@ -10,30 +10,6 @@ namespace AssetsModule {
 		if (!mArmature.bones.empty()) {
 			mDefaultBoneMatrices.resize(mArmature.bones.size(), mArmature.transform);
 
-			std::vector<const SFE::Math::Mat4*> offsets(mArmature.bones.size(), nullptr);
-			for (const auto& bone : mArmature.bones) {
-				if (bone.id < offsets.size()) {
-					offsets[bone.id] = &bone.offset;
-				}
-			}
-			mArmature.boneRadius.assign(mArmature.bones.size(), 0.f);
-			std::function<void(const SFE::Tree<SFE::MeshObject3D>&)> measure = [&](const SFE::Tree<SFE::MeshObject3D>& node) {
-				for (const auto& v : node.value.mesh.vertices) {
-					for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
-						const int id = v.boneIDs[i];
-						if (id < 0 || static_cast<size_t>(id) >= offsets.size() || !offsets[id] || v.weights[i] <= 0.f) {
-							continue;
-						}
-						const auto local = *offsets[id] * SFE::Math::Vec4(v.position, 1.f);
-						mArmature.boneRadius[id] = (std::max)(mArmature.boneRadius[id], SFE::Math::length(SFE::Math::Vec3(local)));
-					}
-				}
-				for (const auto& child : node.children) {
-					measure(child);
-				}
-			};
-			measure(mMeshTree);
-
 			//std::function<void(Bone*, SFE::Math::Mat4, std::vector<Bone>&)> calculateBoneTransform;
 			//calculateBoneTransform = [this, &calculateBoneTransform](Bone* node, SFE::Math::Mat4 parentTransform, std::vector<Bone>& bones) {
 			//	parentTransform *= node->transform;

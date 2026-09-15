@@ -167,7 +167,6 @@ namespace SFE::SystemsModule {
 		Render::GpuMaterialTable& materials() { return mMaterials; }
 		Render::GpuScene& scene() { return mScene; }
 		Render::BufferHandle transformsBuffer() const { return transforms; }
-		Render::BufferHandle bonesBuffer() const { return bones; }
 
 		// Where an entity's bone matrices live in the bone buffer, as many as its armature has. Allocated on first
 		// use for an entity with an armature and kept until it is destroyed; count 0 for one without. Main thread.

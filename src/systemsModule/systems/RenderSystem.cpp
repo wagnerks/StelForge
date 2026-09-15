@@ -411,21 +411,19 @@ namespace SFE::SystemsModule {
 			return {};
 		}
 
-		// One matrix before the bones holds the pose's bounds, written by animateBones and read by gpu_cull.cs.
-		const uint32_t slots = count + 1;
 		BoneRange range{ 0, count };
-		const auto fit = std::find_if(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), [slots](const BoneRange& r) { return r.count >= slots; });
+		const auto fit = std::find_if(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), [count](const BoneRange& r) { return r.count >= count; });
 		if (fit != mFreeBoneRanges.end()) {
-			range.offset = fit->offset + 1;
-			fit->offset += slots;
-			fit->count -= slots;
+			range.offset = fit->offset;
+			fit->offset += count;
+			fit->count -= count;
 			if (fit->count == 0) {
 				mFreeBoneRanges.erase(fit);
 			}
 		}
 		else {
-			range.offset = static_cast<uint32_t>(mBonesUsed) + 1;
-			mBonesUsed += slots;
+			range.offset = static_cast<uint32_t>(mBonesUsed);
+			mBonesUsed += count;
 			if (mBonesUsed > mBoneCapacity) {
 				size_t capacity = mBoneCapacity;
 				while (capacity < mBonesUsed) {
@@ -447,7 +445,7 @@ namespace SFE::SystemsModule {
 		if (it == mBoneRanges.end()) {
 			return;
 		}
-		const BoneRange range{ it->second.offset - 1, it->second.count + 1 }; // the bounds slot too
+		const auto range = it->second;
 		mBoneRanges.erase(it);
 		auto next = std::lower_bound(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), range.offset,
 			[](const BoneRange& r, uint32_t offset) { return r.offset < offset; });
@@ -544,12 +542,7 @@ namespace SFE::SystemsModule {
 			if (boneCount == 0) {
 				continue;
 			}
-			// A pose from the CPU has no bounds: the cull falls back to the inflated bind-pose box.
-			std::vector<Math::Mat4> slots(boneCount + 1);
-			slots[0][0] = Math::Vec4(1.f);
-			slots[0][1] = Math::Vec4(-1.f);
-			std::copy_n(armature->boneMatrices.begin(), boneCount, slots.begin() + 1);
-			rhi->updateBuffer(bones, static_cast<size_t>(range.offset - 1) * sizeof(Math::Mat4), slots.size() * sizeof(Math::Mat4), slots.data());
+			rhi->updateBuffer(bones, static_cast<size_t>(range.offset) * sizeof(Math::Mat4), boneCount * sizeof(Math::Mat4), armature->boneMatrices.data());
 		}
 	}
 
