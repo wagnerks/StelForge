@@ -21,7 +21,6 @@
 #include "componentsModule/IsDrawableComponent.h"
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/ModelComponent.h"
-#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/OutlineComponent.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"

@@ -28,7 +28,6 @@
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
-#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/ECSHandler.h"
 #include "core/FileSystem.h"

@@ -16,7 +16,6 @@
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/TransformComponent.h"
-#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/OutlineComponent.h"
 #include "containersModule/Vector.h"
 #include "core/ECSHandler.h"
@@ -88,6 +87,12 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	geometryPassDesc.hasDepthStencil = true;
 	geometryPassDesc.depthAttachment = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, 1.f, 0, false, TextureFormat::DEPTH_COMPONENT24 };
 	geometryPass = rhi->createRenderPass(geometryPassDesc);
+	// The second occlusion phase draws over the first one's targets.
+	for (auto& attachment : geometryPassDesc.colorAttachments) {
+		attachment.loadOp = AttachmentLoadOp::Load;
+	}
+	geometryPassDesc.depthAttachment.loadOp = AttachmentLoadOp::Load;
+	mGeometryLoadPass = rhi->createRenderPass(geometryPassDesc);
 
 	for (uint32_t i = 0; i < mGpuFrames; ++i) {
 		auto& slot = mFrames[i];
@@ -263,13 +268,25 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 	const auto materials = renderSystem->materials().upload();
 	auto& scene = renderSystem->scene();
-	const bool sceneVisible = scene.cullFrustum(cmd, GpuScene::List::GBuffer, mCameraView, renderDataHandle.mCamFrustum);
+	const bool sceneVisible = scene.cullVisibleLastFrame(cmd, GpuScene::List::GBuffer, mCameraView, renderDataHandle.mCamFrustum);
 	const bool outlineVisible = scene.cullFrustum(cmd, GpuScene::List::Outline, mOutlineView, renderDataHandle.mCamFrustum);
 
 	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
 	const auto fillMode = wireframe ? PolygonFillMode::Line : PolygonFillMode::Fill;
 	if (sceneVisible) {
-		drawScene(cmd, fillMode, materials);
+		drawScene(cmd, fillMode, materials, false);
+	}
+	rhi->cmdEndRenderPass(cmd);
+
+	// What was visible last frame is in the depth now: everything else is drawn only where it is not behind it.
+	if (sceneVisible) {
+		scene.buildDepthPyramid(cmd, mCameraView, slot.depthsBuffer, mSampler, geometryPassBegin.width, geometryPassBegin.height);
+	}
+	const bool occludedVisible = sceneVisible && scene.cullOccluded(cmd, GpuScene::List::GBuffer, mCameraView, renderDataHandle.mCamFrustum, renderDataHandle.current.PV);
+	geometryPassBegin.renderPass = mGeometryLoadPass;
+	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
+	if (occludedVisible) {
+		drawScene(cmd, fillMode, materials, true);
 	}
 	// The grid keeps its own pipeline, so it stays filled in wireframe mode -- which is what it
 	// already did, since binding a pipeline reset the polygon mode on OpenGL anyway.
@@ -377,7 +394,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	}
 }
 
-void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode fillMode, const BufferHandle materials) {
+void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode fillMode, const BufferHandle materials, const bool secondPhase) {
 	auto* rhi = Engine::instance()->rhi();
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 	const auto frameSet = renderSystem->frameSetHandle();
@@ -414,7 +431,7 @@ void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode 
 		}
 		const DescriptorSetHandle sets[] = { frameSet, textures };
 		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
-		scene.draw(cmd, mCameraView, group);
+		scene.draw(cmd, mCameraView, group, secondPhase);
 	}
 }
 

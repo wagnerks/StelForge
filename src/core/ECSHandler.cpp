@@ -12,7 +12,6 @@
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcTreeComponent.h"
-#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"

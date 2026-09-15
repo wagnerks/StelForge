@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
@@ -16,18 +17,36 @@
 #include "systemsModule/systems/RenderSystem.h"
 
 namespace SFE::Render {
+	// Mirrors CullView in shaders/gpu_cull.cs; gpu_glass.cs reads the part up to the shapes.
+	struct GpuScene::CullParams {
+		uint32_t mode = 0; // 0: planes, 1: spheres
+		uint32_t shapeCount = 0;
+		uint32_t batchCount = 0;
+		uint32_t pad = 0;
+		float shapes[GpuScene::kMaxSpheres * 4]{};
+		float viewProj[16]{};
+		uint32_t occlusion = 0; // 0 none, 1 and 2 the phases of cullVisibleLastFrame and cullOccluded
+		uint32_t depthWidth = 0;
+		uint32_t depthHeight = 0;
+		uint32_t levels = 0;
+		uint32_t levelOffsets[16]{};
+	};
+
 	namespace {
 		using SceneInstance = GpuScene::InstanceRecord;
 		using Batch = GpuScene::BatchRecord;
-		struct CullParams {
-			uint32_t mode = 0; // 0: planes, 1: spheres
-			uint32_t shapeCount = 0;
-			uint32_t batchCount = 0;
-			uint32_t pad = 0;
-			float shapes[GpuScene::kMaxSpheres * 4]{};
-		};
 		static_assert(sizeof(GpuMesh) == 48 && sizeof(SceneInstance) == 16 && sizeof(Batch) == 16);
-		static_assert(sizeof(CullParams) == 16 + GpuScene::kMaxSpheres * 16);
+
+		struct HizStep {
+			uint32_t srcOffset = 0;
+			uint32_t srcWidth = 0;
+			uint32_t srcHeight = 0;
+			uint32_t dstOffset = 0;
+			uint32_t dstWidth = 0;
+			uint32_t dstHeight = 0;
+			uint32_t fromTexture = 0;
+			uint32_t pad = 0;
+		};
 
 		constexpr uint32_t kLocalSize = 16;
 		constexpr uint32_t kGlassLocalSize = 64;
@@ -72,12 +91,27 @@ namespace SFE::Render {
 			{ 29, DescriptorType::StorageBuffer, ShaderStage::Compute },
 			{ 30, DescriptorType::StorageBuffer, ShaderStage::Compute },
 			{ 31, DescriptorType::StorageBuffer, ShaderStage::Compute },
+			{ 32, DescriptorType::StorageBuffer, ShaderStage::Compute },
+			{ 33, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		};
 		mCullLayout = rhi->createDescriptorSetLayout(layout);
 		ComputePipelineDesc desc;
 		desc.compute = rhi->loadShader(ShaderStage::Compute, "shaders/gpu_cull.cs");
 		desc.descriptorSetLayouts = { mCullLayout };
 		mCullPipeline = rhi->createComputePipeline(desc);
+		mEmptyBuffer = createBuffer(16, BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene empty");
+
+		DescriptorSetLayoutDesc hizLayout;
+		hizLayout.bindings = {
+			{ 1, DescriptorType::CombinedImageSampler, ShaderStage::Compute },
+			{ 2, DescriptorType::StorageBuffer, ShaderStage::Compute },
+		};
+		mHizLayout = rhi->createDescriptorSetLayout(hizLayout);
+		ComputePipelineDesc hizDesc;
+		hizDesc.compute = rhi->loadShader(ShaderStage::Compute, "shaders/hiz.cs");
+		hizDesc.descriptorSetLayouts = { mHizLayout };
+		hizDesc.pushConstantSize = sizeof(HizStep);
+		mHizPipeline = rhi->createComputePipeline(hizDesc);
 
 		DescriptorSetLayoutDesc glassLayout;
 		glassLayout.bindings = {
@@ -574,29 +608,130 @@ namespace SFE::Render {
 		data.instanceCount = static_cast<uint32_t>(data.instanceMirror.size());
 		data.batchCount = static_cast<uint32_t>(data.batchMirror.size());
 	}
+	GpuScene::CullParams GpuScene::frustumParams(const FrustumModule::Frustum& frustum) const {
+		CullParams params;
+		params.shapeCount = 6;
+		setPlane(params.shapes + 0, frustum.leftFace);
+		setPlane(params.shapes + 4, frustum.rightFace);
+		setPlane(params.shapes + 8, frustum.topFace);
+		setPlane(params.shapes + 12, frustum.bottomFace);
+		setPlane(params.shapes + 16, frustum.nearFace);
+		setPlane(params.shapes + 20, frustum.farFace);
+		return params;
+	}
+
 	bool GpuScene::cullFrustum(const CommandListHandle cmd, const List list, View& view, const FrustumModule::Frustum& frustum) {
-		float planes[24];
-		setPlane(planes + 0, frustum.leftFace);
-		setPlane(planes + 4, frustum.rightFace);
-		setPlane(planes + 8, frustum.topFace);
-		setPlane(planes + 12, frustum.bottomFace);
-		setPlane(planes + 16, frustum.nearFace);
-		setPlane(planes + 20, frustum.farFace);
-		return cull(cmd, list, view, 0, planes, 6);
+		auto params = frustumParams(frustum);
+		return cull(cmd, list, view, params);
+	}
+
+	bool GpuScene::cullVisibleLastFrame(const CommandListHandle cmd, const List list, View& view, const FrustumModule::Frustum& frustum) {
+		auto params = frustumParams(frustum);
+		params.occlusion = 1;
+		return cull(cmd, list, view, params);
+	}
+
+	bool GpuScene::cullOccluded(const CommandListHandle cmd, const List list, View& view, const FrustumModule::Frustum& frustum, const Math::Mat4& viewProj) {
+		if (!view.pyramid) {
+			return false;
+		}
+		auto params = frustumParams(frustum);
+		std::memcpy(params.viewProj, &viewProj, sizeof(params.viewProj));
+		params.occlusion = 2;
+		params.depthWidth = view.depthWidth;
+		params.depthHeight = view.depthHeight;
+		params.levels = view.levels;
+		std::copy(view.levelOffsets.begin(), view.levelOffsets.end(), params.levelOffsets);
+		return cull(cmd, list, view, params);
+	}
+
+	void GpuScene::buildDepthPyramid(const CommandListHandle cmd, View& view, const TextureHandle depth, const SamplerHandle sampler, const uint32_t width, const uint32_t height) {
+		auto* rhi = Engine::instance()->rhi();
+		if (!mHizPipeline || !depth || width == 0 || height == 0) {
+			return;
+		}
+		// Level 0 is half the texture, and every level halves the one before, rounding down, to 1x1.
+		const auto levelSize = [&](uint32_t level) {
+			uint32_t w = (std::max)(width >> 1, 1u);
+			uint32_t h = (std::max)(height >> 1, 1u);
+			while (level--) {
+				w = (std::max)(w >> 1, 1u);
+				h = (std::max)(h >> 1, 1u);
+			}
+			return std::make_pair(w, h);
+		};
+		if (!view.pyramid || view.depthWidth != width || view.depthHeight != height) {
+			view.depthWidth = width;
+			view.depthHeight = height;
+			view.levels = 0;
+			size_t total = 0;
+			while (view.levels < view.levelOffsets.size()) {
+				const auto [w, h] = levelSize(view.levels);
+				view.levelOffsets[view.levels++] = static_cast<uint32_t>(total);
+				total += size_t{ w } * h;
+				if (w == 1 && h == 1) {
+					break;
+				}
+			}
+			retire(view.pyramid);
+			view.pyramid = createBuffer(total * sizeof(float), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene depth pyramid");
+		}
+
+		const uint32_t slot = rhi->frameInFlight() % frameSlots();
+		if (view.pyramidSets.size() < frameSlots()) {
+			view.pyramidSets.resize(frameSlots());
+			view.pyramidBoundIds.resize(frameSlots());
+		}
+		if (!view.pyramidSets[slot]) {
+			view.pyramidSets[slot] = rhi->allocateDescriptorSet(mHizLayout);
+		}
+		const std::array<uint32_t, 2> ids = { depth.id, view.pyramid.id };
+		if (ids != view.pyramidBoundIds[slot]) {
+			view.pyramidBoundIds[slot] = ids;
+			rhi->updateDescriptorSets({
+				{ .set = view.pyramidSets[slot], .binding = 1, .images{ { depth, sampler } } },
+				{ .set = view.pyramidSets[slot], .binding = 2, .buffers{ { view.pyramid } } },
+			});
+		}
+
+		rhi->cmdBindPipeline(cmd, mHizPipeline);
+		rhi->cmdBindDescriptorSets(cmd, mHizPipeline, 0, &view.pyramidSets[slot], 1);
+		for (uint32_t level = 0; level < view.levels; ++level) {
+			HizStep step;
+			const auto [w, h] = levelSize(level);
+			if (level == 0) {
+				step.fromTexture = 1;
+				step.srcWidth = width;
+				step.srcHeight = height;
+			}
+			else {
+				std::tie(step.srcWidth, step.srcHeight) = levelSize(level - 1);
+				step.srcOffset = view.levelOffsets[level - 1];
+			}
+			step.dstOffset = view.levelOffsets[level];
+			step.dstWidth = w;
+			step.dstHeight = h;
+			rhi->cmdPushConstants(cmd, mHizPipeline, ShaderStage::Compute, &step, sizeof(step));
+			rhi->cmdDispatch(cmd, (w + kLocalSize - 1) / kLocalSize, (h + kLocalSize - 1) / kLocalSize, 1);
+			rhi->cmdPipelineBarrier(cmd, { PipelineStage::Compute, PipelineStage::Compute, AccessMask::ShaderWrite, AccessMask::ShaderRead });
+		}
 	}
 
 	bool GpuScene::cullSpheres(const CommandListHandle cmd, const List list, View& view, const std::vector<Math::Vec4>& spheres) {
 		const auto count = static_cast<uint32_t>((std::min)(spheres.size(), size_t{ kMaxSpheres }));
-		std::array<float, kMaxSpheres * 4> shapes{};
+		CullParams params;
+		params.mode = 1;
+		params.shapeCount = count;
 		for (uint32_t i = 0; i < count; ++i) {
 			for (int c = 0; c < 4; ++c) {
-				shapes[i * 4 + c] = spheres[i][c];
+				params.shapes[i * 4 + c] = spheres[i][c];
 			}
 		}
-		return count != 0 && cull(cmd, list, view, 1, shapes.data(), count);
+		return count != 0 && cull(cmd, list, view, params);
 	}
 
-	uint32_t GpuScene::prepareView(View& view, const uint32_t instances, const uint32_t commands, const uint32_t mode, const float* shapes, const uint32_t shapeCount, const uint32_t batchCount) {
+	uint32_t GpuScene::prepareView(View& view, const uint32_t instances, const uint32_t commands, const CullParams& params) {
+		static_assert(sizeof(CullParams) == 416);
 		auto* rhi = Engine::instance()->rhi();
 		if (!view.visible || view.visibleCapacity < instances) {
 			retire(view.visible);
@@ -609,25 +744,20 @@ namespace SFE::Render {
 			view.commands = createBuffer(view.commandCapacity * kCommandStride, BufferUsage::Storage | BufferUsage::Indirect, CpuAccess::None, nullptr, "GpuScene commands");
 		}
 
-		const uint32_t slot = rhi->frameInFlight() % frameSlots();
-		if (view.params.size() < frameSlots()) {
-			view.params.resize(frameSlots());
-			view.sets.resize(frameSlots());
-			view.boundIds.resize(frameSlots());
+		const uint32_t slot = rhi->frameInFlight() % frameSlots() * 2 + (params.occlusion == 2 ? 1u : 0u);
+		if (view.params.size() < frameSlots() * 2) {
+			view.params.resize(frameSlots() * 2);
+			view.sets.resize(frameSlots() * 2);
+			view.boundIds.resize(frameSlots() * 2);
 		}
 		if (!view.params[slot]) {
 			view.params[slot] = createBuffer(sizeof(CullParams), BufferUsage::Storage, CpuAccess::Write, nullptr, "GpuScene view");
 		}
-		CullParams params;
-		params.mode = mode;
-		params.shapeCount = shapeCount;
-		params.batchCount = batchCount;
-		std::memcpy(params.shapes, shapes, shapeCount * 4 * sizeof(float));
 		rhi->updateBuffer(view.params[slot], 0, sizeof(params), &params);
 		return slot;
 	}
 
-	bool GpuScene::cull(const CommandListHandle cmd, const List list, View& view, const uint32_t mode, const float* shapes, const uint32_t shapeCount) {
+	bool GpuScene::cull(const CommandListHandle cmd, const List list, View& view, CullParams& params) {
 		const auto& data = mLists[static_cast<size_t>(list)];
 		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 		const auto transforms = renderSystem ? renderSystem->transformsBuffer() : BufferHandle{};
@@ -635,13 +765,24 @@ namespace SFE::Render {
 			return false;
 		}
 		auto* rhi = Engine::instance()->rhi();
-		const uint32_t slot = prepareView(view, data.instanceCount, data.batchCount, mode, shapes, shapeCount, data.batchCount);
+		params.batchCount = data.batchCount;
+		const bool occlusion = params.occlusion != 0;
+		if (occlusion && (!view.lastVisible || view.lastVisibleCapacity < data.instanceCount)) {
+			// Starts with anything in it: that only picks the phase an instance is drawn in, for one frame.
+			retire(view.lastVisible);
+			view.lastVisibleCapacity = data.instanceCount + data.instanceCount / 2;
+			view.lastVisible = createBuffer(view.lastVisibleCapacity * sizeof(uint32_t), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene last visible");
+		}
+		view.secondPhaseOffset = data.batchCount;
+		const uint32_t slot = prepareView(view, data.instanceCount, occlusion ? data.batchCount * 2 : data.batchCount, params);
 		if (!view.sets[slot]) {
 			view.sets[slot] = rhi->allocateDescriptorSet(mCullLayout);
 		}
+		const auto lastVisible = occlusion ? view.lastVisible : mEmptyBuffer;
+		const auto pyramid = params.occlusion == 2 ? view.pyramid : mEmptyBuffer;
 
 		// Rewritten only when a buffer was replaced: a write to a set that is already bound costs a copy.
-		const std::array<uint32_t, 8> ids = { transforms.id, mMeshes.id, data.instances.id, data.batches.id, view.visible.id, view.commands.id, view.params[slot].id, 0 };
+		const std::array<uint32_t, 10> ids = { transforms.id, mMeshes.id, data.instances.id, data.batches.id, view.visible.id, view.commands.id, view.params[slot].id, lastVisible.id, pyramid.id, 0 };
 		if (ids != view.boundIds[slot]) {
 			view.boundIds[slot] = ids;
 			const auto set = view.sets[slot];
@@ -653,6 +794,8 @@ namespace SFE::Render {
 				{ .set = set, .binding = 29, .buffers{ { view.visible } } },
 				{ .set = set, .binding = 30, .buffers{ { view.commands } } },
 				{ .set = set, .binding = 31, .buffers{ { view.params[slot] } } },
+				{ .set = set, .binding = 32, .buffers{ { lastVisible } } },
+				{ .set = set, .binding = 33, .buffers{ { pyramid } } },
 			});
 		}
 
@@ -699,12 +842,15 @@ namespace SFE::Render {
 			shapes[24 + i] = cameraPos[i];
 			shapes[28 + i] = viewDir[i];
 		}
-		const uint32_t slot = prepareView(view, count, count, 0, shapes, 8, 0);
+		CullParams params;
+		params.shapeCount = 8;
+		std::memcpy(params.shapes, shapes, sizeof(shapes));
+		const uint32_t slot = prepareView(view, count, count, params);
 		if (!view.sets[slot]) {
 			view.sets[slot] = rhi->allocateDescriptorSet(mGlassLayout);
 		}
 
-		const std::array<uint32_t, 8> ids = { transforms.id, mMeshes.id, data.instances.id, view.keys.id, view.visible.id, view.commands.id, view.params[slot].id, 1 };
+		const std::array<uint32_t, 10> ids = { transforms.id, mMeshes.id, data.instances.id, view.keys.id, view.visible.id, view.commands.id, view.params[slot].id, 1, 0, 0 };
 		if (ids != view.boundIds[slot]) {
 			view.boundIds[slot] = ids;
 			const auto set = view.sets[slot];
@@ -777,11 +923,12 @@ namespace SFE::Render {
 		SystemsModule::RenderDebugInfo::instance()->drawCalls++;
 	}
 
-	void GpuScene::draw(const CommandListHandle cmd, const View& view, const DrawGroup& group) const {
+	void GpuScene::draw(const CommandListHandle cmd, const View& view, const DrawGroup& group, const bool secondPhase) const {
 		if (group.batchCount == 0) {
 			return;
 		}
-		Engine::instance()->rhi()->cmdDrawIndexedIndirect(cmd, view.commands, group.firstBatch * kCommandStride, group.batchCount, kCommandStride);
+		const auto first = group.firstBatch + (secondPhase ? view.secondPhaseOffset : 0u);
+		Engine::instance()->rhi()->cmdDrawIndexedIndirect(cmd, view.commands, first * kCommandStride, group.batchCount, kCommandStride);
 		SystemsModule::RenderDebugInfo::instance()->drawCalls++;
 	}
 }

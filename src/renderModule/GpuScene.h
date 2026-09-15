@@ -54,9 +54,22 @@ namespace SFE::Render {
 			size_t keyCapacity = 0;
 			// Per frame slot: the view parameters are written from the CPU while an earlier frame may still
 			// be reading its own copy.
+			// Two per slot: with occlusion each phase writes its own before either runs.
 			std::vector<BufferHandle> params;
 			std::vector<DescriptorSetHandle> sets;
-			std::vector<std::array<uint32_t, 8>> boundIds;
+			std::vector<std::array<uint32_t, 10>> boundIds;
+
+			// Occlusion (cullVisibleLastFrame / cullOccluded)
+			BufferHandle lastVisible; // per instance slot, kept across frames
+			size_t lastVisibleCapacity = 0;
+			uint32_t secondPhaseOffset = 0; // the second phase's commands follow the first's
+			BufferHandle pyramid;
+			uint32_t depthWidth = 0;
+			uint32_t depthHeight = 0;
+			uint32_t levels = 0;
+			std::array<uint32_t, 16> levelOffsets{};
+			std::vector<DescriptorSetHandle> pyramidSets;
+			std::vector<std::array<uint32_t, 2>> pyramidBoundIds;
 		};
 
 		void init();
@@ -74,6 +87,15 @@ namespace SFE::Render {
 		bool cullFrustum(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum);
 		// Visible when the bounds touch any sphere (xyz centre, w radius). At most kMaxSpheres.
 		bool cullSpheres(CommandListHandle cmd, List list, View& view, const std::vector<Math::Vec4>& spheres);
+
+		// Occlusion culling in two phases, for a view that renders its own depth. Phase one keeps what passed the
+		// occlusion test last frame; draw it with draw(..., false). Then build the depth pyramid from that depth,
+		// and phase two tests everything else against it; draw that with draw(..., true) into the same targets.
+		// Nothing visible is lost: an instance hidden last frame is tested against this frame's depth.
+		// Outside a render pass, like cullFrustum.
+		bool cullVisibleLastFrame(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum);
+		void buildDepthPyramid(CommandListHandle cmd, View& view, TextureHandle depth, SamplerHandle sampler, uint32_t width, uint32_t height);
+		bool cullOccluded(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum, const Math::Mat4& viewProj);
 
 		// Culls the glass list and sorts what is left far to near into `view`: command i draws the i-th farthest
 		// instance, culled ones trail with no instances. Draw with drawSorted. Outside a render pass.
@@ -101,7 +123,7 @@ namespace SFE::Render {
 		}
 		// The group's indirect call. Pipeline, descriptor sets and the shared vertex and index buffers are the
 		// caller's.
-		void draw(CommandListHandle cmd, const View& view, const DrawGroup& group) const;
+		void draw(CommandListHandle cmd, const View& view, const DrawGroup& group, bool secondPhase = false) const;
 
 		static constexpr uint32_t kMaxSpheres = 16;
 		// Instances per batch before another batch of the same mesh is started. Glass stays one batch: it is sorted as one.
@@ -192,9 +214,12 @@ namespace SFE::Render {
 		void uploadMeshes();
 		// First slot and count of the one glass batch.
 		std::pair<uint32_t, uint32_t> glassRange() const;
-		bool cull(CommandListHandle cmd, List list, View& view, uint32_t mode, const float* shapes, uint32_t shapeCount);
-		// Grows the view's output buffers to `instances` / `commands` entries and writes its parameters for this slot.
-		uint32_t prepareView(View& view, uint32_t instances, uint32_t commands, uint32_t mode, const float* shapes, uint32_t shapeCount, uint32_t batchCount);
+		struct CullParams;
+		CullParams frustumParams(const FrustumModule::Frustum& frustum) const;
+		bool cull(CommandListHandle cmd, List list, View& view, CullParams& params);
+		// Grows the view's output buffers to `instances` / `commands` entries and writes its parameters. Returns the
+		// index of this frame's (and phase's) params and set.
+		uint32_t prepareView(View& view, uint32_t instances, uint32_t commands, const CullParams& params);
 
 		std::atomic<bool> mDirty{ true };
 		std::array<ListData, static_cast<size_t>(List::Count)> mLists;
@@ -215,6 +240,9 @@ namespace SFE::Render {
 
 		DescriptorSetLayoutHandle mCullLayout;
 		PipelineHandle mCullPipeline;
+		DescriptorSetLayoutHandle mHizLayout;
+		PipelineHandle mHizPipeline;
+		BufferHandle mEmptyBuffer; // bound where a cull without occlusion has no buffer
 		DescriptorSetLayoutHandle mGlassLayout;
 		PipelineHandle mGlassPipeline;
 	};

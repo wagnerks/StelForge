@@ -30,6 +30,7 @@ namespace SFE::Render::RenderPasses {
 		void publish(SystemsModule::RenderData& renderDataHandle);
 
 		RenderPassHandle geometryPass;
+		RenderPassHandle mGeometryLoadPass;
 		PipelineHandle geometryPipeline;
 
 		PipelineHandle gBufferOutlinePipeline;
@@ -54,7 +55,7 @@ namespace SFE::Render::RenderPasses {
 		void initGrid(Render::DescriptorSetLayoutHandle frameLayout);
 		void drawGrid(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
 
-		void drawScene(CommandListHandle cmd, PolygonFillMode fillMode, BufferHandle materials);
+		void drawScene(CommandListHandle cmd, PolygonFillMode fillMode, BufferHandle materials, bool secondPhase);
 
 		bool mInited = false;
 		std::vector<Data> mFrames; // one per frame the RHI keeps in flight

@@ -12,7 +12,6 @@
 
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "componentsModule/ArmatureComponent.h"
-#include "componentsModule/OcclusionComponent.h"
 #include "componentsModule/OutlineComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "systemsModule/SystemBase.h"
