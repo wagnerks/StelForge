@@ -49,6 +49,27 @@ namespace SFE::Render::Tests {
 		rhi().destroyBuffer(secondBuffer);
 	}
 
+	// Past the generation counter's range (4096) on one slot: an id must still never repeat on Vulkan, or a
+	// cache keyed by id would take a new buffer for the one it wrote long ago.
+	TEST_P(RhiBackendTest, HandleIdsNeverRepeatPastTheGenerationRange) {
+		if (GetParam() != GraphicsBackend::Vulkan) {
+			GTEST_SKIP() << "OpenGL resolves ids when a list is replayed, so a reused id reads the new resource";
+		}
+		BufferDesc desc;
+		desc.size = 16;
+		desc.usage = BufferUsage::Uniform;
+		desc.cpuAccess = CpuAccess::Write;
+		std::vector<uint32_t> ids;
+		for (int i = 0; i < 5000; ++i) {
+			const auto buffer = rhi().createBuffer(desc);
+			ASSERT_TRUE(buffer);
+			ids.push_back(buffer.id);
+			rhi().destroyBuffer(buffer);
+		}
+		std::sort(ids.begin(), ids.end());
+		EXPECT_EQ(std::adjacent_find(ids.begin(), ids.end()), ids.end()) << "a buffer id was handed out twice";
+	}
+
 	TEST_P(RhiBackendTest, DestroyingATextureTwiceIsHarmless) {
 		const auto tex = makeColorArray(rhi(), 1);
 		ASSERT_TRUE(tex);

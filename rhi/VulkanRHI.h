@@ -239,10 +239,14 @@ namespace SFE::Render
 				return false;
 			}
 			const uint32_t slot = handleSlot(id);
-			const uint32_t generation = (pool[slot].generation + 1) & kHandleGenerationMask;
+			const uint32_t generation = pool[slot].generation;
 			pool[slot] = T{};
-			pool[slot].generation = generation;
-			freeList.push_back(slot);
+			pool[slot].generation = generation + 1;
+			// A slot whose generation has run out is never handed out again, so no id ever repeats; it costs one
+			// dead slot per 4096 recycles.
+			if (generation + 1 < kHandleGenerationMask) {
+				freeList.push_back(slot);
+			}
 			return true;
 		}
 
