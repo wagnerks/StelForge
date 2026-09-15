@@ -17,7 +17,7 @@ layout(SFE_SET(0, 15), std140) uniform PushConstants {
     int reset;
 } params;
 
-vec3 neighborhoodClamp(vec3 history, vec2 texel, out float contrast) {
+vec3 neighborhoodClamp(vec3 history, vec2 texel) {
     vec3 aabbMin = vec3(1e10);
     vec3 aabbMax = vec3(-1e10);
     for (int y = -1; y <= 1; ++y) {
@@ -27,7 +27,6 @@ vec3 neighborhoodClamp(vec3 history, vec2 texel, out float contrast) {
             aabbMax = max(aabbMax, c);
         }
     }
-    contrast = length(aabbMax - aabbMin);
     return clamp(history, aabbMin, aabbMax);
 }
 
@@ -55,14 +54,16 @@ void main() {
     }
 
     vec2 texel = 1.0 / vec2(textureSize(sceneHdr, 0));
-    float contrast = 0.0;
-    vec3 history = neighborhoodClamp(texture(historyColor, prevUV).rgb, texel, contrast);
+    vec3 history = neighborhoodClamp(texture(historyColor, prevUV).rgb, texel);
     // A true velocity now, zero for a still camera, so it needs no slack for the jitter offset.
     float motion = length((TexCoords - prevUV) * vec2(textureSize(sceneHdr, 0)));
     // max() keeps the ramp pointing the right way: a blend at or above 0.72 would otherwise make
     // the two ends meet and collapse this into a constant, silently disabling the motion response.
+    // Local contrast used to push this up as well, back when the history could only be reprojected by the
+    // camera: it hid the ghosting on detailed models, at the price of keeping 28% of every jittered frame
+    // on them forever, which is a visible crawl. The motion vectors do that job properly now.
     float restW = 1.0 - params.blend;
-    float currentW = mix(restW, max(restW, 0.28), clamp(motion * 0.08 + contrast * 0.05, 0.0, 1.0));
+    float currentW = mix(restW, max(restW, 0.28), clamp(motion * 0.08, 0.0, 1.0));
     vec3 color = mix(history, current, currentW);
     FragColor = vec4(color, 1.0);
 }

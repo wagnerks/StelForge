@@ -62,14 +62,19 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	desc.height = static_cast<uint32_t>(texHeight);
 	desc.format = format;
 	desc.dimension = SFE::Render::TextureDimension::Tex2D;
+	// Without these a distant character samples one texel of a full size texture per pixel: the armour
+	// sparkles, and TAA averages the sparkle into grey.
+	desc.mipLevels = SFE::Render::mipLevelsFor(desc.width, desc.height);
 
 	SFE::Render::SamplerDesc samplerDesc;
-	samplerDesc.minFilter = SFE::Render::FilterMode::Linear;
+	samplerDesc.minFilter = SFE::Render::FilterMode::LinearMipmapLinear;
 	samplerDesc.magFilter = SFE::Render::FilterMode::Linear;
 	samplerDesc.addressU = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressV = SFE::Render::AddressMode::Repeat;
 	samplerDesc.addressW = SFE::Render::AddressMode::Repeat;
-	samplerDesc.maxAnisotropy = 1.f;
+	// A character seen at a glancing angle is stretched along one axis, and without this the mip is chosen
+	// for the wider one and blurs the other away.
+	samplerDesc.maxAnisotropy = 8.f;
 
 
 	if (SFE::Engine::isMainThread()) {

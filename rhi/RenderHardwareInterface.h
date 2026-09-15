@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <cstdint>
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -294,6 +295,16 @@ namespace SFE::Render
 		TextureUsage     usage = TextureUsage::Sampled;
 		uint32_t         sampleCount = 1; // 1, 2, 4, or 8
 	};
+
+	// Full mip chain for a texture of this size. Both backends build the levels from level 0 when the
+	// description asks for more than one.
+	inline uint32_t mipLevelsFor(uint32_t width, uint32_t height) {
+		uint32_t levels = 1;
+		for (uint32_t side = (std::max)(width, height); side > 1u; side >>= 1) {
+			++levels;
+		}
+		return levels;
+	}
 
 	struct SamplerDesc {
 		FilterMode  minFilter = FilterMode::Linear;

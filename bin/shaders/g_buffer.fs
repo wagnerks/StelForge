@@ -36,19 +36,21 @@ void main() {
     vec2 uvMetal = uvOf(16u);
     vec2 uvSss = uvOf(32u);
 
-    float mask = textureLod(texture_diffuse1, uvDiff, 0.0).a;
+    // The mip the pixel would sample: reading the mask at level 0 made the coverage of a distant
+    // character depend on which single texel the jitter landed on.
+    float diffLod = textureQueryLod(texture_diffuse1, uvDiff).y;
+    float mask = textureLod(texture_diffuse1, uvDiff, diffLod).a;
     if ((maps & 8u) != 0u && mask > 0.99) {
-        mask = max(textureLod(texture_specular1, uvSpec, 0.0).r, textureLod(texture_roughness, uvRough, 0.0).g);
+        mask = max(texture(texture_specular1, uvSpec).r, texture(texture_roughness, uvRough).g);
     }
     uint uvBits = uint(pc.uvSel + 0.5);
     if ((uvBits & 1u) == 0u && (uvBits & 6u) != 0u) {
-        mask = min(mask, textureLod(texture_diffuse1, TexCoords1, 0.0).a);
+        mask = min(mask, texture(texture_diffuse1, TexCoords1).a);
     }
     if (pc.alphaCutoff > 1.0) {
         float cov = clamp(pc.alphaCutoff - 1.0, 0.05, 1.0);
         mask = min(mask, cov);
-        precise vec2 ditherKey = uvDiff * 311.0 + FragPos.xy * 17.0;
-        float d = sfeHash12(ditherKey);
+        float d = sfeCutoutDither(texture_diffuse1, uvDiff, diffLod);
         if (mask < d) {
             discard;
         }
