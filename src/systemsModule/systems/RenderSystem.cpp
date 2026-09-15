@@ -135,7 +135,7 @@ namespace SFE::SystemsModule {
 		};
 	}
 
-	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, MATERIAL_UPDATED, MESH_UPDATED, ENTITY_DESTROYED }) {
+	RenderSystem::RenderSystem() : System({ SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED , SFE::SystemsModule::TaskType::ARMATURE_UPDATED, ANIMATION_UPDATED, MATERIAL_UPDATED, MESH_UPDATED, ENTITY_DESTROYED }) {
 		auto* rhi = Engine::instance()->rhi();
 		if (!Engine::instance()->temporalAccumulation()) {
 			mRenderData.graphics.taa = false;
@@ -185,6 +185,9 @@ namespace SFE::SystemsModule {
 		for (auto id : live.getAllEntities()) {
 			if (live.hasComponent<ComponentsModule::ArmatureBonesComponent>(id)) {
 				markGpuDirty(mGpuDirtyBones, id);
+			}
+			if (live.hasComponent<ComponentsModule::AnimationComponent>(id)) {
+				markGpuDirty(mDirtyAnimations, id);
 			}
 		}
 	}
@@ -532,9 +535,9 @@ namespace SFE::SystemsModule {
 			if (!armature || armature->boneMatrices.empty()) {
 				continue;
 			}
-			// A playing animation is written straight into the buffer by AnimationComputePass.
+			// An animation, playing or stopped, is written straight into the buffer by AnimationComputePass.
 			if (const auto anim = registry.pinComponent<const ComponentsModule::AnimationComponent>(id);
-				anim && anim->mCurrentAnimation && anim->mPlay) {
+				anim && anim->mCurrentAnimation) {
 				continue;
 			}
 			const auto range = boneRange(id);
@@ -593,8 +596,12 @@ namespace SFE::SystemsModule {
 		}
 		else if (task.type == ARMATURE_UPDATED) {
 			markGpuDirty(mGpuDirtyBones, task.entity);
+			markGpuDirty(mDirtyAnimations, task.entity);
 			// Its instances carry the bone offset, which the armature decides.
 			mScene.markEntity(task.entity);
+		}
+		else if (task.type == ANIMATION_UPDATED) {
+			markGpuDirty(mDirtyAnimations, task.entity);
 		}
 		else if (task.type == MATERIAL_UPDATED) {
 			mScene.markEntity(task.entity);
@@ -606,7 +613,15 @@ namespace SFE::SystemsModule {
 			mScene.markEntity(task.entity);
 			std::lock_guard lock(mGpuDirtyMutex);
 			mDestroyedBones.push_back(task.entity);
+			mDirtyAnimations.push_back(task.entity);
 		}
+	}
+
+	std::vector<ecss::EntityId> RenderSystem::takeDirtyAnimations() {
+		std::vector<ecss::EntityId> dirty;
+		std::lock_guard lock(mGpuDirtyMutex);
+		dirty.swap(mDirtyAnimations);
+		return dirty;
 	}
 
 	bool RenderSystem::addRenderPass(std::string name, std::unique_ptr<Render::RenderPass> pass, const std::string_view after) {
@@ -707,6 +722,11 @@ namespace SFE::SystemsModule {
 
 		// No frame-wide bind here: every pass binds its own sets against its pipeline, as Vulkan requires, and a bind
 		// with no pipeline would be kept by OpenGL alone and hide a pass that forgot one.
+		for (size_t i = 0; i < mRenderPasses.size(); ++i) {
+			if (shouldRunPass(i)) {
+				mRenderPasses[i]->prepare(mRenderData);
+			}
+		}
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
 		for (size_t i = 0; i < mRenderPasses.size(); ++i) {
 			if (!shouldRunPass(i)) {

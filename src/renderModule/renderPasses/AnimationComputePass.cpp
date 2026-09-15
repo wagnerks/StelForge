@@ -3,15 +3,12 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <unordered_map>
 #include <vector>
 
 #include "assetsModule/modelModule/Animation.h"
 #include "assetsModule/modelModule/Armature.h"
-#include "assetsModule/shaderModule/ShaderBase.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/ModelComponent.h"
-#include "componentsModule/OcclusionComponent.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
@@ -21,45 +18,26 @@ using namespace SFE::Render;
 using namespace SFE::Render::RenderPasses;
 
 namespace {
-	struct GpuBoneDesc {
-		SFE::Math::Mat4 offset;
-		SFE::Math::Mat4 restLocal;
-		int parent = -1;
-		int posOff = 0;
-		int posCnt = 0;
-		int rotOff = 0;
-		int rotCnt = 0;
-		int sclOff = 0;
-		int sclCnt = 0;
-		int boneId = 0;
-	};
-	static_assert(sizeof(GpuBoneDesc) == 160);
+	static_assert(sizeof(AnimationComputePass::GpuBoneDesc) == 160);
+	static_assert(sizeof(AnimationComputePass::GpuVec3Key) == 16);
+	static_assert(sizeof(AnimationComputePass::GpuQuatKey) == 32);
+	static_assert(sizeof(AnimationComputePass::GpuRecord) == 96);
 
-	struct GpuVec3Key {
-		float x = 0.f, y = 0.f, z = 0.f, time = 0.f;
-	};
-	static_assert(sizeof(GpuVec3Key) == 16);
+	constexpr uint32_t kPlaying = 1u;
+	constexpr uint32_t kLoop = 2u;
+	// The shader's time is a float of seconds since the epoch; this keeps its step under 1e-4 s.
+	constexpr double kRebaseSeconds = 512.0;
 
-	struct GpuQuatKey {
-		float x = 0.f, y = 0.f, z = 0.f, w = 1.f, time = 0.f;
-		float pad[3]{};
+	struct AnimClock {
+		float now = 0.f;
+		uint32_t count = 0;
 	};
-	static_assert(sizeof(GpuQuatKey) == 32);
-
-	struct AnimPush {
-		SFE::Math::Mat4 armatureTransform;
-		float animTime = 0.f;
-		int boneOffset = 0;
-		int boneCount = 0;
-		int boneStride = 0; // the clip's bones: the instance's rows in the worlds buffer
-	};
-	static_assert(sizeof(AnimPush) == 80);
 
 	SFE::Render::BufferHandle createStorage(SFE::Render::RenderHardwareInterface* rhi, size_t size, const void* data, const char* name) {
 		SFE::Render::BufferDesc desc;
 		desc.size = size < 16 ? 16 : size;
 		desc.usage = SFE::Render::BufferUsage::Storage;
-		desc.cpuAccess = SFE::Render::CpuAccess::Write;
+		desc.cpuAccess = data ? SFE::Render::CpuAccess::Write : SFE::Render::CpuAccess::None;
 		desc.debugName = name;
 		return rhi->createBuffer(desc, data);
 	}
@@ -86,18 +64,21 @@ void AnimationComputePass::init(SystemsModule::RenderData&) {
 		{ 22, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 23, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 24, DescriptorType::StorageBuffer, ShaderStage::Compute },
-		{ 25, DescriptorType::StorageBufferDynamic, ShaderStage::Compute },
+		{ 25, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 26, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 2,  DescriptorType::StorageBuffer, ShaderStage::Compute },
 	};
 	mSetLayout = rhi->createDescriptorSetLayout(layout);
 	mSet = rhi->allocateDescriptorSet(mSetLayout);
 
-	ShaderModuleHandle cs = rhi->loadShader(ShaderStage::Compute, "shaders/animateBones.cs");
-	mPipeline = rhi->createComputePipeline({ cs, { mSetLayout } });
+	ComputePipelineDesc desc;
+	desc.compute = rhi->loadShader(ShaderStage::Compute, "shaders/animateBones.cs");
+	desc.descriptorSetLayouts = { mSetLayout };
+	desc.pushConstantSize = sizeof(AnimClock);
+	mPipeline = rhi->createComputePipeline(desc);
 }
 
-AnimationComputePass::GpuClip* AnimationComputePass::packClip(const AssetsModule::Animation* animation, const AssetsModule::Armature& armature) {
+const AnimationComputePass::ClipInfo* AnimationComputePass::packClip(const AssetsModule::Animation* animation, const AssetsModule::Armature& armature) {
 	if (!animation || armature.bones.empty()) {
 		return nullptr;
 	}
@@ -106,27 +87,27 @@ AnimationComputePass::GpuClip* AnimationComputePass::packClip(const AssetsModule
 		return &it->second;
 	}
 
-	std::vector<GpuBoneDesc> descs(armature.bones.size());
-	std::vector<GpuVec3Key> posKeys;
-	std::vector<GpuQuatKey> rotKeys;
-	std::vector<GpuVec3Key> sclKeys;
-	std::vector<int> order;
+	ClipInfo info;
+	info.descOffset = static_cast<uint32_t>(mDescs.size());
+	info.boneCount = static_cast<uint32_t>(armature.bones.size());
+
 	std::vector<char> seen(armature.bones.size(), 0);
 	for (size_t i = 0; i < armature.bones.size(); ++i) {
 		const auto parent = armature.bones[i].parentBoneIdx;
 		if (parent == std::numeric_limits<uint32_t>::max() || parent >= armature.bones.size()) {
-			collectOrder(armature.bones, static_cast<uint32_t>(i), order, seen);
+			collectOrder(armature.bones, static_cast<uint32_t>(i), mOrder, seen);
 		}
 	}
 	for (size_t i = 0; i < armature.bones.size(); ++i) {
 		if (!seen[i]) {
-			collectOrder(armature.bones, static_cast<uint32_t>(i), order, seen);
+			collectOrder(armature.bones, static_cast<uint32_t>(i), mOrder, seen);
 		}
 	}
 
+	mDescs.resize(mDescs.size() + armature.bones.size());
 	for (size_t i = 0; i < armature.bones.size(); ++i) {
 		const auto& bone = armature.bones[i];
-		auto& desc = descs[i];
+		auto& desc = mDescs[info.descOffset + i];
 		desc.offset = bone.offset;
 		desc.restLocal = bone.transform;
 		desc.boneId = static_cast<int>(bone.id);
@@ -142,178 +123,175 @@ AnimationComputePass::GpuClip* AnimationComputePass::packClip(const AssetsModule
 			continue;
 		}
 
-		desc.posOff = static_cast<int>(posKeys.size());
+		desc.posOff = static_cast<int>(mPosKeys.size());
 		desc.posCnt = static_cast<int>(keys->positions.size());
 		for (const auto& k : keys->positions) {
-			posKeys.push_back({ k.position.x, k.position.y, k.position.z, k.timeStamp });
+			mPosKeys.push_back({ k.position.x, k.position.y, k.position.z, k.timeStamp });
 		}
 
-		desc.rotOff = static_cast<int>(rotKeys.size());
+		desc.rotOff = static_cast<int>(mRotKeys.size());
 		desc.rotCnt = static_cast<int>(keys->rotations.size());
 		for (const auto& k : keys->rotations) {
-			rotKeys.push_back({ k.orientation.x, k.orientation.y, k.orientation.z, k.orientation.w, k.timeStamp, {} });
+			mRotKeys.push_back({ k.orientation.x, k.orientation.y, k.orientation.z, k.orientation.w, k.timeStamp, {} });
 		}
 
-		desc.sclOff = static_cast<int>(sclKeys.size());
+		desc.sclOff = static_cast<int>(mSclKeys.size());
 		desc.sclCnt = static_cast<int>(keys->scales.size());
 		for (const auto& k : keys->scales) {
-			sclKeys.push_back({ k.scale.x, k.scale.y, k.scale.z, k.timeStamp });
+			mSclKeys.push_back({ k.scale.x, k.scale.y, k.scale.z, k.timeStamp });
 		}
 	}
 
-	if (posKeys.empty()) {
-		posKeys.push_back({});
-	}
-	if (rotKeys.empty()) {
-		rotKeys.push_back({});
-	}
-	if (sclKeys.empty()) {
-		sclKeys.push_back({});
-	}
-	if (order.empty()) {
-		order.push_back(0);
-	}
-
-	auto* rhi = Engine::instance()->rhi();
-	GpuClip clip;
-	clip.boneCount = static_cast<int>(armature.bones.size());
-	clip.boneDescs = createStorage(rhi, descs.size() * sizeof(GpuBoneDesc), descs.data(), "AnimBoneDescs");
-	clip.posKeys = createStorage(rhi, posKeys.size() * sizeof(GpuVec3Key), posKeys.data(), "AnimPosKeys");
-	clip.rotKeys = createStorage(rhi, rotKeys.size() * sizeof(GpuQuatKey), rotKeys.data(), "AnimRotKeys");
-	clip.sclKeys = createStorage(rhi, sclKeys.size() * sizeof(GpuVec3Key), sclKeys.data(), "AnimSclKeys");
-	clip.order = createStorage(rhi, order.size() * sizeof(int), order.data(), "AnimBoneOrder");
-
-	const auto [it, _] = mClips.emplace(animation, clip);
+	mClipsDirty = true;
+	const auto [it, _] = mClips.emplace(animation, info);
 	return &it->second;
+}
+
+void AnimationComputePass::markRecord(const uint32_t index) {
+	mDirtyLo = (std::min)(mDirtyLo, index);
+	mDirtyHi = (std::max)(mDirtyHi, index + 1);
+}
+
+void AnimationComputePass::writeRecord(const ecss::EntityId entity) {
+	auto& registry = ECSHandler::registry();
+	const auto animation = registry.pinComponent<ComponentsModule::AnimationComponent>(entity);
+	const auto armature = registry.pinComponent<const ComponentsModule::ArmatureComponent>(entity);
+	const ClipInfo* clip = animation && armature ? packClip(animation->mCurrentAnimation, armature->armature) : nullptr;
+	const auto bones = clip ? ECSHandler::getSystem<SystemsModule::RenderSystem>()->boneRange(entity) : SystemsModule::RenderSystem::BoneRange{};
+	// The clip's bones must fit the range: its worlds rows are the range's, and a longer clip would run into the
+	// next entity's while both are written in parallel.
+	if (!clip || clip->boneCount == 0 || clip->boneCount > bones.count) {
+		removeRecord(entity);
+		return;
+	}
+
+	auto [it, added] = mRecordIndex.emplace(entity, static_cast<uint32_t>(mRecords.size()));
+	if (added) {
+		mRecords.emplace_back();
+		mRecordEntities.push_back(entity);
+	}
+	const auto* anim = animation->mCurrentAnimation;
+	if (animation->mPlay && std::isnan(animation->mStart)) {
+		animation->setTime(animation->mStoppedTime, Engine::instance()->animationClock());
+	}
+	auto& record = mRecords[it->second];
+	record.armatureTransform = armature->armature.transform;
+	record.boneOffset = bones.offset;
+	record.descOffset = clip->descOffset;
+	record.boneCount = clip->boneCount;
+	record.flags = (animation->mPlay ? kPlaying : 0u) | (animation->mLoop ? kLoop : 0u);
+	record.start = static_cast<float>(animation->mStart - mEpoch);
+	record.ticksPerSecond = ComponentsModule::AnimationComponent::ticksPerSecond(*anim);
+	record.duration = anim->getDuration();
+	record.stoppedTime = animation->mStoppedTime;
+	markRecord(it->second);
+	mWorldsRows = (std::max)(mWorldsRows, static_cast<size_t>(bones.offset) + clip->boneCount);
+}
+
+void AnimationComputePass::removeRecord(const ecss::EntityId entity) {
+	const auto it = mRecordIndex.find(entity);
+	if (it == mRecordIndex.end()) {
+		return;
+	}
+	const auto index = it->second;
+	mRecordIndex.erase(it);
+	const auto last = static_cast<uint32_t>(mRecords.size() - 1);
+	if (index != last) {
+		mRecords[index] = mRecords[last];
+		mRecordEntities[index] = mRecordEntities[last];
+		mRecordIndex[mRecordEntities[index]] = index;
+		markRecord(index);
+	}
+	mRecords.pop_back();
+	mRecordEntities.pop_back();
+}
+
+void AnimationComputePass::upload() {
+	auto* rhi = Engine::instance()->rhi();
+	// The RHI keeps a destroyed buffer until the frames that may still bind it have finished.
+	if (mClipsDirty) {
+		mClipsDirty = false;
+		const auto replace = [rhi](BufferHandle& buffer, const auto& data, const char* name) {
+			rhi->destroyBuffer(buffer);
+			buffer = createStorage(rhi, data.size() * sizeof(data[0]), data.data(), name);
+		};
+		replace(mDescBuffer, mDescs, "AnimBoneDescs");
+		replace(mPosBuffer, mPosKeys, "AnimPosKeys");
+		replace(mRotBuffer, mRotKeys, "AnimRotKeys");
+		replace(mSclBuffer, mSclKeys, "AnimSclKeys");
+		replace(mOrderBuffer, mOrder, "AnimBoneOrder");
+	}
+
+	if (mRecords.size() > mRecordCapacity || !mRecordBuffer) {
+		mRecordCapacity = (std::max)(mRecordCapacity, size_t{ 64 });
+		while (mRecordCapacity < mRecords.size()) {
+			mRecordCapacity *= 2;
+		}
+		rhi->destroyBuffer(mRecordBuffer);
+		mRecordBuffer = createStorage(rhi, mRecordCapacity * sizeof(GpuRecord), nullptr, "AnimRecords");
+		mDirtyLo = 0;
+		mDirtyHi = static_cast<uint32_t>(mRecords.size());
+	}
+	const auto hi = (std::min)(mDirtyHi, static_cast<uint32_t>(mRecords.size()));
+	if (mDirtyLo < hi) {
+		rhi->updateBuffer(mRecordBuffer, mDirtyLo * sizeof(GpuRecord), (hi - mDirtyLo) * sizeof(GpuRecord), mRecords.data() + mDirtyLo);
+	}
+	mDirtyLo = UINT32_MAX;
+	mDirtyHi = 0;
+
+	if (mWorldsRows > mWorldsCapacity) {
+		mWorldsCapacity = (std::max)(mWorldsCapacity, size_t{ 4096 });
+		while (mWorldsCapacity < mWorldsRows) {
+			mWorldsCapacity *= 2;
+		}
+		rhi->destroyBuffer(mWorlds);
+		mWorlds = createStorage(rhi, mWorldsCapacity * sizeof(Math::Mat4), nullptr, "AnimBoneWorlds");
+	}
+}
+
+void AnimationComputePass::prepare(SystemsModule::RenderData&) {
+	FUNCTION_BENCHMARK;
+
+	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+	if (!renderSystem) {
+		return;
+	}
+	auto dirty = renderSystem->takeDirtyAnimations();
+	const double clock = Engine::instance()->animationClock();
+	if (clock - mEpoch > kRebaseSeconds) {
+		mEpoch = clock;
+		dirty.insert(dirty.end(), mRecordEntities.begin(), mRecordEntities.end());
+	}
+	for (const auto entity : dirty) {
+		writeRecord(entity);
+	}
+	upload();
 }
 
 void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK;
 
-	if (!mPipeline || !renderDataHandle.bonesSSBO) {
+	if (!mPipeline || !renderDataHandle.bonesSSBO || mRecords.empty()) {
 		return;
 	}
 
+	const double clock = Engine::instance()->animationClock();
 	auto* rhi = Engine::instance()->rhi();
-	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
-	if (!renderSystem) {
-		return;
-	}
-	const float dt = Engine::instance()->getDeltaTime();
-
-	struct ClipBatch {
-		GpuClip* clip = nullptr;
-		std::vector<AnimPush> instances;
-	};
-	// Kept across frames with the instances cleared, so gathering them does not allocate every frame. Main thread.
-	static std::unordered_map<const AssetsModule::Animation*, ClipBatch> batches;
-	bool anyInstances = false;
-	for (auto& [_, batch] : batches) {
-		batch.instances.clear();
-	}
-
-	for (auto [entityId, animationComp, armatureComp] : ECSHandler::registry().view<
-		ComponentsModule::AnimationComponent,
-		ComponentsModule::ArmatureComponent>())
-	{
-		if (!animationComp || !armatureComp || !animationComp->mCurrentAnimation) {
-			continue;
-		}
-
-		auto* anim = animationComp->mCurrentAnimation;
-		// The animation clock lives in this pass rather than in SkeletalAnimationSystem, so a
-		// capture has to stop it here as well -- silencing the tick systems alone still left the
-		// pose advancing, which made frame N a different scene and every measurement depend on
-		// which frame it was taken at.
-		if ((animationComp->mPlay || animationComp->step) && !Engine::instance()->capturingFrame()) {
-			animationComp->step = false;
-			float tps = anim->getTicksPerSecond();
-			if (tps <= 0.f) {
-				tps = 25.f;
-			}
-			animationComp->mCurrentTime += tps * dt;
-			if (animationComp->mLoop) {
-				if (anim->getDuration() > 0.f) {
-					animationComp->mCurrentTime = std::fmod(animationComp->mCurrentTime, anim->getDuration());
-				}
-			}
-			else if (anim->getDuration() > 0.f) {
-				animationComp->mCurrentTime = std::min(animationComp->mCurrentTime, anim->getDuration());
-			}
-		}
-
-		if (const auto ocComp = ECSHandler::registry().pinComponent<const ComponentsModule::OcclusionComponent>(entityId);
-			ocComp && ocComp->occluded) {
-			continue;
-		}
-
-		auto* clip = packClip(anim, armatureComp->armature);
-		if (!clip || clip->boneCount <= 0) {
-			continue;
-		}
-
-		const auto bones = renderSystem->boneRange(entityId);
-		if (bones.count == 0) {
-			continue;
-		}
-		AnimPush inst;
-		inst.armatureTransform = armatureComp->armature.transform;
-		inst.animTime = animationComp->mCurrentTime;
-		inst.boneOffset = static_cast<int>(bones.offset);
-		inst.boneCount = (std::min)(clip->boneCount, static_cast<int>(bones.count));
-		inst.boneStride = clip->boneCount;
-
-		auto& batch = batches[anim];
-		batch.clip = clip;
-		batch.instances.push_back(inst);
-		anyInstances = true;
-	}
-
-	if (!anyInstances) {
-		return;
-	}
-
 	rhi->cmdBindPipeline(cmd, mPipeline);
-	bool dispatched = false;
-	for (auto& [_, batch] : batches) {
-		if (!batch.clip || batch.instances.empty()) {
-			continue;
-		}
-
-		// Every instance: a cap left the rest with bones nobody wrote, which is uninitialised memory on
-		// Vulkan and a different pose on every run.
-		const auto count = static_cast<uint32_t>(batch.instances.size());
-		if (count > batch.clip->worldsCapacity) {
-			batch.clip->worldsCapacity = count + count / 2;
-			if (batch.clip->worlds) {
-				rhi->destroyBuffer(batch.clip->worlds);
-			}
-			batch.clip->worlds = createStorage(rhi, sizeof(Math::Mat4) * batch.clip->worldsCapacity * batch.clip->boneCount, nullptr, "AnimBoneWorlds");
-		}
-		// Per clip: each dispatch reads its own clip's instances.
-		const auto instances = rhi->allocTransient(count * sizeof(AnimPush));
-		if (!instances) {
-			continue;
-		}
-		std::memcpy(instances.data, batch.instances.data(), count * sizeof(AnimPush));
-		rhi->updateDescriptorSets({
-			{ mSet, 20, {{ batch.clip->boneDescs }} },
-			{ mSet, 21, {{ batch.clip->posKeys }} },
-			{ mSet, 22, {{ batch.clip->rotKeys }} },
-			{ mSet, 23, {{ batch.clip->sclKeys }} },
-			{ mSet, 24, {{ batch.clip->order }} },
-			{ mSet, 25, {{ instances.buffer, 0, count * sizeof(AnimPush) }} },
-			{ mSet, 26, {{ batch.clip->worlds }} },
-			{ mSet, 2,  {{ renderDataHandle.bonesSSBO }} },
-		});
-		rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &instances.offset, 1);
-		rhi->cmdDispatch(cmd, count, 1, 1);
-		dispatched = true;
-	}
-
-	if (!dispatched) {
-		return;
-	}
+	rhi->updateDescriptorSets({
+		{ mSet, 20, {{ mDescBuffer }} },
+		{ mSet, 21, {{ mPosBuffer }} },
+		{ mSet, 22, {{ mRotBuffer }} },
+		{ mSet, 23, {{ mSclBuffer }} },
+		{ mSet, 24, {{ mOrderBuffer }} },
+		{ mSet, 25, {{ mRecordBuffer }} },
+		{ mSet, 26, {{ mWorlds }} },
+		{ mSet, 2,  {{ renderDataHandle.bonesSSBO }} },
+	});
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
+	const AnimClock push{ static_cast<float>(clock - mEpoch), static_cast<uint32_t>(mRecords.size()) };
+	rhi->cmdPushConstants(cmd, mPipeline, ShaderStage::Compute, &push, sizeof(push));
+	rhi->cmdDispatch(cmd, (push.count + 15u) / 16u, 1, 1);
 
 	rhi->cmdPipelineBarrier(cmd, {
 		PipelineStage::Compute,

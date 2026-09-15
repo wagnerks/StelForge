@@ -23,9 +23,10 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: Hi-Z in `gpu_cull.cs`, camera views only. Use two-pass culling (cull with the last frame's pyramid, draw, build a pyramid from this frame, retest what was culled and draw what became visible) so moving occluders and fast camera turns do not pop. Delete the old `OcclusionComponent`.
 
 ## 6. Animation still walks every character on the CPU each frame
-- [ ] `AnimationComputePass::render` iterates all animated entities, advances `mCurrentTime`, packs `AnimPush`, uploads it and dispatches once per clip.
+- [x] `AnimationComputePass::render` iterates all animated entities, advances `mCurrentTime`, packs `AnimPush`, uploads it and dispatches once per clip.
 - Fix: persistent per-entity records on the GPU (clip, start time, speed, loop, pause), updated on events only. The shader derives the time from one global clock. Put all clips in shared key buffers so one dispatch covers everyone. Anything on the CPU that reads `mCurrentTime` must use the same formula, and the start times need periodic rebasing to keep float precision.
-- [ ] One dispatch is capped at 65535 characters per clip (the minimum `maxComputeWorkGroupCount`).
+- Done: every character has a record on the GPU (`AnimationComputePass::GpuRecord`) rewritten only on `ANIMATION_UPDATED`, `ARMATURE_UPDATED` or destroy, and the shader takes the time from `Engine::animationClock()` (`AnimationComponent::time()` is the same formula on the CPU). Clips share key buffers and one dispatch covers all records. The records are written in the new `RenderPass::prepare`, before the frame's first command list. Start times are relative to an epoch moved every 512 s. A start set off the main thread (`AnimationComponent::play`) is fixed on the first frame that draws it, so loader timing does not change the pose. Whoever edits the component sends `ANIMATION_UPDATED`. The occluded skip went with the per-frame walk; occlusion (item 5) has to bring its own.
+- [x] One dispatch is capped at 65535 characters per clip (the minimum `maxComputeWorkGroupCount`). Now 16 records per invocation group over one dispatch for all clips.
 
 ## 7. `AnimationComputePass` leaks buffers on growth
 - [x] When a clip's instance count grows, `instances` and `worlds` are replaced by new buffers and the old ones are never destroyed or retired. Clip buffers in `mClips` are never freed either, and the cache is keyed by `Animation*`.

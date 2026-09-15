@@ -176,6 +176,10 @@ namespace SFE::SystemsModule {
 		};
 		BoneRange boneRange(ecss::EntityId entity);
 
+		// Entities whose animation state may have changed since the last call (sent ANIMATION_UPDATED or
+		// ARMATURE_UPDATED, or were destroyed), duplicates possible. Main thread.
+		std::vector<ecss::EntityId> takeDirtyAnimations();
+
 		// Passes from game code or a plugin. The pass is initialised at once and runs every frame in list order,
 		// after the pass named `after`, or last when `after` is empty or names no pass. A name already in the list
 		// is refused. Main thread, between frames.
@@ -308,6 +312,7 @@ namespace SFE::SystemsModule {
 		std::mutex mGpuDirtyMutex;
 		std::vector<ecss::EntityId> mGpuDirtyTransforms;
 		std::vector<ecss::EntityId> mGpuDirtyBones;
+		std::vector<ecss::EntityId> mDirtyAnimations;
 		Render::GpuMaterialTable mMaterials;
 		Render::GpuScene mScene;
 		bool mRefreshTransforms = true;

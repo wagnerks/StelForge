@@ -67,32 +67,20 @@ namespace SFE::EngineTests {
 		}
 		ASSERT_NE(animated, ecss::INVALID_ID) << "no animated entity in the default world";
 
-		float before = 0.f;
-		float ticksPerSecond = 0.f;
-		float duration = 0.f;
-		{
-			const auto animation = registry.pinComponent<const AnimationComponent>(animated);
-			before = animation->mCurrentTime;
-			ticksPerSecond = animation->mCurrentAnimation->getTicksPerSecond();
-			duration = animation->mCurrentAnimation->getDuration();
-		}
-		if (ticksPerSecond <= 0.f) {
-			ticksPerSecond = 25.f;
-		}
-
+		auto* engine = Engine::instance();
+		const auto clockBefore = engine->animationClock();
 		constexpr int kFrames = 30;
 		step(kFrames);
+		EXPECT_DOUBLE_EQ(engine->animationClock() - clockBefore, kFrames * static_cast<double>(kFrameTime));
 
-		// Summed frame by frame the way the pass does, so float rounding matches.
-		float expected = before;
-		for (int i = 0; i < kFrames; ++i) {
-			expected += ticksPerSecond * kFrameTime;
-			if (duration > 0.f) {
-				expected = std::fmod(expected, duration);
-			}
-		}
 		const auto animation = registry.pinComponent<const AnimationComponent>(animated);
-		EXPECT_FLOAT_EQ(animation->mCurrentTime, expected);
+		const auto ticksPerSecond = AnimationComponent::ticksPerSecond(*animation->mCurrentAnimation);
+		const auto duration = animation->mCurrentAnimation->getDuration();
+		float expected = animation->time(clockBefore) + kFrames * kFrameTime * ticksPerSecond;
+		if (duration > 0.f) {
+			expected = std::fmod(expected, duration);
+		}
+		EXPECT_NEAR(animation->time(engine->animationClock()), expected, 1e-3f);
 	}
 
 	// GpuScene under the load its incremental layout is worst at: thousands of meshes with one instance each, then

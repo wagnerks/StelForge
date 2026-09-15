@@ -20,6 +20,7 @@ namespace SFE::SystemsModule {
 		ARMATURE_UPDATED,
 		MESH_UPDATED,
 		MATERIAL_UPDATED,
+		ANIMATION_UPDATED,
 		// Sent before the entity is destroyed; its id is reused right after.
 		ENTITY_DESTROYED,
 

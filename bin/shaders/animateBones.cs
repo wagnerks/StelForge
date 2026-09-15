@@ -1,6 +1,7 @@
 #version 450 core
 #include "sfe.glsl"
-layout(local_size_x = 1) in;
+// One invocation per animated character, all clips at once.
+layout(local_size_x = 16) in;
 
 
 struct BoneDesc {
@@ -36,20 +37,33 @@ layout(SFE_SET(0, 23), std430) readonly buffer SclKeys { Vec3Key sclKeys[]; };
 layout(SFE_SET(0, 24), std430) readonly buffer Order { int order[]; };
 layout(SFE_SET(0, 2), std430) buffer OutBones { mat4 outBones[]; };
 
-struct AnimInstance {
+const uint kPlaying = 1u;
+const uint kLoop = 2u;
+
+// Written only when the character's animation or armature changes.
+struct AnimRecord {
     mat4 armatureTransform;
-    float animTime;
-    int boneOffset; // the entity's first matrix in OutBones
-    int boneCount;
-    int boneStride;
+    uint boneOffset; // the entity's first matrix in OutBones, and its first row in Worlds
+    uint descOffset; // the clip's first entry in BoneDescs and Order
+    uint boneCount;
+    uint flags;
+    float start;     // seconds on the clock at which the clip was at tick 0
+    float ticksPerSecond;
+    float duration;
+    float stoppedTime; // the tick shown while not playing
 };
 
-layout(SFE_SET(0, 25), std430) readonly buffer AnimInstances {
-    AnimInstance instances[];
+layout(SFE_SET(0, 25), std430) readonly buffer AnimRecords {
+    AnimRecord records[];
 };
 
-// Bone world matrices without the offset, boneStride rows per instance, indexed by bone. A local array of
-// them cost NVIDIA's GL driver ~20 ms for a thousand characters.
+SFE_PUSH_BLOCK AnimClock {
+    float now; // seconds, on the same epoch as the records' start
+    uint count;
+} clock;
+
+// Bone world matrices without the offset, indexed like OutBones. A local array of them cost NVIDIA's GL
+// driver ~20 ms for a thousand characters.
 layout(SFE_SET(0, 26), std430) buffer Worlds { mat4 worlds[]; };
 
 // `precise` along the bone chain: without it each compiler is free to fuse a multiply-add into an fma in
@@ -179,25 +193,47 @@ vec4 lerpQuatKeys(int off, int cnt, float t) {
     return nlerpQuat(a.q, b.q, f);
 }
 
+// AnimationComponent::time() on the CPU is the same formula.
+float animTime(AnimRecord r) {
+    if ((r.flags & kPlaying) == 0u) {
+        return r.stoppedTime;
+    }
+    precise float t = (clock.now - r.start) * r.ticksPerSecond;
+    if (r.duration <= 0.0) {
+        return t;
+    }
+    if ((r.flags & kLoop) != 0u) {
+        precise float looped = t - r.duration * floor(t / r.duration);
+        return looped;
+    }
+    return min(t, r.duration);
+}
+
 void main() {
-    AnimInstance inst = instances[gl_WorkGroupID.x];
-    int row = int(gl_WorkGroupID.x) * inst.boneStride;
-    for (int i = 0; i < inst.boneCount; ++i) {
-        int bi = order[i];
-        BoneDesc b = bones[bi];
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= clock.count) {
+        return;
+    }
+    AnimRecord inst = records[index];
+    float time = animTime(inst);
+    int row = int(inst.boneOffset);
+    int desc = int(inst.descOffset);
+    for (int i = 0; i < int(inst.boneCount); ++i) {
+        int bi = order[desc + i];
+        BoneDesc b = bones[desc + bi];
 
         precise mat4 local = b.restLocal;
         if (b.posCnt > 0 || b.rotCnt > 0 || b.sclCnt > 0) {
             vec3 pos = b.restLocal[3].xyz;
             precise vec3 scl = sqrt(vec3(dot(b.restLocal[0].xyz, b.restLocal[0].xyz), dot(b.restLocal[1].xyz, b.restLocal[1].xyz), dot(b.restLocal[2].xyz, b.restLocal[2].xyz)));
             if (b.posCnt > 0) {
-                pos = lerpVec3Keys(b.posOff, b.posCnt, inst.animTime);
+                pos = lerpVec3Keys(b.posOff, b.posCnt, time);
             }
             if (b.sclCnt > 0) {
-                scl = lerpSclKeys(b.sclOff, b.sclCnt, inst.animTime);
+                scl = lerpSclKeys(b.sclOff, b.sclCnt, time);
             }
             if (b.rotCnt > 0) {
-                vec4 rot = lerpQuatKeys(b.rotOff, b.rotCnt, inst.animTime);
+                vec4 rot = lerpQuatKeys(b.rotOff, b.rotCnt, time);
                 if (scl.x < 1e-8) scl.x = 1.0;
                 if (scl.y < 1e-8) scl.y = 1.0;
                 if (scl.z < 1e-8) scl.z = 1.0;
@@ -211,6 +247,6 @@ void main() {
         precise mat4 world = parent * local;
         worlds[row + bi] = world;
         precise mat4 skin = world * b.offset;
-        outBones[inst.boneOffset + b.boneId] = skin;
+        outBones[row + b.boneId] = skin;
     }
 }

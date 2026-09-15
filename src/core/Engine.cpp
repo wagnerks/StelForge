@@ -146,6 +146,10 @@ namespace SFE {
 			mLastFrame = currentFrame;
 		}
 
+		if (!mCapturingFrame) {
+			mAnimationClock += mDeltaTime;
+		}
+
 		mFramesCounter++;
 		mFramesTimer += mDeltaTime;
 		if (mFramesTimer >= 1.f) {

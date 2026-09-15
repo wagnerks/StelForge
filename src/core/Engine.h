@@ -28,6 +28,8 @@ namespace SFE {
 		void update();
 
 		float getDeltaTime() const;
+		// Seconds of animation time: advances by the frame step, and stands still while a frame is captured.
+		double animationClock() const { return mAnimationClock; }
 		int getFPS() const;
 
 		bool isAlive() const;
@@ -94,6 +96,7 @@ namespace SFE {
 
 		float mLastFrame = 0.f;
 		float mDeltaTime = 0.f;
+		double mAnimationClock = 0.0;
 		float mFramesTimer = 0.f;
 		int mFramesCounter = 0;
 		int mFPS = 0;

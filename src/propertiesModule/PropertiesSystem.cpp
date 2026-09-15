@@ -208,9 +208,9 @@ namespace SFE::PropertiesModule {
 			if (const auto* clip = pickPlaybackClip(model)) {
 				auto* anim = ECSHandler::registry().addComponent<ComponentsModule::AnimationComponent>(id);
 				anim->mCurrentAnimation = clip;
-				anim->mPlay = true;
 				anim->mLoop = true;
-				anim->mCurrentTime = animPhase;
+				anim->play(animPhase);
+				SFE::SystemsModule::TasksManager::instance()->notify({ id, SFE::SystemsModule::TaskType::ANIMATION_UPDATED });
 			}
 
 			if (auto debug = ECSHandler::registry().pinComponent<DebugDataComponent>(id)) {
@@ -387,8 +387,9 @@ namespace SFE::PropertiesModule {
 			&& !ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entity)) {
 			auto* anim = ECSHandler::registry().addComponent<ComponentsModule::AnimationComponent>(entity);
 			anim->mCurrentAnimation = pickPlaybackClip(model);
-			anim->mPlay = true;
 			anim->mLoop = true;
+			anim->play(0.f);
+			SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ANIMATION_UPDATED });
 		}
 	}
 

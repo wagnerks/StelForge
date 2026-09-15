@@ -1,5 +1,8 @@
 ﻿#pragma once
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <shared_mutex>
 #include <vector>
 
@@ -80,17 +83,62 @@ namespace SFE::ComponentsModule {
 		std::vector<AssetsModule::Model::LOD>* mModel = nullptr;
 	};
 
+	// The pose is evaluated on the GPU from these fields and Engine::animationClock(), so nothing advances per frame.
+	// Whoever changes them sends TaskType::ANIMATION_UPDATED, or the GPU keeps the old state.
 	struct AnimationComponent {
 		AnimationComponent() = default;
 
 		bool mPlay = true;
-		bool step = false;
+		bool mLoop = true;
 
 		const AssetsModule::Animation* mCurrentAnimation = nullptr;
 
-		float mCurrentTime = 0.f;
-		float mLastTime = 0.f;
-		bool mLoop = true;
+		// While playing: the clock value at which the clip was at tick 0, NaN until the first frame that draws it.
+		// While stopped, or before that frame: the tick it stands at.
+		double mStart = std::numeric_limits<double>::quiet_NaN();
+		float mStoppedTime = 0.f;
+
+		static float ticksPerSecond(const AssetsModule::Animation& animation) {
+			const auto tps = animation.getTicksPerSecond();
+			return tps > 0.f ? tps : 25.f;
+		}
+
+		// The same formula animateBones.cs uses.
+		float time(double clock) const {
+			if (!mCurrentAnimation) {
+				return 0.f;
+			}
+			if (!mPlay || std::isnan(mStart)) {
+				return mStoppedTime;
+			}
+			const auto duration = mCurrentAnimation->getDuration();
+			auto t = static_cast<float>((clock - mStart) * ticksPerSecond(*mCurrentAnimation));
+			if (duration <= 0.f) {
+				return t;
+			}
+			return mLoop ? t - duration * std::floor(t / duration) : (std::min)(t, duration);
+		}
+
+		void setTime(float ticks, double clock) {
+			mStoppedTime = ticks;
+			if (mCurrentAnimation) {
+				mStart = clock - ticks / ticksPerSecond(*mCurrentAnimation);
+			}
+		}
+
+		// Plays from `ticks` starting with the first frame that draws it. For code off the main thread, where the
+		// clock cannot be read, and so the start does not depend on when a loader thread ran.
+		void play(float ticks) {
+			mPlay = true;
+			mStoppedTime = ticks;
+			mStart = std::numeric_limits<double>::quiet_NaN();
+		}
+
+		void setPlaying(bool play, double clock) {
+			const auto t = time(clock);
+			mPlay = play;
+			setTime(t, clock);
+		}
 	};
 }
 
