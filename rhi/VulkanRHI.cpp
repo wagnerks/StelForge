@@ -552,6 +552,10 @@ namespace SFE::Render {
 		if (m_physicalDevice == VK_NULL_HANDLE) {
 			RhiLog::fatal("VulkanRHI: no suitable Vulkan GPU found");
 		}
+
+		VkPhysicalDeviceProperties picked{};
+		vkGetPhysicalDeviceProperties(m_physicalDevice, &picked);
+		m_deviceName = picked.deviceName;
 	}
 
 	void VulkanRHI::createDevice() {

@@ -646,6 +646,8 @@ namespace SFE::Render
 		virtual void submit(CommandListHandle list) = 0;
 		virtual void present() = 0;
 		virtual double lastGpuMs() const { return 0.0; }
+		// The GPU this backend picked, as the driver names it. Empty before the device exists.
+		virtual const char* deviceName() const { return ""; }
 		// Exact readback of one colour texture -- full resolution, no rescale, converted to RGBA8
 		// with rows top-down on every backend, so two backends' dumps compare pixel for pixel.
 		// `layer` picks the slice of an array texture (shadow cascades); ignored for plain 2D.

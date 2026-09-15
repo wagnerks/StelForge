@@ -272,6 +272,7 @@ namespace SFE::Render
 		void resetTransient();
 
 		bool m_inited = false;
+		std::string m_deviceName;
 		GLuint mGpuTimeQueries[2]{ 0, 0 };
 		int mGpuQueryWrite = 0;
 		bool mGpuQueriesReady = false;
@@ -327,6 +328,7 @@ namespace SFE::Render
 		void runOnWorkerThread(const std::function<void()>& work) override;
 		void setPresentBlitSource(TextureHandle texture, SamplerHandle sampler) override;
 		double lastGpuMs() const override { return mLastGpuMs; }
+		const char* deviceName() const override { return m_deviceName.c_str(); }
 		bool readbackTexture(TextureHandle tex, std::vector<uint8_t>& rgba, int& width, int& height, uint32_t layer = 0) override;
 		TextureHandle presentSourceTexture() const override { return m_presentBlitTexture; }
 		void cmdBeginRenderPass(CommandListHandle cmd, const RenderPassBeginInfo& beginInfo) override;

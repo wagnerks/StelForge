@@ -35,8 +35,9 @@ namespace SFE::Render::RenderPasses {
 		std::snprintf(
 			mOverlayText,
 			sizeof(mOverlayText),
-			"%s\nFPS: %d\nGPU: %.1f ms  CPU: %.1f ms",
+			"%s | %s\nFPS: %d\nGPU: %.1f ms  CPU: %.1f ms",
 			graphicsBackendName(activeGraphicsBackend()),
+			rhi->deviceName(),
 			Engine::instance()->getFPS(),
 			static_cast<double>(info->gpuMs),
 			static_cast<double>(info->cpuMs)

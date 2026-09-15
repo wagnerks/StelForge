@@ -2,14 +2,62 @@
 
 #include "imgui.h"
 
+#include <algorithm>
+#include <cstdio>
+
+#include "core/Engine.h"
+#include "rhi/GraphicsBackend.h"
+
 #include <json/reader.h>
 #include <json/value.h>
 #include <json/writer.h>
 #include <sstream>
 
 namespace SFE::SystemsModule {
+	// Frame time over the last few seconds, next to what is drawing it.
+	void drawFrameStats() {
+		// A capture has to come out the same on both backends and on every run, and none of this does.
+		if (Engine::instance()->capturingFrame()) {
+			return;
+		}
+		const auto* info = RenderDebugInfo::instance();
+		const auto* rhi = Engine::instance()->rhi();
+		ImGui::Text("%s | %s", graphicsBackendName(Render::activeGraphicsBackend()), rhi ? rhi->deviceName() : "");
+
+		float worst = 0.f;
+		float sum = 0.f;
+		int samples = 0;
+		for (const auto ms : info->frameMsHistory) {
+			if (ms <= 0.f) {
+				continue; // the ring is not full yet
+			}
+			worst = (std::max)(worst, ms);
+			sum += ms;
+			++samples;
+		}
+		const float average = samples ? sum / static_cast<float>(samples) : 0.f;
+		// A single stall would flatten everything else against the top of the plot, so the scale follows the
+		// average and lets a spike beyond four times it clip; the label still says how bad the worst frame was.
+		// The 1.2 is headroom: at a steady 60 fps every sample equals the maximum, and the line would be drawn
+		// along the top edge, where it reads as an empty plot.
+		const float scale = (std::max)(8.f, (std::min)(worst, average * 4.f)) * 1.2f;
+
+		// The numbers go above the plots rather than into them: PlotLines draws its overlay text across the top,
+		// which is exactly where a steady line sits.
+		ImGui::Text("frame %.1f ms (%.0f fps)  worst %.1f", static_cast<double>(average),
+			average > 0.f ? 1000.0 / static_cast<double>(average) : 0.0, static_cast<double>(worst));
+		// The cursor is the oldest sample, so the plot reads left to right in time.
+		ImGui::PlotLines("##frameMs", info->frameMsHistory, RenderDebugInfo::kHistory, info->historyCursor, nullptr,
+			0.f, scale, ImVec2(0.f, 60.f));
+		ImGui::Text("gpu %.1f ms", static_cast<double>(info->gpuMs));
+		ImGui::PlotLines("##gpuMs", info->gpuMsHistory, RenderDebugInfo::kHistory, info->historyCursor, nullptr,
+			0.f, scale, ImVec2(0.f, 40.f));
+	}
+
 	bool drawGraphicsSettings(GraphicsSettings& gfx) {
 		bool changed = false;
+
+		drawFrameStats();
 
 		if (ImGui::Button("Reset defaults")) {
 			gfx = GraphicsSettings{};

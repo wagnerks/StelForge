@@ -1856,6 +1856,9 @@ namespace SFE::Render
 				glfwGetProcAddress("glMultiDrawElementsIndirectCountARB"));
 		}
 		RhiLog::check(glad_glMultiDrawElementsIndirectCount != nullptr, "OpenGLRHI: glMultiDrawElementsIndirectCount is not exported by the driver");
+		if (const auto* renderer = glGetString(GL_RENDERER)) {
+			m_deviceName = reinterpret_cast<const char*>(renderer);
+		}
 		m_inited = true;
 
 		// Off by default: GL_DEBUG_OUTPUT_SYNCHRONOUS costs real frame time. Uncomment to get

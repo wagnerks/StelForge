@@ -147,6 +147,17 @@ namespace SFE::SystemsModule {
 		float submitMs = 0.f;
 		float presentMs = 0.f;
 		float gpuMs = 0.f;
+
+		// The last few seconds of frames, oldest at `historyCursor`, for the graph in the settings window.
+		static constexpr int kHistory = 240;
+		float frameMsHistory[kHistory]{};
+		float gpuMsHistory[kHistory]{};
+		int historyCursor = 0;
+		void pushFrame(float frameMs, float gpu) {
+			frameMsHistory[historyCursor] = frameMs;
+			gpuMsHistory[historyCursor] = gpu;
+			historyCursor = (historyCursor + 1) % kHistory;
+		}
 	};
 
 	class RenderSystem : public ecss::System {

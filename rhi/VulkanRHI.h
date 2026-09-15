@@ -194,6 +194,7 @@ namespace SFE::Render
 		void submit(CommandListHandle list) override;
 		void present() override;
 		double lastGpuMs() const override { return mLastGpuMs; }
+		const char* deviceName() const override { return m_deviceName.c_str(); }
 		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) override;
 		void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) override;
 		void updateCubeMip(TextureHandle tex, uint32_t mip, const void* packed6Faces, size_t faceBytes) override;
@@ -326,6 +327,7 @@ namespace SFE::Render
 		VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
 		VkSurfaceKHR m_surface = VK_NULL_HANDLE;
 		VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
+		std::string m_deviceName;
 		VkDevice m_device = VK_NULL_HANDLE;
 		VmaAllocator m_allocator = VK_NULL_HANDLE;
 		VkQueue m_graphicsQueue = VK_NULL_HANDLE;

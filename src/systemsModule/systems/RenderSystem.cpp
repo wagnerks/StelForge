@@ -792,6 +792,8 @@ namespace SFE::SystemsModule {
 		rhi->present();
 		info->presentMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPresent).count();
 		info->cpuMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tFrame).count();
+		// The whole frame, not just what this function took: the graph is about what the player feels.
+		info->pushFrame(Engine::instance()->getDeltaTime() * 1000.f, info->gpuMs);
 	}
 
 	RenderSystem::~RenderSystem() = default;
