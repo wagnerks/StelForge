@@ -89,8 +89,8 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [ ] `MeshVaoRegistry.cpp:57-79, 113-153`: allocation only appends, with no free or reuse. Offsets are `uint32` and wrap silently. Every growth re-uploads all meshes from their CPU copies, so all geometry stays in RAM forever. On Vulkan a growth mid-frame turns into one blocking submit per mesh.
 
 ## 24. Retired buffers and the frames-in-flight constant
-- [ ] Retired buffers are freed only in `uploadDirtyGpuData`: never at shutdown (`~RenderSystem`, `RenderSystem.cpp:626`), and they pile up during long loads.
-- [ ] `VulkanRHI.cpp:22` defines an unused `kMaxFramesInFlight = 1`, shadowed by the class constant 2. `kMaxGpuFrames = 2` (`RenderSystem.h:284`) and the `min(2, …)` clamps silently assume 2. At 3, per-frame slots would be shared between frames in flight.
+- [x] Retired buffers are freed only in `uploadDirtyGpuData`: never at shutdown (`~RenderSystem`, `RenderSystem.cpp:626`), and they pile up during long loads.
+- [x] `VulkanRHI.cpp:22` defines an unused `kMaxFramesInFlight = 1`, shadowed by the class constant 2. `kMaxGpuFrames = 2` (`RenderSystem.h:284`) and the `min(2, …)` clamps silently assume 2. At 3, per-frame slots would be shared between frames in flight.
 
 ## 25. `GlassPass` creates a framebuffer every frame and never frees them
 - [x] `GlassPass.cpp:124-140`: `ensureTargets` makes a new framebuffer whenever the Final or GBufferDepth texture id changes, and never destroys the old one. Both ids alternate every frame: Lighting ping-pongs its output (`LightingPass.cpp:322,338`), and on Vulkan the depth buffer alternates per frame slot (`GeometryPass.cpp:234,242`). That leaks one FBO/VkFramebuffer per frame, always on Vulkan and on GL with SSR/Sheen/SSS/ContactGI off.

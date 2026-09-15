@@ -162,7 +162,6 @@ namespace SFE::SystemsModule {
 
 		void uploadDirtyGpuData();
 		// Destroys the buffer once no frame still in flight can read it. Main thread only.
-		void retireBuffer(Render::BufferHandle buffer) { mRetiredBuffers.emplace_back(buffer, mRenderedFrames); }
 		Render::GpuMaterialTable& materials() { return mMaterials; }
 		Render::GpuScene& scene() { return mScene; }
 		Render::BufferHandle transformsBuffer() const { return transforms; }
@@ -281,18 +280,16 @@ namespace SFE::SystemsModule {
 
 		Render::BufferHandle cameraMatricesUBO;
 
-		static constexpr uint32_t kMaxGpuFrames = 2;
+		// One per frame the RHI keeps in flight.
 		uint32_t mGpuFrames = 1;
-		Render::BufferHandle mCameraUbo[kMaxGpuFrames]{};
-		Render::DescriptorSetHandle mFrameSet[kMaxGpuFrames]{};
+		std::vector<Render::BufferHandle> mCameraUbo;
+		std::vector<Render::DescriptorSetHandle> mFrameSet;
 
 		// Scene data lives on the GPU in one buffer each, indexed by entity id. Only entities that changed
 		// since the last frame are uploaded, through the backend's queued upload path.
 		std::mutex mGpuDirtyMutex;
 		std::vector<ecss::EntityId> mGpuDirtyTransforms;
 		std::vector<ecss::EntityId> mGpuDirtyBones;
-		// Buffers replaced by a capacity grow, destroyed once no in-flight frame can still read them.
-		std::vector<std::pair<Render::BufferHandle, int>> mRetiredBuffers;
 		Render::GpuMaterialTable mMaterials;
 		Render::GpuScene mScene;
 		bool mRefreshTransforms = true;

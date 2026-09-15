@@ -69,13 +69,8 @@ namespace SFE::Render {
 		auto* rhi = Engine::instance()->rhi();
 		if (!mBuffer || mEntries.size() > mCapacity) {
 			if (mBuffer) {
-				// Frames already recorded may still read it.
-				if (auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>()) {
-					renderSystem->retireBuffer(mBuffer);
-				}
-				else {
-					rhi->destroyBuffer(mBuffer);
-				}
+				// Frames already recorded may still read it; the RHI keeps it until they have finished.
+				rhi->destroyBuffer(mBuffer);
 			}
 			mCapacity = mCapacity ? mCapacity : 256;
 			while (mCapacity < mEntries.size()) {

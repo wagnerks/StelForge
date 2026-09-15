@@ -116,13 +116,8 @@ namespace SFE {
 			if (!buffer) {
 				return;
 			}
-			// Frames already recorded may still draw from it.
-			if (auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>()) {
-				renderSystem->retireBuffer(buffer);
-			}
-			else {
-				rhi->destroyBuffer(buffer);
-			}
+			// Frames already recorded may still draw from it; the RHI keeps it until they have finished.
+			rhi->destroyBuffer(buffer);
 		};
 		retire(mVertexBuffer);
 		retire(mIndexBuffer);

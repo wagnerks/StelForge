@@ -246,6 +246,8 @@ namespace SFE::Render
 		size_t m_transientPeak = 0;
 		size_t m_transientAlign = 16;
 		std::vector<TransientOverflow> m_transientOverflow;
+		// Buffers destroyed while a list was open, destroyed after its submit.
+		std::vector<uint32_t> m_pendingBufferDestroys;
 		void uploadTransient();
 		void resetTransient();
 

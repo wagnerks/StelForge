@@ -54,9 +54,9 @@ namespace SFE::Render {
 			size_t keyCapacity = 0;
 			// Per frame slot: the view parameters are written from the CPU while an earlier frame may still
 			// be reading its own copy.
-			std::array<BufferHandle, 2> params{};
-			std::array<DescriptorSetHandle, 2> sets{};
-			std::array<std::array<uint32_t, 8>, 2> boundIds{};
+			std::vector<BufferHandle> params;
+			std::vector<DescriptorSetHandle> sets;
+			std::vector<std::array<uint32_t, 8>> boundIds;
 		};
 
 		void init();

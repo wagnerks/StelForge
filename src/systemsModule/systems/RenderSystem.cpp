@@ -140,7 +140,9 @@ namespace SFE::SystemsModule {
 		if (!Engine::instance()->temporalAccumulation()) {
 			mRenderData.graphics.taa = false;
 		}
-		mGpuFrames = (std::min)(kMaxGpuFrames, (std::max)(1u, rhi->framesInFlight()));
+		mGpuFrames = (std::max)(1u, rhi->framesInFlight());
+		mCameraUbo.resize(mGpuFrames);
+		mFrameSet.resize(mGpuFrames);
 		constexpr size_t maxDrawSize = 4096;
 		mGpuCapacity = maxDrawSize;
 
@@ -367,8 +369,9 @@ namespace SFE::SystemsModule {
 		}
 
 		auto* rhi = Engine::instance()->rhi();
-		retireBuffer(transforms);
-		retireBuffer(bones);
+		// The RHI keeps a destroyed buffer until the frames that may still bind it have finished.
+		rhi->destroyBuffer(transforms);
+		rhi->destroyBuffer(bones);
 		createSceneBuffers(newCap);
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
 			rhi->updateDescriptorSets({
@@ -454,15 +457,6 @@ namespace SFE::SystemsModule {
 	}
 
 	void RenderSystem::uploadDirtyGpuData() {
-		auto* rhi = Engine::instance()->rhi();
-		std::erase_if(mRetiredBuffers, [&](const auto& retired) {
-			if (mRenderedFrames - retired.second <= static_cast<int>(kMaxGpuFrames)) {
-				return false;
-			}
-			rhi->destroyBuffer(retired.first);
-			return true;
-		});
-
 		std::vector<ecss::EntityId> dirtyTransforms;
 		std::vector<ecss::EntityId> dirtyBones;
 		{

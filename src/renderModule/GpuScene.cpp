@@ -42,12 +42,7 @@ namespace SFE::Render {
 			if (!buffer) {
 				return;
 			}
-			if (auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>()) {
-				renderSystem->retireBuffer(buffer);
-			}
-			else {
-				Engine::instance()->rhi()->destroyBuffer(buffer);
-			}
+			Engine::instance()->rhi()->destroyBuffer(buffer);
 		}
 
 		BufferHandle createBuffer(const size_t size, const BufferUsage usage, const CpuAccess access, const void* data, const char* name) {
@@ -60,7 +55,7 @@ namespace SFE::Render {
 		}
 
 		uint32_t frameSlots() {
-			return (std::max)(1u, (std::min)(2u, Engine::instance()->rhi()->framesInFlight()));
+			return (std::max)(1u, Engine::instance()->rhi()->framesInFlight());
 		}
 
 		// Group, then mesh: each group becomes one contiguous run of batches. Stable, so the order inside a
@@ -593,6 +588,11 @@ namespace SFE::Render {
 		}
 
 		const uint32_t slot = rhi->frameInFlight() % frameSlots();
+		if (view.params.size() < frameSlots()) {
+			view.params.resize(frameSlots());
+			view.sets.resize(frameSlots());
+			view.boundIds.resize(frameSlots());
+		}
 		if (!view.params[slot]) {
 			view.params[slot] = createBuffer(sizeof(CullParams), BufferUsage::Storage, CpuAccess::Write, nullptr, "GpuScene view");
 		}

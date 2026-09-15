@@ -634,6 +634,68 @@ namespace SFE::Render::Tests {
 		rhi().destroyTexture(target);
 	}
 
+	// A buffer destroyed while a list that binds it is still being recorded, with a new buffer created straight
+	// after: the draw must still read the first one. OpenGL resolves ids when the list is replayed, so destroying
+	// at once let the new buffer take the id and be read instead; Vulkan freed memory a set still pointed at.
+	TEST_P(RhiBackendTest, BufferDestroyedWhileRecordingStaysReadableUntilSubmit) {
+		const Math::Vec4 kColorA{ k255(32), k255(96), k255(160), 1.f };
+		const Math::Vec4 kColorB{ k255(200), k255(16), k255(64), 1.f };
+		const auto target = makeTarget(rhi());
+		ASSERT_TRUE(target);
+		const auto pass = makePass(rhi(), { 1.f, 0.f, 1.f, 1.f });
+		ASSERT_TRUE(pass);
+		DescriptorSetLayoutDesc layoutDesc;
+		layoutDesc.bindings.push_back({ 0, DescriptorType::UniformBuffer, ShaderStage::Fragment });
+		const auto layout = rhi().createDescriptorSetLayout(layoutDesc);
+		const auto set = rhi().allocateDescriptorSet(layout);
+		const auto pipeline = makeDescriptorPipeline(rhi(), pass, "shaders/rhi_test_uniform.fs", { layout });
+		ASSERT_TRUE(pipeline);
+		const auto bufferA = makeUniformBuffer(rhi(), kColorA);
+		ASSERT_TRUE(bufferA);
+		rhi().updateDescriptorSets({ { .set = set, .binding = 0, .buffers{ { bufferA, 0, 0 } } } });
+
+		FramebufferDesc fbDesc;
+		fbDesc.width = kSize;
+		fbDesc.height = kSize;
+		fbDesc.renderPass = pass;
+		fbDesc.colorAttachments = { { target } };
+		const auto fb = rhi().createFramebuffer(fbDesc);
+		ASSERT_TRUE(fb);
+
+		rhi().beginFrame();
+		const auto cmd = rhi().beginCommandList(CommandListType::Graphics);
+		RenderPassBeginInfo begin;
+		begin.renderPass = pass;
+		begin.framebuffer = fb;
+		begin.width = kSize;
+		begin.height = kSize;
+		rhi().cmdBeginRenderPass(cmd, begin);
+		rhi().cmdBindPipeline(cmd, pipeline);
+		rhi().cmdBindDescriptorSets(cmd, pipeline, 0, &set, 1);
+		rhi().destroyBuffer(bufferA);
+		const auto bufferB = makeUniformBuffer(rhi(), kColorB);
+		rhi().cmdDraw(cmd, 3, 1, 0, 0);
+		rhi().cmdEndRenderPass(cmd);
+		rhi().endCommandList(cmd);
+		rhi().submit(cmd);
+		rhi().present();
+		rhi().waitIdle();
+
+		std::vector<uint8_t> pixels;
+		int w = 0;
+		int h = 0;
+		ASSERT_TRUE(rhi().readbackTexture(target, pixels, w, h));
+		EXPECT_EQ(pixelAt(pixels, 1, 1), (Rgba{ 32, 96, 160, 255 })) << "the draw did not read the buffer bound before it was destroyed";
+
+		rhi().destroyFramebuffer(fb);
+		rhi().destroyBuffer(bufferB);
+		rhi().destroyGraphicsPipeline(pipeline);
+		rhi().freeDescriptorSet(set);
+		rhi().destroyDescriptorSetLayout(layout);
+		rhi().destroyRenderPass(pass);
+		rhi().destroyTexture(target);
+	}
+
 	// More sets than one Vulkan descriptor pool holds (2048). Running out used to return empty handles with no
 	// message, and a bind with one silently kept the previous draw's textures.
 	TEST_P(RhiBackendTest, DescriptorSetsOutliveOnePool) {

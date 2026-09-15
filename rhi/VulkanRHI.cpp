@@ -19,7 +19,6 @@
 
 namespace SFE::Render {
 	namespace {
-		constexpr int kMaxFramesInFlight = 1;
 		constexpr VkClearColorValue kClearColor{ { 0.05f, 0.08f, 0.22f, 1.f } };
 
 		struct QueueFamilyIndices {

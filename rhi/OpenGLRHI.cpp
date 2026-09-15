@@ -975,6 +975,9 @@ namespace SFE::Render
 		}
 		resetTransient();
 		recycleResource(m_commandLists, m_freeCommandLists, handle.id);
+		for (const auto id : std::exchange(m_pendingBufferDestroys, {})) {
+			destroyBuffer({ id });
+		}
 
 		if (mGpuTimeQueries[0]) {
 			glEndQuery(GL_TIME_ELAPSED);
@@ -1900,6 +1903,7 @@ namespace SFE::Render
 			m_transientData.clear();
 			m_transientUsed = 0;
 			m_transientOverflow.clear();
+			m_pendingBufferDestroys.clear();
 			for (auto& gp : m_pipelines) {
 				if (!gp.live) {
 					continue;
@@ -2659,6 +2663,14 @@ namespace SFE::Render
 	{
 		GLBuffer* glb = getLive(m_buffers, handle.id);
 		if (!glb) {
+			return;
+		}
+		if (m_openCommandList) {
+			// The open list may already name it, and names are resolved when the list is replayed: the buffer and
+			// its id stay until the submit, or a buffer created meanwhile could take the id and be bound instead.
+			if (std::find(m_pendingBufferDestroys.begin(), m_pendingBufferDestroys.end(), handle.id) == m_pendingBufferDestroys.end()) {
+				m_pendingBufferDestroys.push_back(handle.id);
+			}
 			return;
 		}
 

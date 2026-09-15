@@ -42,7 +42,8 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	const auto h = Engine::instance()->getWindow()->getScreenData().renderH;
 
 	auto rhi = Engine::instance()->rhi();
-	mGpuFrames = (std::max)(1u, (std::min)(2u, rhi->framesInFlight()));
+	mGpuFrames = (std::max)(1u, rhi->framesInFlight());
+	mFrames.resize(mGpuFrames);
 	auto* renderSystem = ECSHandler::getSystem<SFE::SystemsModule::RenderSystem>();
 	const auto frameLayout = renderDataHandle.frameSetLayout
 		? renderDataHandle.frameSetLayout

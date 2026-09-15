@@ -57,7 +57,7 @@ namespace SFE::Render::RenderPasses {
 		void drawScene(CommandListHandle cmd, PolygonFillMode fillMode, BufferHandle materials);
 
 		bool mInited = false;
-		Data mFrames[2];
+		std::vector<Data> mFrames; // one per frame the RHI keeps in flight
 		uint32_t mGpuFrames = 1;
 		SamplerHandle mSampler{};
 		TextureHandle outlinesMask{};
