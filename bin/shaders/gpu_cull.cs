@@ -73,8 +73,14 @@ layout(SFE_SET(0, 31), std430) readonly buffer CullView {
     vec4 shapes[16];
 } view;
 
-// Animation can move vertices past the bind pose, so skinned bounds get this much of their largest
-// half-extent added on every axis.
+// A skinned instance's bounds for its current pose, written by animateBones into the matrix just before its bones:
+// column 0 xyz min, column 1 xyz max, in model space. Min above max means none (a pose uploaded from the CPU).
+layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
+    mat4 bones[];
+};
+
+// Without pose bounds, animation can move vertices past the bind pose, so skinned bounds get this much of
+// their largest half-extent added on every axis.
 const float kSkinnedInflate = 0.5;
 
 bool visibleInView(vec3 center, vec3 extents) {
@@ -111,9 +117,20 @@ void main() {
     for (uint i = 0u; i < batch.instanceCount; ++i) {
         SceneInstance instance = instances[batch.firstInstance + i];
         mat4 m = model[instance.entity];
-        vec3 center = (m * vec4(localCenter, 1.0)).xyz;
-        vec3 extents = abs(m[0].xyz) * localExtents.x + abs(m[1].xyz) * localExtents.y + abs(m[2].xyz) * localExtents.z;
-        if (mesh.skinned != 0u) {
+        vec3 boundsCenter = localCenter;
+        vec3 boundsExtents = localExtents;
+        bool inflate = mesh.skinned != 0u;
+        if (inflate && instance.boneOffset > 0u) {
+            mat4 pose = bones[instance.boneOffset - 1u];
+            if (pose[0].x <= pose[1].x) {
+                boundsCenter = (pose[0].xyz + pose[1].xyz) * 0.5;
+                boundsExtents = (pose[1].xyz - pose[0].xyz) * 0.5;
+                inflate = false;
+            }
+        }
+        vec3 center = (m * vec4(boundsCenter, 1.0)).xyz;
+        vec3 extents = abs(m[0].xyz) * boundsExtents.x + abs(m[1].xyz) * boundsExtents.y + abs(m[2].xyz) * boundsExtents.z;
+        if (inflate) {
             extents += vec3(max(extents.x, max(extents.y, extents.z)) * kSkinnedInflate);
         }
         if (visibleInView(center, extents)) {

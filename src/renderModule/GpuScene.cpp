@@ -66,6 +66,7 @@ namespace SFE::Render {
 		DescriptorSetLayoutDesc layout;
 		layout.bindings = {
 			{ 1, DescriptorType::StorageBuffer, ShaderStage::Compute },
+			{ 2, DescriptorType::StorageBuffer, ShaderStage::Compute },
 			{ 26, DescriptorType::StorageBuffer, ShaderStage::Compute },
 			{ 27, DescriptorType::StorageBuffer, ShaderStage::Compute },
 			{ 28, DescriptorType::StorageBuffer, ShaderStage::Compute },
@@ -631,7 +632,8 @@ namespace SFE::Render {
 		const auto& data = mLists[static_cast<size_t>(list)];
 		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 		const auto transforms = renderSystem ? renderSystem->transformsBuffer() : BufferHandle{};
-		if (data.batchCount == 0 || !mCullPipeline || !mMeshes || !transforms) {
+		const auto bones = renderSystem ? renderSystem->bonesBuffer() : BufferHandle{};
+		if (data.batchCount == 0 || !mCullPipeline || !mMeshes || !transforms || !bones) {
 			return false;
 		}
 		auto* rhi = Engine::instance()->rhi();
@@ -641,12 +643,13 @@ namespace SFE::Render {
 		}
 
 		// Rewritten only when a buffer was replaced: a write to a set that is already bound costs a copy.
-		const std::array<uint32_t, 8> ids = { transforms.id, mMeshes.id, data.instances.id, data.batches.id, view.visible.id, view.commands.id, view.params[slot].id, 0 };
+		const std::array<uint32_t, 8> ids = { transforms.id, mMeshes.id, data.instances.id, data.batches.id, view.visible.id, view.commands.id, view.params[slot].id, bones.id };
 		if (ids != view.boundIds[slot]) {
 			view.boundIds[slot] = ids;
 			const auto set = view.sets[slot];
 			rhi->updateDescriptorSets({
 				{ .set = set, .binding = 1, .buffers{ { transforms } } },
+				{ .set = set, .binding = 2, .buffers{ { bones } } },
 				{ .set = set, .binding = 26, .buffers{ { mMeshes } } },
 				{ .set = set, .binding = 27, .buffers{ { data.instances } } },
 				{ .set = set, .binding = 28, .buffers{ { data.batches } } },

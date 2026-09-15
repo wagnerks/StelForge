@@ -32,8 +32,10 @@ namespace {
 		int sclOff = 0;
 		int sclCnt = 0;
 		int boneId = 0;
+		float radius = 0.f; // Armature::boneRadius
+		float pad[3]{};
 	};
-	static_assert(sizeof(GpuBoneDesc) == 160);
+	static_assert(sizeof(GpuBoneDesc) == 176);
 
 	struct GpuVec3Key {
 		float x = 0.f, y = 0.f, z = 0.f, time = 0.f;
@@ -130,6 +132,7 @@ AnimationComputePass::GpuClip* AnimationComputePass::packClip(const AssetsModule
 		desc.offset = bone.offset;
 		desc.restLocal = bone.transform;
 		desc.boneId = static_cast<int>(bone.id);
+		desc.radius = bone.id < armature.boneRadius.size() ? armature.boneRadius[bone.id] : 0.f;
 		if (bone.parentBoneIdx == std::numeric_limits<uint32_t>::max() || bone.parentBoneIdx >= armature.bones.size()) {
 			desc.parent = -1;
 		}

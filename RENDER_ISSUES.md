@@ -13,7 +13,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [x] Bones past `kMaxArmatureBones` are silently not animated (`AnimationComputePass` clamps `boneCount`, the CPU upload clamps too). There is no warning at load.
 
 ## 4. Skinned bounds are a static inflated AABB
-- [ ] The box is the bind pose plus a margin. A pose that reaches past it (a wide swing, a fall) gets the part that sticks out culled by frustum culling now, and by occlusion culling once it exists.
+- [x] The box is the bind pose plus a margin. A pose that reaches past it (a wide swing, a fall) gets the part that sticks out culled by frustum culling now, and by occlusion culling once it exists.
 - Fix: compute the AABB per frame in `animateBones.cs` from bone world positions. Add a per-bone radius (the farthest vertex weighted to the bone in bind pose, computed once at load) scaled by the bone's world axes, and write the result into a bounds buffer the cull reads. Costs a few percent of a 0.1–0.2 ms pass and 24 bytes per character.
 
 ## 5. No occlusion culling
