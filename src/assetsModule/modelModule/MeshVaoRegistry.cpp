@@ -100,9 +100,12 @@ namespace SFE {
 		mMeshTable.push_back(entry);
 	}
 
-	std::vector<GpuMesh> MeshVaoRegistry::meshTable() {
+	std::vector<GpuMesh> MeshVaoRegistry::meshTable(const size_t first) {
 		std::lock_guard lock(mMutex);
-		return mMeshTable;
+		if (first >= mMeshTable.size()) {
+			return {};
+		}
+		return { mMeshTable.begin() + static_cast<std::ptrdiff_t>(first), mMeshTable.end() };
 	}
 
 	size_t MeshVaoRegistry::meshCount() {

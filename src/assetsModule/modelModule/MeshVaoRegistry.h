@@ -32,7 +32,8 @@ namespace SFE {
 		Render::BufferHandle indexBuffer() const { return mIndexBuffer; }
 
 		// Indexed by meshId; entry 0 is unused. Grows only, so its size doubles as a version.
-		std::vector<GpuMesh> meshTable();
+		// Entries from `first` on. An entry never changes once added: offsets survive a grow.
+		std::vector<GpuMesh> meshTable(size_t first = 0);
 		size_t meshCount();
 
 	private:

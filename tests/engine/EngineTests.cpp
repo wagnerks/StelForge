@@ -102,6 +102,7 @@ namespace SFE::EngineTests {
 		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 		ASSERT_NE(renderSystem, nullptr);
 		auto& scene = renderSystem->scene();
+		scene.trackUploads(true);
 
 		// Mesh ids past anything the world loads, so the batches are ours alone. Nothing is drawn on this backend,
 		// so a mesh only has to look uploaded.
@@ -161,6 +162,7 @@ namespace SFE::EngineTests {
 		}
 		step(2);
 		EXPECT_TRUE(scene.validate());
+		scene.trackUploads(false);
 	}
 
 	// Tick systems step from the frame under a fixed step: world time (1 tick a second) moves in whole seconds.

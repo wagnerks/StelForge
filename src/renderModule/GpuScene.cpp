@@ -191,17 +191,21 @@ namespace SFE::Render {
 		if (registry->meshCount() == mMeshesUploaded) {
 			return;
 		}
-		const auto table = registry->meshTable();
-		if (!mMeshes || table.size() > mMeshCapacity) {
+		// Entries never change once added, so only the new ones go up, unless the buffer is replaced.
+		const size_t count = registry->meshCount();
+		size_t first = mMeshesUploaded;
+		if (!mMeshes || count > mMeshCapacity) {
 			retire(mMeshes);
 			mMeshCapacity = (std::max)(mMeshCapacity, size_t{ 64 });
-			while (mMeshCapacity < table.size()) {
+			while (mMeshCapacity < count) {
 				mMeshCapacity *= 2;
 			}
 			mMeshes = createBuffer(mMeshCapacity * sizeof(GpuMesh), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene meshes");
+			first = 0;
 		}
-		Engine::instance()->rhi()->updateBuffer(mMeshes, 0, table.size() * sizeof(GpuMesh), table.data());
-		mMeshesUploaded = table.size();
+		const auto table = registry->meshTable(first);
+		Engine::instance()->rhi()->updateBuffer(mMeshes, first * sizeof(GpuMesh), table.size() * sizeof(GpuMesh), table.data());
+		mMeshesUploaded = first + table.size();
 	}
 
 	void GpuScene::markEntity(const ecss::EntityId entity) {
@@ -222,10 +226,8 @@ namespace SFE::Render {
 			data.ownedInstances = 0;
 			data.ownedBatches = 0;
 			// The mirrors are uploaded whole, into the buffers they already have when those are large enough.
-			data.instanceDirtyLo = 0;
-			data.instanceDirtyHi = UINT32_MAX;
-			data.batchDirtyLo = 0;
-			data.batchDirtyHi = UINT32_MAX;
+			data.instanceDirty.all();
+			data.batchDirty.all();
 		}
 		mEntityRefs.clear();
 		for (auto [entity, transform, meshComp] : ECSHandler::registry().view<const ComponentsModule::TransformMatComp, const MeshComponent>()) {
@@ -274,6 +276,12 @@ namespace SFE::Render {
 			for (const auto& state : data.groupStates) {
 				ownedBatches += state.batchCapacity;
 			}
+			const auto sameRecords = [](const auto& a, const auto& b) {
+				return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) == 0;
+			};
+			if (mTrackUploads && (!sameRecords(data.instanceMirror, data.uploadedInstances) || !sameRecords(data.batchMirror, data.uploadedBatches))) {
+				return false;
+			}
 			if (live != data.liveInstances || ownedInstances != data.ownedInstances || ownedBatches != data.ownedBatches
 				|| data.ownedInstances > data.instanceMirror.size() || data.ownedBatches > data.batchMirror.size()) {
 				return false;
@@ -317,10 +325,8 @@ namespace SFE::Render {
 		data.instanceMirror = std::move(packed);
 		data.batchMirror = std::move(batches);
 		data.batchStates = std::move(states);
-		data.instanceDirtyLo = 0;
-		data.instanceDirtyHi = UINT32_MAX;
-		data.batchDirtyLo = 0;
-		data.batchDirtyHi = UINT32_MAX;
+		data.instanceDirty.all();
+		data.batchDirty.all();
 	}
 
 	void GpuScene::addEntity(const ecss::EntityId entity, GpuMaterialTable& materials) {
@@ -437,10 +443,8 @@ namespace SFE::Render {
 		refs.push_back({ list, group, found->second, slot });
 		++data.liveInstances;
 
-		data.instanceDirtyLo = (std::min)(data.instanceDirtyLo, index);
-		data.instanceDirtyHi = (std::max)(data.instanceDirtyHi, index + 1);
-		data.batchDirtyLo = (std::min)(data.batchDirtyLo, global);
-		data.batchDirtyHi = (std::max)(data.batchDirtyHi, global + 1);
+		data.instanceDirty.add(index, index + 1);
+		data.batchDirty.add(global, global + 1);
 	}
 
 	void GpuScene::removeInstance(const InstanceRef& ref) {
@@ -456,14 +460,12 @@ namespace SFE::Render {
 			state.owners[ref.slot] = moved;
 			mEntityRefs[moved.entity][moved.ref].slot = ref.slot;
 			const uint32_t index = batch.firstInstance + ref.slot;
-			data.instanceDirtyLo = (std::min)(data.instanceDirtyLo, index);
-			data.instanceDirtyHi = (std::max)(data.instanceDirtyHi, index + 1);
+			data.instanceDirty.add(index, index + 1);
 		}
 		state.owners.pop_back();
 		--batch.instanceCount;
 		--data.liveInstances;
-		data.batchDirtyLo = (std::min)(data.batchDirtyLo, global);
-		data.batchDirtyHi = (std::max)(data.batchDirtyHi, global + 1);
+		data.batchDirty.add(global, global + 1);
 	}
 
 	void GpuScene::growBatch(ListData& data, const uint32_t batch, const uint32_t capacity) {
@@ -474,10 +476,8 @@ namespace SFE::Render {
 		record.firstInstance = start;
 		data.ownedInstances += capacity - data.batchStates[batch].capacity;
 		data.batchStates[batch].capacity = capacity;
-		data.instanceDirtyLo = (std::min)(data.instanceDirtyLo, start);
-		data.instanceDirtyHi = (std::max)(data.instanceDirtyHi, start + capacity);
-		data.batchDirtyLo = (std::min)(data.batchDirtyLo, batch);
-		data.batchDirtyHi = (std::max)(data.batchDirtyHi, batch + 1);
+		data.instanceDirty.add(start, start + capacity);
+		data.batchDirty.add(batch, batch + 1);
 	}
 
 	void GpuScene::growGroup(ListData& data, const uint32_t group, const uint32_t capacity) {
@@ -492,18 +492,52 @@ namespace SFE::Render {
 			data.batchMirror[draw.firstBatch + i] = {};
 			data.batchStates[draw.firstBatch + i] = {};
 		}
-		data.batchDirtyLo = (std::min)(data.batchDirtyLo, draw.batchCount ? draw.firstBatch : first);
-		data.batchDirtyHi = (std::max)(data.batchDirtyHi, first + capacity);
+		if (draw.batchCount) {
+			data.batchDirty.add(draw.firstBatch, draw.firstBatch + draw.batchCount);
+		}
+		data.batchDirty.add(first, first + capacity);
 		draw.firstBatch = first;
 		data.ownedBatches += capacity - data.groupStates[group].batchCapacity;
 		data.groupStates[group].batchCapacity = capacity;
 	}
 
+	void GpuScene::DirtyRanges::add(const uint32_t lo, const uint32_t hi) {
+		// Merged across gaps this small: a separate upload costs more than resending the slots in between.
+		constexpr uint32_t kMergeGap = 64;
+		constexpr size_t kMaxRanges = 16;
+		if (lo >= hi) {
+			return;
+		}
+		auto it = std::lower_bound(ranges.begin(), ranges.end(), lo, [](const auto& range, uint32_t value) { return uint64_t{ range.second } + kMergeGap < value; });
+		auto merged = std::make_pair(lo, hi);
+		auto last = it;
+		while (last != ranges.end() && last->first <= uint64_t{ hi } + kMergeGap) {
+			merged.first = (std::min)(merged.first, last->first);
+			merged.second = (std::max)(merged.second, last->second);
+			++last;
+		}
+		it = ranges.erase(it, last);
+		ranges.insert(it, merged);
+		while (ranges.size() > kMaxRanges) {
+			size_t closest = 0;
+			for (size_t i = 1; i + 1 < ranges.size(); ++i) {
+				if (ranges[i + 1].first - ranges[i].second < ranges[closest + 1].first - ranges[closest].second) {
+					closest = i;
+				}
+			}
+			ranges[closest].second = ranges[closest + 1].second;
+			ranges.erase(ranges.begin() + static_cast<std::ptrdiff_t>(closest) + 1);
+		}
+	}
+
 	void GpuScene::uploadList(ListData& data, const char* name) {
 		auto* rhi = Engine::instance()->rhi();
-		const auto upload = [&](BufferHandle& buffer, size_t& capacity, const size_t count, const size_t stride, const void* bytes,
-			uint32_t& lo, uint32_t& hi)
+		const auto upload = [&](BufferHandle& buffer, size_t& capacity, const size_t count, const size_t stride, const auto* bytes,
+			DirtyRanges& dirty, auto& uploaded)
 		{
+			if (mTrackUploads) {
+				uploaded.resize(count);
+			}
 			if (!buffer || count > capacity) {
 				retire(buffer);
 				capacity = (std::max)(capacity, size_t{ 256 });
@@ -511,20 +545,23 @@ namespace SFE::Render {
 					capacity *= 2;
 				}
 				buffer = createBuffer(capacity * stride, BufferUsage::Storage, CpuAccess::None, nullptr, name);
-				lo = 0;
-				hi = static_cast<uint32_t>(count);
+				dirty.all();
 			}
-			hi = (std::min)(hi, static_cast<uint32_t>(count));
-			if (lo < hi) {
-				rhi->updateBuffer(buffer, lo * stride, (hi - lo) * stride, static_cast<const uint8_t*>(bytes) + lo * stride);
+			for (const auto [lo, rangeHi] : dirty.ranges) {
+				const uint32_t hi = (std::min)(rangeHi, static_cast<uint32_t>(count));
+				if (lo < hi) {
+					rhi->updateBuffer(buffer, lo * stride, (hi - lo) * stride, static_cast<const uint8_t*>(static_cast<const void*>(bytes)) + lo * stride);
+					if (mTrackUploads) {
+						std::copy(bytes + lo, bytes + hi, uploaded.begin() + lo);
+					}
+				}
 			}
-			lo = UINT32_MAX;
-			hi = 0;
+			dirty.ranges.clear();
 		};
 		upload(data.instances, data.instanceGpuCapacity, data.instanceMirror.size(), sizeof(InstanceRecord), data.instanceMirror.data(),
-			data.instanceDirtyLo, data.instanceDirtyHi);
+			data.instanceDirty, data.uploadedInstances);
 		upload(data.batches, data.batchGpuCapacity, data.batchMirror.size(), sizeof(BatchRecord), data.batchMirror.data(),
-			data.batchDirtyLo, data.batchDirtyHi);
+			data.batchDirty, data.uploadedBatches);
 		data.instanceCount = static_cast<uint32_t>(data.instanceMirror.size());
 		data.batchCount = static_cast<uint32_t>(data.batchMirror.size());
 	}

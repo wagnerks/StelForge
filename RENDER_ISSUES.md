@@ -62,10 +62,10 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [ ] `GpuMaterialTable.cpp:48`: slots are taken per texture handle for the whole session. Once 8 are used, new glass draws untextured until restart, and a destroyed texture stays bound in its slot (`GlassPass.cpp:246`).
 
 ## 16. One dirty range per list
-- [ ] `GpuScene.cpp:377`: a remove in an early batch plus a batch growing at the end in the same update re-uploads nearly the whole instance buffer. Happens on edits, not every frame.
+- [x] `GpuScene.cpp:377`: a remove in an early batch plus a batch growing at the end in the same update re-uploads nearly the whole instance buffer. Happens on edits, not every frame.
 
 ## 17. A new mesh re-uploads the whole mesh table
-- [ ] `GpuScene.cpp:191`: while meshes stream in, every frame that adds one copies and uploads all of them.
+- [x] `GpuScene.cpp:191`: while meshes stream in, every frame that adds one copies and uploads all of them.
 
 ## 18. `TasksManager` listener lists are not thread-safe
 - [x] `TasksManager.cpp:4-10`: `addWorker` appends to `workers[type]` on the main thread while `notify` iterates it on worker threads. `TransformSystem` is created first (`ECSHandler.cpp:56`) and can already send `TRAHSFORM_RELOADED` while `AABBSystem` and `RenderSystem` subscribe. A reallocation mid-loop reads freed memory, which is a possible crash at startup.

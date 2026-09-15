@@ -88,6 +88,14 @@ namespace SFE::Render {
 		// layout. Between updates only.
 		bool validate() const;
 		uint64_t compactions() const { return mCompactions; }
+		// For tests: keep a copy of every upload, so validate() also checks the GPU buffers hold the layout.
+		void trackUploads(bool track) {
+			mTrackUploads = track;
+			for (auto& data : mLists) {
+				data.instanceDirty.all();
+				data.batchDirty.all();
+			}
+		}
 		// The group's indirect call. Pipeline, descriptor sets and the shared vertex and index buffers are the
 		// caller's.
 		void draw(CommandListHandle cmd, const View& view, const DrawGroup& group) const;
@@ -129,6 +137,14 @@ namespace SFE::Render {
 			uint32_t slot = 0;  // inside the batch
 		};
 
+		// Slot ranges to upload. A few separate ranges, so an edit near the start and a batch growing at the end do
+		// not upload everything between them; ranges close together are merged to keep the list short.
+		struct DirtyRanges {
+			std::vector<std::pair<uint32_t, uint32_t>> ranges; // [lo, hi), sorted, disjoint
+			void add(uint32_t lo, uint32_t hi);
+			void all() { ranges.assign(1, { 0, UINT32_MAX }); }
+		};
+
 		// Batches keep spare slots, and so do groups: an instance or a batch is appended in place, and only a full
 		// one moves to the end with twice the room. What that leaves behind is reclaimed by a full rebuild.
 		struct ListData {
@@ -149,10 +165,11 @@ namespace SFE::Render {
 			size_t ownedBatches = 0;
 			size_t instanceGpuCapacity = 0;
 			size_t batchGpuCapacity = 0;
-			uint32_t instanceDirtyLo = UINT32_MAX;
-			uint32_t instanceDirtyHi = 0;
-			uint32_t batchDirtyLo = UINT32_MAX;
-			uint32_t batchDirtyHi = 0;
+			DirtyRanges instanceDirty;
+			DirtyRanges batchDirty;
+			// What was uploaded, when tracking.
+			std::vector<InstanceRecord> uploadedInstances;
+			std::vector<BatchRecord> uploadedBatches;
 		};
 
 		void rebuildAll(GpuMaterialTable& materials);
@@ -178,6 +195,7 @@ namespace SFE::Render {
 		std::unordered_map<ecss::EntityId, std::vector<InstanceRef>> mEntityRefs;
 		ecss::EntityId mMaxEntity = 0;
 		uint64_t mCompactions = 0;
+		bool mTrackUploads = false;
 		std::mutex mPendingMutex;
 		std::vector<ecss::EntityId> mPending;
 		std::vector<ecss::EntityId> mOutlined;
