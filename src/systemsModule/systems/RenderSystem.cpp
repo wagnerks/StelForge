@@ -256,15 +256,25 @@ namespace SFE::SystemsModule {
 		{
 			auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
 			const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
-			const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera);
+			// The copy the transform worker publishes, not TransformComponent itself: the worker rewrites that
+			// matrix while this thread reads it, and a moving camera now and then got a half-written view.
+			// Replacing the copy waits for pins, so a pinned copy is whole.
+			Math::Mat4 cameraTransform{ 1.f };
+			if (const auto copy = ECSHandler::registry().pinComponent<const ComponentsModule::TransformMatComp>(playerCamera)) {
+				cameraTransform = copy->mTransform;
+			}
+			else if (const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera)) {
+				cameraTransform = transformComp->getTransform(); // before the first reload reached RenderSystem
+			}
 
 			mRenderData.nextCameraProjection = cameraComp->getProjection();
 			mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
-			mRenderData.next.view = transformComp->getViewMatrix();
+			mRenderData.next.view = inverse(cameraTransform);
 			mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
 
-			mRenderData.mNextCameraPos = transformComp->getPos(true);
-			mRenderData.mNextViewDir = normalize(transformComp->getForward());
+			mRenderData.mNextCameraPos = cameraTransform[3].xyz;
+			const Math::Vec3 forward = -cameraTransform[2];
+			mRenderData.mNextViewDir = normalize(forward);
 			mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
 		}
 
