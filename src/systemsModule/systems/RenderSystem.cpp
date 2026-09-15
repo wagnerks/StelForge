@@ -264,7 +264,7 @@ namespace SFE::SystemsModule {
 				cameraTransform = copy->mTransform;
 			}
 			else if (const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera)) {
-				cameraTransform = transformComp->getTransform(); // before the first reload reached RenderSystem
+				cameraTransform = transformComp->copyTransform(); // before the first reload reached RenderSystem
 			}
 
 			mRenderData.nextCameraProjection = cameraComp->getProjection();
@@ -286,7 +286,7 @@ namespace SFE::SystemsModule {
 				auto& live = ECSHandler::registry();
 				for (auto [id, matComp, transform] : live.view<ComponentsModule::TransformMatComp, const TransformComponent>()) {
 					if (matComp && transform) {
-						matComp->mTransform = transform->getTransform();
+						matComp->mTransform = transform->copyTransform();
 						markGpuDirty(mGpuDirtyTransforms, id);
 					}
 				}
@@ -498,7 +498,7 @@ namespace SFE::SystemsModule {
 		if (task.type == TRAHSFORM_RELOADED) {
 			auto& registry = ECSHandler::registry();
 			const bool first = !registry.hasComponent<ComponentsModule::TransformMatComp>(task.entity);
-			registry.addComponent<ComponentsModule::TransformMatComp>(task.entity, static_cast<TransformComponent*>(task.customData)->getTransform());
+			registry.addComponent<ComponentsModule::TransformMatComp>(task.entity, static_cast<TransformComponent*>(task.customData)->copyTransform());
 			markGpuDirty(mGpuDirtyTransforms, task.entity);
 			if (first) {
 				// The scene skips an entity with no transform yet, so one whose mesh came first is read again now.

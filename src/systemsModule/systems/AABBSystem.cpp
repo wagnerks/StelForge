@@ -41,7 +41,7 @@ void SFE::SystemsModule::AABBSystem::updateAsync(const std::vector<ecss::SectorI
 			aabbcomp->aabbs.resize(aabbcomp->defaultAabbs.size());
 		}
 
-		const auto& transformMatrix = transform->getTransform();
+		const auto transformMatrix = transform->copyTransform();
 		const float scale = aabbcomp->aabbScale;
 		for (size_t i = 0; i < aabbcomp->aabbs.size(); i++) {
 			auto local = aabbcomp->defaultAabbs[i];

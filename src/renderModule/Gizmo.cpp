@@ -208,7 +208,7 @@ namespace SFE::Render {
 
 		if (const auto treeComp = ECSHandler::registry().pinComponent<const TreeComponent>(mEntity)) {
 			if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(treeComp->getParent())) {
-				const auto transform = inverse(parentTransform->getTransform());
+				const auto transform = inverse(parentTransform->copyTransform());
 
 				curPos = transform * Math::Vec4(curPos, 1.f);
 				startPos = transform * Math::Vec4(startPos, 1.f);
@@ -267,7 +267,7 @@ namespace SFE::Render {
 			}
 		}
 		else {
-			const auto camTrans = inverse(cameraTransform->getTransform());
+			const auto camTrans = inverse(cameraTransform->copyTransform());
 			oldPos = camTrans * Math::Vec4(oldPos, 1.f);
 			newPos = camTrans * Math::Vec4(newPos, 1.f);
 			entityPos = camTrans * Math::Vec4(entityPos, 1.f);
@@ -331,7 +331,7 @@ namespace SFE::Render {
 				const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
 				rotation = &cameraTransform->getQuaternion();
 
-				const auto camTrans = inverse(cameraTransform->getTransform());
+				const auto camTrans = inverse(cameraTransform->copyTransform());
 				const Math::Vec3 localOldPos = camTrans * Math::Vec4(oldPos, 1.f);
 				const Math::Vec3 localNewPos = camTrans * Math::Vec4(newPos, 1.f);
 				const Math::Vec3 localEntityPos = camTrans * Math::Vec4(pos, 1.f);

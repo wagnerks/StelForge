@@ -109,7 +109,8 @@ namespace SFE::PropertiesModule {
 
 		void markGlass(ecss::EntityId entity, float opacity, float ior, const Math::Vec3& tint);
 
-		ecss::EntityId spawnModelEntity(AssetsModule::Model* model, const char* path, const Math::Vec3& pos, const Math::Vec3& scale, bool glass) {
+		ecss::EntityId spawnModelEntity(AssetsModule::Model* model, const char* path, const Math::Vec3& pos, const Math::Vec3& scale, bool glass,
+			const Math::Vec3& rotate = {}) {
 			if (!SFE::Engine::instance()->isAlive() || !model) {
 				return {};
 			}
@@ -127,12 +128,15 @@ namespace SFE::PropertiesModule {
 			auto transformComp = ECSHandler::addComponent<TransformComponent>(entity, entity);
 			transformComp->setPos(pos);
 			transformComp->setScale(scale);
-			transformComp->reloadTransform();
-			// ChunksSystem seeds before RenderSystem exists — keep GPU transform without relying on the notify.
-			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(entity, transformComp->getTransform());
-			SFE::SystemsModule::TasksManager::instance()->notify({
-				entity, SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED, transformComp
-			});
+			transformComp->setRotate(rotate);
+			// ChunksSystem seeds before RenderSystem exists, so the render copy is filled here rather than left to the
+			// notify. It is computed from the spawn values, the way reloadTransform does for an entity with no parent,
+			// instead of reloading the component: the setters above have already woken TransformSystem, whose worker
+			// may be reloading the same component right now.
+			Math::Quaternion<float> rotation;
+			rotation.eulerToQuaternion(rotate);
+			const auto seed = Math::translate(Math::Mat4{ 1.f }, pos) * rotation.toMat4() * Math::scale(Math::Mat4{ 1.f }, scale);
+			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(entity, seed);
 			ECSHandler::addComponent<IsDrawableComponent>(entity);
 
 			PropertiesSystem::bindRenderable(entity);
@@ -196,17 +200,9 @@ namespace SFE::PropertiesModule {
 				return {};
 			}
 
-			const auto id = spawnModelEntity(model, kPath, pos, { 0.1f }, false);
+			const auto id = spawnModelEntity(model, kPath, pos, { 0.1f }, false, { 0.f, yawDegrees, 0.f });
 			if (!id) {
 				return {};
-			}
-
-			if (auto transform = ECSHandler::registry().pinComponent<TransformComponent>(id)) {
-				transform->setRotate({ 0.f, yawDegrees, 0.f });
-				transform->reloadTransform();
-				SFE::SystemsModule::TasksManager::instance()->notify({
-					id, SFE::SystemsModule::TaskType::TRAHSFORM_RELOADED, transform.get()
-				});
 			}
 
 			if (const auto* clip = pickPlaybackClip(model)) {

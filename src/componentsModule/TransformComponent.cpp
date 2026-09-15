@@ -1,5 +1,10 @@
 #include "TransformComponent.h"
 
+#include <array>
+#include <functional>
+#include <mutex>
+#include <optional>
+
 #include "TreeComponent.h"
 #include "core/ECSHandler.h"
 #include "multithreading/ThreadPool.h"
@@ -7,6 +12,15 @@
 #include "systemsModule/systems/TransformSystem.h"
 
 namespace SFE::ComponentsModule {
+	namespace {
+		// Outside the component, so it stays trivially copyable. Striped by entity: a collision only makes two
+		// entities wait on each other, and no code holds two of these at once.
+		std::mutex& transformLock(const ecss::EntityId entity) {
+			static std::array<std::mutex, 64> locks;
+			return locks[entity % locks.size()];
+		}
+	}
+
 	const Math::Vec3& TransformComponent::getPos(bool global) const {
 		if (global) {
 			return mTransform[3].xyz;
@@ -25,8 +39,7 @@ namespace SFE::ComponentsModule {
 	}
 	void TransformComponent::setPos(const Math::Vec3& pos) {
 		if (mPos != pos) {
-			mPos = pos;
-			markDirty();
+			change([&] { mPos = pos; });
 		}
 	}
 
@@ -46,8 +59,7 @@ namespace SFE::ComponentsModule {
 	}
 	void TransformComponent::setRotate(const SFE::Math::Vec3& rotate) {
 		if (mRotate != rotate) {
-			mRotate = rotate;
-			markDirty();
+			change([&] { mRotate = rotate; });
 		}
 	}
 
@@ -70,8 +82,7 @@ namespace SFE::ComponentsModule {
 	}
 	void TransformComponent::setScale(const SFE::Math::Vec3& scale) {
 		if (mScale != scale) {
-			mScale = scale;
-			markDirty();
+			change([&] { mScale = scale; });
 		}
 	}
 
@@ -79,7 +90,13 @@ namespace SFE::ComponentsModule {
 		return mTransform;
 	}
 
+	Math::Mat4 TransformComponent::copyTransform() const {
+		std::lock_guard lock(transformLock(getEntityId()));
+		return mTransform;
+	}
+
 	void TransformComponent::setTransform(const SFE::Math::Mat4& transform) {
+		std::lock_guard lock(transformLock(getEntityId()));
 		mTransform = transform;
 	}
 
@@ -91,31 +108,35 @@ namespace SFE::ComponentsModule {
 		return mRotateQuaternion;
 	}
 
+	// The camera and the runtime reload on the main thread while TransformSystem's worker reloads the same component,
+	// so the values, the flag and the matrix change under the component's lock. The parent's matrix is copied and
+	// the children are marked outside it, so no thread ever holds two locks.
 	void TransformComponent::reloadTransform() {
-		if (!mDirty) {
-			return;
-		}
-		mDirty = false;
-
-		mRotateQuaternion.eulerToQuaternion(mRotate);
-
-		auto newTransform = calculateLocalTransform();
-		
-		if (const auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(getEntityId())) {
+		const auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(getEntityId());
+		std::optional<Math::Mat4> parent;
+		if (tree) {
 			if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(tree->getParent())) {
-				newTransform = parentTransform->getTransform() * newTransform;
+				parent = parentTransform->copyTransform();
 			}
+		}
 
-			mTransform = std::move(newTransform);
+		{
+			std::lock_guard lock(transformLock(getEntityId()));
+			if (!mDirty) {
+				return;
+			}
+			mDirty = false;
+			mRotateQuaternion.eulerToQuaternion(mRotate);
+			const auto local = calculateLocalTransform();
+			mTransform = parent ? *parent * local : local;
+		}
 
+		if (tree) {
 			for (const auto childTransform : tree->getChildren()) {
 				if (auto transformPtr = ECSHandler::registry().pinComponent<TransformComponent>(childTransform)) {
 					transformPtr->markDirty();
 				}
 			}
-		}
-		else {
-			mTransform = std::move(newTransform);
 		}
 	}
 
@@ -124,7 +145,7 @@ namespace SFE::ComponentsModule {
 	}
 
 	SFE::Math::Mat4 TransformComponent::getViewMatrix() const {
-		return inverse(mTransform);;
+		return inverse(copyTransform());
 	}
 
 	SFE::Math::Vec3 TransformComponent::getRight() const {
@@ -151,12 +172,21 @@ namespace SFE::ComponentsModule {
 	// yet), and skipping the notify left the change with no reload at all -- now and then the sun kept an
 	// identity rotation. The system merges repeated notifications for one entity.
 	void TransformComponent::markDirty() {
-		mDirty = true;
+		change([] {});
+	}
 
+	void TransformComponent::change(const std::function<void()>& write) {
+		{
+			std::lock_guard lock(transformLock(getEntityId()));
+			write();
+			mDirty = true;
+		}
+		// Outside the lock: a worker woken by it may reload this very component at once.
 		SystemsModule::TasksManager::instance()->notify({ getEntityId(), SystemsModule::TRANSFORM_UPDATE });
 	}
 
 	bool TransformComponent::isDirty() const {
+		std::lock_guard lock(transformLock(getEntityId()));
 		return mDirty;
 	}
 }

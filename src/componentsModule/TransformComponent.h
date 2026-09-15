@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <functional>
+
 #include "mathModule/Forward.h"
 #include "mathModule/Quaternion.h"
 
@@ -13,11 +15,10 @@ namespace SFE::ComponentsModule {
 	 * so it is the one whose array benefits most from ecss relocating sectors with a memmove
 	 * instead of a move constructor per element.
 	 *
-	 * Values are not synchronised. The component used to hold a shared_mutex, but every getter
-	 * handed out a reference that outlived the lock, so it never provided the guarantee it
-	 * looked like it did. Order reads against writes the way ecss intends -- claim the type for
-	 * the duration of a system with `registry.access<Read<TransformComponent>>()` -- rather
-	 * than per component.
+	 * Setters, reloadTransform and copyTransform take a lock striped by entity and kept outside the
+	 * component: TransformSystem's worker reloads while the main thread sets values and reloads the
+	 * camera. The reference getters are not synchronised; code on another thread than the one
+	 * changing the entity reads copyTransform, or the TransformMatComp copy the worker publishes.
 	 */
 	class TransformComponent : public ecss::ComponentInterface {
 	public:
@@ -45,6 +46,8 @@ namespace SFE::ComponentsModule {
 		void setScale(const Math::Vec3& scale);
 
 		const Math::Mat4& getTransform() const;
+		// A whole matrix even while another thread reloads it.
+		Math::Mat4 copyTransform() const;
 		void setTransform(const Math::Mat4& transform);
 
 		Math::Mat4 getRotationMatrix() const;
@@ -63,6 +66,9 @@ namespace SFE::ComponentsModule {
 		bool isDirty() const;
 
 	private:
+		// Writes a value and raises the flag under the lock, then notifies TransformSystem.
+		void change(const std::function<void()>& write);
+
 		bool mDirty = false;
 
 		Math::Quaternion<float> mRotateQuaternion;
