@@ -39,7 +39,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Consoles need their own RHI backend (DX12, PS5) and shader translation (GLSL → SPIR-V → HLSL). The GPU-driven design itself maps directly.
 
 ## 10. Engine users cannot add their own render passes
-- [ ] The pass list is a compile-time array, `RENDER_PASSES` in `systemsModule/SystemsPriority.h`. `RenderSystem` builds its passes from it once, and the order is the array index. There is no public API to add a pass from game code or a plugin, or to put one before or after a named pass. `setPriority` is stored and never used for ordering.
+- [x] The pass list is a compile-time array, `RENDER_PASSES` in `systemsModule/SystemsPriority.h`. `RenderSystem` builds its passes from it once, and the order is the array index. There is no public API to add a pass from game code or a plugin, or to put one before or after a named pass. `setPriority` is stored and never used for ordering.
 - Already reusable: the `RenderPass` interface, `FrameBlackboard` (pass outputs shared by name), `RenderData`, and `GpuScene`'s public cull and draw calls.
 - Fix: `RenderSystem::addPass(name, factory, after = "<pass name>")` on top of the default list. Blackboard names are plain strings, so a typo silently yields an empty handle; public names should be constants and a missing resource should warn.
 

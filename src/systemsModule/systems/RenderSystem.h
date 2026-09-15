@@ -2,6 +2,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <string_view>
 #include <mutex>
 #include <shared_mutex>
 #include <thread>
@@ -173,6 +176,14 @@ namespace SFE::SystemsModule {
 		};
 		BoneRange boneRange(ecss::EntityId entity);
 
+		// Passes from game code or a plugin. The pass is initialised at once and runs every frame in list order,
+		// after the pass named `after`, or last when `after` is empty or names no pass. A name already in the list
+		// is refused. Main thread, between frames.
+		bool addRenderPass(std::string name, std::unique_ptr<Render::RenderPass> pass, std::string_view after = {});
+		// Removes and destroys the named pass; false when there is none. Main thread, between frames.
+		bool removeRenderPass(std::string_view name);
+		std::vector<std::string> renderPassNames() const { return mPassNames; }
+
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
 		// waits for in-flight readers, so a waiting mutate never blocks readers already running.
 		class WorldReadGuard {
@@ -281,8 +292,8 @@ namespace SFE::SystemsModule {
 
 		RenderData mRenderData;
 		int mRenderedFrames = 0; // drives the one-shot per-pass dump
-		std::vector<Render::RenderPass*> mRenderPasses;
-		std::vector<const char*> mPassNames;
+		std::vector<std::unique_ptr<Render::RenderPass>> mRenderPasses;
+		std::vector<std::string> mPassNames; // one per pass, same order
 		std::shared_future<void> updateLock;
 
 		Render::BufferHandle cameraMatricesUBO;

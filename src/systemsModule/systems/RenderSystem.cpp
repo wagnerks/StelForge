@@ -175,11 +175,7 @@ namespace SFE::SystemsModule {
 				continue;
 			}
 			SFE::Engine::reproTrace(entry.name);
-			auto* pass = entry.create();
-			pass->init(mRenderData);
-			pass->setPriority(i);
-			mRenderPasses.emplace_back(pass);
-			mPassNames.emplace_back(entry.name);
+			addRenderPass(entry.name, std::unique_ptr<Render::RenderPass>(entry.create()));
 		}
 		SFE::Engine::reproTrace("RenderSystem passes ok");
 
@@ -613,13 +609,40 @@ namespace SFE::SystemsModule {
 		}
 	}
 
+	bool RenderSystem::addRenderPass(std::string name, std::unique_ptr<Render::RenderPass> pass, const std::string_view after) {
+		if (!pass || std::find(mPassNames.begin(), mPassNames.end(), name) != mPassNames.end()) {
+			return false;
+		}
+		auto position = mPassNames.size();
+		if (!after.empty()) {
+			if (const auto it = std::find(mPassNames.begin(), mPassNames.end(), after); it != mPassNames.end()) {
+				position = static_cast<size_t>(it - mPassNames.begin()) + 1;
+			}
+		}
+		pass->init(mRenderData);
+		mRenderPasses.insert(mRenderPasses.begin() + static_cast<std::ptrdiff_t>(position), std::move(pass));
+		mPassNames.insert(mPassNames.begin() + static_cast<std::ptrdiff_t>(position), std::move(name));
+		return true;
+	}
+
+	bool RenderSystem::removeRenderPass(const std::string_view name) {
+		const auto it = std::find(mPassNames.begin(), mPassNames.end(), name);
+		if (it == mPassNames.end()) {
+			return false;
+		}
+		const auto index = it - mPassNames.begin();
+		mRenderPasses.erase(mRenderPasses.begin() + index);
+		mPassNames.erase(it);
+		return true;
+	}
+
 	bool RenderSystem::shouldRunPass(size_t passIndex) const
 	{
 		if (passIndex >= mPassNames.size()) {
 			return true;
 		}
 
-		const char* name = mPassNames[passIndex];
+		const char* name = mPassNames[passIndex].c_str();
 		const auto& gfx = mRenderData.graphics;
 		if (std::strcmp(name, "SSAO") == 0) {
 			return gfx.ssao;
@@ -693,7 +716,7 @@ namespace SFE::SystemsModule {
 			mRenderPasses[i]->render(mRenderData, cmd);
 			if (info->passCount < 16) {
 				info->passTimes[info->passCount] = {
-					i < mPassNames.size() ? mPassNames[i] : "pass",
+					mPassNames[i].c_str(),
 					std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPass).count()
 				};
 				++info->passCount;
@@ -703,7 +726,7 @@ namespace SFE::SystemsModule {
 				rhi->endCommandList(cmd);
 				rhi->submit(cmd);
 				rhi->waitIdle();
-				passDump.write(i, i < mPassNames.size() ? mPassNames[i] : "pass", mRenderData.frame);
+				passDump.write(i, mPassNames[i].c_str(), mRenderData.frame);
 				cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
 			}
 		}
@@ -736,9 +759,5 @@ namespace SFE::SystemsModule {
 		info->cpuMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tFrame).count();
 	}
 
-	RenderSystem::~RenderSystem() {
-		for (const auto renderPass : mRenderPasses) {
-			delete renderPass;
-		}
-	}
+	RenderSystem::~RenderSystem() = default;
 }

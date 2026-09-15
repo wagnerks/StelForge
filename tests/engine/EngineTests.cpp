@@ -321,6 +321,41 @@ namespace SFE::EngineTests {
 		step();
 	}
 
+	// A pass from outside the engine goes where it is asked to, runs every frame from then on and can be removed.
+	TEST(EngineTest, CustomRenderPassRunsWhereItWasInserted) {
+		struct CountingPass : Render::RenderPass {
+			int* inits = nullptr;
+			int* renders = nullptr;
+			void init(SystemsModule::RenderData&) override { ++*inits; }
+			void render(SystemsModule::RenderData&, Render::CommandListHandle) override { ++*renders; }
+		};
+		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		ASSERT_NE(renderSystem, nullptr);
+
+		int inits = 0;
+		int renders = 0;
+		auto pass = std::make_unique<CountingPass>();
+		pass->inits = &inits;
+		pass->renders = &renders;
+		ASSERT_TRUE(renderSystem->addRenderPass("TestCounting", std::move(pass), "Geometry"));
+		EXPECT_EQ(inits, 1);
+		EXPECT_FALSE(renderSystem->addRenderPass("TestCounting", std::make_unique<CountingPass>())) << "a second pass took a name already in use";
+
+		const auto names = renderSystem->renderPassNames();
+		const auto geometry = std::find(names.begin(), names.end(), "Geometry");
+		ASSERT_NE(geometry, names.end());
+		ASSERT_NE(geometry + 1, names.end());
+		EXPECT_EQ(*(geometry + 1), "TestCounting");
+
+		step(3);
+		EXPECT_EQ(renders, 3);
+
+		EXPECT_TRUE(renderSystem->removeRenderPass("TestCounting"));
+		EXPECT_FALSE(renderSystem->removeRenderPass("TestCounting"));
+		step(2);
+		EXPECT_EQ(renders, 3) << "a removed pass kept running";
+	}
+
 	// Tick systems step from the frame under a fixed step: world time (1 tick a second) moves in whole seconds.
 	TEST(EngineTest, WorldTimeTicksFromTheFrameStep) {
 		auto* worldTime = ECSHandler::getSystem<SystemsModule::WorldTimeSystem>();
