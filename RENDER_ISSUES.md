@@ -122,8 +122,8 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [x] `GlassPass.cpp:197-203, 232-238` write bindings 12 and 14, which the layout (`:77-87`) lacks. Both backends log "set has no binding" twice per frame, and the log spam hides real errors.
 
 ## 33. Smaller backend differences
-- [ ] `RenderSystem.cpp:573` binds the frame set with an empty pipeline. Vulkan drops it and GL applies it, so GL's persistent binding can hide a missing bind that only breaks on Vulkan.
-- [ ] Not verified: Vulkan `runOnWorkerThread` has no lock, and `TextureHandler.cpp:75` calls `createTexture` on the calling thread. If textures load off the main thread, the resource arrays and the upload command pool are used from two threads.
+- [x] `RenderSystem.cpp:573` binds the frame set with an empty pipeline. Vulkan drops it and GL applies it, so GL's persistent binding can hide a missing bind that only breaks on Vulkan.
+- [x] Not verified: Vulkan `runOnWorkerThread` has no lock, and `TextureHandler.cpp:75` calls `createTexture` on the calling thread. If textures load off the main thread, the resource arrays and the upload command pool are used from two threads.
 
 ## 34. Housekeeping
 - [ ] `bin/compare/**` outputs are tracked in git, so every `compare-backends.ps1` run dirties the tree. Ignore them.

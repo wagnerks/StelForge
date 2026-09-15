@@ -582,8 +582,9 @@ namespace SFE::SystemsModule {
 		PassDumpWriter passDump(dumpPasses ? engine->passDumpDir() : std::string{});
 		passDump.seed(mRenderData.frame);
 
+		// No frame-wide bind here: every pass binds its own sets against its pipeline, as Vulkan requires, and a bind
+		// with no pipeline would be kept by OpenGL alone and hide a pass that forgot one.
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
-		rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
 		for (size_t i = 0; i < mRenderPasses.size(); ++i) {
 			if (!shouldRunPass(i)) {
 				continue;
@@ -604,7 +605,6 @@ namespace SFE::SystemsModule {
 				rhi->waitIdle();
 				passDump.write(i, i < mPassNames.size() ? mPassNames[i] : "pass", mRenderData.frame);
 				cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
-				rhi->cmdBindDescriptorSets(cmd, {}, 0, &frameSet, 1);
 			}
 		}
 		rhi->endCommandList(cmd);

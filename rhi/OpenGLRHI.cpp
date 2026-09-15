@@ -1528,37 +1528,6 @@ namespace SFE::Render
 			}
 		}
 
-		// TEMP DIAG -- remove
-		{
-			bool hasShadowBinding = false;
-			for (const auto& b : bindings) {
-				if (b.type == DescriptorType::CombinedImageSampler && b.binding == 8 && !b.images.empty()) {
-					hasShadowBinding = true;
-					break;
-				}
-			}
-			static int diagOnce = 0;
-			if (hasShadowBinding && diagOnce < 2) {
-				++diagOnce;
-				for (const int unit : { 6, 8 }) {
-					GLint samplerId = 0, texId = 0, cmpMode = -1, cmpFunc = -1, texCmpMode = -1;
-					glGetIntegeri_v(GL_SAMPLER_BINDING, unit, &samplerId);
-					glActiveTexture(GL_TEXTURE0 + unit);
-					glGetIntegerv(GL_TEXTURE_BINDING_2D_ARRAY, &texId);
-					if (samplerId) {
-						glGetSamplerParameteriv(samplerId, GL_TEXTURE_COMPARE_MODE, &cmpMode);
-						glGetSamplerParameteriv(samplerId, GL_TEXTURE_COMPARE_FUNC, &cmpFunc);
-					}
-					if (texId) {
-						glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, &texCmpMode);
-					}
-					RhiLog::error(
-						"DIAG unit %d: tex=%d sampler=%d cmpMode=0x%X cmpFunc=0x%X texCmpMode=0x%X (want mode 0x%X func 0x%X)",
-						unit, texId, samplerId, cmpMode, cmpFunc, texCmpMode,
-						static_cast<int>(GL_COMPARE_REF_TO_TEXTURE), static_cast<int>(GL_LEQUAL));
-				}
-			}
-		}
 	}
 
 	FramebufferHandle OpenGLRHI::getBackbufferFramebuffer()
