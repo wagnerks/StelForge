@@ -72,10 +72,30 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 	samplerDesc.maxAnisotropy = 1.f;
 
 
-	if (SFE::Engine::isMainThread() || SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::Vulkan) {
+	if (SFE::Engine::isMainThread()) {
 		texture->texture = SFE::Engine::instance()->rhi()->createTexture(desc, data);
 		texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
 		stbi_image_free(data);
+	}
+	else if (SFE::Render::activeGraphicsBackend() != SFE::Render::GraphicsBackend::OpenGL) {
+		// Vulkan resources are created on the main thread, the way MeshVaoRegistry uploads meshes: creating a
+		// texture submits an upload to the queue the frame submits to, and the resource pools are not synchronised.
+		// The task frees the pixels, so leaving the wait at shutdown cannot free them under it.
+		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([texture, desc, data, samplerDesc]() {
+			texture->texture = SFE::Engine::instance()->rhi()->createTexture(desc, data);
+			texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
+			stbi_image_free(data);
+		});
+		if (fut.valid()) {
+			while (fut.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+				if (!SFE::ThreadPool::isAlive() || SFE::ThreadPool::instance()->isShuttingDown()) {
+					break;
+				}
+			}
+		}
+		else {
+			stbi_image_free(data);
+		}
 	}
 	else {
 		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::RESOURCE_LOADING>([id = texture->assetId, desc, data, samplerDesc]()mutable {
