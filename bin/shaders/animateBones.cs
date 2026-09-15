@@ -15,6 +15,10 @@ struct BoneDesc {
     int sclOff;
     int sclCnt;
     int boneId;
+    float radius;    // the farthest vertex weighted to the bone, in its bind space
+    uint boundsMask; // the pose boxes of the meshes it moves
+    float _p0;
+    float _p1;
 };
 
 struct Vec3Key {
@@ -46,7 +50,7 @@ struct AnimRecord {
     uint boneOffset; // the entity's first matrix in OutBones, and its first row in Worlds
     uint descOffset; // the clip's first entry in BoneDescs and Order
     uint boneCount;
-    uint flags;
+    uint flags;      // kPlaying, kLoop, and the pose bounds count in bits 8-15
     float start;     // seconds on the clock at which the clip was at tick 0
     float ticksPerSecond;
     float duration;
@@ -218,6 +222,12 @@ void main() {
     float time = animTime(inst);
     int row = int(inst.boneOffset);
     int desc = int(inst.descOffset);
+    // The pose bounds of the entity's skinned meshes, in the matrices before its bones, grown below from every posed
+    // joint by its radius: column 0 the minimum, column 1 the maximum, in the space the skinned vertices land in.
+    uint boundsCount = (inst.flags >> 8) & 0xFFu;
+    for (uint j = 0u; j < boundsCount; ++j) {
+        outBones[row - 1 - int(j)] = mat4(vec4(vec3(3.0e38), 1.0), vec4(vec3(-3.0e38), 1.0), vec4(0.0), vec4(0.0));
+    }
     for (int i = 0; i < int(inst.boneCount); ++i) {
         int bi = order[desc + i];
         BoneDesc b = bones[desc + bi];
@@ -248,5 +258,28 @@ void main() {
         worlds[row + bi] = world;
         precise mat4 skin = world * b.offset;
         outBones[row + b.boneId] = skin;
+
+        if (b.boundsMask != 0u) {
+            // Read back instead of reusing `world`: a second consumer of it made the OpenGL compiler evaluate the
+            // bone chain differently, and skinned vertices moved a few ULPs on that backend alone.
+            mat4 posed = worlds[row + bi];
+            // Sums written out, like the rest of this file: dot() is summed in a different order on each backend.
+            float sx = (posed[0].x * posed[0].x + posed[0].y * posed[0].y) + posed[0].z * posed[0].z;
+            float sy = (posed[1].x * posed[1].x + posed[1].y * posed[1].y) + posed[1].z * posed[1].z;
+            float sz = (posed[2].x * posed[2].x + posed[2].y * posed[2].y) + posed[2].z * posed[2].z;
+            float scale = sqrt(max(sx, max(sy, sz)));
+            vec3 reach = vec3(b.radius * scale);
+            vec3 lo = posed[3].xyz - reach;
+            vec3 hi = posed[3].xyz + reach;
+            for (uint j = 0u; j < boundsCount; ++j) {
+                if ((b.boundsMask & (1u << j)) != 0u) {
+                    int slot = row - 1 - int(j);
+                    mat4 box = outBones[slot];
+                    box[0].xyz = min(box[0].xyz, lo);
+                    box[1].xyz = max(box[1].xyz, hi);
+                    outBones[slot] = box;
+                }
+            }
+        }
     }
 }

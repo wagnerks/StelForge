@@ -20,6 +20,8 @@ namespace AssetsModule {
 		Model(SFE::Tree<SFE::MeshObject3D> model, Armature armature, std::vector<Animation> animations);
 
 		void bindMeshes();
+		// Armature::poseBoundsCount, boneRadius and boneBoundsMask, and Mesh::poseBounds of every skinned mesh.
+		void measurePoseBounds();
 		void recalculateNormals(bool smooth = true);
 
 	public:

@@ -15,6 +15,9 @@ namespace SFE {
 
 		std::vector<unsigned int> indices;
 		std::vector<VertexType> vertices;
+		// Skinned meshes of a model: 1 + the slot its pose bounds are written to (Armature::poseBoundsCount). 0 for
+		// a rigid mesh, or a skinned one without pose bounds.
+		uint32_t poseBounds = 0;
 	};
 
 	using Mesh3D = Mesh<Vertex3D>;

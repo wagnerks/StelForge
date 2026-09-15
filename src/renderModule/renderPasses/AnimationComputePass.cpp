@@ -18,7 +18,7 @@ using namespace SFE::Render;
 using namespace SFE::Render::RenderPasses;
 
 namespace {
-	static_assert(sizeof(AnimationComputePass::GpuBoneDesc) == 160);
+	static_assert(sizeof(AnimationComputePass::GpuBoneDesc) == 176);
 	static_assert(sizeof(AnimationComputePass::GpuVec3Key) == 16);
 	static_assert(sizeof(AnimationComputePass::GpuQuatKey) == 32);
 	static_assert(sizeof(AnimationComputePass::GpuRecord) == 96);
@@ -111,6 +111,10 @@ const AnimationComputePass::ClipInfo* AnimationComputePass::packClip(const Asset
 		desc.offset = bone.offset;
 		desc.restLocal = bone.transform;
 		desc.boneId = static_cast<int>(bone.id);
+		if (bone.id < armature.boneRadius.size()) {
+			desc.radius = armature.boneRadius[bone.id];
+			desc.boundsMask = armature.boneBoundsMask[bone.id];
+		}
 		if (bone.parentBoneIdx == std::numeric_limits<uint32_t>::max() || bone.parentBoneIdx >= armature.bones.size()) {
 			desc.parent = -1;
 		}
@@ -179,7 +183,7 @@ void AnimationComputePass::writeRecord(const ecss::EntityId entity) {
 	record.boneOffset = bones.offset;
 	record.descOffset = clip->descOffset;
 	record.boneCount = clip->boneCount;
-	record.flags = (animation->mPlay ? kPlaying : 0u) | (animation->mLoop ? kLoop : 0u);
+	record.flags = (animation->mPlay ? kPlaying : 0u) | (animation->mLoop ? kLoop : 0u) | (bones.bounds << 8);
 	record.start = static_cast<float>(animation->mStart - mEpoch);
 	record.ticksPerSecond = ComponentsModule::AnimationComponent::ticksPerSecond(*anim);
 	record.duration = anim->getDuration();

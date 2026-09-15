@@ -35,6 +35,9 @@ namespace SFE::Render::RenderPasses {
 			int sclOff = 0;
 			int sclCnt = 0;
 			int boneId = 0;
+			float radius = 0.f;      // Armature::boneRadius
+			uint32_t boundsMask = 0; // Armature::boneBoundsMask
+			float pad[2]{};
 		};
 
 		struct GpuVec3Key {
@@ -51,7 +54,7 @@ namespace SFE::Render::RenderPasses {
 			uint32_t boneOffset = 0; // the entity's range in the bone buffer, also its rows in the worlds buffer
 			uint32_t descOffset = 0; // the clip's first bone desc and bone order entry
 			uint32_t boneCount = 0;
-			uint32_t flags = 0;
+			uint32_t flags = 0; // playing, loop, and the pose bounds count in bits 8-15
 			float start = 0.f; // seconds, relative to mEpoch
 			float ticksPerSecond = 0.f;
 			float duration = 0.f;

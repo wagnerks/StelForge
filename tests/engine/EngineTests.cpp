@@ -236,7 +236,7 @@ namespace SFE::EngineTests {
 			std::vector<std::pair<uint32_t, uint32_t>> ranges;
 			for (const auto id : ids) {
 				const auto range = renderSystem->boneRange(id);
-				ranges.emplace_back(range.offset, range.offset + range.count);
+				ranges.emplace_back(range.offset - range.bounds, range.offset + range.count);
 			}
 			std::sort(ranges.begin(), ranges.end());
 			for (size_t i = 1; i < ranges.size(); ++i) {

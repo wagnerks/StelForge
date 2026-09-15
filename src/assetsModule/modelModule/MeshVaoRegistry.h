@@ -15,7 +15,7 @@ namespace SFE {
 		uint32_t firstVertex = 0;
 		uint32_t vertexCount = 0;
 		float boundsMin[3]{};
-		uint32_t skinned = 0;
+		uint32_t skinned = 0; // 0 rigid, 1 skinned, 2 + n skinned with pose bounds in slot n
 		float boundsMax[3]{};
 		float pad = 0.f;
 	};

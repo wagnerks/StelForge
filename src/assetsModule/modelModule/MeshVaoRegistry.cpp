@@ -100,7 +100,7 @@ namespace SFE {
 					entry.boundsMax[i] = (std::max)(entry.boundsMax[i], v.position[i]);
 				}
 				if (v.boneIDs[0] >= 0) {
-					entry.skinned = 1;
+					entry.skinned = mesh->poseBounds ? 1 + mesh->poseBounds : 1;
 				}
 			}
 		}

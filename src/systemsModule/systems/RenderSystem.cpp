@@ -401,8 +401,11 @@ namespace SFE::SystemsModule {
 		}
 		auto& registry = ECSHandler::registry();
 		uint32_t count = 0;
+		// Without the armature its meshes' bounds slots are unknown, so it gets them all.
+		uint32_t bounds = AssetsModule::Armature::kMaxPoseBounds;
 		if (const auto armature = registry.pinComponent<const ComponentsModule::ArmatureComponent>(entity)) {
 			count = static_cast<uint32_t>(armature->armature.bones.size());
+			bounds = armature->armature.poseBoundsCount;
 		}
 		if (count == 0) {
 			if (const auto pose = registry.pinComponent<const ComponentsModule::ArmatureBonesComponent>(entity)) {
@@ -413,19 +416,21 @@ namespace SFE::SystemsModule {
 			return {};
 		}
 
-		BoneRange range{ 0, count };
-		const auto fit = std::find_if(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), [count](const BoneRange& r) { return r.count >= count; });
+		// Free ranges count raw slots: the bounds and the bones together.
+		const uint32_t slots = bounds + count;
+		BoneRange range{ 0, count, bounds };
+		const auto fit = std::find_if(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), [slots](const BoneRange& r) { return r.count >= slots; });
 		if (fit != mFreeBoneRanges.end()) {
-			range.offset = fit->offset;
-			fit->offset += count;
-			fit->count -= count;
+			range.offset = fit->offset + bounds;
+			fit->offset += slots;
+			fit->count -= slots;
 			if (fit->count == 0) {
 				mFreeBoneRanges.erase(fit);
 			}
 		}
 		else {
-			range.offset = static_cast<uint32_t>(mBonesUsed);
-			mBonesUsed += count;
+			range.offset = static_cast<uint32_t>(mBonesUsed) + bounds;
+			mBonesUsed += slots;
 			if (mBonesUsed > mBoneCapacity) {
 				size_t capacity = mBoneCapacity;
 				while (capacity < mBonesUsed) {
@@ -447,7 +452,7 @@ namespace SFE::SystemsModule {
 		if (it == mBoneRanges.end()) {
 			return;
 		}
-		const auto range = it->second;
+		const BoneRange range{ it->second.offset - it->second.bounds, it->second.count + it->second.bounds };
 		mBoneRanges.erase(it);
 		auto next = std::lower_bound(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), range.offset,
 			[](const BoneRange& r, uint32_t offset) { return r.offset < offset; });
@@ -534,17 +539,28 @@ namespace SFE::SystemsModule {
 			if (!armature || armature->boneMatrices.empty()) {
 				continue;
 			}
-			// An animation, playing or stopped, is written straight into the buffer by AnimationComputePass.
-			if (const auto anim = registry.pinComponent<const ComponentsModule::AnimationComponent>(id);
-				anim && anim->mCurrentAnimation) {
-				continue;
-			}
 			const auto range = boneRange(id);
 			const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(range.count));
 			if (boneCount == 0) {
 				continue;
 			}
-			rhi->updateBuffer(bones, static_cast<size_t>(range.offset) * sizeof(Math::Mat4), boneCount * sizeof(Math::Mat4), armature->boneMatrices.data());
+			// Empty bounds, so the cull falls back to the bind pose until an animation writes them. An animation,
+			// playing or stopped, writes the bones straight into the buffer in AnimationComputePass, after this upload.
+			const bool animated = [&] {
+				const auto anim = registry.pinComponent<const ComponentsModule::AnimationComponent>(id);
+				return anim && anim->mCurrentAnimation;
+			}();
+			std::vector<Math::Mat4> slots(range.bounds + (animated ? 0 : boneCount));
+			for (uint32_t i = 0; i < range.bounds; ++i) {
+				slots[i][0] = Math::Vec4(1.f);
+				slots[i][1] = Math::Vec4(-1.f);
+			}
+			if (!animated) {
+				std::copy_n(armature->boneMatrices.begin(), boneCount, slots.begin() + range.bounds);
+			}
+			if (!slots.empty()) {
+				rhi->updateBuffer(bones, static_cast<size_t>(range.offset - range.bounds) * sizeof(Math::Mat4), slots.size() * sizeof(Math::Mat4), slots.data());
+			}
 		}
 	}
 

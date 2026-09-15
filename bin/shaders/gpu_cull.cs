@@ -93,8 +93,14 @@ layout(SFE_SET(0, 33), std430) readonly buffer Pyramid {
     float pyramid[];
 };
 
-// Animation can move vertices past the bind pose, so skinned bounds get this much of their largest
-// half-extent added on every axis.
+// A skinned mesh with pose bounds (skinned = 2 + slot) reads them from the matrix `slot + 1` before its bones:
+// column 0 xyz the minimum, column 1 the maximum, and a minimum above the maximum when nothing wrote them yet.
+layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
+    mat4 bones[];
+};
+
+// Without pose bounds, animation can move vertices past the bind pose, so skinned bounds get this much of their
+// largest half-extent added on every axis.
 const float kSkinnedInflate = 0.5;
 
 bool visibleInView(vec3 center, vec3 extents) {
@@ -173,17 +179,28 @@ void main() {
     }
     Batch batch = batches[b];
     GpuMesh mesh = meshes[batch.mesh];
-    vec3 localCenter = (mesh.boundsMin + mesh.boundsMax) * 0.5;
-    vec3 localExtents = (mesh.boundsMax - mesh.boundsMin) * 0.5;
+    vec3 meshCenter = (mesh.boundsMin + mesh.boundsMax) * 0.5;
+    vec3 meshExtents = (mesh.boundsMax - mesh.boundsMin) * 0.5;
 
     uint count = 0u;
     for (uint i = 0u; i < batch.instanceCount; ++i) {
         uint slot = batch.firstInstance + i;
         SceneInstance instance = instances[slot];
         mat4 m = model[instance.entity];
+        vec3 localCenter = meshCenter;
+        vec3 localExtents = meshExtents;
+        bool inflate = mesh.skinned != 0u;
+        if (mesh.skinned >= 2u && instance.boneOffset >= mesh.skinned - 1u) {
+            mat4 pose = bones[instance.boneOffset - (mesh.skinned - 1u)];
+            if (pose[0].x <= pose[1].x) {
+                localCenter = (pose[0].xyz + pose[1].xyz) * 0.5;
+                localExtents = (pose[1].xyz - pose[0].xyz) * 0.5;
+                inflate = false;
+            }
+        }
         vec3 center = (m * vec4(localCenter, 1.0)).xyz;
         vec3 extents = abs(m[0].xyz) * localExtents.x + abs(m[1].xyz) * localExtents.y + abs(m[2].xyz) * localExtents.z;
-        if (mesh.skinned != 0u) {
+        if (inflate) {
             extents += vec3(max(extents.x, max(extents.y, extents.z)) * kSkinnedInflate);
         }
         bool draw = visibleInView(center, extents);
