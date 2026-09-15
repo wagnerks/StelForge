@@ -321,6 +321,8 @@ namespace SFE::Render {
 			return;
 		}
 		const auto matComp = registry.pinComponent<const MaterialComponent>(entity);
+		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		const uint32_t boneOffset = renderSystem ? renderSystem->boneRange(entity).offset : 0;
 		auto& refs = mEntityRefs[entity];
 
 		meshComp->forEachDrawMesh(matComp.get(), [&](const RenderMeshData& mesh, const MaterialComponent* mat) {
@@ -342,7 +344,7 @@ namespace SFE::Render {
 				group.transparent = transparent;
 				const auto key = std::to_string(group.maskTexture.id) + (cutout ? "|c" : "|o") + (transparent ? "t" : "s");
 				const auto index = groupFor(List::Shadow, key, std::move(group));
-				addInstance(refs, entity, List::Shadow, index, caster.meshId, { entity, caster.meshId, materialIndex(), 0 });
+				addInstance(refs, entity, List::Shadow, index, caster.meshId, { entity, caster.meshId, materialIndex(), boneOffset });
 			}
 
 			if (mesh.indexCount == 0) {
@@ -351,7 +353,7 @@ namespace SFE::Render {
 			if (transparent) {
 				// Glass is one batch whatever the mesh: sortGlass orders every instance by depth.
 				const auto index = groupFor(List::Glass, "glass", DrawGroup{});
-				addInstance(refs, entity, List::Glass, index, 0, { entity, mesh.meshId, materialIndex(), 0 });
+				addInstance(refs, entity, List::Glass, index, 0, { entity, mesh.meshId, materialIndex(), boneOffset });
 				return;
 			}
 			DrawGroup group;
@@ -361,7 +363,7 @@ namespace SFE::Render {
 			group.textureKey = MaterialRules::textureKey(material.materials);
 			const auto key = group.vertexShader + '|' + group.fragmentShader + '|' + std::to_string(group.textureKey);
 			const auto index = groupFor(List::GBuffer, key, std::move(group));
-			addInstance(refs, entity, List::GBuffer, index, mesh.meshId, { entity, mesh.meshId, materialIndex(), 0 });
+			addInstance(refs, entity, List::GBuffer, index, mesh.meshId, { entity, mesh.meshId, materialIndex(), boneOffset });
 		});
 
 		// Outlined entities draw every submesh again into the outline list, with no material of their own.
@@ -369,7 +371,7 @@ namespace SFE::Render {
 			const auto group = groupFor(List::Outline, "outline", DrawGroup{});
 			for (const auto& node : meshComp->meshGraph) {
 				if (node.value && node.value.indexCount != 0) {
-					addInstance(refs, entity, List::Outline, group, node.value.meshId, { entity, node.value.meshId, materials.acquire(kNoMaterial), 0 });
+					addInstance(refs, entity, List::Outline, group, node.value.meshId, { entity, node.value.meshId, materials.acquire(kNoMaterial), boneOffset });
 				}
 			}
 		}
@@ -599,7 +601,7 @@ namespace SFE::Render {
 		if (!view.visible || view.visibleCapacity < instances) {
 			retire(view.visible);
 			view.visibleCapacity = instances + instances / 2;
-			view.visible = createBuffer(view.visibleCapacity * 2 * sizeof(uint32_t), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene visible");
+			view.visible = createBuffer(view.visibleCapacity * 4 * sizeof(uint32_t), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene visible");
 		}
 		if (!view.commands || view.commandCapacity < commands) {
 			retire(view.commands);

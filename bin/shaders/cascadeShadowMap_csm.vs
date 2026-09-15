@@ -18,11 +18,11 @@ layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
 };
 
-const int MAX_BONES = 256;
 const int MAX_BONE_INFLUENCE = 4;
 
+// Every armature's bones back to back; an instance's start at its boneOffset.
 layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
-    mat4 bones[][MAX_BONES];
+    mat4 bones[];
 };
 
 layout(SFE_SET(0, 11), std140) uniform LightSpaceMatrices {
@@ -42,11 +42,11 @@ void main() {
     bool withBones = false;
     for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
         int boneIdx = aBoneIds[i];
-        if (boneIdx < 0 || boneIdx >= MAX_BONES) {
+        if (boneIdx < 0) {
             continue;
         }
         withBones = true;
-        BoneTransform += bones[index][boneIdx] * aWeights[i];
+        BoneTransform += bones[instance.boneOffset + uint(boneIdx)] * aWeights[i];
     }
     if (!withBones) {
         BoneTransform = mat4(1.0);

@@ -160,6 +160,7 @@ namespace SFE::SystemsModule {
 		}
 
 		createSceneBuffers(maxDrawSize);
+		growBones(4096);
 		mScene.init();
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
 			createGpuFrameResources(slot);
@@ -351,13 +352,6 @@ namespace SFE::SystemsModule {
 		transformDesc.debugName = "TransformsSSBO";
 		transforms = rhi->createBuffer(transformDesc);
 
-		Render::BufferDesc boneDesc;
-		boneDesc.size = sizeof(Math::Mat4) * ComponentsModule::kMaxArmatureBones * capacity;
-		boneDesc.usage = Render::BufferUsage::Storage;
-		boneDesc.cpuAccess = Render::CpuAccess::None;
-		boneDesc.debugName = "BonesSSBO";
-		bones = rhi->createBuffer(boneDesc);
-
 		mGpuCapacity = capacity;
 	}
 
@@ -375,13 +369,9 @@ namespace SFE::SystemsModule {
 		auto* rhi = Engine::instance()->rhi();
 		// The RHI keeps a destroyed buffer until the frames that may still bind it have finished.
 		rhi->destroyBuffer(transforms);
-		rhi->destroyBuffer(bones);
 		createSceneBuffers(newCap);
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
-			rhi->updateDescriptorSets({
-				{ mFrameSet[slot], 1, {{ transforms }} },
-				{ mFrameSet[slot], 2, {{ bones }} },
-			});
+			rhi->updateDescriptorSets({ { mFrameSet[slot], 1, {{ transforms }} } });
 		}
 		bindGpuFrame();
 
@@ -392,12 +382,112 @@ namespace SFE::SystemsModule {
 		}
 		std::sort(ids.begin(), ids.end());
 		uploadTransforms(ids);
+	}
 
-		ids.clear();
-		for (auto [entId, comp] : ECSHandler::registry().view<const ComponentsModule::ArmatureBonesComponent>()) {
-			ids.push_back(entId);
+	RenderSystem::BoneRange RenderSystem::boneRange(const ecss::EntityId entity) {
+		// An id destroyed and taken again before the release was processed: the range held is the old entity's,
+		// and releasing it later would free it under the new one.
+		bool destroyed = false;
+		{
+			std::lock_guard lock(mGpuDirtyMutex);
+			if (const auto it = std::find(mDestroyedBones.begin(), mDestroyedBones.end(), entity); it != mDestroyedBones.end()) {
+				mDestroyedBones.erase(it);
+				destroyed = true;
+			}
 		}
-		std::sort(ids.begin(), ids.end());
+		if (destroyed) {
+			releaseBones(entity);
+		}
+		if (const auto it = mBoneRanges.find(entity); it != mBoneRanges.end()) {
+			return it->second;
+		}
+		auto& registry = ECSHandler::registry();
+		uint32_t count = 0;
+		if (const auto armature = registry.pinComponent<const ComponentsModule::ArmatureComponent>(entity)) {
+			count = static_cast<uint32_t>(armature->armature.bones.size());
+		}
+		if (count == 0) {
+			if (const auto pose = registry.pinComponent<const ComponentsModule::ArmatureBonesComponent>(entity)) {
+				count = static_cast<uint32_t>(pose->boneMatrices.size());
+			}
+		}
+		if (count == 0) {
+			return {};
+		}
+
+		BoneRange range{ 0, count };
+		const auto fit = std::find_if(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), [count](const BoneRange& r) { return r.count >= count; });
+		if (fit != mFreeBoneRanges.end()) {
+			range.offset = fit->offset;
+			fit->offset += count;
+			fit->count -= count;
+			if (fit->count == 0) {
+				mFreeBoneRanges.erase(fit);
+			}
+		}
+		else {
+			range.offset = static_cast<uint32_t>(mBonesUsed);
+			mBonesUsed += count;
+			if (mBonesUsed > mBoneCapacity) {
+				size_t capacity = mBoneCapacity;
+				while (capacity < mBonesUsed) {
+					capacity *= 2;
+				}
+				mBoneRanges.emplace(entity, range);
+				growBones(capacity); // uploads every range, this one included
+				return range;
+			}
+		}
+		mBoneRanges.emplace(entity, range);
+		// Its pose goes up with the next upload, until an animation writes it on the GPU.
+		markGpuDirty(mGpuDirtyBones, entity);
+		return range;
+	}
+
+	void RenderSystem::releaseBones(const ecss::EntityId entity) {
+		const auto it = mBoneRanges.find(entity);
+		if (it == mBoneRanges.end()) {
+			return;
+		}
+		const auto range = it->second;
+		mBoneRanges.erase(it);
+		auto next = std::lower_bound(mFreeBoneRanges.begin(), mFreeBoneRanges.end(), range.offset,
+			[](const BoneRange& r, uint32_t offset) { return r.offset < offset; });
+		next = mFreeBoneRanges.insert(next, range);
+		if (next + 1 != mFreeBoneRanges.end() && next->offset + next->count == (next + 1)->offset) {
+			next->count += (next + 1)->count;
+			mFreeBoneRanges.erase(next + 1);
+		}
+		if (next != mFreeBoneRanges.begin() && (next - 1)->offset + (next - 1)->count == next->offset) {
+			(next - 1)->count += next->count;
+			mFreeBoneRanges.erase(next);
+		}
+	}
+
+	void RenderSystem::growBones(const size_t capacity) {
+		auto* rhi = Engine::instance()->rhi();
+		// The RHI keeps a destroyed buffer until the frames that may still bind it have finished.
+		rhi->destroyBuffer(bones);
+		Render::BufferDesc boneDesc;
+		boneDesc.size = sizeof(Math::Mat4) * capacity;
+		boneDesc.usage = Render::BufferUsage::Storage;
+		boneDesc.cpuAccess = Render::CpuAccess::None;
+		boneDesc.debugName = "BonesSSBO";
+		bones = rhi->createBuffer(boneDesc);
+		mBoneCapacity = capacity;
+		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
+			if (mFrameSet[slot]) {
+				rhi->updateDescriptorSets({ { mFrameSet[slot], 2, {{ bones }} } });
+			}
+		}
+		bindGpuFrame();
+
+		// Offsets stay where they were; the new buffer starts empty, so every pose goes up again.
+		std::vector<ecss::EntityId> ids;
+		ids.reserve(mBoneRanges.size());
+		for (const auto& [entity, range] : mBoneRanges) {
+			ids.push_back(entity);
+		}
 		uploadBones(ids);
 	}
 
@@ -442,9 +532,6 @@ namespace SFE::SystemsModule {
 		auto* rhi = Engine::instance()->rhi();
 		auto& registry = ECSHandler::registry();
 		for (const auto id : sortedIds) {
-			if (static_cast<size_t>(id) >= mGpuCapacity) {
-				break;
-			}
 			const auto armature = registry.pinComponent<const ComponentsModule::ArmatureBonesComponent>(id);
 			if (!armature || armature->boneMatrices.empty()) {
 				continue;
@@ -454,19 +541,28 @@ namespace SFE::SystemsModule {
 				anim && anim->mCurrentAnimation && anim->mPlay) {
 				continue;
 			}
-			const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(ComponentsModule::kMaxArmatureBones));
-			rhi->updateBuffer(bones, static_cast<size_t>(id) * ComponentsModule::kMaxArmatureBones * sizeof(Math::Mat4),
-				boneCount * sizeof(Math::Mat4), armature->boneMatrices.data());
+			const auto range = boneRange(id);
+			const size_t boneCount = (std::min)(armature->boneMatrices.size(), static_cast<size_t>(range.count));
+			if (boneCount == 0) {
+				continue;
+			}
+			rhi->updateBuffer(bones, static_cast<size_t>(range.offset) * sizeof(Math::Mat4), boneCount * sizeof(Math::Mat4), armature->boneMatrices.data());
 		}
 	}
 
 	void RenderSystem::uploadDirtyGpuData() {
 		std::vector<ecss::EntityId> dirtyTransforms;
 		std::vector<ecss::EntityId> dirtyBones;
+		std::vector<ecss::EntityId> destroyed;
 		{
 			std::lock_guard lock(mGpuDirtyMutex);
 			dirtyTransforms.swap(mGpuDirtyTransforms);
 			dirtyBones.swap(mGpuDirtyBones);
+			destroyed.swap(mDestroyedBones);
+		}
+		// Before the uploads: a reused id takes a range of its own when it is next asked for.
+		for (const auto entity : destroyed) {
+			releaseBones(entity);
 		}
 		if (dirtyTransforms.empty() && dirtyBones.empty()) {
 			return;
@@ -481,14 +577,10 @@ namespace SFE::SystemsModule {
 		if (!dirtyTransforms.empty()) {
 			maxId = dirtyTransforms.back();
 		}
-		if (!dirtyBones.empty()) {
-			maxId = (std::max)(maxId, dirtyBones.back());
-		}
 		ensureGpuCapacity(maxId);
-		if (mGpuCapacity != capacityBefore) {
-			return; // the grow already uploaded everything live
+		if (mGpuCapacity == capacityBefore) {
+			uploadTransforms(dirtyTransforms); // otherwise the grow already uploaded everything live
 		}
-		uploadTransforms(dirtyTransforms);
 		uploadBones(dirtyBones);
 	}
 
@@ -505,6 +597,8 @@ namespace SFE::SystemsModule {
 		}
 		else if (task.type == ARMATURE_UPDATED) {
 			markGpuDirty(mGpuDirtyBones, task.entity);
+			// Its instances carry the bone offset, which the armature decides.
+			mScene.markEntity(task.entity);
 		}
 		else if (task.type == MATERIAL_UPDATED) {
 			mScene.markEntity(task.entity);
@@ -514,6 +608,8 @@ namespace SFE::SystemsModule {
 		}
 		else if (task.type == ENTITY_DESTROYED) {
 			mScene.markEntity(task.entity);
+			std::lock_guard lock(mGpuDirtyMutex);
+			mDestroyedBones.push_back(task.entity);
 		}
 	}
 

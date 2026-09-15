@@ -112,7 +112,7 @@ namespace SFE::Render {
 			uint32_t entity = 0;
 			uint32_t mesh = 0;
 			uint32_t material = 0;
-			uint32_t pad = 0;
+			uint32_t boneOffset = 0; // RenderSystem::boneRange
 		};
 		struct BatchRecord {
 			uint32_t firstInstance = 0;

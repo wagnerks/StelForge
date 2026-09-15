@@ -3,6 +3,7 @@
 
 #include "EngineTestFixture.h"
 #include "assetsModule/modelModule/Animation.h"
+#include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OutlineComponent.h"
@@ -228,6 +229,96 @@ namespace SFE::EngineTests {
 		EXPECT_TRUE(scene.validate());
 		EXPECT_EQ(scene.batchesOfMesh(Render::GpuScene::List::GBuffer, kMesh), 0u);
 		scene.trackUploads(false);
+	}
+
+	// Bone matrices are pooled by armature: ranges never overlap, a destroyed entity's range is reused instead of
+	// the pool growing, an id taken again in the same frame gets a range of its own, and an armature past the old
+	// 256-bone limit gets all of its bones.
+	TEST(EngineTest, BonePoolHandsOutDisjointRangesAndReusesThem) {
+		auto& registry = ECSHandler::registry();
+		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		ASSERT_NE(renderSystem, nullptr);
+
+		const auto spawn = [&](size_t bones) {
+			const auto id = registry.takeEntity();
+			registry.addComponent<ComponentsModule::ArmatureBonesComponent>(id)->boneMatrices.resize(bones, Math::Mat4{ 1.f });
+			return id;
+		};
+		const auto disjoint = [&](const std::vector<ecss::EntityId>& ids) {
+			std::vector<std::pair<uint32_t, uint32_t>> ranges;
+			for (const auto id : ids) {
+				const auto range = renderSystem->boneRange(id);
+				ranges.emplace_back(range.offset, range.offset + range.count);
+			}
+			std::sort(ranges.begin(), ranges.end());
+			for (size_t i = 1; i < ranges.size(); ++i) {
+				if (ranges[i].first < ranges[i - 1].second) {
+					return false;
+				}
+			}
+			return true;
+		};
+
+		std::vector<ecss::EntityId> ids;
+		for (int i = 0; i < 200; ++i) {
+			ids.push_back(spawn(20 + i % 50));
+		}
+		ids.push_back(spawn(600));
+		for (const auto id : ids) {
+			EXPECT_GT(renderSystem->boneRange(id).count, 0u);
+		}
+		EXPECT_EQ(renderSystem->boneRange(ids.back()).count, 600u);
+		EXPECT_TRUE(disjoint(ids));
+		const auto highest = [&] {
+			uint32_t end = 0;
+			for (const auto id : ids) {
+				const auto range = renderSystem->boneRange(id);
+				end = (std::max)(end, range.offset + range.count);
+			}
+			return end;
+		};
+		const auto endBefore = highest();
+
+		// Rounds of destroying half and spawning as many again: freed ranges are reused, so the pool settles instead
+		// of growing with every round.
+		uint32_t seed = 777;
+		for (int round = 0; round < 20; ++round) {
+			std::vector<ecss::EntityId> kept;
+			for (size_t i = 0; i < ids.size(); ++i) {
+				if (i % 2 == static_cast<size_t>(round % 2)) {
+					ECSHandler::destroyEntity(ids[i]);
+				}
+				else {
+					kept.push_back(ids[i]);
+				}
+			}
+			step();
+			const size_t respawn = ids.size() - kept.size();
+			ids = std::move(kept);
+			for (size_t i = 0; i < respawn; ++i) {
+				seed = seed * 1664525u + 1013904223u;
+				ids.push_back(spawn(20 + (seed >> 8) % 50));
+			}
+			ASSERT_TRUE(disjoint(ids)) << "round " << round;
+		}
+		EXPECT_LE(highest(), endBefore * 2) << "freed ranges were not reused";
+
+		// Destroyed and taken again with no frame between: the new entity must not keep the old range.
+		const auto old = ids.back();
+		const auto oldRange = renderSystem->boneRange(old);
+		ECSHandler::destroyEntity(old);
+		ids.pop_back();
+		const auto reused = spawn(oldRange.count + 30);
+		EXPECT_EQ(renderSystem->boneRange(reused).count, oldRange.count + 30);
+		ids.push_back(reused);
+		EXPECT_TRUE(disjoint(ids));
+		step();
+		EXPECT_TRUE(disjoint(ids)) << "the release of the destroyed entity freed its successor's range";
+
+		for (const auto id : ids) {
+			ECSHandler::destroyEntity(id);
+		}
+		step();
 	}
 
 	// Tick systems step from the frame under a fixed step: world time (1 tick a second) moves in whole seconds.

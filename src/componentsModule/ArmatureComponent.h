@@ -5,17 +5,12 @@
 #include "mathModule/Forward.h"
 
 namespace SFE::ComponentsModule {
-	inline constexpr int kMaxArmatureBones = 256;
-
 	struct ArmatureComponent {
 		AssetsModule::Armature armature;
 	};
 
+	// The pose uploaded while no animation writes the bones on the GPU: one matrix per bone of the armature.
 	struct ArmatureBonesComponent {
-		ArmatureBonesComponent() {
-			boneMatrices.resize(kMaxArmatureBones);
-		}
-
 		std::vector<SFE::Math::Mat4> boneMatrices;
 	};
 }

@@ -382,7 +382,7 @@ void ModelLoader::finalizeArmature(const aiScene* scene, Armature& armature) {
 	}
 
 	auto tryAddNode = [&](const aiNode* node) {
-		if (!node || armature.bones.size() >= static_cast<size_t>(SFE::ComponentsModule::kMaxArmatureBones)) {
+		if (!node) {
 			return;
 		}
 		const std::string name = node->mName.C_Str();

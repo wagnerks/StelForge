@@ -26,7 +26,7 @@ struct SceneInstance {
     uint entity;
     uint mesh;
     uint material;
-    uint _pad;
+    uint boneOffset;
 };
 layout(SFE_SET(0, 27), std430) readonly buffer Instances {
     SceneInstance instances[];
@@ -45,6 +45,8 @@ layout(SFE_SET(0, 28), std430) readonly buffer Batches {
 struct VisibleInstance {
     uint entity;
     uint material;
+    uint boneOffset;
+    uint _pad;
 };
 layout(SFE_SET(0, 29), std430) writeonly buffer Visible {
     VisibleInstance visible[];
@@ -115,7 +117,7 @@ void main() {
             extents += vec3(max(extents.x, max(extents.y, extents.z)) * kSkinnedInflate);
         }
         if (visibleInView(center, extents)) {
-            visible[batch.firstInstance + count] = VisibleInstance(instance.entity, instance.material);
+            visible[batch.firstInstance + count] = VisibleInstance(instance.entity, instance.material, instance.boneOffset, 0u);
             ++count;
         }
     }

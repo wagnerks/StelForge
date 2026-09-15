@@ -21,8 +21,6 @@ using namespace SFE::Render;
 using namespace SFE::Render::RenderPasses;
 
 namespace {
-	constexpr int kMaxBones = SFE::ComponentsModule::kMaxArmatureBones;
-
 	struct GpuBoneDesc {
 		SFE::Math::Mat4 offset;
 		SFE::Math::Mat4 restLocal;
@@ -51,7 +49,7 @@ namespace {
 	struct AnimPush {
 		SFE::Math::Mat4 armatureTransform;
 		float animTime = 0.f;
-		int entityId = 0;
+		int boneOffset = 0;
 		int boneCount = 0;
 		int boneStride = 0; // the clip's bones: the instance's rows in the worlds buffer
 	};
@@ -197,6 +195,10 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 	}
 
 	auto* rhi = Engine::instance()->rhi();
+	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+	if (!renderSystem) {
+		return;
+	}
 	const float dt = Engine::instance()->getDeltaTime();
 
 	struct ClipBatch {
@@ -245,11 +247,15 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 			continue;
 		}
 
+		const auto bones = renderSystem->boneRange(entityId);
+		if (bones.count == 0) {
+			continue;
+		}
 		AnimPush inst;
 		inst.armatureTransform = armatureComp->armature.transform;
 		inst.animTime = animationComp->mCurrentTime;
-		inst.entityId = static_cast<int>(entityId);
-		inst.boneCount = std::min(clip->boneCount, kMaxBones);
+		inst.boneOffset = static_cast<int>(bones.offset);
+		inst.boneCount = (std::min)(clip->boneCount, static_cast<int>(bones.count));
 		inst.boneStride = clip->boneCount;
 
 		auto& batch = batches[anim];

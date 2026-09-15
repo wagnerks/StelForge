@@ -6,11 +6,11 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [x] The `dbg` matrix is written to `outBones[entityId * MAX_BONES + MAX_BONES - 1 - boneId]`, which overwrites other bones of the same character. Remove it before committing.
 
 ## 2. The bones buffer is addressed by entity id
-- [ ] `RenderSystem::createSceneBuffers` reserves `kMaxArmatureBones` (256) matrices, 16 KB, for every entity slot, skeleton or not. At 4096 entities that is 64 MB, and the capacity doubles: 65k entities take 1 GB, 130k take 2 GB, even with ten animated characters. This hits the storage buffer size limit (2–4 GB on desktop, much less on mobile).
+- [x] `RenderSystem::createSceneBuffers` reserves `kMaxArmatureBones` (256) matrices, 16 KB, for every entity slot, skeleton or not. At 4096 entities that is 64 MB, and the capacity doubles: 65k entities take 1 GB, 130k take 2 GB, even with ten animated characters. This hits the storage buffer size limit (2–4 GB on desktop, much less on mobile).
 - Fix: a pooled range per skinned entity, sized by its bone count. The offset goes into the instance record and skinning reads `bones[boneOffset + boneId]`. Same incremental scheme as `GpuScene`. This also removes limit 3.
 
 ## 3. At most 256 bones per armature
-- [ ] Bones past `kMaxArmatureBones` are silently not animated (`AnimationComputePass` clamps `boneCount`, the CPU upload clamps too). There is no warning at load.
+- [x] Bones past `kMaxArmatureBones` are silently not animated (`AnimationComputePass` clamps `boneCount`, the CPU upload clamps too). There is no warning at load.
 
 ## 4. Skinned bounds are a static inflated AABB
 - [ ] The box is the bind pose plus a margin. A pose that reaches past it (a wide swing, a fall) gets the part that sticks out culled by frustum culling now, and by occlusion culling once it exists.

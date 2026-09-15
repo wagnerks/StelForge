@@ -2,7 +2,6 @@
 #include "sfe.glsl"
 layout(local_size_x = 1) in;
 
-const int MAX_BONES = 256;
 
 struct BoneDesc {
     mat4 offset;
@@ -40,7 +39,7 @@ layout(SFE_SET(0, 2), std430) buffer OutBones { mat4 outBones[]; };
 struct AnimInstance {
     mat4 armatureTransform;
     float animTime;
-    int entityId;
+    int boneOffset; // the entity's first matrix in OutBones
     int boneCount;
     int boneStride;
 };
@@ -212,6 +211,6 @@ void main() {
         precise mat4 world = parent * local;
         worlds[row + bi] = world;
         precise mat4 skin = world * b.offset;
-        outBones[inst.entityId * MAX_BONES + b.boneId] = skin;
+        outBones[inst.boneOffset + b.boneId] = skin;
     }
 }

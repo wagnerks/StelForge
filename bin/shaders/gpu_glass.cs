@@ -29,7 +29,7 @@ struct SceneInstance {
     uint entity;
     uint mesh;
     uint material;
-    uint _pad;
+    uint boneOffset;
 };
 layout(SFE_SET(0, 27), std430) readonly buffer Instances {
     SceneInstance instances[];
@@ -38,6 +38,8 @@ layout(SFE_SET(0, 27), std430) readonly buffer Instances {
 struct VisibleInstance {
     uint entity;
     uint material;
+    uint boneOffset;
+    uint _pad;
 };
 layout(SFE_SET(0, 29), std430) writeonly buffer Visible {
     VisibleInstance visible[];
@@ -147,6 +149,6 @@ void main() {
     }
     SceneInstance instance = instances[key.instance];
     GpuMesh mesh = meshes[instance.mesh];
-    visible[i] = VisibleInstance(instance.entity, instance.material);
+    visible[i] = VisibleInstance(instance.entity, instance.material, instance.boneOffset, 0u);
     commands[i] = DrawCommand(mesh.indexCount, 1u, mesh.firstIndex, int(mesh.firstVertex), i);
 }

@@ -161,10 +161,17 @@ namespace SFE::SystemsModule {
 		Render::DescriptorSetLayoutHandle frameSetLayoutHandle() const { return frameSetLayout; }
 
 		void uploadDirtyGpuData();
-		// Destroys the buffer once no frame still in flight can read it. Main thread only.
 		Render::GpuMaterialTable& materials() { return mMaterials; }
 		Render::GpuScene& scene() { return mScene; }
 		Render::BufferHandle transformsBuffer() const { return transforms; }
+
+		// Where an entity's bone matrices live in the bone buffer, as many as its armature has. Allocated on first
+		// use for an entity with an armature and kept until it is destroyed; count 0 for one without. Main thread.
+		struct BoneRange {
+			uint32_t offset = 0;
+			uint32_t count = 0;
+		};
+		BoneRange boneRange(ecss::EntityId entity);
 
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
 		// waits for in-flight readers, so a waiting mutate never blocks readers already running.
@@ -295,8 +302,17 @@ namespace SFE::SystemsModule {
 		bool mRefreshTransforms = true;
 
 		Render::BufferHandle transforms;
-		Render::BufferHandle bones;
 		size_t mGpuCapacity = 0;
+
+		// Bone matrices pooled by armature, not reserved per entity id: a skinned entity takes exactly its bones.
+		void growBones(size_t capacity);
+		void releaseBones(ecss::EntityId entity);
+		Render::BufferHandle bones;
+		std::unordered_map<ecss::EntityId, BoneRange> mBoneRanges;
+		std::vector<BoneRange> mFreeBoneRanges; // sorted by offset, neighbours merged
+		size_t mBonesUsed = 0;
+		size_t mBoneCapacity = 0;
+		std::vector<ecss::EntityId> mDestroyedBones; // under mGpuDirtyMutex
 
 		Render::DescriptorSetLayoutHandle frameSetLayout;
 		Render::DescriptorSetHandle frameSet;

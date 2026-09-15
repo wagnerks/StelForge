@@ -379,8 +379,7 @@ namespace SFE::PropertiesModule {
 
 		if (!modelComp->boneMatrices.empty()) {
 			auto armatureBonesComp = ECSHandler::registry().addComponent<SFE::ComponentsModule::ArmatureBonesComponent>(entity);
-			const auto n = (std::min)(modelComp->boneMatrices.size(), armatureBonesComp->boneMatrices.size());
-			std::copy_n(modelComp->boneMatrices.begin(), n, armatureBonesComp->boneMatrices.begin());
+			armatureBonesComp->boneMatrices = modelComp->boneMatrices;
 			SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ARMATURE_UPDATED });
 		}
 
