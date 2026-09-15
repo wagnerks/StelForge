@@ -42,6 +42,11 @@ namespace SFE::SystemsModule {
 	}
 
 	void CameraSystem::update(float_t dt) {
+		// A capture holds the scene still, and its window is visible and takes focus: keys typed into another
+		// window while it opens would fly the camera and make the frame depend on the user.
+		if (Engine::instance()->capturingFrame()) {
+			return;
+		}
 		auto cam = getCurrentCamera();
 		if (sReproFly.load(std::memory_order_relaxed)) {
 			movementSpeed = 300.f;
@@ -206,7 +211,7 @@ namespace SFE::SystemsModule {
 
 
 	void CameraSystem::processMouseMovement(float xoffset, float yoffset, bool constrainPitch) {
-		if (!processMouse) {
+		if (!processMouse || Engine::instance()->capturingFrame()) {
 			return;
 		}
 		xoffset *= mouseSensitivity;
@@ -238,6 +243,9 @@ namespace SFE::SystemsModule {
 	}
 
 	void CameraSystem::processMouseScroll(float yoffset) {
+		if (Engine::instance()->capturingFrame()) {
+			return;
+		}
 		const auto camera = getCurrentCamera();
 		Math::Mat4 viewMatrix{};
 		{
