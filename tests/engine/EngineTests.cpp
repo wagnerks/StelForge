@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "EngineTestFixture.h"
+#include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/Animation.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/MeshComponent.h"
@@ -398,4 +399,42 @@ namespace SFE::EngineTests {
 		ECSHandler::destroyEntity(parent);
 		ECSHandler::destroyEntity(grandChild);
 	}
+	// The mip chain the texture loader builds. It exists because OpenGL and Vulkan build different chains
+	// from the same image, and the difference shows at the horizon, where a pixel on the alpha test
+	// threshold flips from one backend to the other. Two properties carry that: the sizes are the usual
+	// halving down to 1x1, and a level is the 2x2 average of the one above, so a flat area keeps its exact
+	// value all the way down instead of drifting by a rounding step per level.
+	TEST(EngineTest, TextureMipChainHalvesAndAveragesTwoByTwo) {
+		constexpr int kSize = 4;
+		std::vector<unsigned char> image(kSize * kSize * 4);
+		for (int y = 0; y < kSize; ++y) {
+			for (int x = 0; x < kSize; ++x) {
+				unsigned char* px = image.data() + (static_cast<size_t>(y) * kSize + x) * 4;
+				px[0] = static_cast<unsigned char>(x * 20);       // varies along x only
+				px[1] = static_cast<unsigned char>(y * 20);       // along y only
+				px[2] = 77;                                       // flat
+				px[3] = 255;
+			}
+		}
+
+		const auto levels = AssetsModule::TextureHandler::buildMipChain(image.data(), kSize, kSize);
+		ASSERT_EQ(levels.size(), 2u) << "4x4 reduces to 2x2 and then 1x1";
+		EXPECT_EQ(levels[0].size(), static_cast<size_t>(2 * 2 * 4));
+		EXPECT_EQ(levels[1].size(), static_cast<size_t>(4));
+
+		// Level 1 texel (0,0) covers source columns 0,1 and rows 0,1: red averages 0 and 20, green the same.
+		EXPECT_EQ(levels[0][0], 10);
+		EXPECT_EQ(levels[0][1], 10);
+		EXPECT_EQ(levels[0][2], 77) << "a flat channel must not drift";
+		// Texel (1,0) covers columns 2,3: red averages 40 and 60.
+		EXPECT_EQ(levels[0][4], 50);
+		EXPECT_EQ(levels[0][5], 10) << "green does not change along x";
+
+		// The last level is the average of the whole image: red and green both run 0..60 over four texels.
+		EXPECT_EQ(levels[1][0], 30);
+		EXPECT_EQ(levels[1][1], 30);
+		EXPECT_EQ(levels[1][2], 77);
+		EXPECT_EQ(levels[1][3], 255) << "alpha is averaged like any other channel";
+	}
+
 }

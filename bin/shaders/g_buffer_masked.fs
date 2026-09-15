@@ -37,10 +37,11 @@ void main() {
     vec2 uvSss = uvOf(32u);
 
     float cutoff = pc.alphaCutoff > 0.0 ? pc.alphaCutoff : 0.4;
-    // The mip the pixel would sample: reading the mask at level 0 made the coverage of a distant
-    // character depend on which single texel the jitter landed on.
+    // Filtered, not level 0: reading the mask at the top level made the coverage of a distant character
+    // depend on which single texel the jitter happened to land on. The level is the hardware's, so the
+    // anisotropic filter still applies and the two backends pick it the same way.
     float diffLod = textureQueryLod(texture_diffuse1, uvDiff).y;
-    float mask = textureLod(texture_diffuse1, uvDiff, diffLod).a;
+    float mask = texture(texture_diffuse1, uvDiff).a;
     if ((maps & 8u) != 0u && mask > 0.99) {
         mask = max(texture(texture_specular1, uvSpec).r, texture(texture_roughness, uvRough).g);
     }
@@ -58,7 +59,7 @@ void main() {
     } else if (mask < cutoff) {
         discard;
     }
-    vec4 diff = textureLod(texture_diffuse1, uvDiff, diffLod);
+    vec4 diff = texture(texture_diffuse1, uvDiff);
     diff.rgb = sfeMaskedAlbedo(texture_diffuse1, uvDiff);
 
     gPosition.rgb = FragPos;

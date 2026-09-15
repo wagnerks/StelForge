@@ -666,7 +666,9 @@ namespace SFE::Render
 		// The texture present() blits to the screen.
 		virtual TextureHandle presentSourceTexture() const { return {}; }
 
-		virtual void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data) = 0;
+		// Writes one mip level and nothing else: it never builds the rest of the chain, so a caller that wants
+		// the same pixels on every backend uploads every level itself.
+		virtual void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data, uint32_t mip = 0) = 0;
 		virtual void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) = 0;
 		virtual void updateCubeMip(TextureHandle tex, uint32_t mip, const void* packed6Faces, size_t faceBytes);
 		virtual uint64_t getNativeTextureId(TextureHandle tex) const = 0;

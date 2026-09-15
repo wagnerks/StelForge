@@ -1250,6 +1250,90 @@ namespace SFE::Render::Tests {
 			static std::map<std::string, MipImage> seen;
 			return seen;
 		}
+
+		// Draws one mip level of `texture` into a w x h target with textureLod and hands it back in texture
+		// row order: the target's pixel centres are that level's texel centres, so each fragment returns one
+		// texel whole. Shared by the test that judges a chain the driver built and the one that judges a
+		// chain the caller uploaded level by level.
+		MipImage readMipLevel(RenderHardwareInterface& rhi, RenderPassHandle pass, PipelineHandle pipeline,
+			DescriptorSetLayoutHandle layout, SamplerHandle sampler, TextureHandle texture,
+			uint32_t lod, uint32_t w, uint32_t h) {
+			MipImage out;
+			TextureDesc targetDesc;
+			targetDesc.width = w;
+			targetDesc.height = h;
+			targetDesc.format = TextureFormat::RGBA8;
+			targetDesc.dimension = TextureDimension::Tex2D;
+			targetDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled | TextureUsage::TransferSrc;
+			const auto target = rhi.createTexture(targetDesc);
+			FramebufferDesc fbDesc;
+			fbDesc.width = w;
+			fbDesc.height = h;
+			fbDesc.layers = 1;
+			fbDesc.renderPass = pass;
+			FramebufferAttachmentDesc att;
+			att.texture = target;
+			att.layer = UINT32_MAX;
+			fbDesc.colorAttachments = { att };
+			const auto fb = rhi.createFramebuffer(fbDesc);
+
+			BufferDesc paramsDesc;
+			paramsDesc.size = sizeof(Math::Vec4);
+			paramsDesc.usage = BufferUsage::Uniform;
+			paramsDesc.cpuAccess = CpuAccess::Write;
+			paramsDesc.debugName = "rhi_test_mip_level";
+			const Math::Vec4 params{ static_cast<float>(lod), 0.f, 0.f, 0.f };
+			const auto paramsBuffer = rhi.createBuffer(paramsDesc, &params);
+
+			const auto set = rhi.allocateDescriptorSet(layout);
+			WriteDescriptor image{};
+			image.set = set;
+			image.binding = 0;
+			image.images.push_back({ texture, sampler });
+			WriteDescriptor uniform{};
+			uniform.set = set;
+			uniform.binding = 1;
+			uniform.buffers.push_back({ paramsBuffer, 0, 0 });
+			rhi.updateDescriptorSets({ image, uniform });
+
+			rhi.beginFrame();
+			const auto cmd = rhi.beginCommandList(CommandListType::Graphics);
+			RenderPassBeginInfo begin;
+			begin.renderPass = pass;
+			begin.framebuffer = fb;
+			begin.width = w;
+			begin.height = h;
+			rhi.cmdBeginRenderPass(cmd, begin);
+			rhi.cmdBindPipeline(cmd, pipeline);
+			rhi.cmdBindDescriptorSets(cmd, pipeline, 0, &set, 1);
+			rhi.cmdDraw(cmd, 3, 1, 0, 0);
+			rhi.cmdEndRenderPass(cmd);
+			rhi.endCommandList(cmd);
+			rhi.submit(cmd);
+			rhi.present();
+			rhi.waitIdle();
+
+			std::vector<uint8_t> pixels;
+			int rw = 0;
+			int rh = 0;
+			if (rhi.readbackTexture(target, pixels, rw, rh) && rw == int(w) && rh == int(h)
+				&& pixels.size() == static_cast<size_t>(w) * h * 4u) {
+				out.w = w;
+				out.h = h;
+				out.rgba.resize(pixels.size());
+				// Readback rows come back flipped: image row i is texture row h - 1 - i.
+				for (uint32_t row = 0; row < h; ++row) {
+					std::copy_n(pixels.begin() + static_cast<ptrdiff_t>((h - 1 - row) * w * 4u), w * 4u,
+						out.rgba.begin() + static_cast<ptrdiff_t>(row * w * 4u));
+				}
+			}
+
+			rhi.freeDescriptorSet(set);
+			rhi.destroyBuffer(paramsBuffer);
+			rhi.destroyFramebuffer(fb);
+			rhi.destroyTexture(target);
+			return out;
+		}
 	}
 
 	// Generated mip contents, level by level, against a CPU 2x2 box filter. The frame comparison sees
@@ -1302,83 +1386,8 @@ namespace SFE::Render::Tests {
 		const auto pipeline = rhi().createGraphicsPipeline(pipelineDesc);
 		ASSERT_TRUE(pipeline) << "pipeline creation failed";
 
-		// Draws level `lod` of `texture` into a w x h target and returns it in texture row order.
-		const auto readLevel = [&](TextureHandle texture, uint32_t lod, uint32_t w, uint32_t h) -> MipImage {
-			MipImage out;
-			TextureDesc targetDesc;
-			targetDesc.width = w;
-			targetDesc.height = h;
-			targetDesc.format = TextureFormat::RGBA8;
-			targetDesc.dimension = TextureDimension::Tex2D;
-			targetDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled | TextureUsage::TransferSrc;
-			const auto target = rhi().createTexture(targetDesc);
-			FramebufferDesc fbDesc;
-			fbDesc.width = w;
-			fbDesc.height = h;
-			fbDesc.layers = 1;
-			fbDesc.renderPass = pass;
-			FramebufferAttachmentDesc att;
-			att.texture = target;
-			att.layer = UINT32_MAX;
-			fbDesc.colorAttachments = { att };
-			const auto fb = rhi().createFramebuffer(fbDesc);
-
-			BufferDesc paramsDesc;
-			paramsDesc.size = sizeof(Math::Vec4);
-			paramsDesc.usage = BufferUsage::Uniform;
-			paramsDesc.cpuAccess = CpuAccess::Write;
-			paramsDesc.debugName = "rhi_test_mip_level";
-			const Math::Vec4 params{ static_cast<float>(lod), 0.f, 0.f, 0.f };
-			const auto paramsBuffer = rhi().createBuffer(paramsDesc, &params);
-
-			const auto set = rhi().allocateDescriptorSet(layout);
-			WriteDescriptor image{};
-			image.set = set;
-			image.binding = 0;
-			image.images.push_back({ texture, sampler });
-			WriteDescriptor uniform{};
-			uniform.set = set;
-			uniform.binding = 1;
-			uniform.buffers.push_back({ paramsBuffer, 0, 0 });
-			rhi().updateDescriptorSets({ image, uniform });
-
-			rhi().beginFrame();
-			const auto cmd = rhi().beginCommandList(CommandListType::Graphics);
-			RenderPassBeginInfo begin;
-			begin.renderPass = pass;
-			begin.framebuffer = fb;
-			begin.width = w;
-			begin.height = h;
-			rhi().cmdBeginRenderPass(cmd, begin);
-			rhi().cmdBindPipeline(cmd, pipeline);
-			rhi().cmdBindDescriptorSets(cmd, pipeline, 0, &set, 1);
-			rhi().cmdDraw(cmd, 3, 1, 0, 0);
-			rhi().cmdEndRenderPass(cmd);
-			rhi().endCommandList(cmd);
-			rhi().submit(cmd);
-			rhi().present();
-			rhi().waitIdle();
-
-			std::vector<uint8_t> pixels;
-			int rw = 0;
-			int rh = 0;
-			if (rhi().readbackTexture(target, pixels, rw, rh) && rw == int(w) && rh == int(h)
-				&& pixels.size() == static_cast<size_t>(w) * h * 4u) {
-				out.w = w;
-				out.h = h;
-				out.rgba.resize(pixels.size());
-				// Readback rows come back flipped: image row i is texture row h - 1 - i.
-				for (uint32_t row = 0; row < h; ++row) {
-					std::copy_n(pixels.begin() + static_cast<ptrdiff_t>((h - 1 - row) * w * 4u), w * 4u,
-						out.rgba.begin() + static_cast<ptrdiff_t>(row * w * 4u));
-				}
-			}
-
-			rhi().freeDescriptorSet(set);
-			rhi().destroyBuffer(paramsBuffer);
-			rhi().destroyFramebuffer(fb);
-			rhi().destroyTexture(target);
-			return out;
+		const auto readLevel = [&](TextureHandle texture, uint32_t lod, uint32_t w, uint32_t h) {
+			return readMipLevel(rhi(), pass, pipeline, layout, sampler, texture, lod, w, h);
 		};
 
 		struct SizeCase { uint32_t w; uint32_t h; };
@@ -1442,6 +1451,86 @@ namespace SFE::Render::Tests {
 			rhi().destroyTexture(texture);
 		}
 
+		rhi().destroyGraphicsPipeline(pipeline);
+		rhi().destroyDescriptorSetLayout(layout);
+		rhi().destroyRenderPass(pass);
+		rhi().destroySampler(sampler);
+	}
+
+	// The other half of the contract updateTexture's mip parameter buys: a caller that builds the chain
+	// itself gets exactly its own bytes in every level, on both backends. TextureHandler does this so that
+	// OpenGL and Vulkan sample the same texels -- their own generated chains differ, which the test above
+	// measures. Solid colours, one per level, and none of them a blend of any other pair: a level that came
+	// from the driver's filter instead of from the upload reads as a mixture and names itself.
+	TEST_P(RhiBackendTest, UploadedMipLevelsAreTheOnesSampledBack) {
+		constexpr uint32_t kBase = 64;
+		constexpr uint32_t kLevels = 7; // 64, 32, 16, 8, 4, 2, 1
+		const Rgba kLevelColours[kLevels] = {
+			{ 10, 20, 30, 255 }, { 200, 40, 60, 255 }, { 70, 210, 90, 255 }, { 110, 120, 220, 255 },
+			{ 240, 230, 50, 255 }, { 130, 30, 200, 255 }, { 80, 170, 160, 255 },
+		};
+
+		SamplerDesc samplerDesc;
+		samplerDesc.minFilter = FilterMode::LinearMipmapLinear;
+		samplerDesc.magFilter = FilterMode::Linear;
+		const auto sampler = rhi().createSampler(samplerDesc);
+		ASSERT_TRUE(sampler);
+
+		const auto pass = makeLodPass(rhi(), { 1.f, 0.f, 1.f, 1.f });
+		ASSERT_TRUE(pass);
+
+		DescriptorSetLayoutDesc layoutDesc;
+		layoutDesc.bindings.push_back({ 0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment });
+		layoutDesc.bindings.push_back({ 1, DescriptorType::UniformBuffer, ShaderStage::Fragment });
+		const auto layout = rhi().createDescriptorSetLayout(layoutDesc);
+		ASSERT_TRUE(layout);
+
+		GraphicsPipelineDesc pipelineDesc;
+		pipelineDesc.renderPass = pass;
+		pipelineDesc.topology = PrimitiveTopology::Triangles;
+		pipelineDesc.cullMode = CullMode::None;
+		pipelineDesc.frontFace = FrontFace::CounterClockWise;
+		pipelineDesc.fillMode = PolygonFillMode::Fill;
+		pipelineDesc.depthStencilState = { false, false, CompareOp::Always };
+		pipelineDesc.blend = { false };
+		pipelineDesc.descriptorSetLayouts = { layout };
+		pipelineDesc.shaders.vertex = rhi().loadShader(ShaderStage::Vertex, "shaders/rhi_test_fullscreen.vs");
+		pipelineDesc.shaders.fragment = rhi().loadShader(ShaderStage::Fragment, "shaders/rhi_test_texture_mip_level.fs");
+		const auto pipeline = rhi().createGraphicsPipeline(pipelineDesc);
+		ASSERT_TRUE(pipeline) << "pipeline creation failed";
+
+		TextureDesc desc;
+		desc.width = kBase;
+		desc.height = kBase;
+		desc.format = TextureFormat::RGBA8;
+		desc.dimension = TextureDimension::Tex2D;
+		desc.mipLevels = kLevels;
+		// No pixels here: with them a backend builds the rest of the chain, and this test is about the
+		// levels the caller writes.
+		const auto texture = rhi().createTexture(desc);
+		ASSERT_TRUE(texture);
+
+		for (uint32_t lod = 0; lod < kLevels; ++lod) {
+			const uint32_t w = (std::max)(1u, kBase >> lod);
+			const uint32_t h = (std::max)(1u, kBase >> lod);
+			const auto pixels = solid(w, h, kLevelColours[lod]);
+			rhi().updateTexture(texture, 0, 0, w, h, TextureFormat::RGBA8, pixels.data(), lod);
+		}
+
+		for (uint32_t lod = 0; lod < kLevels; ++lod) {
+			const uint32_t w = (std::max)(1u, kBase >> lod);
+			const uint32_t h = (std::max)(1u, kBase >> lod);
+			const MipImage got = readMipLevel(rhi(), pass, pipeline, layout, sampler, texture, lod, w, h);
+			ASSERT_EQ(got.rgba.size(), static_cast<size_t>(w) * h * 4u) << "level " << lod << " readback failed";
+			const Rgba& want = kLevelColours[lod];
+			for (size_t texel = 0; texel < got.rgba.size(); texel += 4) {
+				ASSERT_EQ(got.rgba[texel + 0], want.r) << "level " << lod << " texel " << texel / 4;
+				ASSERT_EQ(got.rgba[texel + 1], want.g) << "level " << lod << " texel " << texel / 4;
+				ASSERT_EQ(got.rgba[texel + 2], want.b) << "level " << lod << " texel " << texel / 4;
+			}
+		}
+
+		rhi().destroyTexture(texture);
 		rhi().destroyGraphicsPipeline(pipeline);
 		rhi().destroyDescriptorSetLayout(layout);
 		rhi().destroyRenderPass(pass);

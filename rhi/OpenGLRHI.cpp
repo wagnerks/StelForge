@@ -2121,7 +2121,8 @@ namespace SFE::Render
 		uint32_t x, uint32_t y,
 		uint32_t w, uint32_t h,
 		TextureFormat fmt,
-		const void* data)
+		const void* data,
+		uint32_t mip)
 	{
 		const GLTexture* t = getLive(textures, tex.id);
 		if (!data || !t) {
@@ -2136,7 +2137,7 @@ namespace SFE::Render
 
 		glTexSubImage2D(
 			target,
-			0,
+			static_cast<GLint>(mip),
 			x, y,
 			w, h,
 			ToGLFormat(fmt),
@@ -2268,6 +2269,15 @@ namespace SFE::Render
 				ToGLFormat(desc.format),
 				ToGLType(desc.format),
 				data);
+			if (!data && desc.mipLevels > 1) {
+				// Nothing to filter from, so the caller means to write the levels itself: they only need to exist.
+				for (uint32_t mip = 1; mip < desc.mipLevels; ++mip) {
+					const GLsizei mw = static_cast<GLsizei>((std::max)(1u, desc.width >> mip));
+					const GLsizei mh = static_cast<GLsizei>((std::max)(1u, desc.height >> mip));
+					glTexImage2D(target, static_cast<GLint>(mip), ToGLInternalFormat(desc.format), mw, mh, 0,
+						ToGLFormat(desc.format), ToGLType(desc.format), nullptr);
+				}
+			}
 			if (data && desc.mipLevels > 1) {
 				const bool depth = desc.format == TextureFormat::DEPTH_COMPONENT16
 					|| desc.format == TextureFormat::DEPTH_COMPONENT24

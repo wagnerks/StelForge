@@ -27,11 +27,11 @@ vec3 sfeMaskedAlbedo(sampler2D tex, vec2 uv) {
     // the nearest texel that is actually there. Everything here happens at the mip this pixel would have
     // sampled anyway: done at level 0, the search picked a different texel every frame once the model was
     // small on screen, and TAA averaged that flicker into grey.
-    float lod = textureQueryLod(tex, uv).y;
-    vec4 base = textureLod(tex, uv, lod);
+    vec4 base = texture(tex, uv);
     if (base.a > 0.5) {
         return base.rgb;
     }
+    float lod = textureQueryLod(tex, uv).y;
     vec2 texel = exp2(lod) / vec2(textureSize(tex, 0));
     vec2 o[4] = vec2[](vec2(texel.x, 0.0), vec2(-texel.x, 0.0), vec2(0.0, texel.y), vec2(0.0, -texel.y));
     vec3 bestRgb = base.rgb;

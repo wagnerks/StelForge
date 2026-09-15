@@ -918,7 +918,7 @@ namespace SFE::Render {
 	}
 
 	void VulkanRHI::updateTexture(const TextureHandle tex, const uint32_t x, const uint32_t y,
-		const uint32_t w, const uint32_t h, const TextureFormat, const void* data)
+		const uint32_t w, const uint32_t h, const TextureFormat, const void* data, const uint32_t mip)
 	{
 		auto* texture = getLive(m_textures, tex.id);
 		if (!texture || !data || w == 0 || h == 0) {
@@ -932,18 +932,13 @@ namespace SFE::Render {
 			VkBufferImageCopy region{};
 			region.bufferOffset = 0;
 			region.imageSubresource.aspectMask = aspectMaskForFormat(texture->format);
-			region.imageSubresource.mipLevel = 0;
+			region.imageSubresource.mipLevel = mip;
 			region.imageSubresource.baseArrayLayer = 0;
 			region.imageSubresource.layerCount = 1;
 			region.imageOffset = { static_cast<int32_t>(x), static_cast<int32_t>(y), 0 };
 			region.imageExtent = { w, h, 1 };
 			vkCmdCopyBufferToImage(cmd, staging, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-			if (texture->desc.mipLevels > 1) {
-				generateMipmaps(cmd, *texture);
-			}
-			else {
-				ensureTextureLayout(cmd, *texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-			}
+			ensureTextureLayout(cmd, *texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		});
 		destroyStagingBuffer(staging, stagingMemory);
 	}
