@@ -398,6 +398,10 @@ namespace SFE::Render {
 		m_sceneCmds[1] = VK_NULL_HANDLE;
 
 		destroyDescriptorPool();
+		// Freed with their pools.
+		for (auto& retired : m_retiredSets) {
+			retired.clear();
+		}
 
 		if (m_uploadCommandPool != VK_NULL_HANDLE) {
 			vkDestroyCommandPool(m_device, m_uploadCommandPool, nullptr);

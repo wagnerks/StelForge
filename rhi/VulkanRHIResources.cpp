@@ -103,10 +103,10 @@ namespace SFE::Render {
 		recycleSceneList(m_inflightSceneCmd[m_currentFrame]);
 		m_inflightSceneCmd[m_currentFrame] = {};
 		collectGpuTimestamp();
-		if (auto& retired = m_retiredSets[m_currentFrame]; !retired.empty()) {
-			vkFreeDescriptorSets(m_device, m_descriptorPool, static_cast<uint32_t>(retired.size()), retired.data());
-			retired.clear();
+		for (const auto& [pool, set] : m_retiredSets[m_currentFrame]) {
+			vkFreeDescriptorSets(m_device, pool, 1, &set);
 		}
+		m_retiredSets[m_currentFrame].clear();
 		std::erase_if(m_retiredBuffers, [this](RetiredBuffer& retired) {
 			if (--retired.waitsLeft > 0) {
 				return false;
@@ -269,16 +269,44 @@ namespace SFE::Render {
 		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 		poolInfo.pPoolSizes = poolSizes.data();
 
-		if (vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS) {
+		VkDescriptorPool pool = VK_NULL_HANDLE;
+		if (vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &pool) != VK_SUCCESS) {
 			RhiLog::fatal("VulkanRHI: failed to create descriptor pool");
+			return;
 		}
+		m_descriptorPools.push_back(pool);
+		m_descriptorPool = pool;
 	}
 
 	void VulkanRHI::destroyDescriptorPool() {
-		if (m_descriptorPool != VK_NULL_HANDLE) {
-			vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
-			m_descriptorPool = VK_NULL_HANDLE;
+		for (const auto pool : m_descriptorPools) {
+			vkDestroyDescriptorPool(m_device, pool, nullptr);
 		}
+		m_descriptorPools.clear();
+		m_descriptorPool = VK_NULL_HANDLE;
+	}
+
+	VkDescriptorSet VulkanRHI::allocateVkDescriptorSet(const VkDescriptorSetLayout layout, VkDescriptorPool& pool) {
+		for (int attempt = 0; attempt < 2; ++attempt) {
+			VkDescriptorSetAllocateInfo allocInfo{};
+			allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocInfo.descriptorPool = m_descriptorPool;
+			allocInfo.descriptorSetCount = 1;
+			allocInfo.pSetLayouts = &layout;
+			VkDescriptorSet set = VK_NULL_HANDLE;
+			const VkResult result = vkAllocateDescriptorSets(m_device, &allocInfo, &set);
+			if (result == VK_SUCCESS) {
+				pool = m_descriptorPool;
+				return set;
+			}
+			if (attempt > 0 || (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL)) {
+				RhiLog::error("VulkanRHI: descriptor set allocation failed (%d)", static_cast<int>(result));
+				return VK_NULL_HANDLE;
+			}
+			RhiLog::info("VulkanRHI: descriptor pool %zu is full, adding another", m_descriptorPools.size());
+			createDescriptorPool();
+		}
+		return VK_NULL_HANDLE;
 	}
 
 	void VulkanRHI::destroyBufferInternal(VkBufferResource& buffer) {
@@ -1069,20 +1097,12 @@ namespace SFE::Render {
 			return {};
 		}
 
-		VkDescriptorSetAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = m_descriptorPool;
-
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &layoutObj->layout;
-
-		VkDescriptorSet allocated = VK_NULL_HANDLE;
 		VkDescriptorSetResource resource{};
 		resource.layoutHandle = layout;
-		if (vkAllocateDescriptorSets(m_device, &allocInfo, &allocated) != VK_SUCCESS) {
+		resource.set = allocateVkDescriptorSet(layoutObj->layout, resource.pool);
+		if (resource.set == VK_NULL_HANDLE) {
 			return {};
 		}
-		resource.set = allocated;
 		resource.live = true;
 		DescriptorSetHandle handle{};
 		handle.id = storeResource(m_descriptorSets, m_freeDescriptorSets, std::move(resource));
@@ -1092,7 +1112,7 @@ namespace SFE::Render {
 	void VulkanRHI::freeDescriptorSet(const DescriptorSetHandle set) {
 		if (auto* setObj = getLive(m_descriptorSets, set.id)) {
 			if (setObj->set != VK_NULL_HANDLE) {
-				vkFreeDescriptorSets(m_device, m_descriptorPool, 1, &setObj->set);
+				vkFreeDescriptorSets(m_device, setObj->pool, 1, &setObj->set);
 			}
 			recycleResource(m_descriptorSets, m_freeDescriptorSets, set.id);
 		}
@@ -1118,14 +1138,10 @@ namespace SFE::Render {
 	// a fresh copy instead: binds already recorded keep the old contents, later binds see the write --
 	// what OpenGL does, since it captures a set's contents when the bind is recorded.
 	void VulkanRHI::detachBoundSet(VkDescriptorSetResource& set, const VkDescriptorSetLayoutResource& layout) {
-		VkDescriptorSetAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = m_descriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &layout.layout;
-		VkDescriptorSet copy = VK_NULL_HANDLE;
-		if (vkAllocateDescriptorSets(m_device, &allocInfo, &copy) != VK_SUCCESS) {
-			RhiLog::error("VulkanRHI: descriptor pool exhausted, writing a bound set in place");
+		VkDescriptorPool copyPool = VK_NULL_HANDLE;
+		const VkDescriptorSet copy = allocateVkDescriptorSet(layout.layout, copyPool);
+		if (copy == VK_NULL_HANDLE) {
+			RhiLog::error("VulkanRHI: no descriptor set to detach into, writing a bound set in place");
 			return;
 		}
 
@@ -1143,8 +1159,9 @@ namespace SFE::Render {
 		}
 		vkUpdateDescriptorSets(m_device, 0, nullptr, static_cast<uint32_t>(copies.size()), copies.data());
 
-		m_retiredSets[m_currentFrame].push_back(set.set);
+		m_retiredSets[m_currentFrame].push_back({ set.pool, set.set });
 		set.set = copy;
+		set.pool = copyPool;
 	}
 
 	void VulkanRHI::updateDescriptorSets(const std::vector<WriteDescriptor>& writes) {

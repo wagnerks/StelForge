@@ -634,6 +634,45 @@ namespace SFE::Render::Tests {
 		rhi().destroyTexture(target);
 	}
 
+	// More sets than one Vulkan descriptor pool holds (2048). Running out used to return empty handles with no
+	// message, and a bind with one silently kept the previous draw's textures.
+	TEST_P(RhiBackendTest, DescriptorSetsOutliveOnePool) {
+		const Math::Vec4 kColor{ k255(32), k255(96), k255(160), 1.f };
+		const auto target = makeTarget(rhi());
+		ASSERT_TRUE(target);
+		const auto pass = makePass(rhi(), { 1.f, 0.f, 1.f, 1.f });
+		ASSERT_TRUE(pass);
+		DescriptorSetLayoutDesc layoutDesc;
+		layoutDesc.bindings.push_back({ 0, DescriptorType::UniformBuffer, ShaderStage::Fragment });
+		const auto layout = rhi().createDescriptorSetLayout(layoutDesc);
+		ASSERT_TRUE(layout);
+		const auto buffer = makeUniformBuffer(rhi(), kColor);
+		ASSERT_TRUE(buffer);
+
+		std::vector<DescriptorSetHandle> sets;
+		for (int i = 0; i < 3000; ++i) {
+			const auto set = rhi().allocateDescriptorSet(layout);
+			ASSERT_TRUE(set) << "set " << i << " could not be allocated";
+			sets.push_back(set);
+		}
+		// The last one, from a later pool, still reaches the shader.
+		rhi().updateDescriptorSets({ { .set = sets.back(), .binding = 0, .buffers{ { buffer, 0, 0 } } } });
+		const auto pipeline = makeDescriptorPipeline(rhi(), pass, "shaders/rhi_test_uniform.fs", { layout });
+		ASSERT_TRUE(pipeline);
+		const auto pixels = drawWithSets(rhi(), target, pass, pipeline, &sets.back(), 1);
+		ASSERT_FALSE(pixels.empty()) << "readback failed";
+		EXPECT_EQ(pixelAt(pixels, 1, 1), (Rgba{ 32, 96, 160, 255 }));
+
+		rhi().destroyGraphicsPipeline(pipeline);
+		for (const auto set : sets) {
+			rhi().freeDescriptorSet(set);
+		}
+		rhi().destroyBuffer(buffer);
+		rhi().destroyDescriptorSetLayout(layout);
+		rhi().destroyRenderPass(pass);
+		rhi().destroyTexture(target);
+	}
+
 	// Per-frame data through allocTransient and a dynamic uniform binding: the set is written once, and
 	// each draw picks its allocation by the offset passed at bind. Two allocations in one frame must not
 	// overlap, the offset must reach the shader on both backends, and a later frame's allocation must be

@@ -63,6 +63,7 @@ namespace SFE::Render
 
 	struct VkDescriptorSetResource {
 		VkDescriptorSet set = VK_NULL_HANDLE;
+		VkDescriptorPool pool = VK_NULL_HANDLE; // the pool it came from, which frees it
 		DescriptorSetLayoutHandle layoutHandle{};
 		uint32_t generation = 0;
 		bool live = false;
@@ -373,7 +374,10 @@ namespace SFE::Render
 		uint32_t m_timestampValidBits = 0;
 		bool m_timestampPending[kMaxFramesInFlight]{};
 		// Sets replaced while still bound, freed once the frame that bound them has finished.
-		std::vector<VkDescriptorSet> m_retiredSets[kMaxFramesInFlight];
+		std::vector<std::pair<VkDescriptorPool, VkDescriptorSet>> m_retiredSets[kMaxFramesInFlight];
+		// Pools are added when the newest one is full; sets are allocated from the newest.
+		std::vector<VkDescriptorPool> m_descriptorPools;
+		VkDescriptorSet allocateVkDescriptorSet(VkDescriptorSetLayout layout, VkDescriptorPool& pool);
 		// Destroyed buffers an in-flight frame may still bind: freed after every frame recorded before the destroy
 		// has finished, which takes one wait per frame slot.
 		struct RetiredBuffer {

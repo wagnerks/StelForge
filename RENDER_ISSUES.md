@@ -44,11 +44,11 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: `RenderSystem::addPass(name, factory, after = "<pass name>")` on top of the default list. Blackboard names are plain strings, so a typo silently yields an empty handle; public names should be constants and a missing resource should warn.
 
 ## 11. `GpuScene` compacts and re-uploads every frame in scenes with many rarely used meshes
-- [ ] `GpuScene::update` checks holes on every frame (`GpuScene.cpp:161`), and `compact()` itself leaves `n/4 + 4` spare slots per batch (`:254`). With more than about 1024 batches averaging under ~5 instances each (a typical imported static level), the check fails right after compacting. GBuffer and Shadow then repack and re-upload their whole instance and batch buffers every frame. Batch slots emptied by `growGroup` keep their capacity and add to it.
+- [x] `GpuScene::update` checks holes on every frame (`GpuScene.cpp:161`), and `compact()` itself leaves `n/4 + 4` spare slots per batch (`:254`). With more than about 1024 batches averaging under ~5 instances each (a typical imported static level), the check fails right after compacting. GBuffer and Shadow then repack and re-upload their whole instance and batch buffers every frame. Batch slots emptied by `growGroup` keep their capacity and add to it.
 - Fix: count holes against the spare that compact leaves, or check only after a frame that changed something.
 
 ## 12. Glass is sorted by the entity origin, not by its bounds
-- [ ] `gpu_glass.cs:118` uses `m[3]`. Every submesh of one entity gets the same key, and so does glass in imported models whose pivots sit at the origin. Ties fall back to the slot index, so blending order is wrong and flips after swap-remove.
+- [x] `gpu_glass.cs:118` uses `m[3]`. Every submesh of one entity gets the same key, and so does glass in imported models whose pivots sit at the origin. Ties fall back to the slot index, so blending order is wrong and flips after swap-remove.
 - Fix: sort by the transformed centre of the mesh bounds (already computed a few lines above).
 
 ## 13. The cull runs one invocation per batch and loops over its instances
@@ -104,7 +104,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: per-slot buffers for these, or have the RHI rotate per-frame copies of `CpuAccess::Write` buffers.
 
 ## 28. The Vulkan descriptor pool has a fixed size and fails silently
-- [ ] `VulkanRHIResources.cpp:248-258`: 2048 sets and 2048 descriptors per type, never grown. GeometryPass keeps a set per texture combination forever (`GeometryPass.cpp:409`, 6 images each, so ~340 combinations exhaust images), and shadow mask sets are never freed. When the pool is full, `allocateDescriptorSet` returns an empty handle without a log and the bind is skipped silently, so the draw uses the previous group's textures. `detachBoundSet` then writes a bound set in place, which invalidates the command buffer.
+- [x] `VulkanRHIResources.cpp:248-258`: 2048 sets and 2048 descriptors per type, never grown. GeometryPass keeps a set per texture combination forever (`GeometryPass.cpp:409`, 6 images each, so ~340 combinations exhaust images), and shadow mask sets are never freed. When the pool is full, `allocateDescriptorSet` returns an empty handle without a log and the bind is skipped silently, so the draw uses the previous group's textures. `detachBoundSet` then writes a bound set in place, which invalidates the command buffer.
 - Fix: a list of pools that grows, and a log on failure.
 
 ## 29. Sets rewritten every frame (Vulkan)
