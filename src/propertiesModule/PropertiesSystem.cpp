@@ -676,12 +676,29 @@ namespace SFE::PropertiesModule {
 				const float segment = (half - kDoorWidth * 0.5f) * 0.5f;
 				const float segmentCenter = kDoorWidth * 0.5f + segment;
 
-				// Three solid walls and a fourth with a doorway in the middle, so the inside is visible from one side only.
-				spawnBox({ cx, kWallHeight * 0.5f, cz - half }, { half, kWallHeight * 0.5f, kWallThickness });
-				spawnBox({ cx - half, kWallHeight * 0.5f, cz }, { kWallThickness, kWallHeight * 0.5f, half });
-				spawnBox({ cx + half, kWallHeight * 0.5f, cz }, { kWallThickness, kWallHeight * 0.5f, half });
-				spawnBox({ cx - segmentCenter, kWallHeight * 0.5f, cz + half }, { segment, kWallHeight * 0.5f, kWallThickness });
-				spawnBox({ cx + segmentCenter, kWallHeight * 0.5f, cz + half }, { segment, kWallHeight * 0.5f, kWallThickness });
+				// Three solid walls and a fourth with a doorway in the middle, so the inside is visible from one side
+				// only -- which side varies, so some rooms open onto the street the camera stands in and some do not.
+				uint32_t room = static_cast<uint32_t>(chunkX * rooms + i) * 2246822519u + static_cast<uint32_t>(chunkZ * rooms + j) * 3266489917u;
+				room ^= room >> 15;
+				const uint32_t doorSide = room & 3u;
+				for (uint32_t side = 0; side < 4u; ++side) {
+					// Sides 0 and 1 run along x at -z and +z; sides 2 and 3 along z at -x and +x.
+					const float sign = (side & 1u) ? 1.f : -1.f;
+					const bool alongX = side < 2u;
+					const Math::Vec3 center = alongX ? Math::Vec3{ cx, kWallHeight * 0.5f, cz + sign * half }
+						: Math::Vec3{ cx + sign * half, kWallHeight * 0.5f, cz };
+					const Math::Vec3 full = alongX ? Math::Vec3{ half, kWallHeight * 0.5f, kWallThickness }
+						: Math::Vec3{ kWallThickness, kWallHeight * 0.5f, half };
+					if (side != doorSide) {
+						spawnBox(center, full);
+						continue;
+					}
+					const Math::Vec3 piece = alongX ? Math::Vec3{ segment, kWallHeight * 0.5f, kWallThickness }
+						: Math::Vec3{ kWallThickness, kWallHeight * 0.5f, segment };
+					const Math::Vec3 step = alongX ? Math::Vec3{ segmentCenter, 0.f, 0.f } : Math::Vec3{ 0.f, 0.f, segmentCenter };
+					spawnBox(center - step, piece);
+					spawnBox(center + step, piece);
+				}
 				// The roof hides the room from the sun as well, so the shadow cascades have something to cull too.
 				spawnBox({ cx, kWallHeight, cz }, { half + kWallThickness, kWallThickness, half + kWallThickness });
 
