@@ -113,7 +113,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: one set per frame slot where inputs alternate, and change checks.
 
 ## 30. Vulkan buffer writes during recording stall the frame
-- [ ] After uploads are flushed at `beginCommandList`, `updateBuffer` to a device-local buffer and `cmdUpdateBuffer` run `executeImmediate`: submit and wait on a fence (`VulkanRHIResources.cpp:131-143`, `:1362`). `GpuMaterialTable::upload()` is called from inside passes (`GeometryPass.cpp:263`), so a new material makes the GPU wait mid-frame. Copies queued earlier run at submit, after the immediate one, so the order of two writes to the same range is inverted compared with GL (no current caller does that).
+- [x] After uploads are flushed at `beginCommandList`, `updateBuffer` to a device-local buffer and `cmdUpdateBuffer` run `executeImmediate`: submit and wait on a fence (`VulkanRHIResources.cpp:131-143`, `:1362`). `GpuMaterialTable::upload()` is called from inside passes (`GeometryPass.cpp:263`), so a new material makes the GPU wait mid-frame. Copies queued earlier run at submit, after the immediate one, so the order of two writes to the same range is inverted compared with GL (no current caller does that).
 
 ## 31. Allocations per draw and per frame
 - [ ] GL `cmdBindDescriptorSets` deep-copies the bindings' vectors on every bind (`OpenGLRHI.cpp:1420`), the command list starts from zero capacity every frame, and push constants allocate. Vulkan allocates a vector per bind (`VulkanRHIPipelines.cpp:1389`), per render pass (`:1236`) and 4 per `updateDescriptorSets`. Passes allocate too: GlassPass `writes`, AnimationComputePass `unordered_map`, PointLightPass `matrices`/`spheres`/`candidates`, `GpuScene::cullSpheres` `shapes`.

@@ -298,6 +298,10 @@ namespace SFE::SystemsModule {
 			// An entity can join the scene after this frame's dirty transforms were taken, its id past the
 			// buffer; the grow uploads every live transform, its own included.
 			ensureGpuCapacity(mScene.maxEntity());
+			// Before the frame is recorded, so new materials go up with the frame's queued uploads; the passes'
+			// own upload() calls then find nothing to send. Sent after the list began, Vulkan would submit and
+			// wait for each one.
+			mMaterials.upload();
 		}
 
 		renderFrame();

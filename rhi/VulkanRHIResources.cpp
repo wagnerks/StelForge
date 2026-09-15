@@ -138,6 +138,13 @@ namespace SFE::Render {
 			return;
 		}
 		if (m_uploadsFlushed) {
+			static bool reported = false;
+			if (!reported) {
+				reported = true;
+				RhiLog::error("VulkanRHI: updateBuffer on '%s' after the frame's uploads were flushed: submitted and waited on "
+					"the spot. Write device-local buffers before the frame's first command list.",
+					buffer->desc.debugName ? buffer->desc.debugName : "unnamed");
+			}
 			VmaAllocation stagingMemory = VK_NULL_HANDLE;
 			const VkBuffer staging = createStagingBuffer(size, stagingMemory, data);
 			const VkBuffer dst = buffer->buffer;
