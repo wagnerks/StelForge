@@ -204,7 +204,12 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	gBufferOutlinePDesc.renderPass = outlineBufferRenderPass;
 	if (frameLayout) {
 		gBufferOutlinePDesc.descriptorSetLayouts = { frameLayout };
-		mOutlineFrameSet = rhi->allocateDescriptorSet(frameLayout);
+		// One set per frame slot, like the outline texture set below: their inputs alternate per slot, and writing
+		// a set the previous frame still binds costs a copy of it.
+		mOutlineFrameSets.resize(mGpuFrames);
+		for (auto& set : mOutlineFrameSets) {
+			set = rhi->allocateDescriptorSet(frameLayout);
+		}
 	}
 	gBufferOutlinePipeline = rhi->createGraphicsPipeline(gBufferOutlinePDesc);
 
@@ -213,7 +218,10 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	texLayoutDesc.bindings.emplace_back(26, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(27, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	mTexSetLayoutOutlines = rhi->createDescriptorSetLayout(texLayoutDesc);
-	mTexSetOutlines = rhi->allocateDescriptorSet(mTexSetLayoutOutlines);
+	mTexSetsOutlines.resize(mGpuFrames);
+	for (auto& set : mTexSetsOutlines) {
+		set.set = rhi->allocateDescriptorSet(mTexSetLayoutOutlines);
+	}
 
 	GraphicsPipelineDesc outlinePDesc;
 	outlinePDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/g_outline.vs");
@@ -305,32 +313,34 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 		beginGBuf.height = rh;
 		rhi->cmdBeginRenderPass(cmd, beginGBuf);
 		rhi->cmdBindPipeline(cmd, gBufferOutlinePipeline);
-		if (mOutlineFrameSet && renderDataHandle.transformsSSBO) {
+		const auto outlineFrameSet = mOutlineFrameSets[rhi->frameInFlight() % mGpuFrames];
+		auto& outlineTextures = mTexSetsOutlines[rhi->frameInFlight() % mGpuFrames];
+		if (outlineFrameSet && renderDataHandle.transformsSSBO) {
 			rhi->updateDescriptorSets({
 				{
-					.set = mOutlineFrameSet,
+					.set = outlineFrameSet,
 					.binding = 1,
 					
 					.buffers{ {renderDataHandle.transformsSSBO} }
 				},
 				{
-					.set = mOutlineFrameSet,
+					.set = outlineFrameSet,
 					.binding = 2,
 					
 					.buffers{ {renderDataHandle.bonesSSBO} }
 				},
 				{
-					.set = mOutlineFrameSet,
+					.set = outlineFrameSet,
 					.binding = 5,
 
 					.buffers{ {renderDataHandle.cameraMatricesUBO} }
 				},
-				{ .set = mOutlineFrameSet, .binding = 3, .buffers{ { mOutlineView.visible } } },
+				{ .set = outlineFrameSet, .binding = 3, .buffers{ { mOutlineView.visible } } },
 			});
 		}
 		rhi->cmdBindVertexBuffer(cmd, 0, MeshVaoRegistry::instance()->vertexBuffer(), 0);
 		rhi->cmdBindIndexBuffer(cmd, MeshVaoRegistry::instance()->indexBuffer(), IndexType::Uint32, 0);
-		rhi->cmdBindDescriptorSets(cmd, gBufferOutlinePipeline, 0, &mOutlineFrameSet, 1);
+		rhi->cmdBindDescriptorSets(cmd, gBufferOutlinePipeline, 0, &outlineFrameSet, 1);
 		for (const auto& group : scene.groups(GpuScene::List::Outline)) {
 			scene.draw(cmd, mOutlineView, group);
 		}
@@ -352,19 +362,19 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 				}
 				prev = tex;
 				writes.push_back({
-					.set = mTexSetOutlines,
+					.set = outlineTextures.set,
 					.binding = binding,
 					
 					.images{ {tex, mSampler} }
 				});
 			};
-			bindIfChanged(25, lightsBuffer, mBoundOutlineLights);
-			bindIfChanged(26, slot.normalBuffer, mBoundOutlineNormal);
-			bindIfChanged(27, outlinesMask, mBoundOutlineMask);
+			bindIfChanged(25, lightsBuffer, outlineTextures.lights);
+			bindIfChanged(26, slot.normalBuffer, outlineTextures.normal);
+			bindIfChanged(27, outlinesMask, outlineTextures.mask);
 			if (!writes.empty()) {
 				rhi->updateDescriptorSets(writes);
 			}
-			rhi->cmdBindDescriptorSets(cmd, outlinePipeline, 0, &mTexSetOutlines, 1);
+			rhi->cmdBindDescriptorSets(cmd, outlinePipeline, 0, &outlineTextures.set, 1);
 			Utils::renderQuad(cmd);
 			rhi->cmdEndRenderPass(cmd);
 		}

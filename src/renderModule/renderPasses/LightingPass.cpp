@@ -43,7 +43,6 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	texLayoutDesc.bindings.emplace_back(14, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
 	mTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
-	mTexSet = rhi->allocateDescriptorSet(mTexSetLayout);
 
 	Render::DescriptorSetLayoutDesc uboLayoutDesc;
 	uboLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
@@ -53,7 +52,12 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	uboLayoutDesc.bindings.emplace_back(11, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
 	uboLayoutDesc.bindings.emplace_back(15, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
 	mUboSetLayout = rhi->createDescriptorSetLayout(uboLayoutDesc);
-	mUboSet = rhi->allocateDescriptorSet(mUboSetLayout);
+
+	mSlots.resize((std::max)(1u, rhi->framesInFlight()));
+	for (auto& slot : mSlots) {
+		slot.texSet = rhi->allocateDescriptorSet(mTexSetLayout);
+		slot.uboSet = rhi->allocateDescriptorSet(mUboSetLayout);
+	}
 
 	mTexSetInitialized = true;
 
@@ -128,34 +132,24 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 		dummySamp.addressW = AddressMode::ClampToEdge;
 		dummySamp.compareOp = CompareOp::LessEqual;
 		mDummyPointShadowSampler = rhi->createSampler(dummySamp);
-		rhi->updateDescriptorSets({
-			{ mTexSet, 7, {}, {{ mDummyPointShadow, mDummyPointShadowSampler }} },
-		});
-		mBoundPointShadow = { mDummyPointShadow, mDummyPointShadowSampler };
+		for (auto& slot : mSlots) {
+			rhi->updateDescriptorSets({
+				{ slot.texSet, 7, {}, {{ mDummyPointShadow, mDummyPointShadowSampler }} },
+			});
+			slot.pointShadow = { mDummyPointShadow, mDummyPointShadowSampler };
+		}
 	}
 
 	mIbl = {};
 	mIbl = SFE::Render::bakeIbl(rhi);
 	if (mIbl.irradiance && mIbl.prefilter && mIbl.brdfLut) {
-		std::vector<Render::WriteDescriptor> iblWrites{ {
-			.set = mTexSet,
-			.binding = 12,
-			
-			.images{ { mIbl.irradiance, mIbl.irradianceSampler } }
-		},
-		{
-			.set = mTexSet,
-			.binding = 13,
-			
-			.images{ { mIbl.prefilter, mIbl.prefilterSampler } }
-		},
-		{
-			.set = mTexSet,
-			.binding = 14,
-			
-			.images{ { mIbl.brdfLut, mIbl.lutSampler } }
-		} };
-		rhi->updateDescriptorSets(iblWrites);
+		for (auto& slot : mSlots) {
+			rhi->updateDescriptorSets({
+				{ .set = slot.texSet, .binding = 12, .images{ { mIbl.irradiance, mIbl.irradianceSampler } } },
+				{ .set = slot.texSet, .binding = 13, .images{ { mIbl.prefilter, mIbl.prefilterSampler } } },
+				{ .set = slot.texSet, .binding = 14, .images{ { mIbl.brdfLut, mIbl.lutSampler } } },
+			});
+		}
 		renderDataHandle.frame.set(FrameId::IblIrradiance, { .texture = mIbl.irradiance, .sampler = mIbl.irradianceSampler });
 		renderDataHandle.frame.set(FrameId::IblPrefilter, { .texture = mIbl.prefilter, .sampler = mIbl.prefilterSampler });
 		renderDataHandle.frame.set(FrameId::IblBrdf, { .texture = mIbl.brdfLut, .sampler = mIbl.lutSampler });
@@ -301,7 +295,9 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd, const UboBlocks& blocks)
 {
 	auto rhi = Engine::instance()->rhi();
-	const auto uboSet = mUboSet;
+	auto& slotSets = mSlots[rhi->frameInFlight() % mSlots.size()];
+	const auto texSet = slotSets.texSet;
+	const auto uboSet = slotSets.uboSet;
 
 	std::vector<Render::WriteDescriptor> writes;
 	auto& frame = renderDataHandle.frame;
@@ -317,7 +313,7 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 			return;
 		}
 		writes.push_back({
-			.set = mTexSet,
+			.set = texSet,
 			.binding = binding,
 			
 			.images{ {tex, samp} }
@@ -339,10 +335,10 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		});
 	};
 
-	addImage(0, frame.texture(FrameId::GBufferPosition), frame.sampler(FrameId::GBufferPosition), mBoundGPos);
-	addBuffer(11, blocks.lightMatrices.buffer, mBoundLightMat, sizeof(Math::Mat4) * CsmFrame::kMaxCascades);
-	addImage(1, frame.texture(FrameId::GBufferNormal), frame.sampler(FrameId::GBufferNormal), mBoundGNormal);
-	addImage(2, frame.texture(FrameId::GBufferAlbedo), frame.sampler(FrameId::GBufferAlbedo), mBoundGAlbedo);
+	addImage(0, frame.texture(FrameId::GBufferPosition), frame.sampler(FrameId::GBufferPosition), slotSets.gPos);
+	addBuffer(11, blocks.lightMatrices.buffer, slotSets.lightMat, sizeof(Math::Mat4) * CsmFrame::kMaxCascades);
+	addImage(1, frame.texture(FrameId::GBufferNormal), frame.sampler(FrameId::GBufferNormal), slotSets.gNormal);
+	addImage(2, frame.texture(FrameId::GBufferAlbedo), frame.sampler(FrameId::GBufferAlbedo), slotSets.gAlbedo);
 
 	{
 		Render::TextureHandle ssaoTex = frame.texture(FrameId::SsaoBlur);
@@ -353,11 +349,11 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 				ssaoSampler = white->sampler;
 			}
 		}
-		addImage(3, ssaoTex, ssaoSampler, mBoundSsao);
+		addImage(3, ssaoTex, ssaoSampler, slotSets.ssao);
 	}
 
-	addBuffer(3, blocks.pointMatrices.buffer, mBoundPointMat, sizeof(Math::Mat4) * PointShadowFrame::kMaxShadowFaces);
-	addImage(7, frame.texture(FrameId::ShadowPoint), frame.sampler(FrameId::ShadowPoint), mBoundPointShadow);
+	addBuffer(3, blocks.pointMatrices.buffer, slotSets.pointMat, sizeof(Math::Mat4) * PointShadowFrame::kMaxShadowFaces);
+	addImage(7, frame.texture(FrameId::ShadowPoint), frame.sampler(FrameId::ShadowPoint), slotSets.pointShadow);
 
 	{
 		Render::TextureHandle outlinesTex = frame.texture(FrameId::GBufferOutlines);
@@ -368,29 +364,29 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 				outlinesSampler = white->sampler;
 			}
 		}
-		addImage(5, outlinesTex, outlinesSampler, mBoundOutlines);
+		addImage(5, outlinesTex, outlinesSampler, slotSets.outlines);
 	}
 
 	if (csm) {
-		addImage(8, frame.texture(FrameId::ShadowCsm), frame.sampler(FrameId::ShadowCsm), mBoundCsm);
-		addImage(6, frame.texture(FrameId::ShadowCsmDepth), frame.sampler(FrameId::ShadowCsmDepth), mBoundCsmDepth);
+		addImage(8, frame.texture(FrameId::ShadowCsm), frame.sampler(FrameId::ShadowCsm), slotSets.csm);
+		addImage(6, frame.texture(FrameId::ShadowCsmDepth), frame.sampler(FrameId::ShadowCsmDepth), slotSets.csmDepth);
 	}
 
-	addBuffer(15, blocks.drawData.buffer, mBoundPc, sizeof(DrawData));
-	addBuffer(9, blocks.cascadedShadows.buffer, mBoundShadows, sizeof(CascadedShadowBlock));
-	addBuffer(10, blocks.pointLights.buffer, mBoundPointLights, sizeof(pointLight));
-	addBuffer(5, renderDataHandle.cameraMatricesUBO, mBoundCam);
+	addBuffer(15, blocks.drawData.buffer, slotSets.pc, sizeof(DrawData));
+	addBuffer(9, blocks.cascadedShadows.buffer, slotSets.shadows, sizeof(CascadedShadowBlock));
+	addBuffer(10, blocks.pointLights.buffer, slotSets.pointLights, sizeof(pointLight));
+	addBuffer(5, renderDataHandle.cameraMatricesUBO, slotSets.cam);
 
 	if (mIbl.irradiance && mIbl.prefilter && mIbl.brdfLut) {
-		addImage(12, mIbl.irradiance, mIbl.irradianceSampler, mBoundIblIrr);
-		addImage(13, mIbl.prefilter, mIbl.prefilterSampler, mBoundIblPref);
-		addImage(14, mIbl.brdfLut, mIbl.lutSampler, mBoundIblLut);
+		addImage(12, mIbl.irradiance, mIbl.irradianceSampler, slotSets.iblIrr);
+		addImage(13, mIbl.prefilter, mIbl.prefilterSampler, slotSets.iblPref);
+		addImage(14, mIbl.brdfLut, mIbl.lutSampler, slotSets.iblLut);
 	}
 
 	if (!writes.empty()) {
 		rhi->updateDescriptorSets(writes);
 	}
-	Render::DescriptorSetHandle sets[2] = { mTexSet, mUboSet };
+	Render::DescriptorSetHandle sets[2] = { texSet, uboSet };
 	// Set 0 has no dynamic bindings; set 1's in binding order.
 	const uint32_t offsets[] = { blocks.pointMatrices.offset, blocks.cascadedShadows.offset, blocks.pointLights.offset,
 		blocks.lightMatrices.offset, blocks.drawData.offset };

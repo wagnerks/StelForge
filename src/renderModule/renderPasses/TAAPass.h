@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 #include "mathModule/Forward.h"
 #include "renderModule/renderPasses/RenderPass.h"
 
@@ -28,6 +29,6 @@ namespace SFE::Render::RenderPasses {
 		PipelineHandle mPipeline{};
 		RenderPassHandle mRenderPass{};
 		DescriptorSetLayoutHandle mLayout{};
-		DescriptorSetHandle mSet{};
+		std::vector<DescriptorSetHandle> mSets; // one per frame slot
 	};
 }

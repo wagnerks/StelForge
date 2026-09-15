@@ -48,7 +48,11 @@ void DoFPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(1, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
-	mSet = rhi->allocateDescriptorSet(mLayout);
+	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
+	// frame still binds costs a copy of it.
+	for (uint32_t i = 0; i < (std::max)(1u, rhi->framesInFlight()); ++i) {
+		mSets.push_back(rhi->allocateDescriptorSet(mLayout));
+	}
 
 	SFE::Render::GraphicsPipelineDesc pipelineDesc;
 	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(SFE::Vertex2D)), SFE::Render::VertexInputRate::PerVertex);
@@ -69,6 +73,7 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 	FUNCTION_BENCHMARK;
 
 	auto* rhi = Engine::instance()->rhi();
+	const auto mSet = mSets[rhi->frameInFlight() % mSets.size()];
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(SFE::Render::FrameId::Final);
 	const auto pos = frame.texture(SFE::Render::FrameId::GBufferPosition);

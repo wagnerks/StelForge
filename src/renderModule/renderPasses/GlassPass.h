@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/GpuScene.h"
 #include "rhi/RenderHardwareInterface.h"
@@ -48,7 +48,7 @@ namespace SFE::Render::RenderPasses {
 		PipelineHandle mPipeline{};
 		RenderPassHandle mRenderPass{};
 		DescriptorSetLayoutHandle mLayout{};
-		DescriptorSetHandle mSet{};
+		std::vector<DescriptorSetHandle> mSets; // one per frame slot
 		GpuScene::View mView;
 	};
 }

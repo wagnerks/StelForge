@@ -49,7 +49,11 @@ void SSSPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(2, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
-	mSet = rhi->allocateDescriptorSet(mLayout);
+	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
+	// frame still binds costs a copy of it.
+	for (uint32_t i = 0; i < (std::max)(1u, rhi->framesInFlight()); ++i) {
+		mSets.push_back(rhi->allocateDescriptorSet(mLayout));
+	}
 
 	GraphicsPipelineDesc pipelineDesc;
 	pipelineDesc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), VertexInputRate::PerVertex);
@@ -70,6 +74,7 @@ void SSSPass::render(SystemsModule::RenderData& renderDataHandle, CommandListHan
 	FUNCTION_BENCHMARK;
 
 	auto* rhi = Engine::instance()->rhi();
+	const auto mSet = mSets[rhi->frameInFlight() % mSets.size()];
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(FrameId::Final);
 	const auto pos = frame.texture(FrameId::GBufferPosition);

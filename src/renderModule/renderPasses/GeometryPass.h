@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <future>
 #include <mutex>
 #include <thread>
@@ -39,8 +39,15 @@ namespace SFE::Render::RenderPasses {
 		RenderPassHandle outlineRenderPass;
 
 		Render::DescriptorSetLayoutHandle mTexSetLayoutOutlines{};
-		Render::DescriptorSetHandle       mTexSetOutlines{};
-		Render::DescriptorSetHandle       mOutlineFrameSet{};
+		// One per frame slot: what they bind alternates with the slot.
+		struct OutlineTextures {
+			Render::DescriptorSetHandle set{};
+			TextureHandle lights{};
+			TextureHandle normal{};
+			TextureHandle mask{};
+		};
+		std::vector<OutlineTextures>      mTexSetsOutlines;
+		std::vector<Render::DescriptorSetHandle> mOutlineFrameSets;
 
 		Render::DescriptorSetLayoutHandle gBuffetLayout{};
 		Render::DescriptorSetHandle       gBuffetLayoutSet{};
@@ -66,9 +73,6 @@ namespace SFE::Render::RenderPasses {
 		TextureHandle lightsBuffer{};
 		FramebufferHandle outlineFramebuffer{};
 		FramebufferHandle outlineResultFbo{};
-		TextureHandle mBoundOutlineLights{};
-		TextureHandle mBoundOutlineNormal{};
-		TextureHandle mBoundOutlineMask{};
 		bool needClearOutlines = true;
 
 

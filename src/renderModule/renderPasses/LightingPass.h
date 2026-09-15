@@ -61,9 +61,7 @@ namespace SFE::Render::RenderPasses {
 		DrawData drawData;
 
 		Render::DescriptorSetLayoutHandle mTexSetLayout{};
-		Render::DescriptorSetHandle       mTexSet{};
 		Render::DescriptorSetLayoutHandle mUboSetLayout{};
-		Render::DescriptorSetHandle       mUboSet{};
 		bool                              mTexSetInitialized = false;
 
 		Render::PipelineHandle            mLightingPipeline{};    // предполагаем, что ты его будешь создавать по RHI
@@ -107,22 +105,29 @@ namespace SFE::Render::RenderPasses {
 			TextureHandle texture;
 			SamplerHandle sampler;
 		};
-		BoundImage mBoundGPos{};
-		BoundImage mBoundGNormal{};
-		BoundImage mBoundGAlbedo{};
-		BoundImage mBoundSsao{};
-		BoundImage mBoundPointShadow{};
-		BoundImage mBoundOutlines{};
-		BoundImage mBoundCsm{};
-		BoundImage mBoundCsmDepth{};
-		BoundImage mBoundIblIrr{};
-		BoundImage mBoundIblPref{};
-		BoundImage mBoundIblLut{};
-		BufferHandle mBoundLightMat{};
-		BufferHandle mBoundPointMat{};
-		BufferHandle mBoundPc{};
-		BufferHandle mBoundShadows{};
-		BufferHandle mBoundPointLights{};
-		BufferHandle mBoundCam{};
+		// One set per frame slot: the G-buffer and the lit target alternate per slot, so a shared set would be
+		// rewritten every frame -- and writing a set the previous frame still binds costs a copy of it.
+		struct Slot {
+			Render::DescriptorSetHandle texSet{};
+			Render::DescriptorSetHandle uboSet{};
+			BoundImage gPos{};
+			BoundImage gNormal{};
+			BoundImage gAlbedo{};
+			BoundImage ssao{};
+			BoundImage pointShadow{};
+			BoundImage outlines{};
+			BoundImage csm{};
+			BoundImage csmDepth{};
+			BoundImage iblIrr{};
+			BoundImage iblPref{};
+			BoundImage iblLut{};
+			BufferHandle lightMat{};
+			BufferHandle pointMat{};
+			BufferHandle pc{};
+			BufferHandle shadows{};
+			BufferHandle pointLights{};
+			BufferHandle cam{};
+		};
+		std::vector<Slot> mSlots;
 	};
 }

@@ -1,4 +1,4 @@
-#include "GlassPass.h"
+﻿#include "GlassPass.h"
 
 #include <algorithm>
 #include <cmath>
@@ -77,7 +77,12 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
-	mSet = rhi->allocateDescriptorSet(mLayout);
+	// One set per frame slot: its inputs (the scene copy's transient parameters, the visible list) differ per
+	// frame, and writing a set the previous frame still binds costs a copy of it.
+	mSets.resize((std::max)(1u, rhi->framesInFlight()));
+	for (auto& set : mSets) {
+		set = rhi->allocateDescriptorSet(mLayout);
+	}
 
 	GraphicsPipelineDesc pipelineDesc;
 	Render::VertexLayoutDesc& layout = pipelineDesc.layout;
@@ -180,45 +185,46 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	// Per-material ior, opacity and tint come from the material table; the rest is the same for every draw.
 	const auto params = rhi->allocTransient(mParams);
 
+	const auto glassSet = mSets[rhi->frameInFlight() % mSets.size()];
 	std::vector<WriteDescriptor> writes;
 	{
 		WriteDescriptor w{};
-		w.set = mSet;
+		w.set = glassSet;
 		w.binding = 6;
 		w.images.push_back({ mSceneCopy, mSampler });
 		writes.push_back(std::move(w));
 	}
 	{
 		WriteDescriptor w{};
-		w.set = mSet;
+		w.set = glassSet;
 		w.binding = 15;
 		w.buffers.push_back({ params.buffer, 0, sizeof(Params) });
 		writes.push_back(std::move(w));
 	}
 	if (frame.texture(FrameId::IblPrefilter)) {
 		WriteDescriptor w{};
-		w.set = mSet;
+		w.set = glassSet;
 		w.binding = 13;
 		w.images.push_back({ frame.texture(FrameId::IblPrefilter), frame.sampler(FrameId::IblPrefilter) });
 		writes.push_back(std::move(w));
 	}
 	if (renderDataHandle.cameraMatricesUBO) {
 		WriteDescriptor w{};
-		w.set = mSet;
+		w.set = glassSet;
 		w.binding = 5;
 		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		writes.push_back(std::move(w));
 	}
 	if (renderDataHandle.transformsSSBO) {
 		WriteDescriptor w{};
-		w.set = mSet;
+		w.set = glassSet;
 		w.binding = 1;
 		w.buffers.push_back({ renderDataHandle.transformsSSBO });
 		writes.push_back(std::move(w));
 	}
 	if (renderDataHandle.bonesSSBO) {
 		WriteDescriptor w{};
-		w.set = mSet;
+		w.set = glassSet;
 		w.binding = 2;
 		w.buffers.push_back({ renderDataHandle.bonesSSBO });
 		writes.push_back(std::move(w));
@@ -228,7 +234,7 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		const auto* white = AssetsModule::TextureHandler::loadTexture("white.png");
 		const auto textures = renderSystem->materials().glassTextures();
 		WriteDescriptor albedo{};
-		albedo.set = mSet;
+		albedo.set = glassSet;
 		albedo.binding = 16;
 		for (size_t i = 0; i < GpuMaterialTable::kGlassTextureSlots; ++i) {
 			const auto tex = i < textures.size() && textures[i] ? textures[i] : white->texture;
@@ -236,8 +242,8 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		}
 		writes.push_back(std::move(albedo));
 	}
-	writes.push_back({ .set = mSet, .binding = 3, .buffers{ { mView.visible } } });
-	writes.push_back({ .set = mSet, .binding = 7, .buffers{ { materials } } });
+	writes.push_back({ .set = glassSet, .binding = 3, .buffers{ { mView.visible } } });
+	writes.push_back({ .set = glassSet, .binding = 7, .buffers{ { materials } } });
 	rhi->updateDescriptorSets(writes);
 
 	const int w = Engine::instance()->getWindow()->getScreenData().renderW;
@@ -254,7 +260,7 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	rhi->cmdBindPipeline(cmd, mPipeline);
 	rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
 	rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
-	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1, &params.offset, 1);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &glassSet, 1, &params.offset, 1);
 	scene.drawSorted(cmd, mView);
 	rhi->cmdEndRenderPass(cmd);
 }

@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <vector>
 #include "renderModule/renderPasses/RenderPass.h"
 
 namespace SFE::Render {
@@ -19,8 +20,8 @@ namespace SFE::Render::RenderPasses {
 		RenderPassHandle mBloomPass{};
 		RenderPassHandle mDisplayPass{};
 		DescriptorSetLayoutHandle mLayout{};
-		DescriptorSetHandle mBloomSet{};
-		DescriptorSetHandle mPostSet{};
+		std::vector<DescriptorSetHandle> mBloomSets; // one per frame slot
+		std::vector<DescriptorSetHandle> mPostSets; // one per frame slot
 		SamplerHandle mSampler{};
 
 		struct PostParams {

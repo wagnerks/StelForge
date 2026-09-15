@@ -65,9 +65,18 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		SSAOBlurParams blurParams;
-		// Transient buffer each set's dynamic params binding was last written with.
-		uint32_t mainParamsBufferId = UINT32_MAX;
-		uint32_t blurParamsBufferId = UINT32_MAX;
+		// One set per frame slot: the G-buffer it samples alternates with the slot, and writing a set the previous
+		// frame still binds costs a copy of it. Each keeps what it was last written with.
+		struct Slot {
+			Render::DescriptorSetHandle mainSet;
+			Render::DescriptorSetHandle blurSet;
+			uint32_t mainParamsBufferId = UINT32_MAX;
+			uint32_t blurParamsBufferId = UINT32_MAX;
+			Render::TextureHandle position;
+			Render::TextureHandle normal;
+			Render::BufferHandle camera;
+		};
+		std::vector<Slot> mSlots;
 
 		bool ssaoDebugWindow = false;
 		Data mData{};
@@ -79,10 +88,8 @@ namespace SFE::Render::RenderPasses {
 		RenderPassHandle blur;
 
 		Render::DescriptorSetLayoutHandle mainTexSetLayout;
-		Render::DescriptorSetHandle       mainTexSet;
 
 		Render::DescriptorSetLayoutHandle blurTexSetLayout;
-		Render::DescriptorSetHandle       blurTexSet;
 
 		int mSsaoW = 0;
 		int mSsaoH = 0;

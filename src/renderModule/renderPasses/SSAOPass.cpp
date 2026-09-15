@@ -67,14 +67,17 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
 	mainTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
-	mainTexSet = rhi->allocateDescriptorSet(mainTexSetLayout);
 
 	Render::DescriptorSetLayoutDesc texLayoutBlurDesc;
 	texLayoutBlurDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutBlurDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutBlurDesc.bindings.emplace_back(2, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
 	blurTexSetLayout = rhi->createDescriptorSetLayout(texLayoutBlurDesc);
-	blurTexSet = rhi->allocateDescriptorSet(blurTexSetLayout);
+	mSlots.resize((std::max)(1u, rhi->framesInFlight()));
+	for (auto& slot : mSlots) {
+		slot.mainSet = rhi->allocateDescriptorSet(mainTexSetLayout);
+		slot.blurSet = rhi->allocateDescriptorSet(blurTexSetLayout);
+	}
 
 	GraphicsPipelineDesc mainPipelineDesc;
 	Render::VertexLayoutDesc& layout = mainPipelineDesc.layout;
@@ -105,43 +108,6 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 	blurParams.sigmaL = mData.sigmaL;
 	blurParams.updateFac();
 
-	const auto gPos = renderDataHandle.frame.texture(FrameId::GBufferPosition);
-	const auto gPosSamp = renderDataHandle.frame.sampler(FrameId::GBufferPosition);
-	const auto gNrm = renderDataHandle.frame.texture(FrameId::GBufferNormal);
-	const auto gNrmSamp = renderDataHandle.frame.sampler(FrameId::GBufferNormal);
-
-	std::vector<Render::WriteDescriptor> writes;
-
-	{
-		Render::WriteDescriptor w{};
-		w.set = mainTexSet;
-		w.binding = 0;
-		w.images.push_back({ gPos, gPosSamp });
-		writes.push_back(std::move(w));
-	}
-	{
-		Render::WriteDescriptor w{};
-		w.set = mainTexSet;
-		w.binding = 1;
-		w.images.push_back({ gNrm, gNrmSamp });
-		writes.push_back(std::move(w));
-	}
-	{
-		Render::WriteDescriptor w{};
-		w.set = blurTexSet;
-		w.binding = 0;
-		w.images.push_back({ mData.mSsaoColorBuffer, mData.sampler });
-		writes.push_back(std::move(w));
-	}
-	{
-		Render::WriteDescriptor w{};
-		w.set = blurTexSet;
-		w.binding = 1;
-		w.images.push_back({ gPos, gPosSamp });
-		writes.push_back(std::move(w));
-	}
-
-	rhi->updateDescriptorSets(writes);
 
 	renderDataHandle.frame.set(FrameId::SsaoColor, { .texture = mData.mSsaoColorBuffer, .sampler = mData.sampler });
 	renderDataHandle.frame.set(FrameId::SsaoBlur, { .texture = mData.mSsaoColorBufferBlur, .sampler = mData.sampler });
@@ -154,26 +120,38 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comma
 	FUNCTION_BENCHMARK
 
 	auto* rhi = Engine::instance()->rhi();
+	auto& slot = mSlots[rhi->frameInFlight() % mSlots.size()];
+	const auto gPos = renderDataHandle.frame.texture(FrameId::GBufferPosition);
+	const auto gPosSamp = renderDataHandle.frame.sampler(FrameId::GBufferPosition);
+	const auto gNrm = renderDataHandle.frame.texture(FrameId::GBufferNormal);
+	const auto gNrmSamp = renderDataHandle.frame.sampler(FrameId::GBufferNormal);
+	if (slot.position.id != gPos.id || slot.normal.id != gNrm.id) {
+		slot.position = gPos;
+		slot.normal = gNrm;
+		rhi->updateDescriptorSets({
+			{ .set = slot.mainSet, .binding = 0, .images{ { gPos, gPosSamp } } },
+			{ .set = slot.mainSet, .binding = 1, .images{ { gNrm, gNrmSamp } } },
+			{ .set = slot.blurSet, .binding = 0, .images{ { mData.mSsaoColorBuffer, mData.sampler } } },
+			{ .set = slot.blurSet, .binding = 1, .images{ { gPos, gPosSamp } } },
+		});
+	}
 	// Without TAA there is nothing to average the rotation, so a moving pattern would only
 	// read as flicker -- hold it still in that case.
 	params.frameIndex = renderDataHandle.graphics.taa ? static_cast<float>(renderDataHandle.taaFrame % 8) : 0.f;
 	const auto ssaoParams = rhi->allocTransient(params);
 	const auto ssaoBlurParams = rhi->allocTransient(blurParams);
-	if (ssaoParams.buffer.id != mainParamsBufferId) {
-		mainParamsBufferId = ssaoParams.buffer.id;
-		rhi->updateDescriptorSets({ { .set = mainTexSet, .binding = 3, .buffers{ { ssaoParams.buffer, 0, sizeof(SSAOParams) } } } });
+	if (ssaoParams.buffer.id != slot.mainParamsBufferId) {
+		slot.mainParamsBufferId = ssaoParams.buffer.id;
+		rhi->updateDescriptorSets({ { .set = slot.mainSet, .binding = 3, .buffers{ { ssaoParams.buffer, 0, sizeof(SSAOParams) } } } });
 	}
-	if (ssaoBlurParams.buffer.id != blurParamsBufferId) {
-		blurParamsBufferId = ssaoBlurParams.buffer.id;
-		rhi->updateDescriptorSets({ { .set = blurTexSet, .binding = 2, .buffers{ { ssaoBlurParams.buffer, 0, sizeof(SSAOBlurParams) } } } });
+	if (ssaoBlurParams.buffer.id != slot.blurParamsBufferId) {
+		slot.blurParamsBufferId = ssaoBlurParams.buffer.id;
+		rhi->updateDescriptorSets({ { .set = slot.blurSet, .binding = 2, .buffers{ { ssaoBlurParams.buffer, 0, sizeof(SSAOBlurParams) } } } });
 	}
 
-	if (renderDataHandle.cameraMatricesUBO) {
-		Render::WriteDescriptor w{};
-		w.set = mainTexSet;
-		w.binding = 5;
-		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
-		rhi->updateDescriptorSets({ std::move(w) });
+	if (renderDataHandle.cameraMatricesUBO && slot.camera.id != renderDataHandle.cameraMatricesUBO.id) {
+		slot.camera = renderDataHandle.cameraMatricesUBO;
+		rhi->updateDescriptorSets({ { .set = slot.mainSet, .binding = 5, .buffers{ { renderDataHandle.cameraMatricesUBO } } } });
 	}
 
 	const int w = mSsaoW > 0 ? mSsaoW : (std::max)(1, Engine::instance()->getWindow()->getScreenData().renderW / 2);
@@ -186,7 +164,7 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comma
 	beginInfo.renderPass = main;
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, mainPipeline);
-	rhi->cmdBindDescriptorSets(cmd, mainPipeline, 0, &mainTexSet, 1, &ssaoParams.offset, 1);
+	rhi->cmdBindDescriptorSets(cmd, mainPipeline, 0, &slot.mainSet, 1, &ssaoParams.offset, 1);
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 
@@ -194,7 +172,7 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comma
 	beginInfo.renderPass = blur;
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	rhi->cmdBindPipeline(cmd, blurPipeline);
-	rhi->cmdBindDescriptorSets(cmd, blurPipeline, 0, &blurTexSet, 1, &ssaoBlurParams.offset, 1);
+	rhi->cmdBindDescriptorSets(cmd, blurPipeline, 0, &slot.blurSet, 1, &ssaoBlurParams.offset, 1);
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 }

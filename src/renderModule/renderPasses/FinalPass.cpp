@@ -44,8 +44,12 @@ void FinalPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(1, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
-	mBloomSet = rhi->allocateDescriptorSet(mLayout);
-	mPostSet = rhi->allocateDescriptorSet(mLayout);
+	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
+	// frame still binds costs a copy of it.
+	for (uint32_t i = 0; i < (std::max)(1u, rhi->framesInFlight()); ++i) {
+		mBloomSets.push_back(rhi->allocateDescriptorSet(mLayout));
+		mPostSets.push_back(rhi->allocateDescriptorSet(mLayout));
+	}
 
 	RenderPassDesc bloomRp;
 	bloomRp.colorAttachmentCount = 1;
@@ -101,6 +105,8 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		}
 
 	auto* rhi = Engine::instance()->rhi();
+	const auto mBloomSet = mBloomSets[rhi->frameInFlight() % mBloomSets.size()];
+	const auto mPostSet = mPostSets[rhi->frameInFlight() % mPostSets.size()];
 	const auto& screen = Engine::instance()->getWindow()->getScreenData();
 	auto& gfx = renderDataHandle.graphics;
 
