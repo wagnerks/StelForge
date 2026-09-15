@@ -28,13 +28,17 @@ namespace SFE::Render {
 	};
 	static_assert(sizeof(GpuMaterial) == 64, "must match the std430 SfeMaterial");
 
-	// One entry per distinct material, keyed by MaterialRules::materialHash. Entries are appended and
-	// never move, so an index handed out stays valid; the buffer holds them all on the GPU.
+	// One entry per distinct material, keyed by MaterialRules::materialHash and counted by the instances using it.
+	// An index stays valid while it is held; a released one is reused, so editing a material (a slider drag gives
+	// a new hash per step) does not grow the table.
 	class GpuMaterialTable {
 	public:
-		// Any thread.
-		uint32_t indexFor(const ComponentsModule::MaterialComponent& material);
-		// Main thread. Uploads entries added since the last call and returns the buffer to bind.
+		// Any thread. Every acquire is matched by one release of the index it returned.
+		uint32_t acquire(const ComponentsModule::MaterialComponent& material);
+		void release(uint32_t index);
+		// Drops every entry, for a caller about to acquire everything again.
+		void reset();
+		// Main thread. Uploads entries changed since the last call and returns the buffer to bind.
 		BufferHandle upload();
 
 		// The albedo of every glass material, in slot order; an empty handle means no texture. Glass binds them
@@ -42,14 +46,28 @@ namespace SFE::Render {
 		static constexpr size_t kGlassTextureSlots = 8;
 		std::vector<TextureHandle> glassTextures();
 
-	private:
-		uint32_t glassSlot(TextureHandle albedo);
+		// For tests.
+		size_t liveEntries();
 
+	private:
+		struct EntryState {
+			uint64_t hash = 0;
+			uint32_t refs = 0;
+			uint32_t glassSlot = 0; // 0: none
+		};
+
+		uint32_t acquireGlassSlot(TextureHandle albedo);
+		void releaseGlassSlot(uint32_t slot);
+
+		// Slot 0 is the untextured fallback and never released.
 		std::vector<TextureHandle> mGlassTextures{ TextureHandle{} };
+		std::vector<uint32_t> mGlassRefs{ 0 };
 		std::mutex mMutex;
 		std::unordered_map<uint64_t, uint32_t> mIndexByHash;
 		std::vector<GpuMaterial> mEntries;
-		size_t mUploaded = 0;
+		std::vector<EntryState> mStates;
+		std::vector<uint32_t> mFree;
+		std::vector<uint32_t> mDirty; // entries to upload
 		size_t mCapacity = 0;
 		BufferHandle mBuffer;
 	};

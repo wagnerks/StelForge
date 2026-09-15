@@ -98,6 +98,7 @@ namespace SFE::Render {
 	}
 
 	void GpuScene::update(GpuMaterialTable& materials) {
+		mMaterials = &materials;
 		std::vector<ecss::EntityId> pending;
 		{
 			std::lock_guard lock(mPendingMutex);
@@ -176,6 +177,8 @@ namespace SFE::Render {
 	}
 
 	void GpuScene::rebuildAll(GpuMaterialTable& materials) {
+		// Every instance acquires its material again below.
+		materials.reset();
 		for (auto& data : mLists) {
 			data.groups.clear();
 			data.groupStates.clear();
@@ -302,7 +305,8 @@ namespace SFE::Render {
 		meshComp->forEachDrawMesh(matComp.get(), [&](const RenderMeshData& mesh, const MaterialComponent* mat) {
 			const auto& material = mat ? *mat : kNoMaterial;
 			const bool transparent = mat && mat->transparent;
-			const uint32_t materialIndex = materials.indexFor(material);
+			// One reference per instance, released when that instance is removed.
+			const auto materialIndex = [&] { return materials.acquire(material); };
 
 			// Shadow casters: a transparent one casts through the glass proxy when there is one.
 			const auto& caster = transparent && mGlassShadowProxy ? mGlassShadowProxy : mesh;
@@ -317,7 +321,7 @@ namespace SFE::Render {
 				group.transparent = transparent;
 				const auto key = std::to_string(group.maskTexture.id) + (cutout ? "|c" : "|o") + (transparent ? "t" : "s");
 				const auto index = groupFor(List::Shadow, key, std::move(group));
-				addInstance(refs, entity, List::Shadow, index, caster.meshId, { entity, caster.meshId, materialIndex, 0 });
+				addInstance(refs, entity, List::Shadow, index, caster.meshId, { entity, caster.meshId, materialIndex(), 0 });
 			}
 
 			if (mesh.indexCount == 0) {
@@ -326,7 +330,7 @@ namespace SFE::Render {
 			if (transparent) {
 				// Glass is one batch whatever the mesh: sortGlass orders every instance by depth.
 				const auto index = groupFor(List::Glass, "glass", DrawGroup{});
-				addInstance(refs, entity, List::Glass, index, 0, { entity, mesh.meshId, materialIndex, 0 });
+				addInstance(refs, entity, List::Glass, index, 0, { entity, mesh.meshId, materialIndex(), 0 });
 				return;
 			}
 			DrawGroup group;
@@ -336,16 +340,15 @@ namespace SFE::Render {
 			group.textureKey = MaterialRules::textureKey(material.materials);
 			const auto key = group.vertexShader + '|' + group.fragmentShader + '|' + std::to_string(group.textureKey);
 			const auto index = groupFor(List::GBuffer, key, std::move(group));
-			addInstance(refs, entity, List::GBuffer, index, mesh.meshId, { entity, mesh.meshId, materialIndex, 0 });
+			addInstance(refs, entity, List::GBuffer, index, mesh.meshId, { entity, mesh.meshId, materialIndex(), 0 });
 		});
 
 		// Outlined entities draw every submesh again into the outline list, with no material of their own.
 		if (registry.hasComponent<OutlineComponent>(entity)) {
-			const uint32_t noMaterial = materials.indexFor(kNoMaterial);
 			const auto group = groupFor(List::Outline, "outline", DrawGroup{});
 			for (const auto& node : meshComp->meshGraph) {
 				if (node.value && node.value.indexCount != 0) {
-					addInstance(refs, entity, List::Outline, group, node.value.meshId, { entity, node.value.meshId, noMaterial, 0 });
+					addInstance(refs, entity, List::Outline, group, node.value.meshId, { entity, node.value.meshId, materials.acquire(kNoMaterial), 0 });
 				}
 			}
 		}
@@ -424,6 +427,9 @@ namespace SFE::Render {
 		auto& batch = data.batchMirror[global];
 		auto& state = data.batchStates[global];
 		const uint32_t last = batch.instanceCount - 1;
+		if (mMaterials) {
+			mMaterials->release(data.instanceMirror[batch.firstInstance + ref.slot].material);
+		}
 		if (ref.slot != last) {
 			// The last instance fills the hole, and its owner is told where it went.
 			data.instanceMirror[batch.firstInstance + ref.slot] = data.instanceMirror[batch.firstInstance + last];

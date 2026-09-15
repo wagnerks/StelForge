@@ -194,6 +194,8 @@ namespace SFE::Render {
 		std::unordered_map<ecss::EntityId, std::vector<InstanceRef>> mEntityRefs;
 		ecss::EntityId mMaxEntity = 0;
 		uint64_t mCompactions = 0;
+		// The table instances hold references in, for removals; set by update.
+		GpuMaterialTable* mMaterials = nullptr;
 		bool mTrackUploads = false;
 		std::mutex mPendingMutex;
 		std::vector<ecss::EntityId> mPending;

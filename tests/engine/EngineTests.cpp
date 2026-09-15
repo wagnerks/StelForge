@@ -108,11 +108,15 @@ namespace SFE::EngineTests {
 		// Mesh ids past anything the world loads, so the batches are ours alone. Nothing is drawn on this backend,
 		// so a mesh only has to look uploaded.
 		constexpr uint32_t kFirstMesh = 1u << 20;
+		const size_t materialsBefore = renderSystem->materials().liveEntries();
 		const auto spawn = [&](uint32_t mesh) {
 			const auto id = registry.takeEntity();
 			registry.addComponent<TransformComponent>(id, id);
 			auto meshComp = registry.addComponent<MeshComponent>(id);
 			meshComp->meshGraph.root().value = { kFirstMesh + mesh, 0, 0, 3, 3 };
+			// A distinct material per mesh, the way dragging a slider makes a new one every step.
+			auto material = registry.addComponent<ComponentsModule::MaterialComponent>(id);
+			material->roughness = static_cast<float>(mesh % 4096) / 4096.f;
 			SystemsModule::TasksManager::instance()->notify({ id, SystemsModule::MESH_UPDATED });
 			return id;
 		};
@@ -177,11 +181,13 @@ namespace SFE::EngineTests {
 		EXPECT_EQ(scene.compactions(), compactions) << "the lists kept being packed after the churn stopped";
 		EXPECT_TRUE(scene.validate());
 
+		EXPECT_LT(renderSystem->materials().liveEntries(), materialsBefore + 4000) << "materials of destroyed entities were kept";
 		for (const auto id : ids) {
 			ECSHandler::destroyEntity(id);
 		}
 		step(2);
 		EXPECT_TRUE(scene.validate());
+		EXPECT_EQ(renderSystem->materials().liveEntries(), materialsBefore) << "materials outlived every instance using them";
 		scene.trackUploads(false);
 	}
 

@@ -56,10 +56,10 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: dispatch per instance and write through a per-batch offset, or split big batches.
 
 ## 14. The material table only grows
-- [ ] `GpuMaterialTable.cpp:34`: entries are keyed by rounded parameter values and never removed. Dragging a roughness or tint slider in the editor adds an entry per step, and every step also calls `markEntity`.
+- [x] `GpuMaterialTable.cpp:34`: entries are keyed by rounded parameter values and never removed. Dragging a roughness or tint slider in the editor adds an entry per step, and every step also calls `markEntity`.
 
 ## 15. The 8 glass texture slots are never freed
-- [ ] `GpuMaterialTable.cpp:48`: slots are taken per texture handle for the whole session. Once 8 are used, new glass draws untextured until restart, and a destroyed texture stays bound in its slot (`GlassPass.cpp:246`).
+- [x] `GpuMaterialTable.cpp:48`: slots are taken per texture handle for the whole session. Once 8 are used, new glass draws untextured until restart, and a destroyed texture stays bound in its slot (`GlassPass.cpp:246`).
 
 ## 16. One dirty range per list
 - [x] `GpuScene.cpp:377`: a remove in an early batch plus a batch growing at the end in the same update re-uploads nearly the whole instance buffer. Happens on edits, not every frame.

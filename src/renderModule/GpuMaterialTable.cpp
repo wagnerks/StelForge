@@ -1,5 +1,7 @@
 #include "GpuMaterialTable.h"
 
+#include <algorithm>
+
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "logsModule/logger.h"
@@ -31,32 +33,101 @@ namespace SFE::Render {
 		}
 	}
 
-	uint32_t GpuMaterialTable::indexFor(const ComponentsModule::MaterialComponent& material) {
+	uint32_t GpuMaterialTable::acquire(const ComponentsModule::MaterialComponent& material) {
 		const auto hash = MaterialRules::materialHash(material);
 		std::lock_guard lock(mMutex);
-		const auto [it, inserted] = mIndexByHash.try_emplace(hash, static_cast<uint32_t>(mEntries.size()));
-		if (inserted) {
-			auto entry = makeGpuMaterial(material);
-			if (material.transparent) {
-				entry.albedoSlot = static_cast<float>(glassSlot(MaterialRules::diffuseTexture(material.materials)));
-			}
-			mEntries.push_back(entry);
+		if (const auto it = mIndexByHash.find(hash); it != mIndexByHash.end()) {
+			++mStates[it->second].refs;
+			return it->second;
 		}
-		return it->second;
+
+		uint32_t index = 0;
+		if (!mFree.empty()) {
+			index = mFree.back();
+			mFree.pop_back();
+		}
+		else {
+			index = static_cast<uint32_t>(mEntries.size());
+			mEntries.emplace_back();
+			mStates.emplace_back();
+		}
+		auto entry = makeGpuMaterial(material);
+		auto& state = mStates[index];
+		state = { hash, 1, 0 };
+		if (material.transparent) {
+			state.glassSlot = acquireGlassSlot(MaterialRules::diffuseTexture(material.materials));
+			entry.albedoSlot = static_cast<float>(state.glassSlot);
+		}
+		mEntries[index] = entry;
+		mIndexByHash.emplace(hash, index);
+		mDirty.push_back(index);
+		return index;
 	}
 
-	uint32_t GpuMaterialTable::glassSlot(const TextureHandle albedo) {
-		for (size_t i = 0; i < mGlassTextures.size(); ++i) {
-			if (mGlassTextures[i].id == albedo.id) {
+	void GpuMaterialTable::release(const uint32_t index) {
+		std::lock_guard lock(mMutex);
+		if (index >= mStates.size() || mStates[index].refs == 0) {
+			return;
+		}
+		auto& state = mStates[index];
+		if (--state.refs > 0) {
+			return;
+		}
+		mIndexByHash.erase(state.hash);
+		releaseGlassSlot(state.glassSlot);
+		state = {};
+		mFree.push_back(index);
+	}
+
+	void GpuMaterialTable::reset() {
+		std::lock_guard lock(mMutex);
+		mIndexByHash.clear();
+		mEntries.clear();
+		mStates.clear();
+		mFree.clear();
+		mDirty.clear();
+		mGlassTextures.assign(1, TextureHandle{});
+		mGlassRefs.assign(1, 0);
+	}
+
+	size_t GpuMaterialTable::liveEntries() {
+		std::lock_guard lock(mMutex);
+		return mIndexByHash.size();
+	}
+
+	uint32_t GpuMaterialTable::acquireGlassSlot(const TextureHandle albedo) {
+		if (!albedo) {
+			return 0;
+		}
+		for (size_t i = 1; i < mGlassTextures.size(); ++i) {
+			if (mGlassRefs[i] > 0 && mGlassTextures[i].id == albedo.id) {
+				++mGlassRefs[i];
+				return static_cast<uint32_t>(i);
+			}
+		}
+		for (size_t i = 1; i < mGlassTextures.size(); ++i) {
+			if (mGlassRefs[i] == 0) {
+				mGlassTextures[i] = albedo;
+				mGlassRefs[i] = 1;
 				return static_cast<uint32_t>(i);
 			}
 		}
 		if (mGlassTextures.size() == kGlassTextureSlots) {
-			LogsModule::Logger::LOG_WARNING("GpuMaterialTable: more than %zu glass albedo textures, the rest draw untextured", kGlassTextureSlots);
+			LogsModule::Logger::LOG_WARNING("GpuMaterialTable: more than %zu glass albedo textures in use, the rest draw untextured", kGlassTextureSlots - 1);
 			return 0;
 		}
 		mGlassTextures.push_back(albedo);
+		mGlassRefs.push_back(1);
 		return static_cast<uint32_t>(mGlassTextures.size() - 1);
+	}
+
+	void GpuMaterialTable::releaseGlassSlot(const uint32_t slot) {
+		if (slot == 0 || slot >= mGlassRefs.size() || mGlassRefs[slot] == 0) {
+			return;
+		}
+		if (--mGlassRefs[slot] == 0) {
+			mGlassTextures[slot] = {};
+		}
 	}
 
 	std::vector<TextureHandle> GpuMaterialTable::glassTextures() {
@@ -82,12 +153,27 @@ namespace SFE::Render {
 			desc.cpuAccess = CpuAccess::None;
 			desc.debugName = "GpuMaterialTable";
 			mBuffer = rhi->createBuffer(desc);
-			mUploaded = 0;
+			mDirty.resize(mEntries.size());
+			for (uint32_t i = 0; i < mDirty.size(); ++i) {
+				mDirty[i] = i;
+			}
 		}
-		if (mUploaded < mEntries.size()) {
-			rhi->updateBuffer(mBuffer, mUploaded * sizeof(GpuMaterial), (mEntries.size() - mUploaded) * sizeof(GpuMaterial), mEntries.data() + mUploaded);
-			mUploaded = mEntries.size();
+		// In runs of neighbouring entries.
+		std::sort(mDirty.begin(), mDirty.end());
+		mDirty.erase(std::unique(mDirty.begin(), mDirty.end()), mDirty.end());
+		for (size_t i = 0; i < mDirty.size();) {
+			size_t end = i + 1;
+			while (end < mDirty.size() && mDirty[end] == mDirty[end - 1] + 1) {
+				++end;
+			}
+			const uint32_t first = mDirty[i];
+			const size_t count = end - i;
+			if (first + count <= mEntries.size()) {
+				rhi->updateBuffer(mBuffer, first * sizeof(GpuMaterial), count * sizeof(GpuMaterial), mEntries.data() + first);
+			}
+			i = end;
 		}
+		mDirty.clear();
 		return mBuffer;
 	}
 }
