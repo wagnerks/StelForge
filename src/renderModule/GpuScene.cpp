@@ -157,11 +157,14 @@ namespace SFE::Render {
 				removeEntity(entity);
 				addEntity(entity, materials);
 			}
-			// Moves leave holes behind; once they outnumber the live instances the list is packed again.
+			// Moves leave slots behind; once those outnumber the live ones the list is packed again. Spare room
+			// inside a batch or group is not left behind, or compact's own spare would trigger it every frame.
 			for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
 				auto& data = mLists[static_cast<size_t>(list)];
-				const size_t holes = data.instanceMirror.size() - data.liveInstances;
-				if (holes > (std::max)(size_t{ 4096 }, static_cast<size_t>(data.liveInstances))) {
+				const size_t leftInstances = data.instanceMirror.size() - data.ownedInstances;
+				const size_t leftBatches = data.batchMirror.size() - data.ownedBatches;
+				if (leftInstances > (std::max)(size_t{ 4096 }, static_cast<size_t>(data.liveInstances))
+					|| leftBatches > (std::max)(size_t{ 1024 }, data.ownedBatches)) {
 					compact(data);
 				}
 			}
@@ -221,6 +224,8 @@ namespace SFE::Render {
 			data.batchMirror.clear();
 			data.batchStates.clear();
 			data.liveInstances = 0;
+			data.ownedInstances = 0;
+			data.ownedBatches = 0;
 			// The mirrors are uploaded whole, into the buffers they already have when those are large enough.
 			data.instanceDirtyLo = 0;
 			data.instanceDirtyHi = UINT32_MAX;
@@ -240,22 +245,39 @@ namespace SFE::Render {
 	}
 
 	void GpuScene::compact(ListData& data) {
-		// Batches back to back, each with a quarter spare. Slots are local to their batch, so no reference moves.
+		// Groups back to back and their batches with them, each with a quarter spare. References hold a group,
+		// a batch inside it and a slot inside that, so none of them moves.
 		std::vector<InstanceRecord> packed;
+		std::vector<BatchRecord> batches;
+		std::vector<BatchState> states;
 		packed.reserve(data.liveInstances + data.liveInstances / 4 + data.batchMirror.size() * 4);
-		for (size_t b = 0; b < data.batchMirror.size(); ++b) {
-			auto& batch = data.batchMirror[b];
-			auto& state = data.batchStates[b];
-			if (state.capacity == 0) {
-				continue;
+		data.ownedInstances = 0;
+		data.ownedBatches = 0;
+		for (size_t g = 0; g < data.groups.size(); ++g) {
+			auto& draw = data.groups[g];
+			const auto first = static_cast<uint32_t>(batches.size());
+			const uint32_t batchCapacity = draw.batchCount + draw.batchCount / 4 + 4;
+			batches.resize(first + batchCapacity);
+			states.resize(first + batchCapacity);
+			for (uint32_t i = 0; i < draw.batchCount; ++i) {
+				auto batch = data.batchMirror[draw.firstBatch + i];
+				auto& state = data.batchStates[draw.firstBatch + i];
+				const auto start = static_cast<uint32_t>(packed.size());
+				packed.insert(packed.end(), data.instanceMirror.begin() + batch.firstInstance, data.instanceMirror.begin() + batch.firstInstance + batch.instanceCount);
+				state.capacity = batch.instanceCount + batch.instanceCount / 4 + 4;
+				packed.resize(start + state.capacity);
+				batch.firstInstance = start;
+				data.ownedInstances += state.capacity;
+				batches[first + i] = batch;
+				states[first + i] = std::move(state);
 			}
-			const auto start = static_cast<uint32_t>(packed.size());
-			packed.insert(packed.end(), data.instanceMirror.begin() + batch.firstInstance, data.instanceMirror.begin() + batch.firstInstance + batch.instanceCount);
-			state.capacity = batch.instanceCount + batch.instanceCount / 4 + 4;
-			packed.resize(start + state.capacity);
-			batch.firstInstance = start;
+			draw.firstBatch = first;
+			data.groupStates[g].batchCapacity = batchCapacity;
+			data.ownedBatches += batchCapacity;
 		}
 		data.instanceMirror = std::move(packed);
+		data.batchMirror = std::move(batches);
+		data.batchStates = std::move(states);
 		data.instanceDirtyLo = 0;
 		data.instanceDirtyHi = UINT32_MAX;
 		data.batchDirtyLo = 0;
@@ -411,6 +433,7 @@ namespace SFE::Render {
 		data.instanceMirror.resize(start + capacity);
 		std::copy_n(data.instanceMirror.begin() + record.firstInstance, record.instanceCount, data.instanceMirror.begin() + start);
 		record.firstInstance = start;
+		data.ownedInstances += capacity - data.batchStates[batch].capacity;
 		data.batchStates[batch].capacity = capacity;
 		data.instanceDirtyLo = (std::min)(data.instanceDirtyLo, start);
 		data.instanceDirtyHi = (std::max)(data.instanceDirtyHi, start + capacity);
@@ -426,12 +449,14 @@ namespace SFE::Render {
 		for (uint32_t i = 0; i < draw.batchCount; ++i) {
 			data.batchMirror[first + i] = data.batchMirror[draw.firstBatch + i];
 			data.batchStates[first + i] = std::move(data.batchStates[draw.firstBatch + i]);
-			// The old slot stays behind as an empty batch: culled to a command with no instances.
+			// The old slot stays behind as an empty batch: culled to a command with no instances, owning nothing.
 			data.batchMirror[draw.firstBatch + i] = {};
+			data.batchStates[draw.firstBatch + i] = {};
 		}
 		data.batchDirtyLo = (std::min)(data.batchDirtyLo, draw.batchCount ? draw.firstBatch : first);
 		data.batchDirtyHi = (std::max)(data.batchDirtyHi, first + capacity);
 		draw.firstBatch = first;
+		data.ownedBatches += capacity - data.groupStates[group].batchCapacity;
 		data.groupStates[group].batchCapacity = capacity;
 	}
 

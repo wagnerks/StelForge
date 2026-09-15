@@ -139,6 +139,9 @@ namespace SFE::Render {
 			std::vector<BatchRecord> batchMirror;
 			std::vector<BatchState> batchStates;
 			uint32_t liveInstances = 0;
+			// Slots some batch or group still owns, spare room included; the rest were left behind by moves.
+			size_t ownedInstances = 0;
+			size_t ownedBatches = 0;
 			size_t instanceGpuCapacity = 0;
 			size_t batchGpuCapacity = 0;
 			uint32_t instanceDirtyLo = UINT32_MAX;
