@@ -173,7 +173,6 @@ namespace SFE::Render {
 		};
 
 		void rebuildAll(GpuMaterialTable& materials);
-		void rebuildOutline(GpuMaterialTable& materials);
 		void addEntity(ecss::EntityId entity, GpuMaterialTable& materials);
 		void removeEntity(ecss::EntityId entity);
 		uint32_t groupFor(List list, const std::string& key, DrawGroup&& prototype);

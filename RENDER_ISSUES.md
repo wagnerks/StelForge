@@ -29,7 +29,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - [x] When a clip's instance count grows, `instances` and `worlds` are replaced by new buffers and the old ones are never destroyed or retired. Clip buffers in `mClips` are never freed either, and the cache is keyed by `Animation*`.
 
 ## 8. The outline list is rebuilt from scratch
-- [ ] `GpuScene::rebuildOutline` repacks the whole list (`pack()`) instead of updating it through `markEntity` like the other lists. Usually only a few entities, but it is the last non-incremental list.
+- [x] `GpuScene::rebuildOutline` repacks the whole list (`pack()`) instead of updating it through `markEntity` like the other lists. Usually only a few entities, but it is the last non-incremental list.
 
 ## 9. Portability (mobile, consoles)
 - [ ] Hard requirements with no fallback: `multiDrawIndirect`, `drawIndirectFirstInstance`, storage buffers in vertex shaders (`vertexPipelineStoresAndAtomics`), sampler arrays with dynamic indexing, and compute.

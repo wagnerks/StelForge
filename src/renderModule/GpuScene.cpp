@@ -33,11 +33,6 @@ namespace SFE::Render {
 		constexpr uint32_t kGlassLocalSize = 64;
 		constexpr uint32_t kCommandStride = 20;
 
-		struct Item {
-			uint32_t group = 0;
-			SceneInstance instance;
-		};
-
 		void retire(const BufferHandle buffer) {
 			if (!buffer) {
 				return;
@@ -56,40 +51,6 @@ namespace SFE::Render {
 
 		uint32_t frameSlots() {
 			return (std::max)(1u, Engine::instance()->rhi()->framesInFlight());
-		}
-
-		// Group, then mesh: each group becomes one contiguous run of batches. Stable, so the order inside a
-		// batch follows the registry and a rebuild of the same scene gives the same buffers.
-		void pack(std::vector<Item>& items, std::vector<GpuScene::DrawGroup>& groups, BufferHandle& instancesBuffer,
-			BufferHandle& batchesBuffer, uint32_t& instanceCount, uint32_t& batchCount, const char* name)
-		{
-			std::stable_sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
-				return a.group != b.group ? a.group < b.group : a.instance.mesh < b.instance.mesh;
-			});
-
-			std::vector<SceneInstance> instances;
-			std::vector<Batch> batches;
-			instances.reserve(items.size());
-			for (size_t i = 0; i < items.size(); ++i) {
-				const auto& item = items[i];
-				const bool newGroup = i == 0 || item.group != items[i - 1].group;
-				if (newGroup) {
-					groups[item.group].firstBatch = static_cast<uint32_t>(batches.size());
-				}
-				if (newGroup || item.instance.mesh != items[i - 1].instance.mesh) {
-					batches.push_back({ static_cast<uint32_t>(i), 0, item.instance.mesh, 0 });
-					++groups[item.group].batchCount;
-				}
-				++batches.back().instanceCount;
-				instances.push_back(item.instance);
-			}
-
-			retire(instancesBuffer);
-			retire(batchesBuffer);
-			instancesBuffer = createBuffer(instances.size() * sizeof(SceneInstance), BufferUsage::Storage, CpuAccess::None, instances.empty() ? nullptr : instances.data(), name);
-			batchesBuffer = createBuffer(batches.size() * sizeof(Batch), BufferUsage::Storage, CpuAccess::None, batches.empty() ? nullptr : batches.data(), name);
-			instanceCount = static_cast<uint32_t>(instances.size());
-			batchCount = static_cast<uint32_t>(batches.size());
 		}
 
 		void setPlane(float* out, const FrustumModule::Plane& plane) {
@@ -143,6 +104,18 @@ namespace SFE::Render {
 			pending.swap(mPending);
 		}
 
+		// OutlineComponent is added and removed straight on the registry, with no event, so the outlined set is
+		// compared every frame (a handful of entities) and whoever joined or left it is read again.
+		std::vector<ecss::EntityId> outlined;
+		for (auto [entity, outline] : ECSHandler::registry().view<const OutlineComponent>()) {
+			outlined.push_back(entity);
+		}
+		std::sort(outlined.begin(), outlined.end());
+		if (outlined != mOutlined) {
+			std::set_symmetric_difference(outlined.begin(), outlined.end(), mOutlined.begin(), mOutlined.end(), std::back_inserter(pending));
+			mOutlined = std::move(outlined);
+		}
+
 		bool rebuilt = mDirty.exchange(false, std::memory_order_acq_rel);
 		if (!rebuilt) {
 			std::sort(pending.begin(), pending.end());
@@ -154,8 +127,7 @@ namespace SFE::Render {
 			}
 			// Moves leave slots behind; once those outnumber the live ones the list is packed again. Spare room
 			// inside a batch or group is not left behind, or compact's own spare would trigger it every frame.
-			for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
-				auto& data = mLists[static_cast<size_t>(list)];
+			for (auto& data : mLists) {
 				const size_t leftInstances = data.instanceMirror.size() - data.ownedInstances;
 				const size_t leftBatches = data.batchMirror.size() - data.ownedBatches;
 				if (leftInstances > (std::max)(size_t{ 4096 }, static_cast<size_t>(data.liveInstances))
@@ -170,17 +142,7 @@ namespace SFE::Render {
 		uploadList(mLists[static_cast<size_t>(List::GBuffer)], "GpuScene gbuffer");
 		uploadList(mLists[static_cast<size_t>(List::Shadow)], "GpuScene shadow");
 		uploadList(mLists[static_cast<size_t>(List::Glass)], "GpuScene glass");
-
-		// OutlineComponent is added and removed straight on the registry, with no event, so the outlined set
-		// is compared every frame. It is a handful of entities.
-		std::vector<ecss::EntityId> outlined;
-		for (auto [entity, outline] : ECSHandler::registry().view<const OutlineComponent>()) {
-			outlined.push_back(entity);
-		}
-		if (rebuilt || !pending.empty() || outlined != mOutlined) {
-			mOutlined = std::move(outlined);
-			rebuildOutline(materials);
-		}
+		uploadList(mLists[static_cast<size_t>(List::Outline)], "GpuScene outline");
 
 		// After the lists: every mesh an instance refers to already exists by then.
 		uploadMeshes();
@@ -214,8 +176,7 @@ namespace SFE::Render {
 	}
 
 	void GpuScene::rebuildAll(GpuMaterialTable& materials) {
-		for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
-			auto& data = mLists[static_cast<size_t>(list)];
+		for (auto& data : mLists) {
 			data.groups.clear();
 			data.groupStates.clear();
 			data.groupByKey.clear();
@@ -236,8 +197,8 @@ namespace SFE::Render {
 			}
 		}
 		// Adding one at a time grew every batch by doubling; lay them out again at the size they ended up.
-		for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
-			compact(mLists[static_cast<size_t>(list)]);
+		for (auto& data : mLists) {
+			compact(data);
 		}
 	}
 
@@ -260,8 +221,7 @@ namespace SFE::Render {
 				}
 			}
 		}
-		for (const auto list : { List::GBuffer, List::Shadow, List::Glass }) {
-			const auto& data = mLists[static_cast<size_t>(list)];
+		for (const auto& data : mLists) {
 			size_t live = 0;
 			size_t ownedInstances = 0;
 			for (size_t b = 0; b < data.batchMirror.size(); ++b) {
@@ -378,6 +338,17 @@ namespace SFE::Render {
 			const auto index = groupFor(List::GBuffer, key, std::move(group));
 			addInstance(refs, entity, List::GBuffer, index, mesh.meshId, { entity, mesh.meshId, materialIndex, 0 });
 		});
+
+		// Outlined entities draw every submesh again into the outline list, with no material of their own.
+		if (registry.hasComponent<OutlineComponent>(entity)) {
+			const uint32_t noMaterial = materials.indexFor(kNoMaterial);
+			const auto group = groupFor(List::Outline, "outline", DrawGroup{});
+			for (const auto& node : meshComp->meshGraph) {
+				if (node.value && node.value.indexCount != 0) {
+					addInstance(refs, entity, List::Outline, group, node.value.meshId, { entity, node.value.meshId, noMaterial, 0 });
+				}
+			}
+		}
 
 		if (refs.empty()) {
 			mEntityRefs.erase(entity);
@@ -565,30 +536,6 @@ namespace SFE::Render {
 		data.instanceCount = static_cast<uint32_t>(data.instanceMirror.size());
 		data.batchCount = static_cast<uint32_t>(data.batchMirror.size());
 	}
-	void GpuScene::rebuildOutline(GpuMaterialTable& materials) {
-		static const ComponentsModule::MaterialComponent kNoMaterial;
-		const uint32_t materialIndex = materials.indexFor(kNoMaterial);
-
-		std::vector<Item> items;
-		std::vector<DrawGroup> groups(1);
-		auto& registry = ECSHandler::registry();
-		for (const auto entity : mOutlined) {
-			const auto meshComp = registry.pinComponent<const MeshComponent>(entity);
-			if (!meshComp || !registry.hasComponent<ComponentsModule::TransformMatComp>(entity)) {
-				continue;
-			}
-			for (const auto& node : meshComp->meshGraph) {
-				if (node.value && node.value.indexCount != 0) {
-					items.push_back({ 0, { entity, node.value.meshId, materialIndex, 0 } });
-				}
-			}
-		}
-
-		auto& outline = mLists[static_cast<size_t>(List::Outline)];
-		pack(items, groups, outline.instances, outline.batches, outline.instanceCount, outline.batchCount, "GpuScene outline");
-		outline.groups = std::move(groups);
-	}
-
 	bool GpuScene::cullFrustum(const CommandListHandle cmd, const List list, View& view, const FrustumModule::Frustum& frustum) {
 		float planes[24];
 		setPlane(planes + 0, frustum.leftFace);

@@ -5,6 +5,7 @@
 #include "assetsModule/modelModule/Animation.h"
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/OutlineComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "ecss/Registry.h"
 #include "systemsModule/TasksManager.h"
@@ -147,8 +148,27 @@ namespace SFE::EngineTests {
 			for (int i = 0; i < 200; ++i) {
 				ids.push_back(spawn(next() % 4000));
 			}
+			// Outlines come and go with no event of their own.
+			for (int i = 0; i < 20; ++i) {
+				const auto id = ids[next() % ids.size()];
+				if (registry.hasComponent<OutlineComponent>(id)) {
+					registry.destroyComponent<OutlineComponent>(id);
+				}
+				else {
+					registry.addComponent<OutlineComponent>(id);
+				}
+			}
 			step();
 			ASSERT_TRUE(scene.validate()) << "round " << round;
+			size_t outlinedInstances = 0;
+			for (const auto& group : scene.groups(Render::GpuScene::List::Outline)) {
+				outlinedInstances += group.batchCount;
+			}
+			size_t outlined = 0;
+			for (auto [id, outline] : registry.view<const OutlineComponent>()) {
+				++outlined;
+			}
+			EXPECT_EQ(outlinedInstances > 0, outlined > 0) << "round " << round;
 		}
 
 		step(2);
