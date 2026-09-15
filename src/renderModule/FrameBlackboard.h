@@ -107,6 +107,8 @@ namespace SFE::Render {
 		constexpr const char* GBufferOutlineFbo = "gbuffer.outlineFbo";
 		constexpr const char* GBufferPosition = "gbuffer.position";
 		constexpr const char* GBufferNormal = "gbuffer.normal";
+		// Screen-space motion per pixel, in UV: where this pixel was last frame is TexCoords - velocity.
+		constexpr const char* GBufferVelocity = "gbuffer.velocity";
 		constexpr const char* GBufferAlbedo = "gbuffer.albedo";
 		constexpr const char* GBufferViewPosition = "gbuffer.viewPosition";
 		constexpr const char* GBufferOutlines = "gbuffer.outlines";

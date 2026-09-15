@@ -24,6 +24,7 @@ namespace SFE::Render::RenderPasses {
 			TextureHandle viewPositionBuffer;
 			TextureHandle normalBuffer;
 			TextureHandle albedoBuffer;
+			TextureHandle velocityBuffer;
 			TextureHandle depthsBuffer;
 		};
 

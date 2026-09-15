@@ -11,9 +11,7 @@ layout(SFE_SET(0, 11), std140) uniform LightSpaceMatrices {
 };
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 layout(SFE_SET(0, 15), std140) uniform PushConstants {

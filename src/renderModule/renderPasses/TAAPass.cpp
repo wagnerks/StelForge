@@ -49,6 +49,7 @@ void TAAPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(0, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(2, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(3, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
@@ -80,11 +81,12 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(SFE::Render::FrameId::Final);
 	const auto pos = frame.texture(SFE::Render::FrameId::GBufferPosition);
+	const auto velocity = frame.texture(SFE::Render::FrameId::GBufferVelocity);
 	if (!renderDataHandle.graphics.taa) {
 		mHasHistory = false;
 		return;
 	}
-	if (!src || !pos || !mPipeline) {
+	if (!src || !pos || !velocity || !mPipeline) {
 		return;
 	}
 
@@ -127,6 +129,14 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		// reprojects far off and pins the current weight high on exactly the silhouette pixels
 		// that need the history most.
 		w.images.push_back({ pos, mNearest });
+		writes.push_back(std::move(w));
+	}
+	{
+		SFE::Render::WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 3;
+		// Nearest for the same reason as the position: a filtered velocity across a silhouette points nowhere.
+		w.images.push_back({ velocity, mNearest });
 		writes.push_back(std::move(w));
 	}
 	{

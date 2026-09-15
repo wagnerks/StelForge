@@ -17,9 +17,7 @@ layout(SFE_SET(0, 3), std140) uniform SsrParams {
 } params;
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 const int STEPS = 32;

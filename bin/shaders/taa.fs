@@ -6,6 +6,8 @@ layout(location = 0) in vec2 TexCoords;
 layout(SFE_SET(0, 0)) uniform sampler2D sceneHdr;
 layout(SFE_SET(0, 1)) uniform sampler2D historyColor;
 layout(SFE_SET(0, 2)) uniform sampler2D worldPos;
+// Where each pixel was last frame, written by the G-buffer from the previous pose and transform.
+layout(SFE_SET(0, 3)) uniform sampler2D velocity;
 
 layout(SFE_SET(0, 15), std140) uniform PushConstants {
     mat4 prevPV;
@@ -36,21 +38,15 @@ void main() {
         return;
     }
 
-    // Reproject by the DIFFERENCE of the two unjittered projections, not by the previous one
-    // alone. worldPos comes from a jittered rasterization, so projecting it straight through
-    // prevPV lands a jitter offset away from the pixel centre; sampling the history there
-    // bilinearly every frame shifts the accumulated image by the jitter and keeps it wobbling.
-    // The difference cancels that offset -- a still camera gives exactly zero velocity.
+    // The G-buffer's motion vector: it follows the surface itself, so a skinned character's history comes from
+    // where that pixel of it was, not from the background it moved over -- which is what smeared a trail behind
+    // every animated model. Both clip positions behind it are unjittered, so a still surface gives exactly zero.
+    // Where nothing was drawn (the sky) the velocity is zero and the camera difference on the world position
+    // still applies.
     vec3 world = texture(worldPos, TexCoords).rgb;
     vec2 prevUV = TexCoords;
     if (dot(world, world) > 1e-4) {
-        vec4 prevClip = params.prevPV * vec4(world, 1.0);
-        vec4 curClip = params.curPV * vec4(world, 1.0);
-        if (prevClip.w > 1e-4 && curClip.w > 1e-4) {
-            vec2 prevProj = prevClip.xy / prevClip.w * 0.5 + 0.5;
-            vec2 curProj = curClip.xy / curClip.w * 0.5 + 0.5;
-            prevUV = TexCoords - (curProj - prevProj);
-        }
+        prevUV = TexCoords - texture(velocity, TexCoords).xy;
     }
 
     if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {

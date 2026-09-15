@@ -102,4 +102,25 @@ float sfeSkinSss(vec3 albedo, float metallic) {
     return (1.0 - metallic) * warm;
 }
 
+// Where a pixel moved since last frame, in UV: history belongs at TexCoords - velocity. Both clip positions
+// come from unjittered matrices, so a still surface gives exactly zero.
+vec2 sfeVelocity(vec4 clipNow, vec4 clipBefore) {
+    if (clipNow.w <= 1e-6 || clipBefore.w <= 1e-6) {
+        return vec2(0.0);
+    }
+    vec2 now = clipNow.xy / clipNow.w;
+    vec2 before = clipBefore.xy / clipBefore.w;
+    return (now - before) * 0.5;
+}
+
 #endif
+
+// One definition of the per-frame matrices block. OpenGL links every shader of a program together and
+// rejects a uniform block whose members differ between them, so the body lives here and each shader only
+// picks its own set/binding.
+#define SFE_SHARED_MATRICES \
+    mat4 projection; \
+    mat4 view; \
+    mat4 PV; \
+    mat4 PVNoJitter; \
+    mat4 prevPVNoJitter;

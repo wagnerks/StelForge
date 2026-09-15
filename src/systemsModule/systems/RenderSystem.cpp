@@ -152,6 +152,8 @@ namespace SFE::SystemsModule {
 				{ 1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
 				{ 2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
 				{ 3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment },
+				{ 8, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
+				{ 9, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
 				{ 7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment },
 			};
 			frameSetLayout = rhi->createDescriptorSetLayout(frameLayout);
@@ -237,6 +239,9 @@ namespace SFE::SystemsModule {
 		// GPU rasterizes with are jittered -- mRenderData.current stays clean, so prevPV, culling
 		// and the post-TAA debug overlay keep working in unjittered screen space.
 		RenderMatrices gpuMatrices = mRenderData.current;
+		// The motion vectors compare these two, so neither carries the jitter the rasterizer uses.
+		gpuMatrices.PVNoJitter = mRenderData.current.PV;
+		gpuMatrices.prevPVNoJitter = mRenderData.prevPV;
 		if (mRenderData.graphics.taa) {
 			const auto& screen = Engine::instance()->getWindow()->getScreenData();
 			if (screen.renderW > 0 && screen.renderH > 0) {
@@ -319,6 +324,8 @@ namespace SFE::SystemsModule {
 		frameSet = mFrameSet[slot];
 		mRenderData.transformsSSBO = transforms;
 		mRenderData.bonesSSBO = bones;
+		mRenderData.prevTransformsSSBO = prevTransforms;
+		mRenderData.prevBonesSSBO = prevBones;
 		mRenderData.cameraMatricesUBO = cameraMatricesUBO;
 	}
 
@@ -336,6 +343,8 @@ namespace SFE::SystemsModule {
 			{ mFrameSet[slot], 5, {{ mCameraUbo[slot] }} },
 			{ mFrameSet[slot], 1, {{ transforms }} },
 			{ mFrameSet[slot], 2, {{ bones }} },
+			{ mFrameSet[slot], 8, {{ prevTransforms }} },
+			{ mFrameSet[slot], 9, {{ prevBones }} },
 		});
 	}
 
@@ -349,6 +358,9 @@ namespace SFE::SystemsModule {
 		transformDesc.cpuAccess = Render::CpuAccess::None;
 		transformDesc.debugName = "TransformsSSBO";
 		transforms = rhi->createBuffer(transformDesc);
+		transformDesc.debugName = "PrevTransformsSSBO";
+		prevTransforms = rhi->createBuffer(transformDesc);
+		mUploadedTransforms.assign(capacity, Math::Mat4{ 1.f });
 
 		mGpuCapacity = capacity;
 	}
@@ -367,9 +379,13 @@ namespace SFE::SystemsModule {
 		auto* rhi = Engine::instance()->rhi();
 		// The RHI keeps a destroyed buffer until the frames that may still bind it have finished.
 		rhi->destroyBuffer(transforms);
+		rhi->destroyBuffer(prevTransforms);
 		createSceneBuffers(newCap);
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
-			rhi->updateDescriptorSets({ { mFrameSet[slot], 1, {{ transforms }} } });
+			rhi->updateDescriptorSets({
+				{ mFrameSet[slot], 1, {{ transforms }} },
+				{ mFrameSet[slot], 8, {{ prevTransforms }} },
+			});
 		}
 		bindGpuFrame();
 
@@ -471,16 +487,22 @@ namespace SFE::SystemsModule {
 		auto* rhi = Engine::instance()->rhi();
 		// The RHI keeps a destroyed buffer until the frames that may still bind it have finished.
 		rhi->destroyBuffer(bones);
+		rhi->destroyBuffer(prevBones);
 		Render::BufferDesc boneDesc;
 		boneDesc.size = sizeof(Math::Mat4) * capacity;
 		boneDesc.usage = Render::BufferUsage::Storage;
 		boneDesc.cpuAccess = Render::CpuAccess::None;
 		boneDesc.debugName = "BonesSSBO";
 		bones = rhi->createBuffer(boneDesc);
+		boneDesc.debugName = "PrevBonesSSBO";
+		prevBones = rhi->createBuffer(boneDesc);
 		mBoneCapacity = capacity;
 		for (uint32_t slot = 0; slot < mGpuFrames; ++slot) {
 			if (mFrameSet[slot]) {
-				rhi->updateDescriptorSets({ { mFrameSet[slot], 2, {{ bones }} } });
+				rhi->updateDescriptorSets({
+					{ mFrameSet[slot], 2, {{ bones }} },
+					{ mFrameSet[slot], 9, {{ prevBones }} },
+				});
 			}
 		}
 		bindGpuFrame();
@@ -505,10 +527,17 @@ namespace SFE::SystemsModule {
 		// Consecutive ids go up as one range, so a spawned chunk is one copy rather than one per entity.
 		std::vector<Math::Mat4> run;
 		ecss::EntityId runStart = 0;
+		std::vector<Math::Mat4> previous;
 		const auto flush = [&] {
 			if (!run.empty()) {
+				// What these entities held until now, so a pixel's motion vector is where it was last frame.
+				rhi->updateBuffer(prevTransforms, static_cast<size_t>(runStart) * sizeof(Math::Mat4), previous.size() * sizeof(Math::Mat4), previous.data());
 				rhi->updateBuffer(transforms, static_cast<size_t>(runStart) * sizeof(Math::Mat4), run.size() * sizeof(Math::Mat4), run.data());
+				for (size_t i = 0; i < run.size(); ++i) {
+					mUploadedTransforms[runStart + i] = run[i];
+				}
 				run.clear();
+				previous.clear();
 			}
 		};
 		for (const auto id : sortedIds) {
@@ -526,6 +555,7 @@ namespace SFE::SystemsModule {
 			if (run.empty()) {
 				runStart = id;
 			}
+			previous.push_back(mUploadedTransforms[id]);
 			run.push_back(comp->mTransform);
 		}
 		flush();
@@ -559,7 +589,11 @@ namespace SFE::SystemsModule {
 				std::copy_n(armature->boneMatrices.begin(), boneCount, slots.begin() + range.bounds);
 			}
 			if (!slots.empty()) {
-				rhi->updateBuffer(bones, static_cast<size_t>(range.offset - range.bounds) * sizeof(Math::Mat4), slots.size() * sizeof(Math::Mat4), slots.data());
+				const auto offset = static_cast<size_t>(range.offset - range.bounds) * sizeof(Math::Mat4);
+				rhi->updateBuffer(bones, offset, slots.size() * sizeof(Math::Mat4), slots.data());
+				// It does not move, so last frame's pose is this one; without it the first frames of a static pose
+				// would have motion vectors pointing at whatever the buffer held.
+				rhi->updateBuffer(prevBones, offset, slots.size() * sizeof(Math::Mat4), slots.data());
 			}
 		}
 	}

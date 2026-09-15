@@ -13,9 +13,7 @@ in vec3 ViewPos;
 out vec4 FragColor;
 
 layout(std140, binding = 5) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 layout(std140, binding = 15) uniform PushConstants {

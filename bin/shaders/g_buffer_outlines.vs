@@ -18,9 +18,7 @@ layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
 #include "sfe_scene.glsl"
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 void main() {

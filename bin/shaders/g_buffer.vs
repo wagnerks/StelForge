@@ -19,6 +19,9 @@ layout(location = 1) out vec2 TexCoords;
 layout(location = 2) out mat3 TBN;
 layout(location = 5) out vec2 TexCoords1;
 layout(location = 6) flat out uint vMaterial;
+// Unjittered clip positions, this frame and the last: their difference is the pixel's motion.
+layout(location = 7) out vec4 vClip;
+layout(location = 8) out vec4 vPrevClip;
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
@@ -31,10 +34,16 @@ layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
     mat4 bones[];
 };
 
+// The same two, as they were last frame.
+layout(SFE_SET(0, 8), std430) readonly buffer prevModelMatrices {
+    mat4 prevModel[];
+};
+layout(SFE_SET(0, 9), std430) readonly buffer prevBonesMatrices {
+    mat4 prevBones[];
+};
+
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 void main() {
@@ -43,6 +52,7 @@ void main() {
     vMaterial = instance.material;
 
     precise mat4 BoneTransform = mat4(0.0);
+    mat4 prevBoneTransform = mat4(0.0);
     bool withBones = false;
     for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
         int boneIdx = aBoneIds[i];
@@ -51,9 +61,11 @@ void main() {
         }
         withBones = true;
         BoneTransform += bones[instance.boneOffset + uint(boneIdx)] * aWeights[i];
+        prevBoneTransform += prevBones[instance.boneOffset + uint(boneIdx)] * aWeights[i];
     }
     if (!withBones) {
         BoneTransform = mat4(1.0);
+        prevBoneTransform = mat4(1.0);
     }
 
     precise mat3 normalMatrix = mat3(model[index]) * mat3(BoneTransform);
@@ -82,6 +94,12 @@ void main() {
         TBN[1] = vec3(0.0);
     }
     TBN[2] = N;
+
+    // Where this vertex was last frame, through last frame's pose and transform.
+    vec4 prevPos = prevBoneTransform * vec4(aPos.xyz, 1.0);
+    prevPos /= prevPos.w;
+    vClip = matrices.PVNoJitter * worldPos;
+    vPrevClip = matrices.prevPVNoJitter * (prevModel[index] * prevPos);
 
     precise vec4 clipPos = matrices.PV * worldPos;
     gl_Position = clipPos;

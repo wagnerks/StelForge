@@ -72,6 +72,9 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layoutDesc.bindings.push_back({ 16, DescriptorType::CombinedImageSampler, ShaderStage::Fragment, static_cast<uint32_t>(GpuMaterialTable::kGlassTextureSlots) });
 	layoutDesc.bindings.emplace_back(1, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(2, DescriptorType::StorageBuffer, ShaderStage::Vertex);
+	// g_buffer.vs reads last frame's transforms and bones for the motion vectors.
+	layoutDesc.bindings.emplace_back(8, DescriptorType::StorageBuffer, ShaderStage::Vertex);
+	layoutDesc.bindings.emplace_back(9, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(7, DescriptorType::StorageBuffer, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
@@ -227,6 +230,20 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		w.set = glassSet;
 		w.binding = 2;
 		w.buffers.push_back({ renderDataHandle.bonesSSBO });
+		writes.push_back(std::move(w));
+	}
+	if (renderDataHandle.prevTransformsSSBO) {
+		WriteDescriptor w{};
+		w.set = glassSet;
+		w.binding = 8;
+		w.buffers.push_back({ renderDataHandle.prevTransformsSSBO });
+		writes.push_back(std::move(w));
+	}
+	if (renderDataHandle.prevBonesSSBO) {
+		WriteDescriptor w{};
+		w.set = glassSet;
+		w.binding = 9;
+		w.buffers.push_back({ renderDataHandle.prevBonesSSBO });
 		writes.push_back(std::move(w));
 	}
 	// The glass albedo textures as one array, so every glass instance draws from the same set.

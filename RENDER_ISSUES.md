@@ -141,3 +141,11 @@ Known problems in the GPU-driven renderer, most urgent first.
 ## 34. Housekeeping
 - [x] `bin/compare/**` outputs are tracked in git, so every `compare-backends.ps1` run dirties the tree. Ignore them.
 - [x] `scripts/compare-backends.ps1` (editor repo) is untracked.
+
+## 35. TAA smeared anything that animated
+- [x] TAA reprojected its history with the camera matrices alone, so a pixel that moved because the *model* moved sampled the history of whatever stood there before: a skinned character dragged a trail of itself, worst on arms and weapons.
+- Fix: the G-buffer grew a fourth target with the per-pixel motion vector (`g_buffer.vs` carries the clip position under this frame's and the previous frame's unjittered PV, the fragment shaders write the difference in UV), and TAA reprojects by it. The previous transforms and bone matrices live in two buffers alongside the current ones (frame set bindings 8 and 9); `animateBones.cs` copies a bone into the previous buffer before overwriting it, so the pair always describes the same frame step.
+- Cost: one more RGBA16F target and two buffers the size of the transform and bone tables. Alternated against the
+  revision before it on the character scene (3 rounds each, Vulkan): 7.42 ms frame / 6.97 ms gpu before, 7.67 / 7.22 after.
+  The laptop heats up through a round set, so call it +0.2 to +0.3 ms.
+- Two things this cost a day: the visible geometry draws with `g_buffer_masked.fs`, not `g_buffer.fs`, and only the latter had the write at first, so the target stayed at its clear value while every bit of plumbing checked out. And the `SharedMatrices` uniform block was copy-pasted into 13 shaders; adding two matrices to two of them made OpenGL refuse to link the grid ("struct type mismatch between shaders") and silently drop the floor. The block body is a single macro in `sfe.glsl` now.

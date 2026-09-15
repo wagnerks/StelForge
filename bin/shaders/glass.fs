@@ -15,9 +15,7 @@ layout(SFE_SET(0, 13)) uniform samplerCube prefilterMap;
 layout(SFE_SET(0, 16)) uniform sampler2D albedoMaps[8];
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 layout(SFE_SET(0, 15), std140) uniform PushConstants {

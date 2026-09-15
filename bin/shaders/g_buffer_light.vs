@@ -14,9 +14,7 @@ layout(std430, binding = 3) buffer gpuIndex
     uint entToGpuIdx[];
 };
 layout(std140, binding = 5) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 void main()

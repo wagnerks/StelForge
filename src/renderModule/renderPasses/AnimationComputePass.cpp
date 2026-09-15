@@ -67,6 +67,7 @@ void AnimationComputePass::init(SystemsModule::RenderData&) {
 		{ 25, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 26, DescriptorType::StorageBuffer, ShaderStage::Compute },
 		{ 2,  DescriptorType::StorageBuffer, ShaderStage::Compute },
+		{ 9,  DescriptorType::StorageBuffer, ShaderStage::Compute },
 	};
 	mSetLayout = rhi->createDescriptorSetLayout(layout);
 	mSet = rhi->allocateDescriptorSet(mSetLayout);
@@ -275,7 +276,7 @@ void AnimationComputePass::prepare(SystemsModule::RenderData&) {
 void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK;
 
-	if (!mPipeline || !renderDataHandle.bonesSSBO || mRecords.empty()) {
+	if (!mPipeline || !renderDataHandle.bonesSSBO || !renderDataHandle.prevBonesSSBO || mRecords.empty()) {
 		return;
 	}
 
@@ -291,6 +292,7 @@ void AnimationComputePass::render(SystemsModule::RenderData& renderDataHandle, R
 		{ mSet, 25, {{ mRecordBuffer }} },
 		{ mSet, 26, {{ mWorlds }} },
 		{ mSet, 2,  {{ renderDataHandle.bonesSSBO }} },
+		{ mSet, 9,  {{ renderDataHandle.prevBonesSSBO }} },
 	});
 	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &mSet, 1);
 	const AnimClock push{ static_cast<float>(clock - mEpoch), static_cast<uint32_t>(mRecords.size()) };

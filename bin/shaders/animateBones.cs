@@ -40,6 +40,9 @@ layout(SFE_SET(0, 22), std430) readonly buffer RotKeys { QuatKey rotKeys[]; };
 layout(SFE_SET(0, 23), std430) readonly buffer SclKeys { Vec3Key sclKeys[]; };
 layout(SFE_SET(0, 24), std430) readonly buffer Order { int order[]; };
 layout(SFE_SET(0, 2), std430) buffer OutBones { mat4 outBones[]; };
+// Last frame's pose, for the motion vectors the G-buffer writes: each bone's matrix is moved here before the
+// new one overwrites it.
+layout(SFE_SET(0, 9), std430) buffer PrevBones { mat4 prevBones[]; };
 
 const uint kPlaying = 1u;
 const uint kLoop = 2u;
@@ -257,6 +260,7 @@ void main() {
         precise mat4 world = parent * local;
         worlds[row + bi] = world;
         precise mat4 skin = world * b.offset;
+        prevBones[row + b.boneId] = outBones[row + b.boneId];
         outBones[row + b.boneId] = skin;
 
         if (b.boundsMask != 0u) {

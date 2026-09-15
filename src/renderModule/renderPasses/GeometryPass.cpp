@@ -71,6 +71,14 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	albedoBufDesc.format = TextureFormat::RGBA16F;
 	albedoBufDesc.usage = TextureUsage::Sampled | TextureUsage::ColorAttachment;
 
+	// Where each pixel was last frame, in UV. TAA reprojects its history by this instead of by the camera alone,
+	// which is what let a skinned character smear a trail of itself.
+	TextureDesc velocityBufDesc;
+	velocityBufDesc.width = w;
+	velocityBufDesc.height = h;
+	velocityBufDesc.format = TextureFormat::RGBA16F;
+	velocityBufDesc.usage = TextureUsage::Sampled | TextureUsage::ColorAttachment;
+
 	TextureDesc depthTex{};
 	depthTex.width = w;
 	depthTex.height = h;
@@ -80,10 +88,11 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	depthTex.usage = TextureUsage::DepthStencilAttachment | TextureUsage::Sampled;
 
 	RenderPassDesc geometryPassDesc;
-	geometryPassDesc.colorAttachmentCount = 3;
+	geometryPassDesc.colorAttachmentCount = 4;
 	geometryPassDesc.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA32F };
 	geometryPassDesc.colorAttachments[1] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA16F };
 	geometryPassDesc.colorAttachments[2] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA16F };
+	geometryPassDesc.colorAttachments[3] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 0.f}, TextureFormat::RGBA16F };
 	geometryPassDesc.hasDepthStencil = true;
 	geometryPassDesc.depthAttachment = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, 1.f, 0, false, TextureFormat::DEPTH_COMPONENT24 };
 	geometryPass = rhi->createRenderPass(geometryPassDesc);
@@ -99,12 +108,13 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 		slot.positionBuffer = rhi->createTexture(positionBufDesc);
 		slot.normalBuffer = rhi->createTexture(normalBufDesc);
 		slot.albedoBuffer = rhi->createTexture(albedoBufDesc);
+		slot.velocityBuffer = rhi->createTexture(velocityBufDesc);
 		slot.depthsBuffer = rhi->createTexture(depthTex);
 		FramebufferDesc mainFboDesc;
 		mainFboDesc.width = w;
 		mainFboDesc.height = h;
 		mainFboDesc.renderPass = geometryPass;
-		mainFboDesc.colorAttachments = { {slot.positionBuffer}, {slot.normalBuffer}, {slot.albedoBuffer} };
+		mainFboDesc.colorAttachments = { {slot.positionBuffer}, {slot.normalBuffer}, {slot.albedoBuffer}, {slot.velocityBuffer} };
 		mainFboDesc.depthStencilAttachment = FramebufferAttachmentDesc{.texture = slot.depthsBuffer };
 		slot.gFramebuffer = rhi->createFramebuffer(mainFboDesc);
 	}
@@ -251,6 +261,7 @@ void GeometryPass::publish(SystemsModule::RenderData& renderDataHandle) {
 	frame.set(FrameId::GBufferPosition, { .texture = slot.positionBuffer, .sampler = s });
 	frame.set(FrameId::GBufferNormal, { .texture = slot.normalBuffer, .sampler = s });
 	frame.set(FrameId::GBufferAlbedo, { .texture = slot.albedoBuffer, .sampler = s });
+	frame.set(FrameId::GBufferVelocity, { .texture = slot.velocityBuffer, .sampler = s });
 	frame.set(FrameId::GBufferOutlines, { .texture = outlinesBuffer, .sampler = s });
 	frame.set(FrameId::GBufferLights, { .texture = lightsBuffer, .sampler = s });
 	frame.set(FrameId::GBufferDepth, { .texture = slot.depthsBuffer, .sampler = s });

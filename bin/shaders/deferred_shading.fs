@@ -79,9 +79,7 @@ layout(SFE_SET(1, 11), std140) uniform LightSpaceMatrices {
 };
 
 layout(SFE_SET(1, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 layout(SFE_SET(1, 3), std140) uniform PointLightMatrices {

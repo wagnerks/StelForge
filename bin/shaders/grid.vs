@@ -8,11 +8,11 @@ layout(location = 0) out vec3 FragPos;
 layout(location = 1) out vec2 TexCoords;
 layout(location = 2) out vec3 Normal;
 layout(location = 3) out vec3 ViewPos;
+layout(location = 4) out vec4 vClip;
+layout(location = 5) out vec4 vPrevClip;
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 SFE_PUSH_BLOCK PushConstants {
@@ -44,5 +44,8 @@ void main() {
     TexCoords = aTexCoords;
     Normal = aNormal;
 
+    // The grid does not move, so only the camera moves it on screen.
+    vClip = matrices.PVNoJitter * worldPos;
+    vPrevClip = matrices.prevPVNoJitter * worldPos;
     gl_Position = matrices.PV * worldPos;
 }

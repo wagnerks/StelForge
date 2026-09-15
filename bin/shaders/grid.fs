@@ -4,15 +4,16 @@ layout(location = 0) in vec3 FragPos;
 layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in vec3 Normal;
 layout(location = 3) in vec3 ViewPos;
+layout(location = 4) in vec4 vClip;
+layout(location = 5) in vec4 vPrevClip;
 
 layout(location = 0) out vec4 gPosition;
 layout(location = 1) out vec4 gNormal;
 layout(location = 2) out vec4 gAlbedoSpec;
+layout(location = 3) out vec2 gVelocity;
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 SFE_PUSH_BLOCK PushConstants {
@@ -70,4 +71,5 @@ void main() {
     gAlbedoSpec.rgb = mix(vec3(0.12, 0.12, 0.13), vec3(0.04), lines * 0.7);
     gAlbedoSpec.rgb *= vec3(fading);
     gAlbedoSpec.a = 0.28;
+    gVelocity = sfeVelocity(vClip, vPrevClip);
 }

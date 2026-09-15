@@ -332,7 +332,7 @@ namespace SFE::Render::Tests {
 
 	namespace {
 
-		constexpr uint32_t kMrtCount = 3;
+		constexpr uint32_t kMrtCount = 4;
 
 		// Six colours, no two sharing a channel value anywhere: each attachment's clear and each
 		// shader output names itself, so a swapped pair reads as another attachment's colour rather
@@ -341,13 +341,15 @@ namespace SFE::Render::Tests {
 			{ unorm(10), unorm(30), unorm(50), unorm(70) },
 			{ unorm(90), unorm(110), unorm(130), unorm(150) },
 			{ unorm(170), unorm(190), unorm(210), unorm(230) },
+			{ unorm(5), unorm(25), unorm(45), unorm(65) },
 		};
 
-		// Must match rhi_test_mrt.fs, which writes these to location 0, 1 and 2.
+		// Must match rhi_test_mrt.fs, which writes these to locations 0 through 3.
 		const Rgba kMrtWrites[kMrtCount] = {
 			{ 20, 40, 60, 80 },
 			{ 100, 120, 140, 160 },
 			{ 180, 200, 220, 240 },
+			{ 15, 35, 55, 75 },
 		};
 
 		RenderPassHandle makeMrtPass(RenderHardwareInterface& rhi) {
@@ -402,7 +404,7 @@ namespace SFE::Render::Tests {
 	// that every attachment was cleared, not just attachment 0: a backend that clears only the first
 	// target leaves the others at whatever the allocation held, which the covered half alone would
 	// never notice.
-	TEST_P(RhiBackendTest, ThreeColorAttachmentsEachReceiveTheirOwnFragmentOutput) {
+	TEST_P(RhiBackendTest, EveryColorAttachmentReceivesItsOwnFragmentOutput) {
 		TextureHandle targets[kMrtCount]{};
 		for (auto& target : targets) {
 			target = makeTarget(rhi());
@@ -453,29 +455,33 @@ namespace SFE::Render::Tests {
 
 	namespace {
 
-		// Three baked clears, three overrides and a tail sentinel: twenty-eight byte values, none of
+		// Four baked clears, four overrides and a tail sentinel: thirty-six byte values, none of
 		// them repeated anywhere, so every pixel read back names which of the three sources produced
 		// it instead of being consistent with two of them.
 		const Math::Vec4 kBakedClears[kMrtCount] = {
 			{ unorm(4), unorm(8), unorm(12), unorm(16) },
 			{ unorm(20), unorm(24), unorm(28), unorm(32) },
 			{ unorm(36), unorm(40), unorm(44), unorm(48) },
+			{ unorm(116), unorm(120), unorm(124), unorm(128) },
 		};
 		const Rgba kBakedExpected[kMrtCount] = {
 			{ 4, 8, 12, 16 },
 			{ 20, 24, 28, 32 },
 			{ 36, 40, 44, 48 },
+			{ 116, 120, 124, 128 },
 		};
 
 		const RhiVec4 kOverrideClears[kMrtCount] = {
 			{ unorm(52), unorm(56), unorm(60), unorm(64) },
 			{ unorm(68), unorm(72), unorm(76), unorm(80) },
 			{ unorm(84), unorm(88), unorm(92), unorm(96) },
+			{ unorm(132), unorm(136), unorm(140), unorm(144) },
 		};
 		const Rgba kOverrideExpected[kMrtCount] = {
 			{ 52, 56, 60, 64 },
 			{ 68, 72, 76, 80 },
 			{ 84, 88, 92, 96 },
+			{ 132, 136, 140, 144 },
 		};
 
 		// What sits past the entries a caller meant to supply. See the short-array half of the test.
@@ -637,7 +643,7 @@ namespace SFE::Render::Tests {
 			"override: the depth attachment kept the baked clearDepth instead of taking the one this "
 			"begin supplied"));
 
-		const RhiVec4 shortArray[kMrtCount] = { kOverrideClears[0], kTailSentinel, kTailSentinel };
+		const RhiVec4 shortArray[kMrtCount] = { kOverrideClears[0], kTailSentinel, kTailSentinel, kTailSentinel };
 		runClearOnlyPass(rhi(), pass, fb, shortArray, nullptr);
 		ASSERT_NO_FATAL_FAILURE(expectUniform(rhi(), targets[0], kOverrideExpected[0],
 			"short array: attachment 0, the one entry actually supplied, did not take its override"));

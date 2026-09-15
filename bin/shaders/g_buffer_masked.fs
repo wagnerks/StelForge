@@ -6,10 +6,13 @@ layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in mat3 TBN;
 layout(location = 5) in vec2 TexCoords1;
 layout(location = 6) flat in uint vMaterial;
+layout(location = 7) in vec4 vClip;
+layout(location = 8) in vec4 vPrevClip;
 
 layout(location = 0) out vec4 gPosition;
 layout(location = 1) out vec4 gNormal;
 layout(location = 2) out vec4 gAlbedoSpec;
+layout(location = 3) out vec2 gVelocity;
 
 layout(SFE_SET(1, 1)) uniform sampler2D texture_diffuse1;
 layout(SFE_SET(1, 2)) uniform sampler2D normalMap;
@@ -82,4 +85,5 @@ void main() {
 
     gAlbedoSpec.a = clamp(roughness, 0.04, 1.0);
     gPosition.a = sfePackGBufferPbr(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(pc.clearcoat, 0.0, 1.0), clamp(pc.clearcoatRough, 0.04, 1.0));
+    gVelocity = sfeVelocity(vClip, vPrevClip);
 }

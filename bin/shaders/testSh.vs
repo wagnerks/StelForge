@@ -9,9 +9,7 @@ out vec3 Normal;
 out vec3 ViewPos;
 
 layout(std140, binding = 5) uniform SharedMatrices {
-    mat4 projection;
-    mat4 view;
-    mat4 PV;
+    SFE_SHARED_MATRICES
 } matrices;
 
 layout(std140, binding = 15) uniform PushConstants {

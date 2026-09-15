@@ -37,7 +37,11 @@ namespace SFE::SystemsModule {
 	struct RenderMatrices {
 		Math::Mat4 projection = {};
 		Math::Mat4 view = {};
-		Math::Mat4 PV = {};
+		Math::Mat4 PV = {}; // jittered, what the rasterizer uses
+		// Unjittered, this frame and the last: the G-buffer's motion vectors are the difference of the two, and
+		// the jitter would show up in them as a wobble that TAA then chases.
+		Math::Mat4 PVNoJitter = {};
+		Math::Mat4 prevPVNoJitter = {};
 	};
 
 	struct GraphicsSettings {
@@ -110,6 +114,9 @@ namespace SFE::SystemsModule {
 
 		Render::BufferHandle transformsSSBO;
 		Render::BufferHandle bonesSSBO;
+		// What the same entities and bones held last frame, for the motion vectors.
+		Render::BufferHandle prevTransformsSSBO;
+		Render::BufferHandle prevBonesSSBO;
 		Render::BufferHandle cameraMatricesUBO;
 		Render::DescriptorSetLayoutHandle frameSetLayout;
 
@@ -178,6 +185,7 @@ namespace SFE::SystemsModule {
 		Render::GpuScene& scene() { return mScene; }
 		Render::BufferHandle transformsBuffer() const { return transforms; }
 		Render::BufferHandle bonesBuffer() const { return bones; }
+		Render::BufferHandle prevBonesBuffer() const { return prevBones; }
 
 		// Where an entity's bone matrices live in the bone buffer, as many as its armature has. Allocated on first
 		// use for an entity with an armature and kept until it is destroyed; count 0 for one without. Main thread.
@@ -333,12 +341,18 @@ namespace SFE::SystemsModule {
 		bool mRefreshTransforms = true;
 
 		Render::BufferHandle transforms;
+		// Last frame's matrix per entity. Kept by writing the value being replaced here before the new one goes
+		// into `transforms`, so an entity that did not move has the same matrix in both.
+		Render::BufferHandle prevTransforms;
+		std::vector<Math::Mat4> mUploadedTransforms;
 		size_t mGpuCapacity = 0;
 
 		// Bone matrices pooled by armature, not reserved per entity id: a skinned entity takes exactly its bones.
 		void growBones(size_t capacity);
 		void releaseBones(ecss::EntityId entity);
 		Render::BufferHandle bones;
+		// Written by AnimationComputePass, which copies a bone's matrix here before overwriting it.
+		Render::BufferHandle prevBones;
 		std::unordered_map<ecss::EntityId, BoneRange> mBoneRanges;
 		std::vector<BoneRange> mFreeBoneRanges; // sorted by offset, neighbours merged
 		size_t mBonesUsed = 0;
