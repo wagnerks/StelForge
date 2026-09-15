@@ -118,7 +118,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: a list of pools that grows, and a log on failure.
 
 ## 29. Sets rewritten every frame (Vulkan)
-- [ ] Writing a set that the previous frame still binds allocates a new set and copies it (`VulkanRHIResources.cpp:999-1046`). This happens every frame in `GlassPass.cpp:182-254` (12 writes, no change check), `GeometryPass.cpp:291-311` and `:344`, LightingPass `mTexSet`/`mUboSet` (inputs alternate per slot), and `AnimationComputePass.cpp:280` (per clip). Correct, but costly, and it feeds item 28.
+- [x] Writing a set that the previous frame still binds allocates a new set and copies it (`VulkanRHIResources.cpp:999-1046`). This happens every frame in `GlassPass.cpp:182-254` (12 writes, no change check), `GeometryPass.cpp:291-311` and `:344`, LightingPass `mTexSet`/`mUboSet` (inputs alternate per slot), and `AnimationComputePass.cpp:280` (per clip). Correct, but costly, and it feeds item 28.
 - Fix: one set per frame slot where inputs alternate, and change checks.
 - [x] Vulkan now skips a write that repeats what the binding holds (compared by handle id, offset and range), so passes without their own change check no longer copy sets. Measured on the character scene: 11 copies a frame before, 9 after.
 - [x] The remaining 9 are post passes whose inputs really alternate every frame (Lighting's ping-pong output, the per-slot G-buffer and camera UBO). Each has one set per frame slot now -- Lighting, Glass, the Geometry outline sets, SSAO, Sheen, SSS, SSR, TAA, ContactGI, DoF and Final -- and the frame copies no sets at all (9 before).
