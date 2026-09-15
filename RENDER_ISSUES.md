@@ -52,7 +52,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Fix: sort by the transformed centre of the mesh bounds (already computed a few lines above).
 
 ## 13. The cull runs one invocation per batch and loops over its instances
-- [ ] `gpu_cull.cs:109`. One mesh with 100k instances (foliage, debris) is a single GPU thread running a 100k loop, repeated for every cascade and the camera. No parallelism, and it risks a driver timeout.
+- [x] `gpu_cull.cs:109`. One mesh with 100k instances (foliage, debris) is a single GPU thread running a 100k loop, repeated for every cascade and the camera. No parallelism, and it risks a driver timeout.
 - Fix: dispatch per instance and write through a per-batch offset, or split big batches.
 
 ## 14. The material table only grows

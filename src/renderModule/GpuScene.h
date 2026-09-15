@@ -89,6 +89,9 @@ namespace SFE::Render {
 		bool validate() const;
 		uint64_t compactions() const { return mCompactions; }
 		// For tests: keep a copy of every upload, so validate() also checks the GPU buffers hold the layout.
+		// For tests: batches holding instances of `mesh`, and the most instances in one batch.
+		size_t batchesOfMesh(List list, uint32_t mesh) const;
+		uint32_t largestBatch(List list) const;
 		void trackUploads(bool track) {
 			mTrackUploads = track;
 			for (auto& data : mLists) {
@@ -101,6 +104,8 @@ namespace SFE::Render {
 		void draw(CommandListHandle cmd, const View& view, const DrawGroup& group) const;
 
 		static constexpr uint32_t kMaxSpheres = 16;
+		// Instances per batch before another batch of the same mesh is started. Glass stays one batch: it is sorted as one.
+		static constexpr uint32_t kMaxBatchInstances = 1024;
 
 		// Mirror the std430 structs in shaders/gpu_cull.cs and gpu_glass.cs.
 		struct InstanceRecord {
@@ -128,7 +133,9 @@ namespace SFE::Render {
 		};
 		struct GroupState {
 			uint32_t batchCapacity = 0;
-			std::unordered_map<uint32_t, uint32_t> batchByKey; // mesh (glass: 0) -> batch index inside the group
+			// mesh (glass: 0) -> its batches inside the group. A mesh with many instances is split into several, so
+			// the cull, one invocation per batch, still runs in parallel.
+			std::unordered_map<uint32_t, std::vector<uint32_t>> batchesByKey;
 		};
 		struct InstanceRef {
 			List list = List::GBuffer;

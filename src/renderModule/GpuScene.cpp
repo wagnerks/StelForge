@@ -205,6 +205,27 @@ namespace SFE::Render {
 		}
 	}
 
+	size_t GpuScene::batchesOfMesh(const List list, const uint32_t mesh) const {
+		const auto& data = mLists[static_cast<size_t>(list)];
+		size_t count = 0;
+		for (const auto& group : data.groups) {
+			for (uint32_t i = 0; i < group.batchCount; ++i) {
+				const auto& batch = data.batchMirror[group.firstBatch + i];
+				count += batch.mesh == mesh && batch.instanceCount > 0;
+			}
+		}
+		return count;
+	}
+
+	uint32_t GpuScene::largestBatch(const List list) const {
+		const auto& data = mLists[static_cast<size_t>(list)];
+		uint32_t largest = 0;
+		for (const auto& batch : data.batchMirror) {
+			largest = (std::max)(largest, batch.instanceCount);
+		}
+		return largest;
+	}
+
 	bool GpuScene::validate() const {
 		for (const auto& [entity, refs] : mEntityRefs) {
 			for (const auto& ref : refs) {
@@ -392,29 +413,38 @@ namespace SFE::Render {
 	{
 		auto& data = mLists[static_cast<size_t>(list)];
 		auto& groupState = data.groupStates[group];
-		auto found = groupState.batchByKey.find(batchKey);
-		if (found == groupState.batchByKey.end()) {
+		const uint32_t maxInstances = list == List::Glass ? UINT32_MAX : kMaxBatchInstances;
+		auto& keyBatches = data.groupStates[group].batchesByKey[batchKey];
+		uint32_t local = UINT32_MAX;
+		// The newest first: that is where instances were last added, and the others are usually full.
+		for (auto it = keyBatches.rbegin(); it != keyBatches.rend(); ++it) {
+			if (data.batchMirror[data.groups[group].firstBatch + *it].instanceCount < maxInstances) {
+				local = *it;
+				break;
+			}
+		}
+		if (local == UINT32_MAX) {
 			if (data.groups[group].batchCount == groupState.batchCapacity) {
 				growGroup(data, group, groupState.batchCapacity * 2);
 			}
-			const uint32_t local = data.groups[group].batchCount++;
-			found = groupState.batchByKey.emplace(batchKey, local).first;
+			local = data.groups[group].batchCount++;
+			keyBatches.push_back(local);
 			const uint32_t global = data.groups[group].firstBatch + local;
 			data.batchMirror[global] = { static_cast<uint32_t>(data.instanceMirror.size()), 0, record.mesh, 0 };
 			data.batchStates[global] = {};
 		}
 
-		const uint32_t global = data.groups[group].firstBatch + found->second;
+		const uint32_t global = data.groups[group].firstBatch + local;
 		auto& state = data.batchStates[global];
 		if (data.batchMirror[global].instanceCount == state.capacity) {
-			growBatch(data, global, (std::max)(state.capacity * 2, 4u));
+			growBatch(data, global, (std::min)((std::max)(state.capacity * 2, 4u), maxInstances));
 		}
 		auto& batch = data.batchMirror[global];
 		const uint32_t slot = batch.instanceCount++;
 		const uint32_t index = batch.firstInstance + slot;
 		data.instanceMirror[index] = record;
 		state.owners.push_back({ entity, static_cast<uint32_t>(refs.size()) });
-		refs.push_back({ list, group, found->second, slot });
+		refs.push_back({ list, group, local, slot });
 		++data.liveInstances;
 
 		data.instanceDirty.add(index, index + 1);

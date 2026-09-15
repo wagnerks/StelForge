@@ -191,6 +191,45 @@ namespace SFE::EngineTests {
 		scene.trackUploads(false);
 	}
 
+	// Thousands of copies of one mesh are split into batches of at most kMaxBatchInstances, so the cull, one
+	// invocation per batch, stays parallel for foliage-like scenes; removing most of them keeps the layout valid.
+	TEST(EngineTest, GpuSceneSplitsLargeBatches) {
+		auto& registry = ECSHandler::registry();
+		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		ASSERT_NE(renderSystem, nullptr);
+		auto& scene = renderSystem->scene();
+		scene.trackUploads(true);
+
+		constexpr uint32_t kMesh = (1u << 21) + 7;
+		std::vector<ecss::EntityId> ids;
+		for (int i = 0; i < 5000; ++i) {
+			const auto id = registry.takeEntity();
+			registry.addComponent<TransformComponent>(id, id);
+			registry.addComponent<MeshComponent>(id)->meshGraph.root().value = { kMesh, 0, 0, 3, 3 };
+			SystemsModule::TasksManager::instance()->notify({ id, SystemsModule::MESH_UPDATED });
+			ids.push_back(id);
+		}
+		step(3);
+		ASSERT_TRUE(scene.validate());
+		EXPECT_GE(scene.batchesOfMesh(Render::GpuScene::List::GBuffer, kMesh), 5u);
+		EXPECT_LE(scene.largestBatch(Render::GpuScene::List::GBuffer), Render::GpuScene::kMaxBatchInstances);
+
+		for (size_t i = 0; i < ids.size(); ++i) {
+			if (i % 5 != 0) {
+				ECSHandler::destroyEntity(ids[i]);
+			}
+		}
+		step(2);
+		EXPECT_TRUE(scene.validate());
+		for (size_t i = 0; i < ids.size(); i += 5) {
+			ECSHandler::destroyEntity(ids[i]);
+		}
+		step(2);
+		EXPECT_TRUE(scene.validate());
+		EXPECT_EQ(scene.batchesOfMesh(Render::GpuScene::List::GBuffer, kMesh), 0u);
+		scene.trackUploads(false);
+	}
+
 	// Tick systems step from the frame under a fixed step: world time (1 tick a second) moves in whole seconds.
 	TEST(EngineTest, WorldTimeTicksFromTheFrameStep) {
 		auto* worldTime = ECSHandler::getSystem<SystemsModule::WorldTimeSystem>();
