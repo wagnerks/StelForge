@@ -12,7 +12,7 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/TransformComponent.h"
-#include "componentsModule/TreeComponent.h"
+#include "componentsModule/Hierarchy.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "core/FileSystem.h"
@@ -127,10 +127,8 @@ namespace SFE::SystemsModule {
 		if (reg.hasComponent<CascadeShadowComponent>(id)) {
 			return false;
 		}
-		if (auto tree = reg.pinComponent<const TreeComponent>(id)) {
-			if (tree->getParent() != ecss::INVALID_ID) {
-				return false;
-			}
+		if (Hierarchy::parent(id) != ecss::INVALID_ID) {
+			return false;
 		}
 		return true;
 	}
@@ -154,10 +152,8 @@ namespace SFE::SystemsModule {
 		}
 		std::vector<ecss::EntityId> withChildren = ids;
 		for (auto id : ids) {
-			if (auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(id)) {
-				auto nodes = tree->getAllNodes();
-				withChildren.insert(withChildren.end(), nodes.begin(), nodes.end());
-			}
+			const auto nodes = Hierarchy::descendants(id);
+			withChildren.insert(withChildren.end(), nodes.begin(), nodes.end());
 		}
 		return withChildren;
 	}

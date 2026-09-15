@@ -18,7 +18,7 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/TransformComponent.h"
-#include "componentsModule/TreeComponent.h"
+#include "componentsModule/Hierarchy.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "rhi/GraphicsBackend.h"
@@ -452,14 +452,11 @@ namespace SFE::PropertiesModule {
 			ComponentRegistry::load(entity, properties["Properties"], LoadPhase::AfterBind);
 		}
 
-		ECSHandler::registry().addComponent<TreeComponent>(entity, entity);
 		if (properties.isMember("Children") && properties["Children"].isArray()) {
 			for (auto element : properties["Children"]) {
 				auto child = ECSHandler::registry().takeEntity();
 				fillTree(child, element);
-				if (auto treeComp = ECSHandler::registry().pinComponent<TreeComponent>(entity)) {
-					treeComp->addChildEntity(child);
-				}
+				Hierarchy::setParent(child, entity);
 			}
 		}
 	}
@@ -476,8 +473,7 @@ namespace SFE::PropertiesModule {
 
 		ComponentRegistry::save(entity, result["Properties"]);
 
-		auto treeComp = ECSHandler::registry().pinComponent<const ComponentsModule::TreeComponent>(entity);
-		auto children = treeComp ? treeComp->getChildren() : std::vector<ecss::SectorId>();
+		const auto children = Hierarchy::children(entity);
 		if (!children.empty()) {
 			result["Children"] = Json::arrayValue;
 			auto& childrenJson = result["Children"];
@@ -499,10 +495,8 @@ namespace SFE::PropertiesModule {
 		if (ECSHandler::registry().pinComponent<const CascadeShadowComponent>(id)) {
 			return false;
 		}
-		if (auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(id)) {
-			if (tree->getParent() != ecss::INVALID_ID) {
-				return false;
-			}
+		if (Hierarchy::parent(id) != ecss::INVALID_ID) {
+			return false;
 		}
 		return true;
 	}
@@ -577,10 +571,8 @@ namespace SFE::PropertiesModule {
 		Json::Value root = Json::objectValue;
 		root["entities"] = Json::arrayValue;
 		for (auto id : entities) {
-			if (auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(id)) {
-				if (tree->getParent() != ecss::INVALID_ID) {
-					continue;
-				}
+			if (Hierarchy::parent(id) != ecss::INVALID_ID) {
+				continue;
 			}
 			root["entities"].append(serializeEntity(id));
 		}

@@ -5,7 +5,7 @@
 #include <mutex>
 #include <optional>
 
-#include "TreeComponent.h"
+#include "Hierarchy.h"
 #include "core/ECSHandler.h"
 #include "multithreading/ThreadPool.h"
 #include "systemsModule/SystemManager.h"
@@ -112,12 +112,9 @@ namespace SFE::ComponentsModule {
 	// so the values, the flag and the matrix change under the component's lock. The parent's matrix is copied and
 	// the children are marked outside it, so no thread ever holds two locks.
 	void TransformComponent::reloadTransform() {
-		const auto tree = ECSHandler::registry().pinComponent<const TreeComponent>(getEntityId());
 		std::optional<Math::Mat4> parent;
-		if (tree) {
-			if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(tree->getParent())) {
-				parent = parentTransform->copyTransform();
-			}
+		if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(Hierarchy::parent(getEntityId()))) {
+			parent = parentTransform->copyTransform();
 		}
 
 		{
@@ -131,11 +128,9 @@ namespace SFE::ComponentsModule {
 			mTransform = parent ? *parent * local : local;
 		}
 
-		if (tree) {
-			for (const auto childTransform : tree->getChildren()) {
-				if (auto transformPtr = ECSHandler::registry().pinComponent<TransformComponent>(childTransform)) {
-					transformPtr->markDirty();
-				}
+		for (const auto child : Hierarchy::children(getEntityId())) {
+			if (auto transformPtr = ECSHandler::registry().pinComponent<TransformComponent>(child)) {
+				transformPtr->markDirty();
 			}
 		}
 	}

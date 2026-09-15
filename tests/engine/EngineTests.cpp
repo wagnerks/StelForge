@@ -7,6 +7,7 @@
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/OutlineComponent.h"
+#include "componentsModule/Hierarchy.h"
 #include "componentsModule/TransformComponent.h"
 #include "ecss/Registry.h"
 #include "systemsModule/TasksManager.h"
@@ -354,5 +355,47 @@ namespace SFE::EngineTests {
 		// 125 frames are 2.08 s; what the accumulator held before adds at most one more tick.
 		EXPECT_TRUE(advanced == 2.f || advanced == 3.f) << "advanced " << advanced;
 		EXPECT_FLOAT_EQ(std::fmod(advanced, 1.f), 0.f);
+	}
+
+	// The hierarchy is an ecss relation, not a component: a child's transform is its parent's times its own, moving
+	// the parent moves the child, and destroying an entity takes its edges with it.
+	TEST(EngineTest, ChildTransformFollowsItsParent) {
+		auto& registry = ECSHandler::registry();
+		const auto parent = registry.takeEntity();
+		const auto child = registry.takeEntity();
+		const auto grandChild = registry.takeEntity();
+		for (const auto id : { parent, child, grandChild }) {
+			registry.addComponent<TransformComponent>(id, id);
+		}
+		Hierarchy::setParent(child, parent);
+		Hierarchy::setParent(grandChild, child);
+
+		EXPECT_EQ(Hierarchy::parent(child), parent);
+		EXPECT_EQ(Hierarchy::children(parent), std::vector<ecss::EntityId>{ child });
+		EXPECT_EQ(Hierarchy::descendants(parent).size(), 2u);
+
+		registry.pinComponent<TransformComponent>(parent)->setPos({ 10.f, 0.f, 0.f });
+		registry.pinComponent<TransformComponent>(child)->setPos({ 0.f, 5.f, 0.f });
+		registry.pinComponent<TransformComponent>(grandChild)->setPos({ 0.f, 0.f, 2.f });
+		step(3);
+
+		const auto world = registry.pinComponent<const TransformComponent>(grandChild)->copyTransform();
+		EXPECT_FLOAT_EQ(world[3][0], 10.f);
+		EXPECT_FLOAT_EQ(world[3][1], 5.f);
+		EXPECT_FLOAT_EQ(world[3][2], 2.f);
+
+		// Moving the parent alone reaches the whole subtree.
+		registry.pinComponent<TransformComponent>(parent)->setPos({ 20.f, 0.f, 0.f });
+		step(3);
+		EXPECT_FLOAT_EQ(registry.pinComponent<const TransformComponent>(grandChild)->copyTransform()[3][0], 20.f);
+
+		// A destroyed entity leaves no edges behind for the id that takes its place.
+		ECSHandler::destroyEntity(child);
+		EXPECT_EQ(Hierarchy::parent(child), ecss::INVALID_ID);
+		EXPECT_TRUE(Hierarchy::children(parent).empty());
+		EXPECT_EQ(Hierarchy::parent(grandChild), ecss::INVALID_ID);
+
+		ECSHandler::destroyEntity(parent);
+		ECSHandler::destroyEntity(grandChild);
 	}
 }

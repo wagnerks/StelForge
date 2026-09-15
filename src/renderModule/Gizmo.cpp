@@ -5,7 +5,7 @@
 #include "Utils.h"
 #include "assetsModule/modelModule/ModelLoader.h"
 #include "componentsModule/TransformComponent.h"
-#include "componentsModule/TreeComponent.h"
+#include "componentsModule/Hierarchy.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "mathModule/CameraUtils.h"
@@ -206,13 +206,11 @@ namespace SFE::Render {
 
 		mIntersectionStartPos = mIntersectionCurrentPos;
 
-		if (const auto treeComp = ECSHandler::registry().pinComponent<const TreeComponent>(mEntity)) {
-			if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(treeComp->getParent())) {
-				const auto transform = inverse(parentTransform->copyTransform());
+		if (const auto parentTransform = ECSHandler::registry().pinComponent<const TransformComponent>(Hierarchy::parent(mEntity))) {
+			const auto transform = inverse(parentTransform->copyTransform());
 
-				curPos = transform * Math::Vec4(curPos, 1.f);
-				startPos = transform * Math::Vec4(startPos, 1.f);
-			}
+			curPos = transform * Math::Vec4(curPos, 1.f);
+			startPos = transform * Math::Vec4(startPos, 1.f);
 		}
 
 		transformComp->setPos(transformComp->getPos() + curPos - startPos);
