@@ -1213,6 +1213,27 @@ namespace SFE::Render {
 				continue;
 			}
 			const DescriptorType type = declared->type;
+
+			std::vector<uint64_t> contents;
+			if (type == DescriptorType::CombinedImageSampler) {
+				for (const auto& image : write.images) {
+					contents.push_back(image.texture.id);
+					contents.push_back(image.sampler.id);
+				}
+			}
+			else {
+				for (const auto& buf : write.buffers) {
+					contents.push_back(buf.buffer.id);
+					contents.push_back(buf.offset);
+					contents.push_back(buf.range);
+				}
+			}
+			auto written = std::find_if(setObj->written.begin(), setObj->written.end(),
+				[&](const auto& entry) { return entry.first == write.binding; });
+			if (written != setObj->written.end() && written->second == contents) {
+				continue;
+			}
+
 			if (boundInUnfinishedList(setObj->set)) {
 				detachBoundSet(*setObj, *layoutObj);
 			}
@@ -1287,6 +1308,12 @@ namespace SFE::Render {
 				spans.push_back({ first, false });
 			}
 			vkWrites.push_back(vkWrite);
+			if (written != setObj->written.end()) {
+				written->second = std::move(contents);
+			}
+			else {
+				setObj->written.emplace_back(write.binding, std::move(contents));
+			}
 		}
 
 		for (size_t i = 0; i < vkWrites.size(); ++i) {

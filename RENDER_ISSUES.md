@@ -111,6 +111,8 @@ Known problems in the GPU-driven renderer, most urgent first.
 ## 29. Sets rewritten every frame (Vulkan)
 - [ ] Writing a set that the previous frame still binds allocates a new set and copies it (`VulkanRHIResources.cpp:999-1046`). This happens every frame in `GlassPass.cpp:182-254` (12 writes, no change check), `GeometryPass.cpp:291-311` and `:344`, LightingPass `mTexSet`/`mUboSet` (inputs alternate per slot), and `AnimationComputePass.cpp:280` (per clip). Correct, but costly, and it feeds item 28.
 - Fix: one set per frame slot where inputs alternate, and change checks.
+- [x] Vulkan now skips a write that repeats what the binding holds (compared by handle id, offset and range), so passes without their own change check no longer copy sets. Measured on the character scene: 11 copies a frame before, 9 after.
+- [ ] The remaining 9 are post passes whose inputs really alternate every frame (Lighting's ping-pong output, the per-slot G-buffer and camera UBO). One set per frame slot in each would remove them; at tens of microseconds a frame it has not been worth the change so far.
 
 ## 30. Vulkan buffer writes during recording stall the frame
 - [x] After uploads are flushed at `beginCommandList`, `updateBuffer` to a device-local buffer and `cmdUpdateBuffer` run `executeImmediate`: submit and wait on a fence (`VulkanRHIResources.cpp:131-143`, `:1362`). `GpuMaterialTable::upload()` is called from inside passes (`GeometryPass.cpp:263`), so a new material makes the GPU wait mid-frame. Copies queued earlier run at submit, after the immediate one, so the order of two writes to the same range is inverted compared with GL (no current caller does that).

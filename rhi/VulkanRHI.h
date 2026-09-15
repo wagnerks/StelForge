@@ -64,6 +64,9 @@ namespace SFE::Render
 	struct VkDescriptorSetResource {
 		VkDescriptorSet set = VK_NULL_HANDLE;
 		VkDescriptorPool pool = VK_NULL_HANDLE; // the pool it came from, which frees it
+		// What each binding was last written with, as RHI handle ids (which carry a generation) plus buffer
+		// offset and range: a write repeating it is skipped, so a set bound by the frame in flight is not copied.
+		std::vector<std::pair<uint32_t, std::vector<uint64_t>>> written;
 		DescriptorSetLayoutHandle layoutHandle{};
 		uint32_t generation = 0;
 		bool live = false;
