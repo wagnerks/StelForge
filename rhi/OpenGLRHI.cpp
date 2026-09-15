@@ -989,20 +989,22 @@ namespace SFE::Render
 
 		if (mGpuTimeQueries[0]) {
 			glEndQuery(GL_TIME_ELAPSED);
-			const int prev = 1 - mGpuQueryWrite;
-			if (mGpuQueriesReady) {
+			// The oldest query in the ring, which the GPU has had every submit since to finish. Never waited on:
+			// an unfinished one leaves the last reading in place.
+			if (mGpuQueriesIssued >= kGpuTimeQueries) {
+				const int oldest = (mGpuQueryWrite + 1) % kGpuTimeQueries;
 				GLuint available = 0;
-				glGetQueryObjectuiv(mGpuTimeQueries[prev], GL_QUERY_RESULT_AVAILABLE, &available);
+				glGetQueryObjectuiv(mGpuTimeQueries[oldest], GL_QUERY_RESULT_AVAILABLE, &available);
 				if (available) {
 					GLuint64 ns = 0;
-					glGetQueryObjectui64v(mGpuTimeQueries[prev], GL_QUERY_RESULT, &ns);
+					glGetQueryObjectui64v(mGpuTimeQueries[oldest], GL_QUERY_RESULT, &ns);
 					mLastGpuMs = static_cast<double>(ns) / 1'000'000.0;
 				}
 			}
 			else {
-				mGpuQueriesReady = true;
+				++mGpuQueriesIssued;
 			}
-			mGpuQueryWrite = prev;
+			mGpuQueryWrite = (mGpuQueryWrite + 1) % kGpuTimeQueries;
 		}
 	}
 
@@ -1876,7 +1878,7 @@ namespace SFE::Render
 		// Vulkan cube sampling is always seamless; without this a linear sample near a face edge filters
 		// inside one face on OpenGL.
 		glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-		glGenQueries(2, mGpuTimeQueries);
+		glGenQueries(kGpuTimeQueries, mGpuTimeQueries);
 	}
 
 	void OpenGLRHI::waitIdle()
@@ -1895,9 +1897,10 @@ namespace SFE::Render
 				m_workerContext = nullptr;
 			}
 			if (mGpuTimeQueries[0]) {
-				glDeleteQueries(2, mGpuTimeQueries);
-				mGpuTimeQueries[0] = 0;
-				mGpuTimeQueries[1] = 0;
+				glDeleteQueries(kGpuTimeQueries, mGpuTimeQueries);
+				for (auto& query : mGpuTimeQueries) {
+					query = 0;
+				}
 			}
 			// Freed with every other buffer below.
 			m_transientBuffer = {};

@@ -273,9 +273,12 @@ namespace SFE::Render
 
 		bool m_inited = false;
 		std::string m_deviceName;
-		GLuint mGpuTimeQueries[2]{ 0, 0 };
+		// A ring, not a pair: the driver runs a frame or two behind, so the query ended last submit is never
+		// finished yet and polling it always came back unavailable, which left the GPU time reading zero.
+		static constexpr int kGpuTimeQueries = 4;
+		GLuint mGpuTimeQueries[kGpuTimeQueries]{};
 		int mGpuQueryWrite = 0;
-		bool mGpuQueriesReady = false;
+		int mGpuQueriesIssued = 0;
 		double mLastGpuMs = 0.0;
 		TextureHandle m_presentBlitTexture{};
 		// A hidden window whose context shares objects with the main one, for runOnWorkerThread.
