@@ -19,8 +19,9 @@ Known problems in the GPU-driven renderer, most urgent first.
 - Next attempt: a box per submesh. Give each bone a mask of the submeshes it influences and grow only those boxes. Keep one box slot per skinned submesh before the entity's bones, and let the mesh table's `skinned` field carry the submesh index the cull reads it by.
 
 ## 5. No occlusion culling
-- [ ] Nothing writes `OcclusionComponent::occluded`: the flag is always false. `AnimationComputePass` reads it, while `GeometryPass` and `CascadedShadowPass` only include the header.
+- [x] Nothing writes `OcclusionComponent::occluded`: the flag is always false. `AnimationComputePass` reads it, while `GeometryPass` and `CascadedShadowPass` only include the header.
 - Fix: Hi-Z in `gpu_cull.cs`, camera views only. Use two-pass culling (cull with the last frame's pyramid, draw, build a pyramid from this frame, retest what was culled and draw what became visible) so moving occluders and fast camera turns do not pop. Delete the old `OcclusionComponent`.
+- Done: `GpuScene::cullVisibleLastFrame` / `buildDepthPyramid` / `cullOccluded`, used by `GeometryPass`. The pyramid lives in a storage buffer (`hiz.cs`, the RHI has no storage images), the per-slot `lastVisible` flags need no CPU upkeep (a stale flag only picks the phase), and the second phase packs at the end of each batch's range so both phases share one visible buffer. Shadow cascades and point lights are not occlusion culled. The default scene hides almost nothing behind anything (131 of 1284 instances visible either way), so there it costs about 0.05 ms of GPU time and saves nothing.
 
 ## 6. Animation still walks every character on the CPU each frame
 - [x] `AnimationComputePass::render` iterates all animated entities, advances `mCurrentTime`, packs `AnimPush`, uploads it and dispatches once per clip.
@@ -57,6 +58,7 @@ Known problems in the GPU-driven renderer, most urgent first.
 ## 13. The cull runs one invocation per batch and loops over its instances
 - [x] `gpu_cull.cs:109`. One mesh with 100k instances (foliage, debris) is a single GPU thread running a 100k loop, repeated for every cascade and the camera. No parallelism, and it risks a driver timeout.
 - Fix: dispatch per instance and write through a per-batch offset, or split big batches.
+- Measured: the serial loop was the most expensive part of the frame's GPU time. One cull of 1284 instances took 0.42 ms at 1024 instances per batch, 0.055 ms at 64, 0.02 ms at 16. `kMaxBatchInstances` is 16 now: with occlusion culling on, the default scene went from 10.24 to 8.89 ms of GPU time on Vulkan and from 12.73 to 10.49 ms a frame on OpenGL (rotated A/B, 6 and 4 rounds).
 
 ## 14. The material table only grows
 - [x] `GpuMaterialTable.cpp:34`: entries are keyed by rounded parameter values and never removed. Dragging a roughness or tint slider in the editor adds an entry per step, and every step also calls `markEntity`.

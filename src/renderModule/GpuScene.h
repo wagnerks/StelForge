@@ -127,7 +127,9 @@ namespace SFE::Render {
 
 		static constexpr uint32_t kMaxSpheres = 16;
 		// Instances per batch before another batch of the same mesh is started. Glass stays one batch: it is sorted as one.
-		static constexpr uint32_t kMaxBatchInstances = 1024;
+		// The cull walks a batch's instances in one GPU invocation, so this is its serial loop: at 1024 one cull of
+		// 1284 skinned instances took 0.42 ms of GPU time, at 64 0.055 ms, at 16 0.02 ms.
+		static constexpr uint32_t kMaxBatchInstances = 16;
 
 		// Mirror the std430 structs in shaders/gpu_cull.cs and gpu_glass.cs.
 		struct InstanceRecord {
