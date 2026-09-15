@@ -103,9 +103,14 @@ namespace SFE::Render::RenderPasses {
 		ImGui::End();
 		ImGui::Render();
 
-		const auto fb = renderDataHandle.frame.framebuffer(FrameId::Final);
-		const auto& screen = Engine::instance()->getWindow()->getScreenData();
-		mRenderer.render(cmd, ImGui::GetDrawData(), fb, screen.renderW, screen.renderH);
+		// The frame is built either way, since windows elsewhere call into ImGui every frame and would find no
+		// frame open; it just stays out of a capture, which has to come out the same on both backends and on
+		// every run, and these windows show live frame times.
+		if (!Engine::instance()->capturingFrame()) {
+			const auto fb = renderDataHandle.frame.framebuffer(FrameId::Final);
+			const auto& screen = Engine::instance()->getWindow()->getScreenData();
+			mRenderer.render(cmd, ImGui::GetDrawData(), fb, screen.renderW, screen.renderH);
+		}
 
 		if (mPrevious) {
 			ImGui::SetCurrentContext(mPrevious);
