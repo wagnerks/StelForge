@@ -89,6 +89,7 @@ namespace AssetsModule {
 	void Model::bindMeshes() {
 		for (auto& node : mMeshTree) {
 			// Before the upload: the registry puts the whole chain in the index buffer in one go.
+			SFE::weldMesh(node.value.mesh);
 			SFE::buildMeshLods(node.value.mesh);
 			SFE::MeshVaoRegistry::instance()->initMesh(&node.value.mesh);
 		}

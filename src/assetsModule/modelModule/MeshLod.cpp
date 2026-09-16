@@ -4,17 +4,40 @@
 
 namespace SFE {
 	namespace {
-		// Each level aims for this share of the triangles of the level above. Halving is the usual step: the
-		// screen size bands below switch at roughly the same rate, so the triangle-to-pixel ratio stays put
-		// as a model recedes.
+		// Each level aims for this share of the triangles of the level above.
 		constexpr float kRatio = 0.5f;
-		// Past this the simplifier is collapsing shapes the silhouette is made of, and the model starts to
-		// visibly change outline when it switches. It is also where the win stops mattering.
+		// Past this the simplifier is collapsing the shapes the silhouette is made of, and the win no longer
+		// matters anyway.
 		constexpr size_t kMinIndices = 96;
 		constexpr size_t kMaxLevels = 3;
-		// In units of the mesh's extent: how far a vertex may move. Generous, because a level only gets used
-		// once the model is small on screen, and a strict bound leaves the triangle count where it was.
-		constexpr float kErrorPerLevel = 0.05f;
+		// A level has to be meaningfully cheaper than the one above to be worth an id and an instance slot.
+		constexpr float kKeepBelow = 0.9f;
+		// Fraction of the mesh's size a vertex may move, per level. Generous: a level is only used once the
+		// model is small on screen.
+		constexpr float kErrorPerLevel = 0.03f;
+		// texCoords and normal sit next to each other in Vertex3D, so one pointer covers both. Collapsing on
+		// position alone folds a shoulder into a sleeve and drags the texture across the seam with it, which
+		// reads as a grey smear on a model at middle distance.
+		constexpr size_t kAttributeCount = 5;
+		constexpr float kAttributeWeights[kAttributeCount] = { 0.5f, 0.5f, 0.25f, 0.25f, 0.25f };
+	}
+
+	void weldMesh(Mesh<Vertex3D>& mesh) {
+		if (mesh.indices.empty() || mesh.vertices.empty()) {
+			return;
+		}
+		std::vector<unsigned int> remap(mesh.vertices.size());
+		const size_t unique = meshopt_generateVertexRemap(remap.data(), mesh.indices.data(), mesh.indices.size(),
+			mesh.vertices.data(), mesh.vertices.size(), sizeof(Vertex3D));
+		if (unique >= mesh.vertices.size()) {
+			return;
+		}
+		std::vector<unsigned int> indices(mesh.indices.size());
+		meshopt_remapIndexBuffer(indices.data(), mesh.indices.data(), mesh.indices.size(), remap.data());
+		std::vector<Vertex3D> vertices(unique);
+		meshopt_remapVertexBuffer(vertices.data(), mesh.vertices.data(), mesh.vertices.size(), sizeof(Vertex3D), remap.data());
+		mesh.indices = std::move(indices);
+		mesh.vertices = std::move(vertices);
 	}
 
 	void buildMeshLods(Mesh<Vertex3D>& mesh) {
@@ -31,19 +54,13 @@ namespace SFE {
 			}
 			std::vector<unsigned int> simplified(source.size());
 			float error = 0.f;
-			size_t count = meshopt_simplify(simplified.data(), source.data(), source.size(),
+			const size_t count = meshopt_simplifyWithAttributes(simplified.data(), source.data(), source.size(),
 				&mesh.vertices[0].position[0], mesh.vertices.size(), sizeof(Vertex3D),
+				&mesh.vertices[0].texCoords[0], sizeof(Vertex3D), kAttributeWeights, kAttributeCount, nullptr,
 				target, kErrorPerLevel * static_cast<float>(level + 1), 0, &error);
-			// A character's index buffer duplicates every vertex on a UV or normal seam, and those duplicates
-			// read as the edge of the surface: the simplifier will not collapse across them and stalls after
-			// the first level or two. The sloppy pass ignores topology altogether, which is wrong for a model
-			// filling the screen and fine for one a few dozen pixels tall, which is all these levels are for.
-			if (count == 0 || count > target + target / 4) {
-				count = meshopt_simplifySloppy(simplified.data(), source.data(), source.size(),
-					&mesh.vertices[0].position[0], mesh.vertices.size(), sizeof(Vertex3D),
-					target, kErrorPerLevel * static_cast<float>(level + 2), &error);
-			}
-			if (count == 0 || count >= source.size()) {
+			// It stops early on a mesh it cannot collapse further without breaking the surface. Whatever it
+			// did reach is the last level: another one would be the same triangles under a different id.
+			if (count == 0 || static_cast<float>(count) > static_cast<float>(source.size()) * kKeepBelow) {
 				break;
 			}
 			simplified.resize(count);
