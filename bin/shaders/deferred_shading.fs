@@ -178,13 +178,6 @@ float TechniqueVogelPoint(PointLight light, int layer, vec3 projCoords) {
     return shadow * invSamples;
 }
 
-float cascadeSplit(int idx) {
-    if (idx < 4) {
-        return cascadedShadow.cascadeSplits[idx];
-    }
-    return cascadedShadow.cascadeSplits2[idx - 4];
-}
-
 vec3 worldToShadowUv(int layer, vec3 worldPos) {
     vec4 light = lightSpaceMatrices[layer] * vec4(worldPos, 1.0);
     vec3 proj = light.xyz / light.w;
@@ -214,18 +207,27 @@ bool shadowUvOk(vec3 proj) {
     return proj.x >= 0.0 && proj.x <= 1.0 && proj.y >= 0.0 && proj.y <= 1.0 && proj.z >= 0.0 && proj.z <= 1.0;
 }
 
-int cascadeForViewZ(float viewZ, int cc) {
-    int layer = cc - 1;
+// The first cascade whose own circle holds this fragment, and how far out in that circle it sits: 0 at
+// the centre, 1 at the rim. Each cascade is fitted to a circle around its slice of the view -- that is
+// what holds the fit still while the camera turns -- and the square map only circumscribes it, so the
+// circle is the region the cascade was built for. Choosing by distance along the view direction instead,
+// as this did, cuts the ground into slabs across the view, and the step between cascades then runs as a
+// straight band over the floor. A straight line is the one shape the eye finds in a scene that has none.
+int selectCascade(vec3 worldPos, int cc, out float edge) {
+    edge = 1.0;
     for (int i = 0; i < cc; ++i) {
-        if (viewZ < cascadeSplit(i)) {
+        vec3 proj = worldToShadowUv(i, worldPos);
+        if (proj.z < 0.0 || proj.z > 1.0) {
+            continue;
+        }
+        float r = length(proj.xy * 2.0 - 1.0);
+        if (r <= 1.0) {
+            edge = r;
             return i;
         }
     }
-    return layer;
-}
-
-float frustumViewZ(vec3 worldPos) {
-    return abs(dot(worldPos - pc.viewPos, pc.viewDir));
+    // Past the last circle, but its square still covers the corners, so it is the best answer there is.
+    return cc - 1;
 }
 
 float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
@@ -238,20 +240,16 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
         cc = 4;
     }
 
-    float viewZ = frustumViewZ(fragPosWorldSpace);
-    int layer = clamp(cascadeForViewZ(viewZ, cc), 0, cc - 1);
-    while (layer + 1 < cc && !shadowUvOk(worldToShadowUv(layer, fragPosWorldSpace))) {
-        layer += 1;
-    }
+    float edge = 1.0;
+    int layer = selectCascade(fragPosWorldSpace, cc, edge);
     float shadow = sampleCascade(layer, fragPosWorldSpace, Normal);
     if (layer + 1 >= cc) {
         return shadow;
     }
 
-    float split = cascadeSplit(layer);
-    float prev = layer > 0 ? cascadeSplit(layer - 1) : 0.0;
-    float band = max((split - prev) * 0.14, 0.25);
-    float blend = clamp((viewZ - (split - band)) / band, 0.0, 1.0);
+    // Faded over the outer fifth of the circle, so the change of resolution arrives as a ring that grows
+    // out of the ground rather than an edge.
+    float blend = smoothstep(0.8, 1.0, edge);
     if (blend <= 0.0) {
         return shadow;
     }
@@ -453,8 +451,8 @@ void main() {
             // R = hardware comparison sampler result, G = manual compare on the same texel,
             // B = stored depth. If R and G disagree the comparison sampler is the problem.
             int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
-            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
-            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            float pickEdge = 1.0;
+            int L = selectCascade(FragPos, cc, pickEdge);
             vec3 sp = worldToShadowUv(L, FragPos);
             float hw = texture(shadowMap, vec4(sp.xy, float(L), sp.z));
             float stored = texture(shadowMapDepth, vec3(sp.xy, float(L))).r;
@@ -465,24 +463,16 @@ void main() {
             // The cross-fade weight itself: black = pure current cascade, white = fully the next
             // one. Shows exactly where the transition band sits on screen.
             int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
-            float vz = frustumViewZ(FragPos);
-            int L = clamp(cascadeForViewZ(vz, cc), 0, cc - 1);
-            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
-            float bl = 0.0;
-            if (L + 1 < cc) {
-                float sp = cascadeSplit(L);
-                float pv = L > 0 ? cascadeSplit(L - 1) : 0.0;
-                float bd = max((sp - pv) * 0.14, 0.25);
-                bl = clamp((vz - (sp - bd)) / bd, 0.0, 1.0);
-            }
-            dbg = vec3(bl);
+            float pickEdge = 1.0;
+            int L = selectCascade(FragPos, cc, pickEdge);
+            dbg = vec3(L + 1 < cc ? smoothstep(0.8, 1.0, pickEdge) : 0.0);
         }
         else if (term == 12) {
             // Receiver depth minus stored occluder depth, amplified. >0.5 means the receiver sits
             // behind an occluder and should be shadowed; 0.5 means nothing is stored above it.
             int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
-            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
-            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            float pickEdge = 1.0;
+            int L = selectCascade(FragPos, cc, pickEdge);
             vec3 sp = worldToShadowUv(L, FragPos);
             float blocker = texture(shadowMapDepth, vec3(sp.xy, float(L))).r;
             dbg = vec3((sp.z - blocker) * 100.0 + 0.5);
@@ -491,16 +481,16 @@ void main() {
             // Green where the selected cascade's UV+depth are inside [0,1] (a shadow lookup can
             // happen at all), red where they are not and the test silently returns "lit".
             int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
-            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
-            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            float pickEdge = 1.0;
+            int L = selectCascade(FragPos, cc, pickEdge);
             vec3 sp = worldToShadowUv(L, FragPos);
             dbg = shadowUvOk(sp) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
         }
         else if (term == 10) {
             // Chosen cascade, as a step per level: 0 black, then 0.25 / 0.5 / 0.75 / 1.0.
             int cc = pc.cascadeCount > 0 ? pc.cascadeCount : int(cascadedShadow.color_and_misc.w + 0.5);
-            int L = clamp(cascadeForViewZ(frustumViewZ(FragPos), cc), 0, cc - 1);
-            while (L + 1 < cc && !shadowUvOk(worldToShadowUv(L, FragPos))) L += 1;
+            float pickEdge = 1.0;
+            int L = selectCascade(FragPos, cc, pickEdge);
             dbg = vec3(float(L + 1) / float(max(cc, 1)));
         }
         FragColor = vec4(dbg, 1.0);
