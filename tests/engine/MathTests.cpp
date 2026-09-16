@@ -343,3 +343,65 @@ namespace SFE::MathTests {
 		EXPECT_TRUE(ortho != MathModule::OrthoProjection({-2.f, -1.f}, {2.f, 1.f}, 0.5f, 20.f));
 	}
 }
+
+#include <random>
+#include <set>
+
+#include "containersModule/OcTree.h"
+
+namespace SFE::MathTests {
+	TEST(MathFrustum, CullFacesClassifiesInsideCrossingAndOutside) {
+		const auto frustum = FrustumModule::createFrustum(orthoRH_NO(-10.f, 10.f, -10.f, 10.f, 1.f, 100.f));
+
+		uint8_t faces = FrustumModule::kAllFrustumFaces;
+		EXPECT_TRUE(FrustumModule::cullFrustumFaces(frustum, Vec3{0.f, 0.f, -50.f}, Vec3{1.f}, faces));
+		EXPECT_EQ(faces, 0);
+
+		faces = FrustumModule::kAllFrustumFaces;
+		EXPECT_TRUE(FrustumModule::cullFrustumFaces(frustum, Vec3{10.f, 0.f, -50.f}, Vec3{1.f}, faces));
+		EXPECT_EQ(faces, 0b000010); // only the right face cuts it
+
+		faces = FrustumModule::kAllFrustumFaces;
+		EXPECT_FALSE(FrustumModule::cullFrustumFaces(frustum, Vec3{0.f, 0.f, 10.f}, Vec3{1.f}, faces));
+	}
+
+	// The masked walk must visit exactly what a test of every object against every face accepts.
+	TEST(MathFrustum, OctreeWalkMatchesBruteForce) {
+		using Tree = OcTree<int, 5, 256>;
+		Tree tree(Vec3{0.f, 256.f, 0.f});
+
+		std::mt19937 rng(7);
+		std::uniform_real_distribution<float> coord(-20.f, 276.f);
+		std::uniform_real_distribution<float> extent(0.1f, 12.f);
+		std::vector<std::pair<Vec3, Vec3>> objects;
+		for (int i = 0; i < 4000; ++i) {
+			const Vec3 pos{coord(rng), coord(rng) - 10.f, coord(rng)};
+			const Vec3 size{extent(rng), extent(rng), extent(rng)};
+			if (tree.insert(pos, size, i)) {
+				objects.emplace_back(pos, size);
+			}
+			else {
+				objects.emplace_back(Vec3{}, Vec3{-1.f});
+			}
+		}
+
+		const Mat4 view = inverseAffine(translate(Mat4{1.f}, Vec3{-30.f, 120.f, 300.f}) * Quat::fromEulerDegrees(Vec3{-10.f, -35.f, 0.f}).toMat4());
+		for (const Mat4& projection : {perspectiveRH_NO(radians(60.f), 1.6f, 0.5f, 250.f), orthoRH_NO(-60.f, 60.f, -40.f, 40.f, 1.f, 400.f)}) {
+			const auto frustum = FrustumModule::createFrustum(projection * view);
+
+			std::set<int> walked;
+			tree.forEachObjectInsideFrustum(frustum, [&walked](int id) { walked.insert(id); });
+
+			std::set<int> expected;
+			for (int i = 0; i < static_cast<int>(objects.size()); ++i) {
+				if (objects[i].second.x >= 0.f && FrustumModule::AABB::isOnFrustum(frustum, objects[i].first, objects[i].second)) {
+					expected.insert(i);
+				}
+			}
+
+			EXPECT_FALSE(expected.empty());
+			EXPECT_LT(expected.size(), objects.size());
+			EXPECT_EQ(walked, expected);
+		}
+	}
+}

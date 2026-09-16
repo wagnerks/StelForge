@@ -37,9 +37,13 @@ namespace SFE::SystemsModule {
 			{
 				auto mapLock = readLock();
 				trees.reserve(mOctrees.size());
+				const float halfSize = OCTREE_SIZE * 0.5f;
 				for (auto& [treePos, tree] : mOctrees) {
-					(void)treePos;
-					trees.push_back(&tree);
+					// skip trees off screen before taking their locks; treePos is the left-top-near corner
+					auto faces = FrustumModule::kAllFrustumFaces;
+					if (FrustumModule::cullFrustumFaces(frustum, treePos + Math::Vec3{ halfSize, -halfSize, halfSize }, Math::Vec3{ halfSize }, faces)) {
+						trees.push_back(&tree);
+					}
 				}
 			}
 			for (auto* tree : trees) {

@@ -12,9 +12,7 @@ void FrustumComponent::updateFrustum(const Math::Mat4& projection, const Math::M
 	mFrustum = FrustumModule::createFrustum(projection * view);
 }
 
-bool FrustumComponent::isOnFrustum(const FrustumModule::BoundingVolume& bVolume) const {
-	return bVolume.isOnFrustum(mFrustum);
-}
+
 
 SFE::FrustumModule::Frustum* FrustumComponent::getFrustum() {
 	return &mFrustum;

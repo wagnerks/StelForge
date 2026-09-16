@@ -472,6 +472,7 @@ namespace SFE {
 			SFE::Math::Vec3 pos;
 			float size;
 			size_t index;
+			uint8_t frustumFaces = FrustumModule::kAllFrustumFaces; // faces the node still crosses
 		};
 
 		template<class Func>
@@ -486,29 +487,33 @@ namespace SFE {
 
 			while (top != 0) {
 				const auto entry = stack[--top];
-				auto center = calculateNodeCenter(entry.pos, entry.size);
-				auto halfSize = entry.size * 0.5f;
-				bool entirely = FrustumModule::SquareAABB::isOnFrustumEntirely(frustum, center, halfSize);
-				if (entirely || FrustumModule::SquareAABB::isOnFrustum(frustum, center, halfSize)) {
-					auto& node = nodes[entry.index];
-					for (const auto& object : node.data) {
-						if (FrustumModule::AABB::isOnFrustum(frustum, object.pos, object.size)) {
-							std::invoke(std::forward<Func>(func), object.data);
-						}
-					}
+				auto faces = entry.frustumFaces;
+				if (faces && !FrustumModule::cullFrustumFaces(frustum, calculateNodeCenter(entry.pos, entry.size), SFE::Math::Vec3{ entry.size * 0.5f }, faces)) {
+					continue;
+				}
 
-					auto firstChildId = entry.index * 8 + 1;
-					if (firstChildId + 7 >= NodesCount) {
-						continue;
+				// The root also keeps objects that only overlap it, so its objects are tested against every face;
+				// objects below the root lie inside their node and only need the faces the node still crosses.
+				const auto objectFaces = entry.index == 0 ? FrustumModule::kAllFrustumFaces : faces;
+				for (const auto& object : nodes[entry.index].data) {
+					auto objectFacesLeft = objectFaces;
+					if (!objectFacesLeft || FrustumModule::cullFrustumFaces(frustum, object.pos, object.size, objectFacesLeft)) {
+						std::invoke(std::forward<Func>(func), object.data);
 					}
+				}
 
-					const auto childSize = entry.size * 0.5f;
-					for (auto octant = 0u; octant < 8; octant++) {
-						stack[top].pos = entry.pos + getOctantPos(static_cast<Octant>(octant), childSize);
-						stack[top].size = childSize;
-						stack[top].index = firstChildId + octant;
-						++top;
-					}
+				auto firstChildId = entry.index * 8 + 1;
+				if (firstChildId + 7 >= NodesCount) {
+					continue;
+				}
+
+				const auto childSize = entry.size * 0.5f;
+				for (auto octant = 0u; octant < 8; octant++) {
+					stack[top].pos = entry.pos + getOctantPos(static_cast<Octant>(octant), childSize);
+					stack[top].size = childSize;
+					stack[top].index = firstChildId + octant;
+					stack[top].frustumFaces = faces;
+					++top;
 				}
 			}
 		}
