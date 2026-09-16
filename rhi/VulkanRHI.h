@@ -191,6 +191,7 @@ namespace SFE::Render
 		void cmdSetScissor(CommandListHandle cmd, int32_t x, int32_t y, uint32_t width, uint32_t height) override;
 		void cmdPipelineBarrier(CommandListHandle cmd, const PipelineBarrier& barrier) override;
 		void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) override;
+		void cmdCopyBuffer(CommandListHandle cmd, BufferHandle src, BufferHandle dst, size_t srcOffset, size_t dstOffset, size_t size) override;
 		void submit(CommandListHandle list) override;
 		void present() override;
 		double lastGpuMs() const override { return mLastGpuMs; }

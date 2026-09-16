@@ -360,7 +360,6 @@ namespace SFE::SystemsModule {
 		transforms = rhi->createBuffer(transformDesc);
 		transformDesc.debugName = "PrevTransformsSSBO";
 		prevTransforms = rhi->createBuffer(transformDesc);
-		mUploadedTransforms.assign(capacity, Math::Mat4{ 1.f });
 
 		mGpuCapacity = capacity;
 	}
@@ -527,17 +526,10 @@ namespace SFE::SystemsModule {
 		// Consecutive ids go up as one range, so a spawned chunk is one copy rather than one per entity.
 		std::vector<Math::Mat4> run;
 		ecss::EntityId runStart = 0;
-		std::vector<Math::Mat4> previous;
 		const auto flush = [&] {
 			if (!run.empty()) {
-				// What these entities held until now, so a pixel's motion vector is where it was last frame.
-				rhi->updateBuffer(prevTransforms, static_cast<size_t>(runStart) * sizeof(Math::Mat4), previous.size() * sizeof(Math::Mat4), previous.data());
 				rhi->updateBuffer(transforms, static_cast<size_t>(runStart) * sizeof(Math::Mat4), run.size() * sizeof(Math::Mat4), run.data());
-				for (size_t i = 0; i < run.size(); ++i) {
-					mUploadedTransforms[runStart + i] = run[i];
-				}
 				run.clear();
-				previous.clear();
 			}
 		};
 		for (const auto id : sortedIds) {
@@ -555,7 +547,6 @@ namespace SFE::SystemsModule {
 			if (run.empty()) {
 				runStart = id;
 			}
-			previous.push_back(mUploadedTransforms[id]);
 			run.push_back(comp->mTransform);
 		}
 		flush();
@@ -798,6 +789,21 @@ namespace SFE::SystemsModule {
 				passDump.write(i, mPassNames[i].c_str(), mRenderData.frame);
 				cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
 			}
+		}
+		// What this frame drew with becomes what the next one calls the previous frame. The whole buffer
+		// rather than the entities that moved: an entity is uploaded when it changes, so one that stopped
+		// moving -- or never moved since it spawned -- would keep whatever its previous slot held forever,
+		// and for a static entity that was the identity matrix the buffer was allocated with. Its motion
+		// vector then pointed from the world origin, TAA pulled that pixel's history from the other side of
+		// the screen, and the models washed out into the floor behind them.
+		if (transforms && prevTransforms && mGpuCapacity > 0) {
+			rhi->cmdCopyBuffer(cmd, transforms, prevTransforms, 0, 0, mGpuCapacity * sizeof(Math::Mat4));
+			rhi->cmdPipelineBarrier(cmd, {
+				Render::PipelineStage::Transfer,
+				Render::PipelineStage::VertexShader,
+				Render::AccessMask::TransferWrite,
+				Render::AccessMask::ShaderRead,
+			});
 		}
 		rhi->endCommandList(cmd);
 

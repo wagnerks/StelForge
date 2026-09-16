@@ -290,4 +290,67 @@ namespace SFE::Render::Tests {
 		rhi().destroyDescriptorSetLayout(layout);
 		rhi().destroyBuffer(buffer);
 	}
+
+	// Three claims about cmdCopyBuffer in one pass: it lands at the destination offset it was given, it
+	// reads from the source offset it was given, and it leaves the rest of the destination alone. The two
+	// offsets differ from each other and from zero, so a backend that ignored either would be caught.
+	//
+	// Nothing here writes the source later in the same list. When a recorded update lands is a separate
+	// contract the backends do not share -- see RhiFrameTests -- and the frame that copies its transforms
+	// into last frame's slot does it after everything that reads them, so it never depends on that.
+	TEST_P(RhiBackendTest, CopyBufferMovesTheRangeItWasGivenAndNothingElse) {
+		constexpr uint32_t kCopyFrom = 4;   // in elements
+		constexpr uint32_t kCopyTo = 8;
+		constexpr uint32_t kCopyCount = 4;
+		constexpr uint32_t kDestFill = 0xEEEEEEEEu;
+
+		std::vector<uint32_t> sourceData(kCount);
+		for (uint32_t i = 0; i < kCount; ++i) {
+			sourceData[i] = 0xC0DE0000u + i;
+		}
+		const auto source = makeStorageBuffer(rhi(), sourceData);
+		const auto destination = makeStorageBuffer(rhi(), std::vector<uint32_t>(kCount, kDestFill));
+		ASSERT_TRUE(source);
+		ASSERT_TRUE(destination);
+
+		const auto layout = makeStorageLayout(rhi());
+		ASSERT_TRUE(layout);
+		const auto set = rhi().allocateDescriptorSet(layout);
+		ASSERT_TRUE(set);
+		WriteDescriptor write{};
+		write.set = set;
+		write.binding = 0;
+		write.buffers.push_back({ destination, 0, 0 });
+		rhi().updateDescriptorSets({ write });
+
+		rhi().beginFrame();
+		const auto cmd = rhi().beginCommandList(CommandListType::Graphics);
+		rhi().cmdCopyBuffer(cmd, source, destination, kCopyFrom * sizeof(uint32_t), kCopyTo * sizeof(uint32_t),
+			kCopyCount * sizeof(uint32_t));
+		rhi().cmdPipelineBarrier(cmd, {
+			PipelineStage::Transfer,
+			PipelineStage::FragmentShader,
+			AccessMask::TransferWrite,
+			AccessMask::ShaderRead,
+		});
+		rhi().endCommandList(cmd);
+		rhi().submit(cmd);
+		rhi().present();
+		rhi().waitIdle();
+
+		const auto read = readStorageBuffer(rhi(), layout, set, kCount);
+		ASSERT_EQ(read.size(), kCount) << "readback failed";
+		for (uint32_t i = 0; i < kCount; ++i) {
+			const bool copied = i >= kCopyTo && i < kCopyTo + kCopyCount;
+			const uint32_t expected = copied ? sourceData[kCopyFrom + (i - kCopyTo)] : kDestFill;
+			EXPECT_EQ(read[i], expected) << "element " << i << (copied
+				? " is not the source element the offsets name"
+				: " was touched, and it is outside the copied range");
+		}
+
+		rhi().freeDescriptorSet(set);
+		rhi().destroyDescriptorSetLayout(layout);
+		rhi().destroyBuffer(source);
+		rhi().destroyBuffer(destination);
+	}
 }

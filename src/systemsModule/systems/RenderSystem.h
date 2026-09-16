@@ -344,10 +344,9 @@ namespace SFE::SystemsModule {
 		bool mRefreshTransforms = true;
 
 		Render::BufferHandle transforms;
-		// Last frame's matrix per entity. Kept by writing the value being replaced here before the new one goes
-		// into `transforms`, so an entity that did not move has the same matrix in both.
+		// Last frame's matrix per entity: a copy of `transforms` taken at the end of every frame, so an entity
+		// that did not move has the same matrix in both and one that did has where it was.
 		Render::BufferHandle prevTransforms;
-		std::vector<Math::Mat4> mUploadedTransforms;
 		size_t mGpuCapacity = 0;
 
 		// Bone matrices pooled by armature, not reserved per entity id: a skinned entity takes exactly its bones.

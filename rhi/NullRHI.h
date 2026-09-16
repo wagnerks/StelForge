@@ -73,6 +73,7 @@ namespace SFE::Render {
 		void cmdBlit(CommandListHandle, FramebufferHandle, FramebufferHandle, BlitMask = BlitMask::Color, BlitFilter = BlitFilter::Nearest) override {}
 		void cmdPipelineBarrier(CommandListHandle, const PipelineBarrier&) override {}
 		void cmdUpdateBuffer(CommandListHandle, BufferHandle, size_t, size_t, const void*) override {}
+		void cmdCopyBuffer(CommandListHandle, BufferHandle, BufferHandle, size_t, size_t, size_t) override {}
 
 		void submit(CommandListHandle) override {}
 		void present() override {}

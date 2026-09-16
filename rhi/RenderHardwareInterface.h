@@ -651,6 +651,9 @@ namespace SFE::Render
 		// contents, including draws recorded before this call. Write a frame's data before the draws that
 		// read it, and never reuse one buffer region for two different draws in the same list.
 		virtual void cmdUpdateBuffer(CommandListHandle cmd, BufferHandle handle, size_t offset, size_t size, const void* data) = 0;
+		// Copies between two buffers at this point in the list, so the destination takes the source as it
+		// stands here rather than after whatever the rest of the frame writes into it.
+		virtual void cmdCopyBuffer(CommandListHandle cmd, BufferHandle src, BufferHandle dst, size_t srcOffset, size_t dstOffset, size_t size) = 0;
 
 		// One list per call. Submit a list before beginning the next one: Vulkan records every list of a
 		// frame into the same command buffer, so a second open list overwrites the first.

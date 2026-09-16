@@ -2708,6 +2708,29 @@ namespace SFE::Render
 		execUpdateBuffer(handle, offset, size, data);
 	}
 
+	void OpenGLRHI::cmdCopyBuffer(CommandListHandle cmd, BufferHandle src, BufferHandle dst,
+		size_t srcOffset, size_t dstOffset, size_t size)
+	{
+		if (!recordingList(cmd) || size == 0) {
+			return;
+		}
+		const GLBuffer* s = getLive(m_buffers, src.id);
+		const GLBuffer* d = getLive(m_buffers, dst.id);
+		if (!s || !d) {
+			return;
+		}
+		if (srcOffset + size > s->desc.size || dstOffset + size > d->desc.size) {
+			RhiLog::error("OpenGLRHI: cmdCopyBuffer OOB src=%zu dst=%zu size=%zu", srcOffset, dstOffset, size);
+			return;
+		}
+		glBindBuffer(GL_COPY_READ_BUFFER, s->id);
+		glBindBuffer(GL_COPY_WRITE_BUFFER, d->id);
+		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER,
+			static_cast<GLintptr>(srcOffset), static_cast<GLintptr>(dstOffset), static_cast<GLsizeiptr>(size));
+		glBindBuffer(GL_COPY_READ_BUFFER, 0);
+		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+	}
+
 	void OpenGLRHI::execUpdateBuffer(BufferHandle handle, size_t offset, size_t size, const void* data)
 	{
 		GLBuffer* glb = getLive(m_buffers, handle.id);

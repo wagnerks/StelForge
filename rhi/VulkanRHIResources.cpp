@@ -431,8 +431,9 @@ namespace SFE::Render {
 		bufferInfo.usage = toVkBufferUsage(desc.usage);
 		const bool gpuStorage = (desc.usage & BufferUsage::Storage) && desc.cpuAccess != CpuAccess::None
 			&& desc.size >= (1u << 20);
-		// Always: a CpuAccess::None buffer is still written through updateBuffer's queued upload.
-		bufferInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		// Always: a CpuAccess::None buffer is still written through updateBuffer's queued upload, and
+		// cmdCopyBuffer can name any buffer as either end.
+		bufferInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		VmaAllocationCreateInfo allocInfo{};
@@ -1511,5 +1512,25 @@ namespace SFE::Render {
 		}
 		// Not queued like updateBuffer does for device-local buffers: that lands in the next list.
 		copyThroughStaging(buffer->buffer, offset, size, data);
+	}
+
+	void VulkanRHI::cmdCopyBuffer(const CommandListHandle cmd, const BufferHandle src, const BufferHandle dst,
+		const size_t srcOffset, const size_t dstOffset, const size_t size)
+	{
+		const auto* list = getLive(m_commandLists, cmd.id);
+		const auto* source = getLive(m_buffers, src.id);
+		const auto* destination = getLive(m_buffers, dst.id);
+		if (!list || !list->recording || !source || !destination || size == 0) {
+			return;
+		}
+		if (srcOffset + size > source->desc.size || dstOffset + size > destination->desc.size) {
+			RhiLog::error("VulkanRHI: cmdCopyBuffer OOB src=%zu dst=%zu size=%zu", srcOffset, dstOffset, size);
+			return;
+		}
+		VkBufferCopy region{};
+		region.srcOffset = srcOffset;
+		region.dstOffset = dstOffset;
+		region.size = size;
+		vkCmdCopyBuffer(list->cmd, source->buffer, destination->buffer, 1, &region);
 	}
 }
