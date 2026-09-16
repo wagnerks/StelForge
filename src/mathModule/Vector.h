@@ -17,8 +17,6 @@ namespace SFE::Math {
 
 		VECTOR_DEFAULT_METHODS();
 	};
-	//todo allignment and smid operations
-	//todo do i need simple conversion operator - to convert vectors to each other
 	template <typename T>
 	struct Vector<T, 2> {
 		union {
@@ -29,20 +27,20 @@ namespace SFE::Math {
 		};
 
 		template<typename OtherT>
-		constexpr Vector(OtherT x, OtherT y) : x(x), y(y) {}
+		constexpr Vector(OtherT x, OtherT y) : x(static_cast<T>(x)), y(static_cast<T>(y)) {}
 
 		template<typename OtherT>
-		constexpr Vector(OtherT x) : x(x), y(x){}
+		constexpr Vector(OtherT x) : x(static_cast<T>(x)), y(static_cast<T>(x)) {}
 		constexpr Vector() : x{}, y{} {}
 
 		template<typename OtherT>
-		constexpr Vector(const Vector<OtherT, 4>& vec) : x(vec.x), y(vec.y) {}
+		constexpr Vector(const Vector<OtherT, 4>& vec) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)) {}
 
 		template<typename OtherT>
-		constexpr Vector(const Vector<OtherT, 3>& vec) : x(vec.x), y(vec.y) {}
+		constexpr Vector(const Vector<OtherT, 3>& vec) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)) {}
 
 		template<typename OtherT>
-		constexpr Vector(const Vector<OtherT, 2>& vec) : x(vec.x), y(vec.y) {}
+		constexpr Vector(const Vector<OtherT, 2>& vec) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)) {}
 
 		VECTOR_DEFAULT_METHODS();
 	};
@@ -96,10 +94,10 @@ namespace SFE::Math {
 		VECTOR_DEFAULT_METHODS();
 
 		template<typename T1, typename T2>
-		constexpr Vector(const Vector<T1, 3>& vec3, T2 w) : x{ vec3.x }, y{ vec3.y}, z(vec3.z), w(w) {}
+		constexpr Vector(const Vector<T1, 3>& vec3, T2 w) : x(static_cast<T>(vec3.x)), y(static_cast<T>(vec3.y)), z(static_cast<T>(vec3.z)), w(static_cast<T>(w)) {}
 
 		template<typename T1>
-		constexpr Vector(const Vector<T1, 4>& vec) : x(vec.x), y(vec.y), z(vec.z), w(vec.w) {}
+		constexpr Vector(const Vector<T1, 4>& vec) : x(static_cast<T>(vec.x)), y(static_cast<T>(vec.y)), z(static_cast<T>(vec.z)), w(static_cast<T>(vec.w)) {}
 
 		constexpr Vector() : x{}, y{}, z{}, w{} {}
 		constexpr Vector(T x, T y, T z, T w) : x{ x }, y{ y }, z{ z }, w{ w } {}

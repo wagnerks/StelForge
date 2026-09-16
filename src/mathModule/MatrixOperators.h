@@ -49,28 +49,13 @@ namespace SFE::Math {
 
 
 	template <typename T, size_t Rows, size_t Columns, size_t OtherCols>
-	inline Matrix<T, Columns, OtherCols> operator*(const Matrix<T, Rows, Columns>& a, const Matrix<T, Columns, OtherCols>& other) {
-		Matrix<T, Columns, OtherCols> result = {};
+	inline Matrix<T, Rows, OtherCols> operator*(const Matrix<T, Rows, Columns>& a, const Matrix<T, Columns, OtherCols>& other) {
+		Matrix<T, Rows, OtherCols> result = {};
 
 		for (size_t i = 0; i < OtherCols; ++i) {
-			for (size_t j = 0; j < Columns; ++j) {
-				for (size_t k = 0; k < Columns; ++k) {
+			for (size_t k = 0; k < Columns; ++k) {
+				for (size_t j = 0; j < Rows; ++j) {
 					result[i][j] += a[k][j] * other[i][k];
-				}
-			}
-		}
-
-		return result;
-	}
-
-	template <typename T, size_t Rows, size_t Columns, size_t OtherCols>
-	inline Matrix<T, Columns, OtherCols> operator/(const Matrix<T, Rows, Columns>& a, const Matrix<T, Columns, OtherCols>& other) {
-		Matrix<T, Columns, OtherCols> result = {};
-
-		for (size_t i = 0; i < OtherCols; ++i) {
-			for (size_t j = 0; j < Columns; ++j) {
-				for (size_t k = 0; k < Columns; ++k) {
-					result[i][j] += a[k][j] / other[i][k];
 				}
 			}
 		}
@@ -99,17 +84,17 @@ namespace SFE::Math {
 		};
 	}
 
-	template <typename T, size_t Rows, size_t Columns, size_t OtherCols>
-	inline Matrix<T, Columns, OtherCols> operator*=(Matrix<T, Rows, Columns>& a, const Matrix<T, Columns, OtherCols>& other) {
-		return a = a * other, a;
+	template <typename T, size_t Size>
+	inline Matrix<T, Size, Size>& operator*=(Matrix<T, Size, Size>& a, const Matrix<T, Size, Size>& other) {
+		return a = a * other;
 	}
 
 	template <typename T, size_t Rows, size_t Columns, typename OtherT>
-	inline Vector<T, Columns> operator*(const Matrix<T, Rows, Columns>& a, const Vector<OtherT, Columns>& other) {
-		Vector<T, Columns> result = {};
+	inline Vector<T, Rows> operator*(const Matrix<T, Rows, Columns>& a, const Vector<OtherT, Columns>& other) {
+		Vector<T, Rows> result = {};
 
-		for (size_t j = 0; j < Columns; ++j) {
-			for (size_t k = 0; k < Columns; ++k) {
+		for (size_t k = 0; k < Columns; ++k) {
+			for (size_t j = 0; j < Rows; ++j) {
 				result[j] += a[k][j] * other[k];
 			}
 		}

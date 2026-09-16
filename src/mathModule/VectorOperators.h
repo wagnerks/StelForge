@@ -12,23 +12,23 @@ namespace SFE::Math {
 
 	// math operators
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator+=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
-		return a = add(a, b), a;
+	inline Vector<T, Rows>& operator+=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
+		return a = add(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator-=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
-		return a = subtract(a, b), a;
+	inline Vector<T, Rows>& operator-=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
+		return a = subtract(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator*=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
-		return a = multiply(a, b), a;
+	inline Vector<T, Rows>& operator*=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
+		return a = multiply(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator/=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
-		return a = divide(a, b), a;
+	inline Vector<T, Rows>& operator/=(Vector<T, Rows>& a, const Vector<Other, Rows>& b) {
+		return a = divide(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
@@ -52,23 +52,23 @@ namespace SFE::Math {
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	inline Vector<T, Rows> operator+=(Vector<T, Rows>& a, Other b) {
-		return a = add(a, b), a;
+	inline Vector<T, Rows>& operator+=(Vector<T, Rows>& a, Other b) {
+		return a = add(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	constexpr inline Vector<T, Rows> operator-=(Vector<T, Rows>& a, Other b) {
-		return a = subtract(a, b), a;
+	constexpr inline Vector<T, Rows>& operator-=(Vector<T, Rows>& a, Other b) {
+		return a = subtract(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	constexpr inline Vector<T, Rows> operator*=(Vector<T, Rows>& a, Other b) {
-		return a = multiply(a, b), a;
+	constexpr inline Vector<T, Rows>& operator*=(Vector<T, Rows>& a, Other b) {
+		return a = multiply(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
-	constexpr inline Vector<T, Rows> operator/=(Vector<T, Rows>& a, Other b) {
-		return a = divide(a, b), a;
+	constexpr inline Vector<T, Rows>& operator/=(Vector<T, Rows>& a, Other b) {
+		return a = divide(a, b);
 	}
 
 	template <typename T, size_t Rows, typename Other>
@@ -109,30 +109,19 @@ namespace SFE::Math {
 		return !operator==(a, b);
 	}
 
+	// lexicographic, so vectors can key ordered containers
 	template <typename T, size_t Size>
 	inline bool operator<(const Vector<T, Size>& a, const Vector<T, Size>& b) {
 		for (size_t i = 0; i < Size; ++i) {
-			if (a[i] < b[i]) {
-				return true;
+			if (a[i] != b[i]) {
+				return a[i] < b[i];
 			}
-			if (a[i] == b[i] && i != Size - 1) {
-				continue;
-			}
-			return false;
 		}
-
 		return false;
 	}
+
 	template <typename T, size_t Size>
 	inline bool operator>(const Vector<T, Size>& a, const Vector<T, Size>& b) {
-		for (size_t i = 0; i < Size; ++i) {
-			if (a[i] > b[i]) {
-				continue;
-			}
-			return false;
-		}
-
-		return true;
+		return b < a;
 	}
-	
 }

@@ -19,7 +19,7 @@ namespace SFE::Math {
 	};
 
 	// screenCoords - is the point on "camera lense" from which ray casted
-	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords = { Engine::instance()->getWindow()->getScreenData().width * 0.5f, Engine::instance()->getWindow()->getScreenData().height * 0.5f}) {
+	inline Ray calcMouseRay(ecss::EntityId cameraId, const Vec2& screenCoords) {
 		auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(cameraId);
 		if (!cameraComp) {
 			return {};
@@ -27,30 +27,30 @@ namespace SFE::Math {
 
 		auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(cameraId);
 
-		auto& mProjection = cameraComp->getProjection().getProjectionsMatrix();
-		auto mView = cameraTransform->getViewMatrix();
+		const auto& screen = Engine::instance()->getWindow()->getScreenData();
+		const float normalizedX = (2.0f * screenCoords.x) / screen.width - 1.0f;
+		const float normalizedY = 1.0f - (2.0f * screenCoords.y) / screen.height;
 
+		// one inverse of the combined matrix instead of inverting projection and view separately
+		const auto invProjView = Math::inverse(cameraComp->getProjection().getProjectionsMatrix() * cameraTransform->getViewMatrix());
+		auto nearPoint = invProjView * Math::Vec4(normalizedX, normalizedY, -1.f, 1.f);
+		const Vec3 worldPoint = nearPoint.xyz / nearPoint.w;
 
-		
-		auto& cameraPos = cameraTransform->getPos(true);
-		float normalizedX = (2.0f * screenCoords.x) / Engine::instance()->getWindow()->getScreenData().width - 1.0f;
-		float normalizedY = 1.0f - (2.0f * screenCoords.y) / Engine::instance()->getWindow()->getScreenData().height;
-		auto clipCoords = Math::Vec4(normalizedX, normalizedY, -1.0, 1.0);
-		auto ndc = Math::inverse(mProjection) * clipCoords;
-		ndc /= ndc.w;
-		auto viewCoords = Math::Vec3(Math::inverse(mView) * Math::Vec4(ndc.x, ndc.y, ndc.z, 1.0));
-		auto rayDirection = Math::normalize(viewCoords - cameraPos);
+		return { worldPoint, Math::normalize(worldPoint - cameraTransform->getPos(true)) };
+	}
 
-		return { viewCoords, rayDirection };
+	inline Ray calcMouseRay(ecss::EntityId cameraId) {
+		const auto& screen = Engine::instance()->getWindow()->getScreenData();
+		return calcMouseRay(cameraId, { screen.width * 0.5f, screen.height * 0.5f });
 	}
 
 	inline Vec3 globalToScreen(Vec4 globalCoords, const Mat4& ProjectView) {
 		globalCoords = ProjectView * globalCoords;
 		globalCoords.xyz /= globalCoords.w;
 		globalCoords.xyz = (globalCoords.xyz + 1.f) / 2.f;
-		globalCoords.x *= Engine::instance()->getWindow()->getScreenData().width;
-		globalCoords.y *= Engine::instance()->getWindow()->getScreenData().height;
-		globalCoords.y = Engine::instance()->getWindow()->getScreenData().height - globalCoords.y;
+		const auto& screen = Engine::instance()->getWindow()->getScreenData();
+		globalCoords.x *= screen.width;
+		globalCoords.y = screen.height * (1.f - globalCoords.y);
 
 		return globalCoords;
 	}
@@ -78,9 +78,7 @@ namespace SFE::Math {
 		return 2.f * std::asin(hordeLen / (2.f * radius));
 	}
 
-	inline float calcAngleBetweenVectors(Vec3 a, Vec3 b) {
-		projectVectorsToCommonPlane(a, b);
-
+	inline float calcAngleBetweenVectors(const Vec3& a, const Vec3& b) {
 		const auto dot = Math::dot(a, b);
 		const auto magA = length(a);
 		const auto magB = length(b);

@@ -105,6 +105,10 @@ float PerspectiveProjection::getAspect() const {
 }
 
 void PerspectiveProjection::initProjection() {
+	// no window size yet (headless, minimized): keep the last matrix instead of filling it with inf/NaN
+	if (!(mAspect > 0.f)) {
+		return;
+	}
 	// Keep OpenGL-compatible NO clip for now — ZO is deferred until lighting/shadows are stable on Vulkan.
 	mProjectionMatrix = Math::perspectiveRH_NO(Math::radians(mFOV), mAspect, getNear(), getFar());
 }

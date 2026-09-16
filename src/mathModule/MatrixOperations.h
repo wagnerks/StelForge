@@ -53,10 +53,10 @@ namespace SFE::Math {
 	}
 
 	template <typename T, size_t Rows, size_t Columns>
-	constexpr inline Matrix<T, Rows, Columns> transpose(const Matrix<T, Rows, Columns>& matrix) {
-		Matrix<T, Rows, Columns> result {};
-		for (size_t i = 0; i < Columns; ++i) {
-			for (size_t j = 0; j < Rows; ++j) {
+	constexpr inline Matrix<T, Columns, Rows> transpose(const Matrix<T, Rows, Columns>& matrix) {
+		Matrix<T, Columns, Rows> result {};
+		for (size_t i = 0; i < Rows; ++i) {
+			for (size_t j = 0; j < Columns; ++j) {
 				result[i][j] = matrix[j][i];
 			}
 		}
@@ -65,7 +65,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T>
-	constexpr Matrix<T, 3, 3> inverse(Matrix<T, 3, 3> m) {
+	constexpr Matrix<T, 3, 3> inverse(const Matrix<T, 3, 3>& m) {
 		T determinant = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
 			m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
 			m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
@@ -76,7 +76,7 @@ namespace SFE::Math {
 			return {};
 		}
 
-		T invDeterminant = 1.0 / determinant;
+		T invDeterminant = static_cast<T>(1) / determinant;
 
 		// Calculate elements of the inverted matrix
 		Matrix<T, 3, 3> temp;
@@ -95,7 +95,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T>
-	constexpr Matrix<T, 4, 4> inverse(Matrix<T, 4, 4> m) {
+	constexpr Matrix<T, 4, 4> inverse(const Matrix<T, 4, 4>& m) {
 		T coef00 = m[2][2] * m[3][3] - m[3][2] * m[2][3];
 		T coef02 = m[1][2] * m[3][3] - m[3][2] * m[1][3];
 		T coef03 = m[1][2] * m[2][3] - m[2][2] * m[1][3];

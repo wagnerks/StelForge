@@ -1,26 +1,30 @@
 #pragma once
 
+#include <cassert>
+#include <cmath>
+#include <limits>
+
 namespace SFE::Math {
 	template <typename T, size_t Rows, size_t Columns>
 	struct Matrix;
 
 	template<typename T>
-	inline T pi() {
+	constexpr T pi() {
 		return static_cast<T>(3.14159265358979323846264338327950288);
 	}
 
 	template<typename T>
-	inline T twoPi() {
+	constexpr T twoPi() {
 		return T(6.28318530717958647692528676655900576);
 	}
 
 	template<typename T>
-	inline T radians(T degrees) {
+	constexpr T radians(T degrees) {
 		return degrees * static_cast<T>(0.01745329251994329576923690768489);//pi/180
 	}
 
 	template<typename T>
-	inline T degrees(T radians) {
+	constexpr T degrees(T radians) {
 		return radians * static_cast<T>(57.295779513082320876798154814105);//180/pi
 	}
 
@@ -42,10 +46,7 @@ namespace SFE::Math {
 
 	template<typename T, typename T1>
 	inline Matrix<T, 3, 3> translate(Matrix<T, 3, 3> m, const Vector<T1, 2>& v) {
-		//return m[2] = m[0] * v[0] + m[1] * v[1] + m[2], m;
-		m[2][0] += v[0];
-		m[2][1] += v[1];
-		return m;
+		return m[2] = m[0] * v[0] + m[1] * v[1] + m[2], m;
 	}
 
 	template<typename T, typename FT>
@@ -67,8 +68,8 @@ namespace SFE::Math {
 	Matrix<T, 4, 4> rotate(Matrix<T, 4, 4> const& m, T angle, Vector<T, 3> const& v)
 	{
 		T const a = angle;
-		T const c = cos(a);
-		T const s = sin(a);
+		T const c = std::cos(a);
+		T const s = std::sin(a);
 
 		Vector<T, 3> axis(normalize(v));
 		Vector<T, 3> temp(axis * (T(1) - c));
@@ -94,27 +95,23 @@ namespace SFE::Math {
 		return result;
 	}
 
+	// counter-clockwise, applied first like rotate() for Mat4: m * R
 	template<typename T>
-	Matrix<T, 3, 3> rotate(Matrix<T, 3, 3> const& m, T angle)
-	{
-		T cosTheta = cos(angle);
-		T sinTheta = sin(angle);
-
-		Matrix<T, 3, 3> rotationMatrix = {
-			{ cosTheta, -sinTheta, 0 },
-			{ sinTheta,  cosTheta, 0 },
-			{ 0,         0,        1 }
-		};
-
-		return rotationMatrix * m;
+	Matrix<T, 3, 3> rotate(Matrix<T, 3, 3> m, T angle) {
+		const T c = std::cos(angle);
+		const T s = std::sin(angle);
+		const auto column0 = m[0];
+		m[0] = column0 * c + m[1] * s;
+		m[1] = m[1] * c - column0 * s;
+		return m;
 	}
 	// ---------------------------
 
 	template<typename T>
 	Matrix<T, 4, 4> perspectiveRH_NO(T fovy, T aspect, T zNear, T zFar) {
-		assert(abs(aspect - std::numeric_limits<T>::epsilon()) > static_cast<T>(0));
+		assert(std::abs(aspect) > std::numeric_limits<T>::epsilon());
 
-		T const tanHalfFovy = tan(fovy / static_cast<T>(2));
+		T const tanHalfFovy = std::tan(fovy / static_cast<T>(2));
 
 		Matrix<T, 4, 4 > result{static_cast<T>(0)};
 		result[0][0] = static_cast<T>(1) / (aspect * tanHalfFovy);
@@ -128,9 +125,9 @@ namespace SFE::Math {
 	// Vulkan / D3D-style clip space: depth in [0, 1], same handedness as perspectiveRH_NO.
 	template<typename T>
 	Matrix<T, 4, 4> perspectiveRH_ZO(T fovy, T aspect, T zNear, T zFar) {
-		assert(abs(aspect - std::numeric_limits<T>::epsilon()) > static_cast<T>(0));
+		assert(std::abs(aspect) > std::numeric_limits<T>::epsilon());
 
-		T const tanHalfFovy = tan(fovy / static_cast<T>(2));
+		T const tanHalfFovy = std::tan(fovy / static_cast<T>(2));
 
 		Matrix<T, 4, 4> result{ static_cast<T>(0) };
 		result[0][0] = static_cast<T>(1) / (aspect * tanHalfFovy);
@@ -179,8 +176,4 @@ namespace SFE::Math {
 		};
 	}
 
-	// ------------------------
-
-	void globalToScreenCoords();
-	
 }
