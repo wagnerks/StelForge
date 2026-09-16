@@ -16,7 +16,7 @@ namespace SFE::Math {
 	struct Quaternion {
 		T w{1}, x{}, y{}, z{};
 
-		Matrix<T, 3, 3> toRotateMatrix3() const {
+		[[nodiscard]] Matrix<T, 3, 3> toRotateMatrix3() const {
 			Matrix<T, 3, 3> result(T{ 1 });
 			T qxx(x * x);
 			T qyy(y * y);
@@ -43,13 +43,18 @@ namespace SFE::Math {
 			return result;
 		}
 
-		Matrix<T, 4, 4> toMat4() const {
+		[[nodiscard]] Matrix<T, 4, 4> toMat4() const {
 			Matrix<T, 4, 4> result(toRotateMatrix3());
 			result[3][3] = T{1};
 			return result;
 		}
 
-		Vector<T,3> getAxis() const {
+		// radians, in [0, 2pi]
+		[[nodiscard]] T getAngle() const {
+			return T{2} * std::acos(std::clamp(w / magnitude(), T{-1}, T{1}));
+		}
+
+		[[nodiscard]] Vector<T,3> getAxis() const {
 			auto normalized = *this;
 			normalized.normalize();
 			const T sinAngle = std::sqrt(std::max(T{0}, T{1} - normalized.w * normalized.w));
@@ -57,26 +62,8 @@ namespace SFE::Math {
 			return sinAngle < static_cast<T>(0.001) ? xyz : xyz / sinAngle;
 		}
 
-		void eulerToQuaternion(const Vector<T,3>& eulerDegrees) {
-			eulerToQuaternion(Math::radians(eulerDegrees.x), Math::radians(eulerDegrees.y), Math::radians(eulerDegrees.z));
-		}
-
-		void eulerToQuaternion(T roll, T pitch, T yaw) {
-			const T half = static_cast<T>(0.5);
-			T cy = std::cos(yaw * half);
-			T sy = std::sin(yaw * half);
-			T cp = std::cos(pitch * half);
-			T sp = std::sin(pitch * half);
-			T cr = std::cos(roll * half);
-			T sr = std::sin(roll * half);
-
-			w = cy * cp * cr + sy * sp * sr;
-			x = cy * cp * sr - sy * sp * cr;
-			y = sy * cp * sr + cy * sp * cr;
-			z = sy * cp * cr - cy * sp * sr;
-		}
-
-		inline Vector<T,3> toEuler() const {
+		// radians, see fromEuler
+		[[nodiscard]] inline Vector<T,3> toEuler() const {
 			Vector<T, 3> euler;
 
 			// Roll (x-axis rotation)
@@ -90,7 +77,7 @@ namespace SFE::Math {
 			return euler;
 		}
 
-		inline T magnitude() const {
+		[[nodiscard]] inline T magnitude() const {
 			return std::sqrt(x * x + y * y + z * z + w * w);
 		}
 
@@ -104,31 +91,19 @@ namespace SFE::Math {
 			}
 		}
 
-		void changeAxis(const Math::Vector<T,3>& newAxis) {
-			x = newAxis.x;
-			y = newAxis.y;
-			z = newAxis.z;
-
-			normalize();
-		}
-
-		void matrixToQuaternion(const Matrix<T, 3, 3>& matrix) {
-			matrixToQuaternionImpl(matrix);
-		}
-
 		// both expect a unit quaternion
-		inline Vector<T, 3> globalToLocal(const Vector<T, 3>& v) const {
+		[[nodiscard]] inline Vector<T, 3> globalToLocal(const Vector<T, 3>& v) const {
 			return inverseQuaternion().rotateVector(v);
 		}
 
 		// q * v * q^-1 expanded: v + 2w(u x v) + 2u x (u x v)
-		inline Vector<T, 3> rotateVector(const Vector<T, 3>& v) const {
+		[[nodiscard]] inline Vector<T, 3> rotateVector(const Vector<T, 3>& v) const {
 			const Vector<T, 3> u{ x, y, z };
 			const Vector<T, 3> t = cross(u, v) * T{2};
 			return v + t * w + cross(u, t);
 		}
 
-		inline Quaternion inverseQuaternion() const {
+		[[nodiscard]] inline Quaternion inverseQuaternion() const {
 			return { w, -x, -y, -z };
 		}
 
@@ -157,28 +132,60 @@ namespace SFE::Math {
 
 		constexpr Quaternion(){}
 
-		Quaternion(T x, T y, T z) {
-			eulerToQuaternion(x, y, z);
-		}
-
 		constexpr Quaternion(T w, T x, T y, T z) : w{ w }, x{ x }, y{ y }, z{ z } {}
 
 		constexpr Quaternion(T w, const Vector<T,3>& vec ) : w{ w }, x{ vec.x }, y{ vec.y }, z{ vec.z } {}
 
-		// shortest rotation taking unit vector axis onto unit vector direction
+		// shortest rotation taking unit vector from onto unit vector to;
 		// (1 + cos, sin * axis) normalized is the half-angle quaternion, no acos to lose precision near a half turn
-		Quaternion(const Vector<T, 3>& direction, const Vector<T, 3>& axis) {
-			w = T{1} + dot(axis, direction);
-			auto rotationAxis = cross(axis, direction);
-			if (w < static_cast<T>(1e-6)) {
+		[[nodiscard]] static Quaternion fromTo(const Vector<T, 3>& from, const Vector<T, 3>& to) {
+			Quaternion q;
+			q.w = T{1} + dot(from, to);
+			auto rotationAxis = cross(from, to);
+			if (q.w < static_cast<T>(1e-6)) {
 				// opposite vectors: turn half a circle around any axis perpendicular to them
-				w = T{0};
-				rotationAxis = cross(axis, std::abs(axis.x) < static_cast<T>(0.9) ? Vector<T, 3>{ 1, 0, 0 } : Vector<T, 3>{ 0, 1, 0 });
+				q.w = T{0};
+				rotationAxis = cross(from, std::abs(from.x) < static_cast<T>(0.9) ? Vector<T, 3>{ 1, 0, 0 } : Vector<T, 3>{ 0, 1, 0 });
 			}
-			x = rotationAxis.x;
-			y = rotationAxis.y;
-			z = rotationAxis.z;
-			normalize();
+			q.x = rotationAxis.x;
+			q.y = rotationAxis.y;
+			q.z = rotationAxis.z;
+			q.normalize();
+			return q;
+		}
+
+		[[nodiscard]] static Quaternion fromAxisAngle(const Vector<T, 3>& axis, T angle) {
+			const T half = angle * static_cast<T>(0.5);
+			return { std::cos(half), Math::normalize(axis) * std::sin(half) };
+		}
+
+		// radians: roll about X, pitch about Y, yaw about Z, applied in that order
+		[[nodiscard]] static Quaternion fromEuler(const Vector<T, 3>& euler) {
+			const T half = static_cast<T>(0.5);
+			const T cr = std::cos(euler.x * half);
+			const T sr = std::sin(euler.x * half);
+			const T cp = std::cos(euler.y * half);
+			const T sp = std::sin(euler.y * half);
+			const T cy = std::cos(euler.z * half);
+			const T sy = std::sin(euler.z * half);
+
+			return {
+				cy * cp * cr + sy * sp * sr,
+				cy * cp * sr - sy * sp * cr,
+				sy * cp * sr + cy * sp * cr,
+				sy * cp * cr - cy * sp * sr
+			};
+		}
+
+		[[nodiscard]] static Quaternion fromEulerDegrees(const Vector<T, 3>& eulerDegrees) {
+			return fromEuler(Math::radians(eulerDegrees));
+		}
+
+		// pure rotation matrix
+		[[nodiscard]] static Quaternion fromMatrix(const Matrix<T, 3, 3>& matrix) {
+			Quaternion q;
+			q.matrixToQuaternionImpl(matrix);
+			return q;
 		}
 
 	private:
@@ -222,13 +229,13 @@ namespace SFE::Math {
 	};
 
 	template <typename T>
-	inline Quaternion<T> normalize(Quaternion<T> quat) {
+	[[nodiscard]] inline Quaternion<T> normalize(Quaternion<T> quat) {
 		quat.normalize();
 		return quat;
 	}
 
 	template <typename T>
-	inline Quaternion<T> slerp(const Quaternion<T>& q0, const Quaternion<T>& q1, T inFraction) {
+	[[nodiscard]] inline Quaternion<T> slerp(const Quaternion<T>& q0, const Quaternion<T>& q1, T inFraction) {
 		const T one = T{1};
 		T sign = one;
 		T cosOmega = std::clamp(q0.w * q1.w + q0.x * q1.x + q0.y * q1.y + q0.z * q1.z, -one, one);

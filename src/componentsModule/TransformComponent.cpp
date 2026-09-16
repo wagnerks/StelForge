@@ -122,7 +122,7 @@ namespace SFE::ComponentsModule {
 				return;
 			}
 			mDirty = false;
-			mRotateQuaternion.eulerToQuaternion(mRotate);
+			mRotateQuaternion = Math::Quaternion<float>::fromEulerDegrees(mRotate);
 			const auto local = calculateLocalTransform();
 			mTransform = parent ? *parent * local : local;
 		}
@@ -139,7 +139,7 @@ namespace SFE::ComponentsModule {
 	}
 
 	SFE::Math::Mat4 TransformComponent::getViewMatrix() const {
-		return inverse(copyTransform());
+		return Math::inverseAffine(copyTransform());
 	}
 
 	SFE::Math::Vec3 TransformComponent::getRight() const {

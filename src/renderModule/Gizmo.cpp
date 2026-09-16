@@ -8,7 +8,7 @@
 #include "componentsModule/Hierarchy.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
-#include "mathModule/CameraUtils.h"
+#include "systemsModule/systems/CameraUtils.h"
 #include "myPhysicsEngine/Physics.h"
 #include "renderPasses/GUIPass.h"
 #include "systemsModule/systems/CameraSystem.h"
@@ -92,7 +92,7 @@ namespace SFE::Render {
 		}
 
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
+		const auto mouseRay = CameraUtils::calcMouseRay(camera, mMousePos);
 
 		const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(mEntity);
 		if (!transformComp) {
@@ -188,7 +188,7 @@ namespace SFE::Render {
 
 	void Gizmo::processMove() {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
+		const auto mouseRay = CameraUtils::calcMouseRay(camera, mMousePos);
 
 		const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
 		const auto transformComp = ECSHandler::registry().pinComponent<TransformComponent>(mEntity);
@@ -218,7 +218,7 @@ namespace SFE::Render {
 
 	void Gizmo::processScale() {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
+		const auto mouseRay = CameraUtils::calcMouseRay(camera, mMousePos);
 
 		const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
 		const auto transformComp = ECSHandler::registry().pinComponent<TransformComponent>(mEntity);
@@ -247,7 +247,7 @@ namespace SFE::Render {
 
 	void Gizmo::processRotate() {
 		const auto camera = ECSHandler::getSystem<SystemsModule::CameraSystem>()->getCurrentCamera();
-		const auto mouseRay = Math::calcMouseRay(camera, mMousePos);
+		const auto mouseRay = CameraUtils::calcMouseRay(camera, mMousePos);
 
 		const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
 		const auto transformComp = ECSHandler::registry().pinComponent<TransformComponent>(mEntity);
@@ -265,7 +265,7 @@ namespace SFE::Render {
 			}
 		}
 		else {
-			const auto camTrans = inverse(cameraTransform->copyTransform());
+			const auto camTrans = Math::inverseAffine(cameraTransform->copyTransform());
 			oldPos = camTrans * Math::Vec4(oldPos, 1.f);
 			newPos = camTrans * Math::Vec4(newPos, 1.f);
 			entityPos = camTrans * Math::Vec4(entityPos, 1.f);
@@ -275,9 +275,8 @@ namespace SFE::Render {
 			}
 		}
 
-		Math::Quaternion<float> q;
-		q.eulerToQuaternion((isLineAxis(mActiveAxis) ? mAxisDirection[mActiveAxis] : cameraTransform->getForward()) * Math::degrees(difAngle));
-		q = q * transformComp->getQuaternion();
+		const auto axis = isLineAxis(mActiveAxis) ? mAxisDirection[mActiveAxis] : cameraTransform->getForward();
+		const auto q = Math::Quaternion<float>::fromAxisAngle(axis, difAngle) * transformComp->getQuaternion();
 		transformComp->setRotate(Math::degrees(q.toEuler()));
 	}
 
@@ -329,7 +328,7 @@ namespace SFE::Render {
 				const auto cameraTransform = ECSHandler::registry().pinComponent<const TransformComponent>(camera);
 				rotation = &cameraTransform->getQuaternion();
 
-				const auto camTrans = inverse(cameraTransform->copyTransform());
+				const auto camTrans = Math::inverseAffine(cameraTransform->copyTransform());
 				const Math::Vec3 localOldPos = camTrans * Math::Vec4(oldPos, 1.f);
 				const Math::Vec3 localNewPos = camTrans * Math::Vec4(newPos, 1.f);
 				const Math::Vec3 localEntityPos = camTrans * Math::Vec4(pos, 1.f);
@@ -461,12 +460,7 @@ namespace SFE::Render {
 
 	//utils
 	Math::Vec3 Gizmo::findIntersectionRayWithPlane(const Math::Ray& ray, const PhysicsEngine::Triangle& plane) {
-		bool parallel = false;
-		const auto res = PhysicsEngine::Physics::findIntersectionLinePlane(ray.a, ray.a + ray.direction, plane, parallel);
-		if (parallel) {
-			return {};
-		}
-		return res;
+		return Math::intersectLinePlane(ray, plane.a, Math::cross(plane.c - plane.a, plane.b - plane.a)).value_or(Math::Vec3{});
 	}
 
 	PhysicsEngine::Triangle Gizmo::getMouseRayPlane(const Math::Ray& ray, Axis plane, const TransformComponent* cameraTransform, const Math::Vec3& initialPos) {

@@ -365,16 +365,11 @@ namespace SFE::FrustumModule {
 
 		// Transform NDC coordinates to world coordinates
 		for (const Math::Vec4& ndcCorner : ndcCorners) {
-			Math::Vec4 worldCoord = invViewProj * ndcCorner;
-			worldCoord /= worldCoord.w; // Homogeneous divide
+			const Math::Vec4 worldCoord = invViewProj * ndcCorner;
+			const Math::Vec3 point = worldCoord.xyz / worldCoord.w; // Homogeneous divide
 
-			frustum.minPoint.x = std::min(frustum.minPoint.x, worldCoord.x);
-			frustum.minPoint.y = std::min(frustum.minPoint.y, worldCoord.y);
-			frustum.minPoint.z = std::min(frustum.minPoint.z, worldCoord.z);
-
-			frustum.maxPoint.x = std::max(frustum.maxPoint.x, worldCoord.x);
-			frustum.maxPoint.y = std::max(frustum.maxPoint.y, worldCoord.y);
-			frustum.maxPoint.z = std::max(frustum.maxPoint.z, worldCoord.z);
+			frustum.minPoint = Math::componentMin(frustum.minPoint, point);
+			frustum.maxPoint = Math::componentMax(frustum.maxPoint, point);
 		}
 
 

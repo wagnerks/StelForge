@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 
 #include "mathModule/Forward.h"
+#include "mathModule/Geometry.h"
+#include "mathModule/Projection.h"
 #include "mathModule/Utils.h"
 
 // Pure math: no engine state, checked by invariants and hand-computed values rather than another library.
@@ -37,7 +39,7 @@ namespace SFE::MathTests {
 
 	template <typename T>
 	Quaternion<T> axisAngle(const Vector<T, 3>& axis, T angle) {
-		return { std::cos(angle / 2), normalize(axis) * std::sin(angle / 2) };
+		return Quaternion<T>::fromAxisAngle(axis, angle);
 	}
 
 	const Mat4 kTrs = translate(Mat4{1.f}, Vec3{1.f, -2.f, 3.f}) * axisAngle(Vec3{1.f, 2.f, 3.f}, 0.7f).toMat4() * scale(Mat4{1.f}, Vec3{2.f, 0.5f, 3.f});
@@ -77,6 +79,19 @@ namespace SFE::MathTests {
 		expectNear(v4.xyz, {1.f, 2.f, 3.f});
 		expectNear(Vec2{DVec3{1.5, 2.5, 3.5}}, {1.5f, 2.5f});
 		EXPECT_EQ((IVec2{Vec2{1.9f, -1.9f}}), (IVec2{1, -1}));
+	}
+
+	TEST(MathVector, EqualityIsExact) {
+		EXPECT_TRUE((Vec3{1.f, 2.f, 3.f}) == (Vec3{1.f, 2.f, 3.f}));
+		EXPECT_FALSE((Vec3{1.f, 2.f, 3.f}) == (Vec3{1.f, 2.f, std::nextafter(3.f, 4.f)}));
+		EXPECT_TRUE((Vec2{0.f, -0.f}) == (Vec2{-0.f, 0.f}));
+		EXPECT_TRUE(Mat4{1.f} == Mat4{1.f});
+		EXPECT_TRUE(kTrs != inverse(kTrs));
+	}
+
+	TEST(MathVector, ComponentMinMax) {
+		expectNear(componentMin(Vec3{1.f, 5.f, -2.f}, Vec3{3.f, 0.f, -1.f}), {1.f, 0.f, -2.f});
+		expectNear(componentMax(Vec3{1.f, 5.f, -2.f}, Vec3{3.f, 0.f, -1.f}), {3.f, 5.f, -1.f});
 	}
 
 	TEST(MathVector, OrderingIsStrictAndConsistent) {
@@ -154,6 +169,11 @@ namespace SFE::MathTests {
 		expectNear(inverse(m) * m, DMat3{1.}, 1e-9);
 	}
 
+	TEST(MathMatrix, InverseAffineMatchesFullInverse) {
+		expectNear(inverseAffine(kTrs), inverse(kTrs));
+		expectNear(inverseAffine(kTrs) * kTrs, Mat4{1.f});
+	}
+
 	TEST(MathMatrix, TransformsPoints) {
 		const Vec3 p{1.f, 0.f, 0.f};
 		expectNear(translate(Mat4{1.f}, Vec3{1.f, 2.f, 3.f}) * p, {2.f, 2.f, 3.f});
@@ -213,21 +233,20 @@ namespace SFE::MathTests {
 		for (const auto& axis : axes) {
 			for (float angle : {0.4f, 3.0f}) {
 				const Quat q = axisAngle(axis, angle);
-				Quat back;
-				back.matrixToQuaternion(q.toRotateMatrix3());
-				expectSameRotation(back, q);
+				expectSameRotation(Quat::fromMatrix(q.toRotateMatrix3()), q);
 			}
 		}
 	}
 
 	TEST(MathQuaternion, EulerRoundTrip) {
 		const Vec3 radiansIn{0.3f, -0.8f, 1.2f};
-		const Quat q(radiansIn.x, radiansIn.y, radiansIn.z);
+		const Quat q = Quat::fromEuler(radiansIn);
 		expectNear(q.toEuler(), radiansIn);
+		expectSameRotation(Quat::fromEulerDegrees(degrees(radiansIn)), q);
 
-		Quat fromDegrees;
-		fromDegrees.eulerToQuaternion(degrees(radiansIn));
-		expectSameRotation(fromDegrees, q);
+		// X, then Y, then Z
+		const Quat composed = axisAngle(Vec3{0.f, 0.f, 1.f}, radiansIn.z) * axisAngle(Vec3{0.f, 1.f, 0.f}, radiansIn.y) * axisAngle(Vec3{1.f, 0.f, 0.f}, radiansIn.x);
+		expectSameRotation(q, composed);
 	}
 
 	TEST(MathQuaternion, EulerAtGimbalLockIsFinite) {
@@ -240,10 +259,10 @@ namespace SFE::MathTests {
 	TEST(MathQuaternion, FromToRotation) {
 		const Vec3 from = normalize(Vec3{1.f, 2.f, -1.f});
 		const Vec3 to = normalize(Vec3{-3.f, 0.5f, 2.f});
-		expectNear(Quat(to, from).rotateVector(from), to);
-		expectSameRotation(Quat(from, from), Quat{});
+		expectNear(Quat::fromTo(from, to).rotateVector(from), to);
+		expectSameRotation(Quat::fromTo(from, from), Quat{});
 
-		const Quat halfTurn(-from, from);
+		const Quat halfTurn = Quat::fromTo(from, -from);
 		EXPECT_NEAR(halfTurn.magnitude(), 1.f, kEps);
 		expectNear(halfTurn.rotateVector(from), -from);
 	}
@@ -264,7 +283,63 @@ namespace SFE::MathTests {
 		expectSameRotation(slerp(da, db, 0.5), axisAngle(DVec3{1., 0., 0.}, 0.5), 1e-9);
 	}
 
-	TEST(MathQuaternion, AxisOfRotation) {
-		expectNear(axisAngle(Vec3{0.f, 3.f, 4.f}, 1.f).getAxis(), {0.f, 0.6f, 0.8f});
+	TEST(MathQuaternion, AxisAngleRoundTrip) {
+		const Quat q = axisAngle(Vec3{0.f, 3.f, 4.f}, 1.f);
+		expectNear(q.getAxis(), {0.f, 0.6f, 0.8f});
+		EXPECT_NEAR(q.getAngle(), 1.f, kEps);
+		EXPECT_NEAR(Quat{}.getAngle(), 0.f, kEps);
+	}
+
+	TEST(MathGeometry, LinePlaneIntersection) {
+		const Ray ray{{0.f, 5.f, 0.f}, {0.f, -1.f, 0.f}};
+		expectNear(*intersectLinePlane(ray, Vec3{3.f, 1.f, 7.f}, Vec3{0.f, 1.f, 0.f}), {0.f, 1.f, 0.f});
+		// a line, so a plane behind the origin is found too
+		expectNear(*intersectLinePlane(ray, Vec3{0.f, 9.f, 0.f}, Vec3{0.f, 1.f, 0.f}), {0.f, 9.f, 0.f});
+		EXPECT_FALSE(intersectLinePlane(ray, Vec3{}, Vec3{1.f, 0.f, 0.f}).has_value());
+	}
+
+	TEST(MathGeometry, ScreenRayHitsWhatProjectsToThePixel) {
+		const Vec3 cameraPos{2.f, 1.f, 10.f};
+		const Mat4 view = inverseAffine(translate(Mat4{1.f}, cameraPos) * axisAngle(Vec3{0.f, 1.f, 0.f}, 0.3f).toMat4());
+		const Mat4 projView = perspectiveRH_NO(radians(60.f), 16.f / 9.f, 0.1f, 100.f) * view;
+		const Vec2 screen{1600.f, 900.f};
+
+		const Vec3 target{0.5f, 2.f, -3.f};
+		const Vec4 clip = projView * Vec4{target, 1.f};
+		const Vec2 pixel{(clip.x / clip.w + 1.f) * 0.5f * screen.x, (1.f - clip.y / clip.w) * 0.5f * screen.y};
+
+		const Ray ray = screenToWorldRay(projView, pixel, screen, cameraPos);
+		EXPECT_NEAR(length(ray.direction), 1.f, kEps);
+		expectNear(ray.direction, normalize(target - cameraPos), 1e-3f);
+
+		const Ray centre = screenToWorldRay(projView, screen * 0.5f, screen, cameraPos);
+		expectNear(centre.direction, axisAngle(Vec3{0.f, 1.f, 0.f}, 0.3f).rotateVector(Vec3{0.f, 0.f, -1.f}), 1e-3f);
+	}
+
+	TEST(MathGeometry, AngleBetweenVectorsIsCounterClockwise) {
+		const Vec3 x{1.f, 0.f, 0.f};
+		EXPECT_NEAR(calcAngleBetweenVectors(x, Vec3{0.f, 2.f, 0.f}), pi<float>() / 2, kEps);
+		EXPECT_NEAR(calcAngleBetweenVectors(x, Vec3{0.f, -2.f, 0.f}), 3 * pi<float>() / 2, kEps);
+		EXPECT_NEAR(calcAngleBetweenVectors(x, Vec3{}), 0.f, kEps);
+		EXPECT_NEAR(calcAngleOnCircle(std::sqrt(2.f), 1.f), pi<float>() / 2, kEps);
+	}
+
+	TEST(MathProjection, SettersRebuildTheMatrix) {
+		MathModule::PerspectiveProjection perspective(60.f, 1.5f, 0.1f, 100.f);
+		expectNear(perspective.getProjectionsMatrix(), perspectiveRH_NO(radians(60.f), 1.5f, 0.1f, 100.f));
+
+		perspective.setFOV(45.f);
+		perspective.setNearFar(1.f, 50.f);
+		expectNear(perspective.getProjectionsMatrix(), perspectiveRH_NO(radians(45.f), 1.5f, 1.f, 50.f));
+
+		// no window size yet: the last good matrix stays
+		const Mat4 before = perspective.getProjectionsMatrix();
+		perspective.setAspect(0.f);
+		EXPECT_TRUE(perspective.getProjectionsMatrix() == before);
+
+		MathModule::OrthoProjection ortho({-2.f, -1.f}, {2.f, 1.f}, 0.5f, 20.f);
+		ortho.setRightTop({4.f, 3.f});
+		expectNear(ortho.getProjectionsMatrix(), orthoRH_NO(-2.f, 4.f, -1.f, 3.f, 0.5f, 20.f));
+		EXPECT_TRUE(ortho != MathModule::OrthoProjection({-2.f, -1.f}, {2.f, 1.f}, 0.5f, 20.f));
 	}
 }

@@ -27,11 +27,11 @@ namespace {
 		SFE::MathModule::PerspectiveProjection proj(90.f, 1.f, nearP, radius);
 		const auto transform = SFE::Math::translate(SFE::Math::Mat4(1.0f), pos);
 		for (auto angle : { 0.f, 90.f, -90.f, 180.f }) {
-			out.push_back(proj.getProjectionsMatrix() * SFE::Math::inverse(SFE::Math::rotate(transform, SFE::Math::radians(angle), { 0.f, 1.f, 0.f })));
+			out.push_back(proj.getProjectionsMatrix() * SFE::Math::inverseAffine(SFE::Math::rotate(transform, SFE::Math::radians(angle), { 0.f, 1.f, 0.f })));
 		}
 		for (auto angle : { 90.f, -90.f }) {
 			const auto rotated = SFE::Math::rotate(transform, SFE::Math::radians(angle), { 1.f, 0.f, 0.f });
-			out.push_back(proj.getProjectionsMatrix() * SFE::Math::inverse(rotated));
+			out.push_back(proj.getProjectionsMatrix() * SFE::Math::inverseAffine(rotated));
 		}
 	}
 

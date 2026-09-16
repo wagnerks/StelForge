@@ -53,7 +53,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T, size_t Rows, size_t Columns>
-	constexpr inline Matrix<T, Columns, Rows> transpose(const Matrix<T, Rows, Columns>& matrix) {
+	[[nodiscard]] constexpr inline Matrix<T, Columns, Rows> transpose(const Matrix<T, Rows, Columns>& matrix) {
 		Matrix<T, Columns, Rows> result {};
 		for (size_t i = 0; i < Rows; ++i) {
 			for (size_t j = 0; j < Columns; ++j) {
@@ -65,7 +65,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T>
-	constexpr Matrix<T, 3, 3> inverse(const Matrix<T, 3, 3>& m) {
+	[[nodiscard]] constexpr Matrix<T, 3, 3> inverse(const Matrix<T, 3, 3>& m) {
 		T determinant = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
 			m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
 			m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
@@ -95,7 +95,7 @@ namespace SFE::Math {
 	}
 
 	template <typename T>
-	constexpr Matrix<T, 4, 4> inverse(const Matrix<T, 4, 4>& m) {
+	[[nodiscard]] constexpr Matrix<T, 4, 4> inverse(const Matrix<T, 4, 4>& m) {
 		T coef00 = m[2][2] * m[3][3] - m[3][2] * m[2][3];
 		T coef02 = m[1][2] * m[3][3] - m[3][2] * m[1][3];
 		T coef03 = m[1][2] * m[2][3] - m[2][2] * m[1][3];
@@ -149,5 +149,13 @@ namespace SFE::Math {
 		T oneOverDeterminant = static_cast<T>(1) / dot1;
 
 		return inverse * oneOverDeterminant;
+	}
+
+	// inverse of a matrix whose last row is (0, 0, 0, 1): rotation, scale and translation, no projection
+	template <typename T>
+	[[nodiscard]] constexpr Matrix<T, 4, 4> inverseAffine(const Matrix<T, 4, 4>& m) {
+		const Matrix<T, 3, 3> linear = inverse(Matrix<T, 3, 3>(m));
+		const Vector<T, 3> translation = -(linear * Vector<T, 3>(m[3]));
+		return { Vector<T, 4>(linear[0], T{0}), Vector<T, 4>(linear[1], T{0}), Vector<T, 4>(linear[2], T{0}), Vector<T, 4>(translation, T{1}) };
 	}
 }

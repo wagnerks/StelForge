@@ -173,8 +173,7 @@ namespace SFE::PropertiesModule {
 			// notify. It is computed from the spawn values, the way reloadTransform does for an entity with no parent,
 			// instead of reloading the component: the setters above have already woken TransformSystem, whose worker
 			// may be reloading the same component right now.
-			Math::Quaternion<float> rotation;
-			rotation.eulerToQuaternion(rotate);
+			const auto rotation = Math::Quaternion<float>::fromEulerDegrees(rotate);
 			const auto seed = Math::translate(Math::Mat4{ 1.f }, pos) * rotation.toMat4() * Math::scale(Math::Mat4{ 1.f }, scale);
 			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(entity, seed);
 			ECSHandler::addComponent<IsDrawableComponent>(entity);
