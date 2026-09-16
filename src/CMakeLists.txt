@@ -90,7 +90,6 @@ target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/su
 target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/jsoncpp/include")
-target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/glm")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/stb")
 
 #target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
@@ -243,7 +242,6 @@ if(SFE_BUILD_RHI_TESTS)
 	target_include_directories(rhi_tests PRIVATE
 		"${ENGINE_PATH}/tests"
 		"${CMAKE_CURRENT_SOURCE_DIR}"
-		"${ENGINE_PATH}/lib/glm"
 	)
 	target_compile_definitions(rhi_tests PRIVATE SFE_RHI_USER_CONFIG="core/RhiConfig.h")
 	set_target_properties(rhi_tests PROPERTIES CXX_STANDARD 23)

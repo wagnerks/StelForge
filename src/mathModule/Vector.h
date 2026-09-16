@@ -10,51 +10,7 @@
 	constexpr inline const Vector& normalize() { return *this = Math::normalize(*this), *this; }	\
 	constexpr inline const T* data() const { return &m[0];}
 
-#define GLMVEC 0
-
 namespace SFE::Math {
-#if GLMVEC
-	template<class T, size_t Size>
-	struct Vector : public glm::vec<Size, T>{};
-
-	template <typename T>
-	struct Vector<T, 2> : public glm::vec<2,T> {
-		constexpr Vector() : glm::vec<2, T>() {}
-		constexpr Vector(T x, T y) : glm::vec<2, T, glm::qualifier::packed_highp>(x, y) {}
-		inline T length() const { return Math::length(*this); }							
-		inline T lengthSquared() const { return Math::lengthSquared(*this); }				
-		inline const Vector& normalize() { return *this = Math::normalize(*this), *this; }
-		inline const T* data() const { return &(glm::vec<2, T>::x); }
-	};
-
-	template <typename T>
-	struct Vector<T, 3> : public glm::vec<3,T> {
-		constexpr Vector() : glm::vec<3, T>() {}
-		constexpr Vector(T x, T y, T z) : glm::vec<3, T, glm::qualifier::packed_highp>(x, y, z) {}
-		constexpr Vector(T x) : glm::vec<3, T, glm::qualifier::packed_highp>(x) {}
-
-		constexpr Vector(Vector<T, 4> a) : glm::vec<3, T, glm::qualifier::packed_highp>(a) {}
-		constexpr Vector(glm::vec<4, T> a) : glm::vec<3, T, glm::qualifier::packed_highp>(a) {}
-
-		inline T length() const { return Math::length(*this); }
-		inline T lengthSquared() const { return Math::lengthSquared(*this); }
-		inline const Vector& normalize() { return *this = Math::normalize(*this), *this; }
-		inline const T* data() const { return &glm::vec<3, T>::operator[](0);}
-	};
-	template <typename T>
-	struct Vector<T, 4> : public glm::vec<4,T> {
-		constexpr Vector() : glm::vec<4,T>(){}
-		constexpr Vector(T x, T y, T z, T w) : glm::vec<4, T, glm::qualifier::packed_highp>(x, y, z, w) {}
-		constexpr Vector(T x) : glm::vec<4, T, glm::qualifier::packed_highp>(x) {}
-
-		constexpr Vector(Vector<T, 3> a, T b) : glm::vec<4, T, glm::qualifier::packed_highp>(a, b) {}
-		constexpr Vector(glm::vec<4, T> a) : glm::vec<4, T, glm::qualifier::packed_highp>(a) {}
-		inline T length() const { return Math::length(*this); }
-		inline T lengthSquared() const { return Math::lengthSquared(*this); }
-		inline const Vector& normalize() { return *this = Math::normalize(*this), *this; }
-		inline const T* data() const { return &glm::vec<4, T>::operator[](0); }
-	};
-#else
 	template<class T, size_t Size>
 	struct Vector {
 		T m[Size];
@@ -149,5 +105,4 @@ namespace SFE::Math {
 		constexpr Vector(T x, T y, T z, T w) : x{ x }, y{ y }, z{ z }, w{ w } {}
 		constexpr Vector(T x) : x{ x }, y{ x }, z{ x }, w{ x } {}
 	};
-#endif
 }

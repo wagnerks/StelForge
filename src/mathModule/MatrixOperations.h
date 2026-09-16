@@ -1,7 +1,7 @@
 ﻿#pragma once
 
-#include <complex>
-#include <assert.h>
+#include <cassert>
+#include <cmath>
 
 namespace SFE::Math {
 	template <typename T, size_t Rows, size_t Columns>

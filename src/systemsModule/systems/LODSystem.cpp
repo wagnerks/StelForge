@@ -1,7 +1,5 @@
 ﻿#include "LODSystem.h"
 
-#include <ext/scalar_constants.hpp>
-
 #include "CameraSystem.h"
 #include "systemsModule/SystemManager.h"
 #include "componentsModule/CameraComponent.h"

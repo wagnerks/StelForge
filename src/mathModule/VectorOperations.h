@@ -1,6 +1,7 @@
 ﻿#pragma once
 
-#include <complex>
+#include <cmath>
+#include <limits>
 
 namespace SFE::Math {
 	template<class T, size_t Size>

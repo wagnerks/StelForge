@@ -68,7 +68,6 @@ namespace SFE::ComponentsModule {
 	}
 
 	Math::Vec3 TransformComponent::getGlobalScale() const {
-		//return { glm::length(mTransform[0]), glm::length(mTransform[1]), glm::length(mTransform[2]) };
 		return { Math::length(mTransform[0]), Math::length(mTransform[1]), Math::length(mTransform[2]) };
 	}
 	void TransformComponent::setScaleX(float x) {
