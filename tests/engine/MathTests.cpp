@@ -405,3 +405,42 @@ namespace SFE::MathTests {
 		}
 	}
 }
+
+namespace SFE::MathTests {
+	std::vector<Vec3> octreeCells(const Vec3& lo, const Vec3& hi) {
+		std::vector<Vec3> cells;
+		forEachOctreeCell(FrustumModule::AABB(lo, hi), 4096.f, [&cells](const Vec3& corner) { cells.push_back(corner); });
+		return cells;
+	}
+
+	TEST(OcTreeGrid, CellsCoverTheBoxAndNothingElse) {
+		EXPECT_EQ(octreeCells({10.f, 10.f, 10.f}, {20.f, 20.f, 20.f}), (std::vector<Vec3>{{0.f, 4096.f, 0.f}}));
+		// ending exactly on a boundary stays in one cell
+		EXPECT_EQ(octreeCells({0.f, 0.f, 0.f}, {4096.f, 4096.f, 4096.f}).size(), 1u);
+		EXPECT_EQ(octreeCells({4090.f, 10.f, 10.f}, {4100.f, 20.f, 20.f}), (std::vector<Vec3>{{0.f, 4096.f, 0.f}, {4096.f, 4096.f, 0.f}}));
+		// within half a unit of a boundary, on the negative side
+		EXPECT_EQ(octreeCells({-0.4f, -0.4f, -0.4f}, {-0.2f, -0.2f, -0.2f}), (std::vector<Vec3>{{-4096.f, 0.f, -4096.f}}));
+		EXPECT_TRUE(octreeCells({0.f, 0.f, 0.f}, {1e6f, 1.f, 1.f}).empty());
+
+		// every tree the grid names accepts the box
+		const FrustumModule::AABB box({4000.f, -50.f, -30.f}, {4200.f, 70.f, 10.f});
+		size_t cells = 0;
+		forEachOctreeCell(box, 4096.f, [&](const Vec3& corner) {
+			OcTree<int, 5, 4096> tree(corner);
+			EXPECT_TRUE(tree.insert(box.center, box.extents, 1));
+			++cells;
+		});
+		EXPECT_EQ(cells, 8u);
+	}
+
+	TEST(OcTreeGrid, RayFindsObjectsInDeepNodes) {
+		OcTree<int, 5, 256> tree(Vec3{0.f, 256.f, 0.f});
+		ASSERT_TRUE(tree.insert({200.f, 50.f, 30.f}, {2.f, 2.f, 2.f}, 1));
+		ASSERT_TRUE(tree.insert({20.f, 200.f, 220.f}, {2.f, 2.f, 2.f}, 2));
+
+		const auto hits = tree.findCollisions({200.f, 50.f, 250.f}, {0.f, 0.f, -1.f});
+		ASSERT_EQ(hits.size(), 1u);
+		EXPECT_EQ(hits.front().second.data, 1);
+		EXPECT_TRUE(tree.findCollisions({100.f, 100.f, 250.f}, {0.f, 0.f, -1.f}).empty());
+	}
+}

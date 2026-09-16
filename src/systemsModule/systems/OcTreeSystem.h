@@ -56,8 +56,6 @@ namespace SFE::SystemsModule {
 		ecss::Ranges<ecss::EntityId> collectVisibleRanges(const FrustumModule::Frustum& frustum);
 		static ecss::Ranges<ecss::EntityId> makeEntityRanges(std::vector<ecss::EntityId> ids);
 
-		float curMinX, curMinY, curMinZ;
-		float curMaxX, curMaxY, curMaxZ;
 		
 		void deleteOctree(const Math::Vec3& octree);
 

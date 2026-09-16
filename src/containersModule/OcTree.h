@@ -26,96 +26,10 @@ namespace SFE {
 		RBF = 7
 	};
 
-	enum CardinalDirection : uint8_t {
-		LEFT_TOP_NEAR = 0,
-		RIGHT_TOP_NEAR = 1,
-
-		LEFT_BTM_NEAR = 2,
-		RIGHT_BTM_NEAR = 3,
-
-		LEFT_TOP_FAR = 4,
-		RIGHT_TOP_FAR = 5,
-
-		LEFT_BTM_FAR = 6,
-		RIGHT_BTM_FAR = 7,
-
-		LEFT = 8,
-		RIGHT = 9,
-		TOP = 10,
-		BOTTOM = 11,
-		FRONT = 12,
-		BACK = 13,
-
-		LEFT_TOP,
-		RIGHT_TOP,
-
-		LEFT_BTM,
-		RIGHT_BTM,
-
-		LEFT_NEAR,
-		RIGHT_NEAR,
-
-		LEFT_FAR,
-		RIGHT_FAR,
-
-		TOP_NEAR,
-		BTM_NEAR,
-
-		TOP_FAR,
-		BTM_FAR
-	};
-
-	constexpr std::array<std::array<size_t, 8>, 26> traversal {
-	{
-			{ LTN, LTF, RTN, LBN, RTF, LBF, RBN, RBF },
-			{ RTN, LTN, RTF, RBN, LTF, LBN, RBF, LBF },
-			{ LBN, LBF, RBN, LTN, RBF, LTF, RTN, RTF },
-			{ RBN, LBN, RBF, RTN, LBF, LTN, RTF, LTF },
-
-			{ LTF, LTN, RTF, LBF, RTN, LBN, RBF, RBN },
-			{ RTF, LTF, RTN, RBF, LTN, RBN, LBF, LBN},
-			{ LBF, LBN, RBF, LTF, RBN, LTN, RTF, RTN },
-			{ RBF, RBN, LBF, RTF, LBN, RTN, LTF, LTN },
-
-			{ LBF, LBN, LTF, LTN, RTF, RTN, RBF, RBN },
-			{ RBN, RBF, RTN, RTF, LBN, LBF, LTN, LTF },
-
-			{ LTN, LTF, RTF, RTN, LBN, RBN, LBF, RBF },
-			{ LBN, LBF, RBF, RBN, LTN, LTF, RTF, RTN },
-
-			{ LBN, RBN, LTN, RTN, LBF, LTF, RTF, RBF },
-			{ LBF, LTF, RTF, RBF, LBN, LTN, RTN, RBN },
-
-			{ LTF, LTN, RTF, RTN, LBF, LBN, RBN, RBF },
-			{ RTF, RTN, LTF, LTN, RBN, RBF, LBF, LBN },
-
-			{ LBF, LBN, RBN, RBF, LTF, LTN, RTF, RTN },
-			{ RBN, RBF, LBN, LBF, RTF, RTN, LTF, LTN },
-
-			{ LTN, LBN, RTN, RBN, LBF, LTF, RTF, RBF },
-			{ RTN, RBN, LBN, LTN, RTF, RBF, LTF, LBF },
-
-			{ LBF, LTF, LTN, LBN, RTF, RBF, RTN, RBN },
-			{ RTF, RBF, RTN, RBN, LTF, LBF, LTN, LBN },
-
-			{ LTN, RTN, LTF, RTF, LBN, RBN, LBF, RBF },
-			{ LBN, RBN, LTN, RTN, LBF, RBF, LTF, RTF},
-
-			{ LTF, RTF, LBF, RBF, LTN, RTN, LBN, RBN },
-			{ LBF, RBF, LTF, RTF, LBN, RBN, LTN, RTN }
-		}
-	};
-
 	inline static bool isPointInBox(const SFE::Math::Vec3& pos, const SFE::Math::Vec3& nodePos, float nodeSize) {
 		return (pos.x >= nodePos.x && pos.x <= nodePos.x + nodeSize)
 			&& (pos.y <= nodePos.y && pos.y >= nodePos.y - nodeSize)
 			&& (pos.z >= nodePos.z && pos.z <= nodePos.z + nodeSize);
-	}
-
-	inline static bool isBoxInBox(const SFE::Math::Vec3& pos, const SFE::Math::Vec3& nodePos, const SFE::Math::Vec3& nodeSize) {
-		return (pos.x >= nodePos.x - nodeSize.x && pos.x <= nodePos.x + nodeSize.x)
-			&& (pos.y <= nodePos.y + nodeSize.y && pos.y >= nodePos.y - nodeSize.y)
-			&& (pos.z >= nodePos.z - nodeSize.z && pos.z <= nodePos.z + nodeSize.z);
 	}
 
 	inline static Math::Vec3 getOctantPos(Octant boxOctant, float nodeSize) {
@@ -133,58 +47,31 @@ namespace SFE {
 		return kOctantUnit[static_cast<uint8_t>(boxOctant)] * nodeSize;
 	}
 
-	inline static void calculateAABBOctrees(const FrustumModule::AABB& aabb, float octreeSize, float& maxX, float& minX, float& maxY, float& minY, float& maxZ, float& minZ) {
-		maxX = std::round(aabb.center.x + aabb.extents.x);
-		minX = std::round(aabb.center.x - aabb.extents.x);
+	// Calls func with the corner of every octreeSize grid cell the box overlaps. Cell i spans [i, i + 1) * octreeSize
+	// on each axis; a tree is keyed by its left-top-far corner: min x, max y, min z. Boxes over more than
+	// maxCellsPerAxis cells on an axis, or with non-finite bounds, are skipped.
+	template<class Func>
+	inline void forEachOctreeCell(const FrustumModule::AABB& aabb, float octreeSize, Func&& func, int maxCellsPerAxis = 8) {
+		const Math::Vec3 lo = (aabb.center - aabb.extents) / octreeSize;
+		const Math::Vec3 hi = (aabb.center + aabb.extents) / octreeSize;
+		Math::Vec3 first;
+		Math::Vec3 last;
+		for (size_t axis = 0; axis < 3; ++axis) {
+			if (!std::isfinite(lo[axis]) || !std::isfinite(hi[axis]) || hi[axis] - lo[axis] > static_cast<float>(maxCellsPerAxis)) {
+				return;
+			}
+			first[axis] = std::floor(lo[axis]);
+			// a box ending exactly on a boundary does not reach the next cell
+			last[axis] = (std::max)(first[axis], std::ceil(hi[axis]) - 1.f);
+		}
 
-		maxY = std::round(aabb.center.y + aabb.extents.y);
-		minY = std::round(aabb.center.y - aabb.extents.y);
-
-		maxZ = std::round(aabb.center.z + aabb.extents.z);
-		minZ = std::round(aabb.center.z - aabb.extents.z);
-
-		auto remainder = [octreeSize](float val) {
-			return static_cast<int>(std::fabs(val)) % static_cast<int>(octreeSize);
-		};
-
-		auto calcMinus = [&remainder, octreeSize](float val) {
-			if (val < 0.f) {
-				const auto remain = remainder(val);
-				if (remain) {
-					return val + remain - octreeSize;
+		for (float x = first.x; x <= last.x; ++x) {
+			for (float y = first.y; y <= last.y; ++y) {
+				for (float z = first.z; z <= last.z; ++z) {
+					std::invoke(func, Math::Vec3{ x * octreeSize, (y + 1.f) * octreeSize, z * octreeSize });
 				}
-				return val;
 			}
-			else if (val > 0.f) {
-				return val - remainder(val);
-			}
-
-			return 0.f;
-		};
-
-		auto calcPlus = [&remainder, octreeSize](float val) {
-			if (val < 0.f) {
-				return val + remainder(val);
-			}
-			else if (val > 0.f) {
-				const auto remain = remainder(val);
-				if (remain) {
-					return val - remain + octreeSize;
-				}
-				return val;
-			}
-
-			return 0.f;
-		};
-
-		maxX = calcPlus(maxX);
-		minX = calcMinus(minX);
-
-		maxY = calcPlus(maxY);
-		minY = calcMinus(minY);
-
-		maxZ = calcPlus(maxZ);
-		minZ = calcMinus(minZ);
+		}
 	}
 
 	template<typename DataType, size_t Deep = 4, size_t Size = 256>
@@ -218,182 +105,6 @@ namespace SFE {
 
 	public:
 		static inline Math::Vec3 calculateNodeCenter(const Math::Vec3& ltfPos, float size) { return ltfPos + Math::Vec3(size, -size, size) * 0.5f; }
-
-		static inline CardinalDirection getSourceCardinalDirection(const SFE::Math::Vec3& nodePos, float nodeSize, const SFE::Math::Vec3& srcPoint) {
-			bool left = false;
-			bool xMid = false;
-			if (srcPoint.x >= nodePos.x && srcPoint.x <= nodePos.x + nodeSize) {
-				xMid = true;
-			}
-			else if (srcPoint.x < nodePos.x) {
-				left = true;
-			}
-
-			bool top = false;
-			bool yMid = false;
-			if (srcPoint.y <= nodePos.y && srcPoint.y >= nodePos.y - nodeSize) {
-				yMid = true;
-			}
-			else if (srcPoint.y > nodePos.y) {
-				top = true;
-			}
-
-			bool far = false;
-			bool zMid = false;
-			if (srcPoint.z > nodePos.z && srcPoint.z < nodePos.z + nodeSize) {
-				zMid = true;
-			}
-			else if (srcPoint.z < nodePos.z) {
-				far = true;
-			}
-
-			if (left) {
-				if (top) {
-					if (far) {
-						return LEFT_TOP_FAR;
-					}
-					else if (zMid) {
-						return LEFT_TOP;
-					}
-					else {
-						return LEFT_TOP_NEAR;
-					}
-				}
-				else if (yMid) {
-					if (far) {
-						return LEFT_FAR;
-					}
-					else if (zMid) {
-						return LEFT;
-					}
-					else {
-						return LEFT_NEAR;
-					}
-				}
-				else {
-					if (far) {
-						return LEFT_BTM_FAR;
-					}
-					else if (zMid) {
-						return LEFT_BTM;
-					}
-					else {
-						return LEFT_BTM_NEAR;
-					}
-				}
-			}
-			else if (xMid) {
-				if (top) {
-					if (far) {
-						return TOP_FAR;
-					}
-					else if (zMid) {
-						return TOP;
-					}
-					else {
-						return TOP_NEAR;
-					}
-				}
-				else if (yMid) {
-					if (far) {
-						return FRONT;
-					}
-					else if (zMid) {
-						const auto size = nodeSize * 0.5f;
-						const bool isLeft = srcPoint.x < nodePos.x + size;
-						const bool isTop = srcPoint.y > nodePos.y - size;
-						const bool isFar = srcPoint.z < nodePos.z + size;
-						if (isLeft) {
-							if (isTop) {
-								if (isFar) {
-									return LEFT_TOP_FAR;
-								}
-								else {
-									return LEFT_TOP_NEAR;
-								}
-							}
-							else {
-								if (isFar) {
-									return LEFT_BTM_FAR;
-								}
-								else {
-									return LEFT_BTM_NEAR;
-								}
-							}
-						}
-						else {
-							if (isTop) {
-								if (isFar) {
-									return RIGHT_TOP_FAR;
-								}
-								else {
-									return RIGHT_TOP_NEAR;
-								}
-							}
-							else {
-								if (isFar) {
-									return RIGHT_BTM_FAR;
-								}
-								else {
-									return RIGHT_BTM_NEAR;
-								}
-							}
-						}
-					}
-					else {
-						return BACK;
-					}
-				}
-				else {
-					if (far) {
-						return BTM_FAR;
-					}
-					else if (zMid) {
-						return BOTTOM;
-					}
-					else {
-						return BTM_NEAR;
-					}
-				}
-			}
-			else {
-				if (top) {
-					if (far) {
-						return RIGHT_TOP_FAR;
-					}
-					else if (zMid) {
-						return RIGHT_TOP;
-					}
-					else {
-						return RIGHT_TOP_NEAR;
-					}
-				}
-				else if (yMid) {
-					if (far) {
-						return RIGHT_FAR;
-					}
-					else if (zMid) {
-						return RIGHT;
-					}
-					else {
-						return RIGHT_NEAR;
-					}
-				}
-				else {
-					if (far) {
-						return RIGHT_BTM_FAR;
-					}
-					else if (zMid) {
-						return RIGHT_BTM;
-					}
-					else {
-						return RIGHT_BTM_NEAR;
-					}
-				}
-			}
-
-			return LEFT_TOP_NEAR;
-		}
 
 		static inline bool isAABBInBoxAny(const Math::Vec3& pos, const Math::Vec3& size, const Math::Vec3& nodePos, float nodeSize) {
 			
@@ -519,7 +230,7 @@ namespace SFE {
 		}
 
 		template<class Func>
-		inline void forEachNode(Func&& func, CardinalDirection traversalDirection = static_cast<CardinalDirection>(0))
+		inline void forEachNode(Func&& func)
 		{
 			if (nodes.empty()) {
 				return;
@@ -541,7 +252,7 @@ namespace SFE {
 				}
 
 				const auto childSize = entry.size * 0.5f;
-				for (auto octant : traversal[traversalDirection]) {
+				for (auto octant = 0u; octant < 8; ++octant) {
 					stack[top].pos = entry.pos + getOctantPos(static_cast<Octant>(octant), childSize);
 					stack[top].size = childSize;
 					stack[top].index = firstChildId + octant;
@@ -551,7 +262,7 @@ namespace SFE {
 		}
 
 		template<class Func, class Pred>
-		inline void forEachNode(Func&& func, Pred&& pred, CardinalDirection traversalDirection = static_cast<CardinalDirection>(0)) {
+		inline void forEachNode(Func&& func, Pred&& pred) {
 			if (nodes.empty()) {
 				return;
 			}
@@ -572,7 +283,7 @@ namespace SFE {
 					}
 
 					const auto childSize = entry.size * 0.5f;
-					for (auto octant : traversal[traversalDirection]) {
+					for (auto octant = 0u; octant < 8; ++octant) {
 						stack[top].pos = entry.pos + getOctantPos(static_cast<Octant>(octant), childSize);
 						stack[top].size = childSize;
 						stack[top].index = firstChildId + octant;
@@ -669,12 +380,10 @@ namespace SFE {
 
 	public:
 		std::vector<std::pair<SFE::Math::Vec3, Object>> findCollisions(const SFE::Math::Vec3& src, const Math::Vec3& dir, const std::function<bool(const Object& data)>& pred = nullptr) {
-			const auto octant = getSourceCardinalDirection(mPos, mSize, src);
-
 			std::vector<std::pair<SFE::Math::Vec3, Object>> collisions;
 			forEachNode([&](const SFE::Math::Vec3& nodePos, float nodeSize, Node& node) {
 				const auto collisionRes = 
-					PhysicsEngine::Physics::checkCollision({ { nodePos.x + nodeSize, nodePos.y - nodeSize, nodePos.z + nodeSize }, {nodeSize} }, src, dir);
+					PhysicsEngine::Physics::checkCollision({ calculateNodeCenter(nodePos, nodeSize), Math::Vec3{ nodeSize * 0.5f } }, src, dir);
 
 				if (!collisionRes.second) {
 					return;
@@ -688,7 +397,7 @@ namespace SFE {
 						collisions.emplace_back(collision.first, nodeData);
 					}
 				}
-			}, octant);
+			});
 
 
 			std::sort(collisions.begin(), collisions.end(), [src](const std::pair<SFE::Math::Vec3, Object>& a, const std::pair<SFE::Math::Vec3, Object>& b) {
