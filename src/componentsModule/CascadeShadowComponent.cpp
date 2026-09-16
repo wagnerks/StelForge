@@ -212,7 +212,11 @@ namespace SFE::ComponentsModule {
 		}
 		const float zRange = (std::max)(maxZ - minZ, 1.f);
 		const float zNearPad = zRange * (std::clamp)(nearMultiplier, 0.5f, 3.f);
-		const float zFarPad = zRange * (std::clamp)(farMultiplier, 0.5f, 3.f) * 0.25f;
+		// The circle reaches past the slice sideways, and so does the ground under it. Ground inside the circle but
+		// further along the light than any corner of the slice sat behind the far plane, and its shadow ended on a
+		// straight line wherever that plane met the floor -- visible on the last cascade, which has nothing past it
+		// to hide the cut. Across a circle of this radius the ground can fall back by up to its diameter.
+		const float zFarPad = (std::max)(zRange * (std::clamp)(farMultiplier, 0.5f, 3.f) * 0.25f, radius * 2.f);
 		minZ -= zNearPad;
 		maxZ += zFarPad;
 

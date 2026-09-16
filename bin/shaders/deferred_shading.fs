@@ -226,7 +226,10 @@ int selectCascade(vec3 worldPos, int cc, out float edge) {
             return i;
         }
     }
-    // Past the last circle, but its square still covers the corners, so it is the best answer there is.
+    // Past the last circle. The rim distance carries on past 1 here, so the caller can fade the shadow
+    // out instead of letting it stop at the edge of the square map.
+    vec3 last = worldToShadowUv(cc - 1, worldPos);
+    edge = length(last.xy * 2.0 - 1.0);
     return cc - 1;
 }
 
@@ -244,7 +247,10 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
     int layer = selectCascade(fragPosWorldSpace, cc, edge);
     float shadow = sampleCascade(layer, fragPosWorldSpace, Normal);
     if (layer + 1 >= cc) {
-        return shadow;
+        // Nothing past the last cascade to hand over to. Left alone, the shadow stops wherever its square
+        // map ends -- four straight lines across the ground, slanted with the light rather than the view.
+        // Faded out over the rim of its circle instead, the same shape every other step now has.
+        return shadow * (1.0 - smoothstep(0.8, 1.0, edge));
     }
 
     // Faded over the outer fifth of the circle, so the change of resolution arrives as a ring that grows
