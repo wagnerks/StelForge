@@ -76,7 +76,7 @@ layout(SFE_SET(0, 31), std430) readonly buffer CullView {
     uint mode;
     uint shapeCount;
     uint batchCount;
-    uint _pad;
+    uint lodBias;
     vec4 shapes[16];
     mat4 viewProj;
     uint occlusion;
@@ -227,7 +227,8 @@ void main() {
         if (mesh.lodCount > 1u) {
             float radius = length(extents);
             float distance = max(length(center - view.lodOrigin.xyz), 1e-3);
-            draw = draw && lodForSize(radius * view.lodOrigin.w / distance, mesh.lodCount) == mesh.lodIndex;
+            uint level = lodForSize(radius * view.lodOrigin.w / distance, mesh.lodCount);
+            draw = draw && min(level + view.lodBias, mesh.lodCount - 1u) == mesh.lodIndex;
         }
         if (view.occlusion == 1u) {
             draw = draw && lastVisible[slot] == 1u;

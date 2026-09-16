@@ -22,7 +22,9 @@ namespace SFE::Render {
 		uint32_t mode = 0; // 0: planes, 1: spheres
 		uint32_t shapeCount = 0;
 		uint32_t batchCount = 0;
-		uint32_t pad = 0;
+		// Levels coarser than the size on screen calls for. 1 for the shadow views: a silhouette cast on the
+		// floor hides what the simplifier changed, and the cascades draw the whole scene four more times.
+		uint32_t lodBias = 0;
 		float shapes[GpuScene::kMaxSpheres * 4]{};
 		float viewProj[16]{};
 		uint32_t occlusion = 0; // 0 none, 1 and 2 the phases of cullVisibleLastFrame and cullOccluded
@@ -825,6 +827,7 @@ namespace SFE::Render {
 			view.lastVisible = createBuffer(view.lastVisibleCapacity * sizeof(uint32_t), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene last visible");
 		}
 		fillLodOrigin(params);
+		params.lodBias = list == List::Shadow ? 1u : 0u;
 		view.secondPhaseOffset = data.batchCount;
 		const uint32_t slot = prepareView(view, data.instanceCount, occlusion ? data.batchCount * 2 : data.batchCount, params);
 		if (!view.sets[slot]) {
