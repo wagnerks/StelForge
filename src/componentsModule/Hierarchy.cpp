@@ -1,5 +1,7 @@
 #include "Hierarchy.h"
 
+#include <algorithm>
+
 #include "core/ECSHandler.h"
 
 namespace SFE::Hierarchy {
@@ -21,6 +23,8 @@ namespace SFE::Hierarchy {
 		for (const auto id : ECSHandler::registry().sources<ChildOf>(entity)) {
 			result.push_back(id);
 		}
+		// The relation lists the newest edge first.
+		std::reverse(result.begin(), result.end());
 		return result;
 	}
 
@@ -47,14 +51,21 @@ namespace SFE::Hierarchy {
 	}
 
 	void setParent(const ecss::EntityId child, const ecss::EntityId parentEntity) {
-		if (child == ecss::INVALID_ID || child == parentEntity) {
+		if (child == ecss::INVALID_ID) {
 			return;
 		}
-		// The view has to be closed before the edges change, or the relation's lock is taken twice.
-		detach(child);
-		if (parentEntity != ecss::INVALID_ID) {
-			ECSHandler::registry().relate<ChildOf>(child, parentEntity);
+		if (parentEntity == ecss::INVALID_ID) {
+			detach(child);
+			return;
 		}
+		// parent() copies the id and closes its view, so no lock is held when the edge changes below.
+		for (auto node = parentEntity; node != ecss::INVALID_ID; node = parent(node)) {
+			if (node == child) {
+				return;
+			}
+		}
+		// One call, one lock: detaching and relating separately could leave two parents if two threads race.
+		ECSHandler::registry().relateOnly<ChildOf>(child, parentEntity);
 	}
 
 	void detach(const ecss::EntityId child) {

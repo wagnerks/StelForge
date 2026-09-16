@@ -20,12 +20,14 @@ namespace SFE {
 	namespace Hierarchy {
 		// INVALID_ID when the entity has no parent.
 		ecss::EntityId parent(ecss::EntityId entity);
+		// In the order they were attached, so saving and loading a scene keeps the order.
 		std::vector<ecss::EntityId> children(ecss::EntityId entity);
 		// Children, their children, and so on.
 		std::vector<ecss::EntityId> descendants(ecss::EntityId entity);
 		bool hasChildren(ecss::EntityId entity);
 
-		// Replaces the entity's parent; INVALID_ID detaches it. An entity cannot be its own parent.
+		// Replaces the entity's parent; INVALID_ID detaches it. Does nothing if the new parent is the entity itself
+		// or one of its descendants: that would make a cycle, and walking the tree would never end.
 		void setParent(ecss::EntityId child, ecss::EntityId parent);
 		void detach(ecss::EntityId child);
 	}

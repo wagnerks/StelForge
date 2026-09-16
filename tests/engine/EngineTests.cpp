@@ -399,6 +399,38 @@ namespace SFE::EngineTests {
 		ECSHandler::destroyEntity(parent);
 		ECSHandler::destroyEntity(grandChild);
 	}
+
+	// Children come back in the order they were attached, so a scene saved and loaded again keeps its order.
+	// Reparenting replaces the old parent, and a parent that would close a cycle is refused.
+	TEST(EngineTest, HierarchyKeepsOrderAndRefusesCycles) {
+		auto& registry = ECSHandler::registry();
+		const auto root = registry.takeEntity();
+		const auto a = registry.takeEntity();
+		const auto b = registry.takeEntity();
+		const auto c = registry.takeEntity();
+
+		Hierarchy::setParent(a, root);
+		Hierarchy::setParent(b, root);
+		Hierarchy::setParent(c, root);
+		EXPECT_EQ(Hierarchy::children(root), (std::vector<ecss::EntityId>{ a, b, c }));
+
+		Hierarchy::setParent(b, a);
+		EXPECT_EQ(Hierarchy::parent(b), a);
+		EXPECT_EQ(Hierarchy::children(root), (std::vector<ecss::EntityId>{ a, c }));
+
+		// root -> a -> b: neither root nor a may become a child of b, nor b of itself.
+		Hierarchy::setParent(root, b);
+		Hierarchy::setParent(a, b);
+		Hierarchy::setParent(b, b);
+		EXPECT_EQ(Hierarchy::parent(root), ecss::INVALID_ID);
+		EXPECT_EQ(Hierarchy::parent(a), root);
+		EXPECT_EQ(Hierarchy::parent(b), a);
+		EXPECT_EQ(Hierarchy::descendants(root).size(), 3u);
+
+		for (const auto id : { root, a, b, c }) {
+			ECSHandler::destroyEntity(id);
+		}
+	}
 	// The mip chain the texture loader builds. It exists because OpenGL and Vulkan build different chains
 	// from the same image, and the difference shows at the horizon, where a pixel on the alpha test
 	// threshold flips from one backend to the other. Two properties carry that: the sizes are the usual
