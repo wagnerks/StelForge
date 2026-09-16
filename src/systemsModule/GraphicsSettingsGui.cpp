@@ -60,6 +60,7 @@ namespace SFE::SystemsModule {
 			changed |= ImGui::SliderFloat("dof blur", &gfx.dofBlur, 0.f, 16.f, "%.1f");
 			changed |= ImGui::SliderFloat("fog start", &gfx.fogStart, 0.1f, 1.f, "%.2f");
 			changed |= ImGui::SliderFloat("CA", &gfx.chromaticAberration, 0.f, 0.012f, "%.4f");
+			changed |= ImGui::SliderFloat("sharpness", &gfx.sharpness, 0.f, 1.f, "%.2f");
 			changed |= ImGui::SliderFloat("glass roughness", &gfx.glassRoughness, 0.04f, 0.6f, "%.2f");
 		}
 
@@ -98,6 +99,7 @@ namespace SFE::SystemsModule {
 		root["exposure"] = gfx.exposure;
 		root["vignette"] = gfx.vignette;
 		root["chromaticAberration"] = gfx.chromaticAberration;
+		root["sharpness"] = gfx.sharpness;
 		root["fogStart"] = gfx.fogStart;
 		root["glassRoughness"] = gfx.glassRoughness;
 		root["sheenStrength"] = gfx.sheenStrength;
@@ -151,6 +153,7 @@ namespace SFE::SystemsModule {
 		f("exposure", gfx.exposure);
 		f("vignette", gfx.vignette);
 		f("chromaticAberration", gfx.chromaticAberration);
+		f("sharpness", gfx.sharpness);
 		f("fogStart", gfx.fogStart);
 		f("glassRoughness", gfx.glassRoughness);
 		f("sheenStrength", gfx.sheenStrength);

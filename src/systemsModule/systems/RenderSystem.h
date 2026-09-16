@@ -74,6 +74,9 @@ namespace SFE::SystemsModule {
 		float exposure = 1.12f;
 		float vignette = 0.08f;
 		float chromaticAberration = 0.f;
+		// Contrast adaptive sharpening after the tonemap: 0 leaves the image as TAA resolved it, 1 is as far
+		// as the filter goes before it starts ringing.
+		float sharpness = 0.5f;
 
 		float fogStart = 0.82f;
 		float glassRoughness = 0.02f;

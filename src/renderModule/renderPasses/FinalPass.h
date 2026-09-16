@@ -49,6 +49,7 @@ namespace SFE::Render::RenderPasses {
 			float exposure = 0.92f;
 			float vignette = 0.14f;
 			float ca = 0.0028f;
+			float sharpness = 0.5f;
 		} mPostParams;
 
 		TextureHandle mBloomTex{};

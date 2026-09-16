@@ -257,6 +257,7 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	mPostParams.exposure = gfx.exposure;
 	mPostParams.vignette = gfx.vignette;
 	mPostParams.ca = gfx.chromaticAberration;
+	mPostParams.sharpness = gfx.sharpness;
 
 	// A debug term carries a value to be read off the image, not a picture to be graded. Exposure
 	// and vignette silently rescale it, which turns any absolute reading into nonsense.
