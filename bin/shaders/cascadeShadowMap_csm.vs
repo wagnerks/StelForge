@@ -1,6 +1,8 @@
 #version 450 core
 #include "sfe.glsl"
 #include "sfe_scene.glsl"
+#include "sfe_material_table.glsl"
+#include "sfe_wind.glsl"
 // Cascade casters only. cascadeShadowMap.vs stays world-space because the point light pass shares
 // it and applies its own cube-face matrices in a geometry shader; this one applies the cascade
 // matrix here, which is what let the cascade geometry shader go away.
@@ -24,6 +26,10 @@ const int MAX_BONE_INFLUENCE = 4;
 layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
     mat4 bones[];
 };
+
+layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
+    SFE_SHARED_MATRICES
+} matrices;
 
 layout(SFE_SET(0, 11), std140) uniform LightSpaceMatrices {
     mat4 lightSpaceMatrices[6];
@@ -56,7 +62,13 @@ void main() {
     newPos /= newPos.w;
 
     int layer = clamp(params.cascadeLayer, 0, 5);
-    gl_Position = lightSpaceMatrices[layer] * (model[index] * newPos);
+    vec4 worldPos = model[index] * newPos;
+    // Swayed like the surface itself, or the shadow of a tree would stand still under its moving crown.
+    worldPos.xyz += sfeWindSway(worldPos.xyz, model[index][3].xyz, instance.material, matrices.wind);
+    gl_Position = lightSpaceMatrices[layer] * worldPos;
+    // Pancaked: a caster between the cascade and the sun, past its near plane, is pressed onto that plane instead of
+    // clipped away. At a low sun a tree tens of metres up-sun throws its shadow across the whole cascade.
+    gl_Position.z = max(gl_Position.z, -gl_Position.w);
     TexCoords = aTexCoords;
     TexCoords1 = aTexCoords1;
 }

@@ -17,6 +17,8 @@ namespace SFE::Render {
 			m.roughness = src.roughness;
 			m.metallic = src.metallic;
 			m.mapMask = MaterialRules::gBufferMapMask(src.materials, src.alphaFromMaps);
+			// How it moves in the wind, for the vertex shaders: bit 32 a tree, bit 64 a plant.
+			m.mapMask += src.sway == ComponentsModule::Sway::Tree ? 32.f : src.sway == ComponentsModule::Sway::Plant ? 64.f : 0.f;
 			m.alphaCutoff = src.alphaDither ? 1.78f : cutoff;
 			m.uvSel = MaterialRules::gBufferUvSel(src.materials);
 			m.specFactor = src.specFactor;
@@ -29,6 +31,12 @@ namespace SFE::Render {
 			m.ior = src.ior > 1.f ? src.ior : 1.52f;
 			m.casterOpacity = (src.opacity > 0.f && src.opacity < 0.999f) ? src.opacity : 1.f;
 			m.shadowCutoff = src.alphaFromMaps ? -0.18f : cutoff;
+			std::copy(std::begin(src.triplanar[0].uv), std::end(src.triplanar[0].uv), m.triplanarUv);
+			std::copy(std::begin(src.triplanar[1].uv), std::end(src.triplanar[1].uv), m.triplanarUv2);
+			for (size_t i = 0; i < ComponentsModule::MaterialComponent::kTriplanarLayers; ++i) {
+				m.triplanarRepeat[i] = src.triplanar[i].metres > 0.f ? 1.f / src.triplanar[i].metres : 0.f;
+				m.triplanarRotated += src.triplanar[i].rotated ? static_cast<float>(1u << i) : 0.f;
+			}
 			return m;
 		}
 	}

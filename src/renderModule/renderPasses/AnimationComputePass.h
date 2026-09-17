@@ -37,7 +37,12 @@ namespace SFE::Render::RenderPasses {
 			int boneId = 0;
 			float radius = 0.f;      // Armature::boneRadius
 			uint32_t boundsMask = 0; // Armature::boneBoundsMask
-			float pad[2]{};
+			// Ticks between a channel's keys where every gap is the same, so the shader works out which key it is
+			// in instead of searching for it; 0 where the gaps differ.
+			float posStep = 0.f;
+			float rotStep = 0.f;
+			float sclStep = 0.f;
+			float pad[3]{};
 		};
 
 		struct GpuVec3Key {
@@ -59,6 +64,15 @@ namespace SFE::Render::RenderPasses {
 			float ticksPerSecond = 0.f;
 			float duration = 0.f;
 			float stoppedTime = 0.f;
+			// The clip faded out of, laid out over the same armature; flags 0 when there is no fade.
+			uint32_t fromDescOffset = 0;
+			uint32_t fromFlags = 0; // kPlaying, kLoop, kBlending
+			float fromStart = 0.f;
+			float fromTicksPerSecond = 0.f;
+			float fromDuration = 0.f;
+			float fromStoppedTime = 0.f;
+			float blendStart = 0.f; // seconds, relative to mEpoch
+			float blendDuration = 0.f;
 		};
 
 	private:

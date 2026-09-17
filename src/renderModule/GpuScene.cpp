@@ -36,6 +36,10 @@ namespace SFE::Render {
 		// gets the player's, shadow cascades included: a cascade that picked its levels from the light's
 		// distance would draw the coarsest mesh into the shadow right under the camera.
 		float lodOrigin[4]{};
+		// A shadow cascade's texels per metre, 0 for any other view: casters under minTexels across are left out,
+		// and no level of detail finer than a texel is drawn.
+		float texelsPerMetre = 0.f;
+		float minTexels = 0.f;
 	};
 
 	namespace {
@@ -173,6 +177,7 @@ namespace SFE::Render {
 			mOutlined = std::move(outlined);
 		}
 
+		mAdded.clear();
 		bool rebuilt = mDirty.exchange(false, std::memory_order_acq_rel);
 		if (!rebuilt) {
 			std::sort(pending.begin(), pending.end());
@@ -181,6 +186,9 @@ namespace SFE::Render {
 			for (const auto entity : pending) {
 				removeEntity(entity);
 				addEntity(entity, materials);
+				if (mEntityRefs.contains(entity)) {
+					mAdded.push_back(entity);
+				}
 			}
 			// Moves leave slots behind; once those outnumber the live ones the list is packed again. Spare room
 			// inside a batch or group is not left behind, or compact's own spare would trigger it every frame.
@@ -195,6 +203,10 @@ namespace SFE::Render {
 		}
 		if (rebuilt) {
 			rebuildAll(materials);
+			for (const auto& [entity, refs] : mEntityRefs) {
+				mAdded.push_back(entity);
+			}
+			std::sort(mAdded.begin(), mAdded.end());
 		}
 		uploadList(mLists[static_cast<size_t>(List::GBuffer)], "GpuScene gbuffer");
 		uploadList(mLists[static_cast<size_t>(List::Shadow)], "GpuScene shadow");
@@ -418,6 +430,11 @@ namespace SFE::Render {
 			DrawGroup group;
 			group.vertexShader = material.vertexShader.empty() ? std::string(ComponentsModule::DefaultGBufferVS) : material.vertexShader;
 			group.fragmentShader = material.fragmentShader.empty() ? std::string(ComponentsModule::DefaultGBufferFS) : material.fragmentShader;
+			// Whether the G-buffer shader discards: GpuMaterialTable gives it a cutoff exactly then.
+			group.cutout = material.alphaDither || MaterialRules::cutoutCutoff(material.alphaCutoff, material.alphaFromMaps, material.fragmentShader) > 0.f;
+			if (!group.cutout && group.fragmentShader == ComponentsModule::DefaultGBufferFS) {
+				group.fragmentShader = ComponentsModule::DefaultGBufferSolidFS;
+			}
 			group.textures = material.materials;
 			group.textureKey = MaterialRules::textureKey(material.materials);
 			const auto key = group.vertexShader + '|' + group.fragmentShader + '|' + std::to_string(group.textureKey);
@@ -656,6 +673,28 @@ namespace SFE::Render {
 		return cull(cmd, list, view, params);
 	}
 
+	bool GpuScene::cullShadowCasters(const CommandListHandle cmd, View& view, const FrustumModule::Frustum& volume,
+		const FrustumModule::Frustum* camera, const Math::Vec3& lightTravel, const float texelsPerMetre) {
+		auto params = frustumParams(volume);
+		if (camera) {
+			for (const auto* plane : { &camera->leftFace, &camera->rightFace, &camera->topFace, &camera->bottomFace, &camera->nearFace, &camera->farFace }) {
+				// Travelling with the light never takes a point further inside this plane: a caster wholly outside it
+				// casts nowhere inside. A metre of margin for the jitter and the cascade's own padding.
+				if (Math::dot(plane->normal, lightTravel) <= 0.f && params.shapeCount < kMaxSpheres) {
+					auto widened = *plane;
+					widened.distance += 1.f;
+					setPlane(params.shapes + params.shapeCount * 4, widened);
+					++params.shapeCount;
+				}
+			}
+		}
+		params.texelsPerMetre = texelsPerMetre;
+		// Half a texel across: a caster that small rarely covers a texel centre at all, so the map is the same
+		// without it.
+		params.minTexels = 0.5f;
+		return cull(cmd, List::Shadow, view, params);
+	}
+
 	bool GpuScene::cullVisibleLastFrame(const CommandListHandle cmd, const List list, View& view, const FrustumModule::Frustum& frustum) {
 		auto params = frustumParams(frustum);
 		params.occlusion = 1;
@@ -778,12 +817,14 @@ namespace SFE::Render {
 		params.lodOrigin[0] = data.mCameraPos.x;
 		params.lodOrigin[1] = data.mCameraPos.y;
 		params.lodOrigin[2] = data.mCameraPos.z;
-		// projection[1][1] is 1 / tan(fovY / 2).
-		params.lodOrigin[3] = static_cast<float>(screen.renderH) * 0.5f * data.current.projection[1][1];
+		// projection[1][1] is 1 / tan(fovY / 2). The detail setting rides on the size a model reports: at 2 every
+		// level is kept to twice the distance, which is the same as moving the shader's bands out.
+		params.lodOrigin[3] = static_cast<float>(screen.renderH) * 0.5f * data.current.projection[1][1]
+			* (std::max)(data.graphics.lodDetail, 0.05f);
 	}
 
 	uint32_t GpuScene::prepareView(View& view, const uint32_t instances, const uint32_t commands, const CullParams& params) {
-		static_assert(sizeof(CullParams) == 432);
+		static_assert(sizeof(CullParams) == 440);
 		auto* rhi = Engine::instance()->rhi();
 		if (!view.visible || view.visibleCapacity < instances) {
 			retire(view.visible);
@@ -827,7 +868,7 @@ namespace SFE::Render {
 			view.lastVisible = createBuffer(view.lastVisibleCapacity * sizeof(uint32_t), BufferUsage::Storage, CpuAccess::None, nullptr, "GpuScene last visible");
 		}
 		fillLodOrigin(params);
-		params.lodBias = list == List::Shadow ? 1u : 0u;
+		params.lodBias = view.lodBias + (list == List::Shadow ? 1u : 0u);
 		view.secondPhaseOffset = data.batchCount;
 		const uint32_t slot = prepareView(view, data.instanceCount, occlusion ? data.batchCount * 2 : data.batchCount, params);
 		if (!view.sets[slot]) {

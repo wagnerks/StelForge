@@ -22,9 +22,26 @@ namespace AssetsModule {
 		static SFE::Math::Mat4 assimpMatToMat4(const aiMatrix4x4& from);
 
 		AssetsModule::Model* load(const std::string& path);
+		// Loads every model not loaded yet, reading the files and decoding their textures in parallel. From the
+		// thread the device is used from, like load.
+		void loadAll(const std::vector<std::string>& paths);
 		std::map<std::string, std::condition_variable> loading;
 		std::mutex mtx;
 	private:
+		// A model between reading its file and becoming an asset.
+		struct Loaded {
+			SFE::Tree<SFE::MeshObject3D> meshes;
+			Armature armature;
+			std::vector<Animation> animations;
+			bool ok = false;
+		};
+		// Loading in three steps: read touches the device (textures), finishMeshes is CPU only and may run on any
+		// thread, publish uploads the meshes and ends the load.
+		static Loaded read(const std::string& path, const aiScene* scene);
+		static void finishMeshes(Loaded& loaded);
+		AssetsModule::Model* publish(const std::string& path, Loaded&& loaded);
+		// The files a texture a material names may be, in the order they are tried.
+		static std::vector<std::string> textureFileCandidates(const std::string& raw, const std::string& directory);
 		static std::tuple<SFE::Tree<SFE::MeshObject3D>, Armature> loadModel(const aiScene* scene, const std::string& path);
 
 		static int extractLodLevel(const std::string& meshName);

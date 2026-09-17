@@ -17,6 +17,7 @@
 #include "core/Engine.h"
 #include "core/FileSystem.h"
 #include "debugModule/Benchmark.h"
+#include "logsModule/logger.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/OcTreeSystem.h"
@@ -67,6 +68,16 @@ namespace SFE::SystemsModule {
 		seedIfEmpty();
 		debugData.proceduralSpheres = Engine::instance()->proceduralSpheres();
 		debugData.proceduralRooms = Engine::instance()->proceduralRooms();
+
+		// A scene file replaces the streamed chunks: it is loaded whole, and nothing is spawned or dropped around the camera.
+		if (const auto& scene = Engine::instance()->scenePath(); !scene.empty()) {
+			debugData.mCreate = false;
+			debugData.mClear = false;
+			if (!PropertiesModule::PropertiesSystem::loadScene(scene)) {
+				LogsModule::Logger::LOG_ERROR("scene not loaded: %s", scene.c_str());
+			}
+			return;
+		}
 
 		if (!Engine::instance()->rhi()) {
 			return;
@@ -197,21 +208,8 @@ namespace SFE::SystemsModule {
 		}
 		auto ids = entitiesInChunk(chunk);
 
-		auto octreeSys = ECSHandler::getSystem<OcTreeSystem>();
-		for (auto id : ids) {
-			std::vector<OcTreeComponent::ParentTree> parents;
-			{
-				auto octreeComp = ECSHandler::registry().pinComponent<OcTreeComponent>(id);
-				if (octreeComp) {
-					parents = octreeComp->parents;
-				}
-			}
-			for (const auto& parent : parents) {
-				if (auto* tree = octreeSys ? octreeSys->getOctree(parent.pos) : nullptr) {
-					auto lock = tree->writeLock();
-					tree->erase(id, parent.node);
-				}
-			}
+		if (auto* octreeSys = ECSHandler::getSystem<OcTreeSystem>()) {
+			octreeSys->detach(ids);
 		}
 		return ids;
 	}

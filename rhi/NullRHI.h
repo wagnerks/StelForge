@@ -78,7 +78,7 @@ namespace SFE::Render {
 		void submit(CommandListHandle) override {}
 		void present() override {}
 
-		void updateTexture(TextureHandle, uint32_t, uint32_t, uint32_t, uint32_t, TextureFormat, const void*, uint32_t) override {}
+		void updateTexture(TextureHandle, uint32_t, uint32_t, uint32_t, uint32_t, TextureFormat, const void*, uint32_t, uint32_t) override {}
 		void updateCubeFace(TextureHandle, uint32_t, uint32_t, const void*) override {}
 		void updateCubeMip(TextureHandle, uint32_t, const void*, size_t) override {}
 		uint64_t getNativeTextureId(TextureHandle tex) const override { return tex.id; }

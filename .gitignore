@@ -16,3 +16,11 @@ bin/shaders/vulkan/*.spv.hash
 
 # compare-backends.ps1 output: rewritten by every run.
 bin/compare/
+
+# BinaryCache: terrain and vegetation built from the scene, rebuilt when missing.
+bin/cache/
+
+# compare-rooms output and the perf runs' scratch files: written by the test runs.
+bin/compare_rooms/
+bin/p*.txt
+bin/perf_*.txt

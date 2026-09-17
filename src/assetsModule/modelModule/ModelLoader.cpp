@@ -8,6 +8,7 @@
 
 #include "Animation.h"
 #include "MeshUtils.h"
+#include "MeshLod.h"
 #include "MeshVaoRegistry.h"
 #include "logsModule/logger.h"
 #include "assetsModule/TextureHandler.h"
@@ -17,6 +18,9 @@
 #include "mathModule/VectorOperations.h"
 
 #include <algorithm>
+#include <execution>
+#include <memory>
+#include <numeric>
 #include <vector>
 #include <cctype>
 #include <cmath>
@@ -194,6 +198,20 @@ SFE::Math::Mat4 ModelLoader::assimpMatToMat4(const aiMatrix4x4& from) {
 	return to;
 }
 
+namespace {
+	const aiScene* readScene(Assimp::Importer& import, const std::string& path) {
+		import.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+		const unsigned flags = aiProcess_Triangulate | aiProcess_FlipUVs
+			| aiProcess_GenSmoothNormals | aiProcess_LimitBoneWeights;
+		const aiScene* scene = import.ReadFile(SFE::FileSystem::resolve(path).string(), flags);
+		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+			SFE::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
+			return nullptr;
+		}
+		return scene;
+	}
+}
+
 AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	auto asset = AssetsManager::instance()->getAsset<Model>(path);
 	if (asset) {
@@ -212,64 +230,133 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	loading[path];
 	mtx.unlock();
 
-	SFE::Tree<SFE::MeshObject3D> meshes;
-	Armature armatur;
-	std::vector<Animation> animations;
-	bool loadedOk = false;
+	Assimp::Importer import;
+	auto loaded = read(path, readScene(import, path));
+	finishMeshes(loaded);
+	return publish(path, std::move(loaded));
+}
+
+void ModelLoader::loadAll(const std::vector<std::string>& paths) {
+	std::vector<std::string> pending;
 	{
-		Assimp::Importer import;
-		import.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
-		const unsigned flags = aiProcess_Triangulate | aiProcess_FlipUVs
-			| aiProcess_GenSmoothNormals | aiProcess_LimitBoneWeights;
-		const auto diskPath = SFE::FileSystem::resolve(path).string();
-		const aiScene* scene = import.ReadFile(diskPath, flags);
-		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-			SFE::LogsModule::Logger::LOG_ERROR("ASSIMP:: %s", import.GetErrorString());
-		}
-		else {
-			auto loaded = loadModel(scene, diskPath);
-			meshes = std::move(std::get<0>(loaded));
-			armatur = std::move(std::get<1>(loaded));
-			animations.reserve(scene->mNumAnimations);
-			for (auto i = 0u; i < scene->mNumAnimations; i++) {
-				animations.emplace_back(scene->mAnimations[i]);
+		std::lock_guard lock(mtx);
+		for (const auto& path : paths) {
+			if (!AssetsManager::instance()->getAsset<Model>(path) && !loading.contains(path)
+				&& std::find(pending.begin(), pending.end(), path) == pending.end()) {
+				loading[path];
+				pending.push_back(path);
 			}
-
-			for (auto& meshNode : meshes) {
-				auto& mesh = meshNode.value;
-				if (mesh.mesh.vertices.empty()) {
-					continue;
-				}
-				auto minAABB = SFE::Math::Vec3(std::numeric_limits<float>::max());
-				auto maxAABB = SFE::Math::Vec3(std::numeric_limits<float>::lowest());
-				for (const auto& vertex : mesh.mesh.vertices) {
-					minAABB.x = std::min(minAABB.x, vertex.position.x);
-					minAABB.y = std::min(minAABB.y, vertex.position.y);
-					minAABB.z = std::min(minAABB.z, vertex.position.z);
-					maxAABB.x = std::max(maxAABB.x, vertex.position.x);
-					maxAABB.y = std::max(maxAABB.y, vertex.position.y);
-					maxAABB.z = std::max(maxAABB.z, vertex.position.z);
-				}
-				mesh.aabb = SFE::FrustumModule::AABB(minAABB, maxAABB);
-			}
-			loadedOk = true;
 		}
 	}
-
-	if (!loadedOk) {
-		mtx.lock();
-		loading[path].notify_all();
-		loading.erase(path);
-		mtx.unlock();
-		return nullptr;
+	if (pending.empty()) {
+		return;
 	}
 
-	mtx.lock();
-	asset = AssetsManager::instance()->createAsset<Model>(path, std::move(meshes), std::move(armatur), std::move(animations));
+	// Everything CPU only is done side by side: reading the files, decoding their textures, the tangents and levels
+	// of detail. What reaches the device stays on this thread.
+	std::vector<size_t> order(pending.size());
+	std::iota(order.begin(), order.end(), size_t{ 0 });
+	std::vector<std::unique_ptr<Assimp::Importer>> importers(pending.size());
+	std::vector<const aiScene*> scenes(pending.size(), nullptr);
+	std::for_each(std::execution::par, order.begin(), order.end(), [&](const size_t i) {
+		importers[i] = std::make_unique<Assimp::Importer>();
+		scenes[i] = readScene(*importers[i], pending[i]);
+	});
+
+	std::vector<std::string> textures;
+	for (size_t i = 0; i < pending.size(); ++i) {
+		if (!scenes[i]) {
+			continue;
+		}
+		const auto directory = SFE::FileSystem::resolve(pending[i]).parent_path().string();
+		for (unsigned m = 0; m < scenes[i]->mNumMaterials; ++m) {
+			const auto* material = scenes[i]->mMaterials[m];
+			for (int type = aiTextureType_NONE; type <= AI_TEXTURE_TYPE_MAX; ++type) {
+				for (unsigned t = 0; t < material->GetTextureCount(static_cast<aiTextureType>(type)); ++t) {
+					aiString raw;
+					material->GetTexture(static_cast<aiTextureType>(type), t, &raw);
+					if (raw.length == 0 || raw.C_Str()[0] == '*') {
+						continue;
+					}
+					for (const auto& candidate : textureFileCandidates(raw.C_Str(), directory)) {
+						if (SFE::FileSystem::isFileExists(candidate)) {
+							textures.push_back(candidate);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+	TextureHandler::predecode(textures);
+
+	std::vector<Loaded> loaded(pending.size());
+	for (size_t i = 0; i < pending.size(); ++i) {
+		loaded[i] = read(pending[i], scenes[i]);
+		importers[i].reset();
+	}
+	TextureHandler::dropPredecoded();
+	std::for_each(std::execution::par, order.begin(), order.end(), [&](const size_t i) {
+		finishMeshes(loaded[i]);
+	});
+	for (size_t i = 0; i < pending.size(); ++i) {
+		publish(pending[i], std::move(loaded[i]));
+	}
+}
+
+ModelLoader::Loaded ModelLoader::read(const std::string& path, const aiScene* scene) {
+	Loaded loaded;
+	if (!scene) {
+		return loaded;
+	}
+	auto model = loadModel(scene, SFE::FileSystem::resolve(path).string());
+	loaded.meshes = std::move(std::get<0>(model));
+	loaded.armature = std::move(std::get<1>(model));
+	loaded.animations.reserve(scene->mNumAnimations);
+	for (auto i = 0u; i < scene->mNumAnimations; i++) {
+		loaded.animations.emplace_back(scene->mAnimations[i]);
+	}
+	loaded.ok = true;
+	return loaded;
+}
+
+void ModelLoader::finishMeshes(Loaded& loaded) {
+	for (auto& meshNode : loaded.meshes) {
+		auto& mesh = meshNode.value;
+		if (mesh.mesh.vertices.empty()) {
+			continue;
+		}
+		int tangentUv = 0;
+		if (const auto* normals = mesh.material.tryGetTexture(SFE::NORMALS)) {
+			tangentUv = normals->uvSet;
+		}
+		SFE::MeshUtils::generateTangents(&mesh.mesh, tangentUv);
+
+		auto minAABB = SFE::Math::Vec3(std::numeric_limits<float>::max());
+		auto maxAABB = SFE::Math::Vec3(std::numeric_limits<float>::lowest());
+		for (const auto& vertex : mesh.mesh.vertices) {
+			minAABB.x = std::min(minAABB.x, vertex.position.x);
+			minAABB.y = std::min(minAABB.y, vertex.position.y);
+			minAABB.z = std::min(minAABB.z, vertex.position.z);
+			maxAABB.x = std::max(maxAABB.x, vertex.position.x);
+			maxAABB.y = std::max(maxAABB.y, vertex.position.y);
+			maxAABB.z = std::max(maxAABB.z, vertex.position.z);
+		}
+		mesh.aabb = SFE::FrustumModule::AABB(minAABB, maxAABB);
+
+		// Model::bindMeshes keeps levels a mesh already has.
+		SFE::weldMesh(mesh.mesh);
+		SFE::buildMeshLods(mesh.mesh);
+	}
+}
+
+AssetsModule::Model* ModelLoader::publish(const std::string& path, Loaded&& loaded) {
+	std::lock_guard lock(mtx);
+	AssetsModule::Model* asset = loaded.ok
+		? AssetsManager::instance()->createAsset<Model>(path, std::move(loaded.meshes), std::move(loaded.armature), std::move(loaded.animations))
+		: nullptr;
 	loading[path].notify_all();
 	loading.erase(path);
-	mtx.unlock();
-
 	return asset;
 }
 
@@ -628,6 +715,10 @@ void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMa
 	}
 
 	if (gltfPbr) {
+		aiColor4D baseColor;
+		if (assimpMaterial->Get(AI_MATKEY_BASE_COLOR, baseColor) == AI_SUCCESS) {
+			material.baseColor = { baseColor.r, baseColor.g, baseColor.b };
+		}
 		material.transparent = am == "BLEND";
 		material.alphaCutout = am == "MASK";
 		material.alphaFromMaps = false;
@@ -763,11 +854,7 @@ void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, const st
 		meshName += meshObject.nodeName;
 	}
 	readMaterialData(meshObject.material, scene->mMaterials[assimpMesh->mMaterialIndex], directory, atlasStem, meshName);
-	int tangentUv = 0;
-	if (const auto* nrm = meshObject.material.tryGetTexture(SFE::NORMALS)) {
-		tangentUv = nrm->uvSet;
-	}
-	SFE::MeshUtils::generateTangents(&meshObject.mesh, tangentUv);
+	// Tangents come later, in finishMeshes: they need nothing but the mesh and take most of a load's time.
 	if (meshObject.material.gltfPbr) {
 		return;
 	}
@@ -802,6 +889,16 @@ void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, const st
 	}
 }
 
+std::vector<std::string> ModelLoader::textureFileCandidates(const std::string& raw, const std::string& directory) {
+	std::string filename = raw;
+	if (const auto pos = raw.find_last_of("/\\"); pos != std::string::npos) {
+		filename = raw.substr(pos + 1);
+	}
+	std::string relative = raw;
+	std::replace(relative.begin(), relative.end(), '\\', '/');
+	return { raw, directory + "/" + filename, directory + "/" + relative, directory + "/textures/" + filename };
+}
+
 std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, const std::string& directory) {
 	std::vector<Texture*> textures;
 	auto* defaultTex = &TextureHandler::instance()->mDefaultTex;
@@ -824,22 +921,11 @@ std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextu
 		if (raw.empty() || raw[0] == '*') {
 			continue;
 		}
-		std::string filename = raw;
-		if (const auto pos = raw.find_last_of("/\\"); pos != std::string::npos) {
-			filename = raw.substr(pos + 1);
-		}
-		std::string relative = raw;
-		std::replace(relative.begin(), relative.end(), '\\', '/');
-
-		Texture* tex = tryLoad(raw);
-		if (!tex) {
-			tex = tryLoad(directory + "/" + filename);
-		}
-		if (!tex) {
-			tex = tryLoad(directory + "/" + relative);
-		}
-		if (!tex) {
-			tex = tryLoad(directory + "/textures/" + filename);
+		Texture* tex = nullptr;
+		for (const auto& candidate : textureFileCandidates(raw, directory)) {
+			if ((tex = tryLoad(candidate))) {
+				break;
+			}
 		}
 		if (tex) {
 			textures.emplace_back(tex);

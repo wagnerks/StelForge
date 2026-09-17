@@ -101,6 +101,11 @@ namespace SFE::Render::RenderPasses {
 			SystemsModule::drawGraphicsSettings(renderDataHandle.graphics);
 		}
 		ImGui::End();
+		ImGui::SetNextWindowSize(ImVec2(340.f, 170.f), ImGuiCond_FirstUseEver);
+		if (ImGui::Begin("Character")) {
+			SystemsModule::characterAppearance();
+		}
+		ImGui::End();
 		ImGui::Render();
 
 		// The frame is built either way, since windows elsewhere call into ImGui every frame and would find no

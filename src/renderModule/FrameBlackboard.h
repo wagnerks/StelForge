@@ -105,7 +105,10 @@ namespace SFE::Render {
 	namespace FrameId {
 		constexpr const char* GBufferFbo = "gbuffer.fbo";
 		constexpr const char* GBufferOutlineFbo = "gbuffer.outlineFbo";
-		constexpr const char* GBufferPosition = "gbuffer.position";
+		// RGBA8: metallic, specular factor, clearcoat, clearcoat roughness; see sfeGBufferMaterial.
+		constexpr const char* GBufferMaterial = "gbuffer.material";
+		// R32F, the depth buffer copied once the G-buffer is complete; see sfeScenePosition.
+		constexpr const char* SceneDepth = "scene.depth";
 		constexpr const char* GBufferNormal = "gbuffer.normal";
 		// Screen-space motion per pixel, in UV: where this pixel was last frame is TexCoords - velocity.
 		constexpr const char* GBufferVelocity = "gbuffer.velocity";

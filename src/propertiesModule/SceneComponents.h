@@ -2,11 +2,21 @@
 
 #include "ComponentSerializer.h"
 
+#include "componentsModule/AudioSourceComponent.h"
 #include "componentsModule/CascadeShadowComponent.h"
+#include "componentsModule/CharacterComponent.h"
+#include "componentsModule/GarbageComponent.h"
+#include "componentsModule/SoundscapeComponent.h"
+#include "componentsModule/GrassComponent.h"
 #include "componentsModule/LightSourceComponent.h"
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "componentsModule/SkyComponent.h"
+#include "componentsModule/TerrainComponent.h"
 #include "componentsModule/TransformComponent.h"
+#include "componentsModule/VegetationComponent.h"
+#include "componentsModule/WaterComponent.h"
+#include "componentsModule/WindComponent.h"
 
 namespace SFE::PropertiesModule {
 #define SCENE_COMPONENT_SERIALIZER(type)												\
@@ -21,6 +31,17 @@ namespace SFE::PropertiesModule {
 	SCENE_COMPONENT_SERIALIZER(LightSourceComponent)
 	SCENE_COMPONENT_SERIALIZER(CascadeShadowComponent)
 	SCENE_COMPONENT_SERIALIZER(MaterialComponent)
+	SCENE_COMPONENT_SERIALIZER(SkyComponent)
+	SCENE_COMPONENT_SERIALIZER(TerrainComponent)
+	SCENE_COMPONENT_SERIALIZER(WaterComponent)
+	SCENE_COMPONENT_SERIALIZER(CharacterComponent)
+	SCENE_COMPONENT_SERIALIZER(VegetationComponent)
+	SCENE_COMPONENT_SERIALIZER(WindComponent)
+	SCENE_COMPONENT_SERIALIZER(GrassComponent)
+	SCENE_COMPONENT_SERIALIZER(AudioSourceComponent)
+	SCENE_COMPONENT_SERIALIZER(GarbageComponent)
+	SCENE_COMPONENT_SERIALIZER(SoundscapeComponent)
+	SCENE_COMPONENT_SERIALIZER(CharacterAppearanceComponent)
 
 #undef SCENE_COMPONENT_SERIALIZER
 }

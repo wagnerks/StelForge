@@ -17,6 +17,8 @@ namespace SFE::SystemsModule {
 		void updateAsync(const std::vector<ecss::SectorId>& entitiesToProcess) override;
 		void debugUpdate(float dt) override;
 		std::vector<Math::Vec3> getAABBOctrees(const FrustumModule::AABB& aabb);
+		// Takes the entities out of every octree they are in; do it before destroying them.
+		void detach(const std::vector<ecss::EntityId>& entities);
 
 		void forEachOctreeInAABB(const FrustumModule::AABB& aabb, std::function<void(SysOcTree&)> func);
 		void forEachOctreePosInAABB(const FrustumModule::AABB& aabb, std::function<void(const Math::Vec3&)> func, bool onlyExisted = false);

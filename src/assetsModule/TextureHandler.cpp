@@ -2,7 +2,14 @@
 
 #include <stb_image.h>
 #include <algorithm>
+#include <array>
+#include <functional>
+#include <memory>
+#include <atomic>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <unordered_map>
 
 #include "AssetsManager.h"
 #include "core/FileSystem.h"
@@ -18,10 +25,203 @@ bool Texture::isValid() const {
 }
 
 namespace {
+	// An image read from its file, with what the loaders learn from its pixels.
+	struct DecodedImage {
+		unsigned char* data = nullptr; // RGBA8, stbi_image_free
+		int width = 0;
+		int height = 0;
+		bool hasAlpha = false;
+		bool hasCutoutAlpha = false;
+		float fgMean = 0.f;
+		// Where the RHI prepares textures on any thread, the texture itself, and no pixels any more.
+		std::unique_ptr<SFE::Render::PreparedTexture> prepared;
+	};
+
+	// A texture loaded from a file: RGBA8 unless asked otherwise, with a full mip chain. Without the levels a
+	// distant character samples one texel of a full size texture per pixel: the armour sparkles, and TAA averages
+	// the sparkle into grey.
+	SFE::Render::TextureDesc fileTextureDesc(const int width, const int height, const SFE::Render::TextureFormat format) {
+		SFE::Render::TextureDesc desc;
+		desc.width = static_cast<uint32_t>(width);
+		desc.height = static_cast<uint32_t>(height);
+		desc.format = format;
+		desc.dimension = SFE::Render::TextureDimension::Tex2D;
+		desc.mipLevels = SFE::Render::mipLevelsFor(desc.width, desc.height);
+		return desc;
+	}
+
+	// Repeating, trilinear and anisotropic.
+	SFE::Render::SamplerDesc fileSamplerDesc() {
+		SFE::Render::SamplerDesc samplerDesc;
+		samplerDesc.minFilter = SFE::Render::FilterMode::LinearMipmapLinear;
+		samplerDesc.magFilter = SFE::Render::FilterMode::Linear;
+		samplerDesc.addressU = SFE::Render::AddressMode::Repeat;
+		samplerDesc.addressV = SFE::Render::AddressMode::Repeat;
+		samplerDesc.addressW = SFE::Render::AddressMode::Repeat;
+		// Without it a surface seen at a glancing angle picks the mip for the axis it is stretched along and
+		// loses the detail on the other one, which looks like a smeared, low resolution texture. Both backends
+		// clamp this to what the device allows. It is also the one piece of texture filtering the two implement
+		// differently, so the frame comparison shows about 6% of pixels differing at the horizon rather than 1%.
+		samplerDesc.maxAnisotropy = 16.f;
+		return samplerDesc;
+	}
+
+	// The texture with its whole chain uploaded at once, on whatever thread calls it; see RenderHardwareInterface::prepareTexture.
+	std::unique_ptr<SFE::Render::PreparedTexture> prepareWithMips(const SFE::Render::TextureDesc& desc, const unsigned char* data) {
+		const auto chain = AssetsModule::TextureHandler::buildMipChain(data, static_cast<int>(desc.width), static_cast<int>(desc.height));
+		std::vector<const void*> levels{ data };
+		for (const auto& level : chain) {
+			levels.push_back(level.data());
+		}
+		return SFE::Engine::instance()->rhi()->prepareTexture(desc, levels);
+	}
+
+	// Whether it is flipped is stb's flag for the calling thread.
+	DecodedImage decodeImage(const std::string& path) {
+		DecodedImage image;
+		int channels = 0;
+		image.data = stbi_load(SFE::FileSystem::resolve(path).string().c_str(), &image.width, &image.height, &channels, 4);
+		if (!image.data) {
+			return image;
+		}
+		const int n = image.width * image.height;
+		double fgSum = 0.0;
+		int fgCount = 0;
+		int partialAlpha = 0;
+		for (int i = 0; i < n; ++i) {
+			const unsigned char* px = image.data + i * 4;
+			if (px[3] < 250) {
+				image.hasAlpha = true;
+			}
+			if (px[3] > 8 && px[3] < 250) {
+				++partialAlpha;
+			}
+			const float m = (std::max)(px[0], (std::max)(px[1], px[2])) / 255.f;
+			if (m > 0.04f) {
+				fgSum += m;
+				++fgCount;
+			}
+		}
+		image.hasCutoutAlpha = partialAlpha > static_cast<int>(n * 0.015);
+		image.fgMean = fgCount > 0 ? static_cast<float>(fgSum / static_cast<double>(fgCount)) : 0.f;
+		return image;
+	}
+
+	// Unflipped images predecode read ahead, waiting for loadTexture to take them.
+	std::mutex gPredecodedMutex;
+	std::unordered_map<std::string, DecodedImage> gPredecoded;
+}
+
+namespace {
+	// Runs fn(i) for i in [0, count) on threads of their own. stb's flip flag is per thread from the first image
+	// on, and these never read a flipped one; the calling thread's flag is left as it was.
+	void forEachOnWorkers(const size_t count, const std::function<void(size_t)>& fn) {
+		std::atomic<size_t> next{ 0 };
+		std::vector<std::jthread> workers((std::min)(count, static_cast<size_t>((std::max)(1u, std::thread::hardware_concurrency()))));
+		for (auto& worker : workers) {
+			worker = std::jthread([&] {
+				stbi_set_flip_vertically_on_load_thread(0);
+				for (size_t i = next++; i < count; i = next++) {
+					fn(i);
+				}
+			});
+		}
+	}
+}
+
+void TextureHandler::predecode(const std::vector<std::string>& paths) {
+	std::vector<std::string> pending;
+	{
+		std::lock_guard lock(gPredecodedMutex);
+		for (const auto& path : paths) {
+			if (!AssetsManager::instance()->getAsset<Texture>(path) && !gPredecoded.contains(path)
+				&& std::find(pending.begin(), pending.end(), path) == pending.end()) {
+				pending.push_back(path);
+			}
+		}
+	}
+	forEachOnWorkers(pending.size(), [&](const size_t i) {
+		auto image = decodeImage(pending[i]);
+		if (!image.data) {
+			return;
+		}
+		if (SFE::Engine::instance()->rhi()->preparesTextures()) {
+			image.prepared = prepareWithMips(fileTextureDesc(image.width, image.height, SFE::Render::TextureFormat::RGBA8), image.data);
+			if (image.prepared) {
+				stbi_image_free(image.data);
+				image.data = nullptr;
+			}
+		}
+		std::lock_guard lock(gPredecodedMutex);
+		gPredecoded.emplace(pending[i], std::move(image));
+	});
+}
+
+Texture* TextureHandler::loadTextureArray(const std::string& name, const std::vector<std::string>& paths) {
+	if (auto* texture = AssetsManager::instance()->getAsset<Texture>(name)) {
+		return texture;
+	}
+	std::vector<DecodedImage> images(paths.size());
+	std::vector<std::vector<std::vector<unsigned char>>> chains(paths.size());
+	forEachOnWorkers(paths.size(), [&](const size_t i) {
+		images[i] = decodeImage(paths[i]);
+		chains[i] = buildMipChain(images[i].data, images[i].width, images[i].height);
+	});
+	const auto releasePixels = [&] {
+		for (auto& image : images) {
+			if (image.data) {
+				stbi_image_free(image.data);
+			}
+		}
+	};
+	for (size_t i = 0; i < images.size(); ++i) {
+		if (!images[i].data || images[i].width != images.front().width || images[i].height != images.front().height) {
+			SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::texture array %s: %s is missing or not the size of the first layer", name.c_str(), paths[i].c_str());
+			releasePixels();
+			return &TextureHandler::instance()->mDefaultTex;
+		}
+	}
+
+	auto desc = fileTextureDesc(images.front().width, images.front().height, SFE::Render::TextureFormat::RGBA8);
+	desc.dimension = SFE::Render::TextureDimension::Array;
+	desc.depth = static_cast<uint32_t>(images.size());
+	desc.arrayLayers = desc.depth;
+	auto* rhi = SFE::Engine::instance()->rhi();
+	auto* texture = AssetsManager::instance()->createAsset<Texture>(name);
+	texture->texture = rhi->createTexture(desc, nullptr);
+	for (uint32_t layer = 0; layer < desc.depth; ++layer) {
+		rhi->updateTexture(texture->texture, 0, 0, desc.width, desc.height, desc.format, images[layer].data, 0, layer);
+		for (uint32_t level = 1; level < desc.mipLevels && level <= chains[layer].size(); ++level) {
+			rhi->updateTexture(texture->texture, 0, 0, (std::max)(1u, desc.width >> level), (std::max)(1u, desc.height >> level), desc.format,
+				chains[layer][level - 1].data(), level, layer);
+		}
+	}
+	releasePixels();
+	texture->sampler = rhi->createSampler(fileSamplerDesc());
+	return texture;
+}
+
+void TextureHandler::dropPredecoded() {
+	std::lock_guard lock(gPredecodedMutex);
+	for (auto& [path, image] : gPredecoded) {
+		if (image.data) {
+			stbi_image_free(image.data);
+		}
+	}
+	gPredecoded.clear();
+}
+
+namespace {
 	// The whole chain, ours rather than the driver's. createTexture is given no pixels on purpose: with data it
 	// would build the levels itself, and that is the part the two backends disagree on.
 	SFE::Render::TextureHandle createWithMips(const SFE::Render::TextureDesc& desc, const unsigned char* data) {
 		auto* rhi = SFE::Engine::instance()->rhi();
+		// One upload for every level, where the RHI can: a texture and then each level after it is a wait apiece.
+		if (data && rhi->preparesTextures()) {
+			if (auto prepared = prepareWithMips(desc, data)) {
+				return rhi->adoptTexture(std::move(prepared));
+			}
+		}
 		const auto tex = rhi->createTexture(desc, nullptr);
 		if (!tex || !data) {
 			return tex;
@@ -41,6 +241,50 @@ std::vector<std::vector<unsigned char>> TextureHandler::buildMipChain(const unsi
 	std::vector<std::vector<unsigned char>> levels;
 	if (!rgba || width <= 0 || height <= 0) {
 		return levels;
+	}
+	// A cut-out's coverage: the share of texels at or over the alpha test's 0.5. Averaging thins it level by level --
+	// a pine needle a few texels wide is under the threshold after two -- until a tree far away is bare twigs. So
+	// each level's alpha is scaled up until it covers as much as the image does, as the alpha test will see it.
+	const auto histogram = [](const unsigned char* pixels, const size_t bytes) {
+		std::array<size_t, 256> counts{};
+		for (size_t i = 3; i < bytes; i += 4) {
+			++counts[pixels[i]];
+		}
+		return counts;
+	};
+	const auto keepCoverage = [&](std::vector<unsigned char>& pixels, float target) {
+		const auto counts = histogram(pixels.data(), pixels.size());
+		const size_t want = static_cast<size_t>(target * static_cast<float>(pixels.size() / 4));
+		// The lowest alpha that, lifted to 0.5, covers no more than wanted.
+		size_t covered = 0;
+		int threshold = 128;
+		for (int a = 255; a > 0; --a) {
+			if (covered + counts[a] > want) {
+				break;
+			}
+			covered += counts[a];
+			threshold = a;
+		}
+		if (threshold >= 128) {
+			return;
+		}
+		const float scale = 128.f / static_cast<float>(threshold);
+		for (size_t i = 3; i < pixels.size(); i += 4) {
+			pixels[i] = static_cast<unsigned char>((std::min)(255.f, static_cast<float>(pixels[i]) * scale + 0.5f));
+		}
+	};
+	float coverage = 0.f;
+	{
+		const auto counts = histogram(rgba, static_cast<size_t>(width) * height * 4);
+		size_t over = 0;
+		for (int a = 128; a < 256; ++a) {
+			over += counts[a];
+		}
+		const size_t texels = static_cast<size_t>(width) * height;
+		// Only an image with a real cut-out: at least 1% of it out, and something in.
+		if (texels - over > texels / 100 && over > 0) {
+			coverage = static_cast<float>(over) / static_cast<float>(texels);
+		}
 	}
 	const unsigned char* src = rgba;
 	int sw = width;
@@ -68,6 +312,9 @@ std::vector<std::vector<unsigned char>> TextureHandler::buildMipChain(const unsi
 				}
 			}
 		}
+		if (coverage > 0.f) {
+			keepCoverage(level, coverage);
+		}
 		levels.push_back(std::move(level));
 		src = levels.back().data();
 		sw = dw;
@@ -82,75 +329,66 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 		return texture;
 	}
 
-	stbi_set_flip_vertically_on_load(flip);
-
-	int texWidth, texHeight, nrChannels;
-	const auto resolved = SFE::FileSystem::resolve(path).string();
-	auto data = stbi_load(resolved.c_str(), &texWidth, &texHeight, &nrChannels, 4);
-	if (!data) {
+	DecodedImage image;
+	bool predecoded = false;
+	// Predecoded images are unflipped RGBA8, and a prepared texture is adopted on the device thread only.
+	if (!flip && format == SFE::Render::TextureFormat::RGBA8 && SFE::Engine::isMainThread()) {
+		std::lock_guard lock(gPredecodedMutex);
+		if (const auto it = gPredecoded.find(path); it != gPredecoded.end()) {
+			image = std::move(it->second);
+			gPredecoded.erase(it);
+			predecoded = true;
+		}
+	}
+	if (!predecoded) {
+		stbi_set_flip_vertically_on_load(flip);
+		image = decodeImage(path);
+	}
+	const auto texWidth = image.width;
+	const auto texHeight = image.height;
+	const auto data = image.data;
+	if (!data && !image.prepared) {
 		SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
-		stbi_image_free(data);
 		return &TextureHandler::instance()->mDefaultTex;
 	}
 
 	texture = AssetsManager::instance()->createAsset<Texture>(path);
-	{
-		const int n = texWidth * texHeight;
-		double fgSum = 0.0;
-		int fgCount = 0;
-		int partialAlpha = 0;
-		for (int i = 0; i < n; ++i) {
-			const unsigned char* px = data + i * 4;
-			if (px[3] < 250) {
-				texture->hasAlpha = true;
-			}
-			if (px[3] > 8 && px[3] < 250) {
-				++partialAlpha;
-			}
-			const float m = (std::max)(px[0], (std::max)(px[1], px[2])) / 255.f;
-			if (m > 0.04f) {
-				fgSum += m;
-				++fgCount;
-			}
-		}
-		texture->hasCutoutAlpha = partialAlpha > static_cast<int>(n * 0.015);
-		texture->fgMean = fgCount > 0 ? static_cast<float>(fgSum / static_cast<double>(fgCount)) : 0.f;
+	texture->hasAlpha = image.hasAlpha;
+	texture->hasCutoutAlpha = image.hasCutoutAlpha;
+	texture->fgMean = image.fgMean;
+	const auto desc = fileTextureDesc(texWidth, texHeight, format);
+
+	const auto samplerDesc = fileSamplerDesc();
+
+
+	if (image.prepared) {
+		texture->texture = SFE::Engine::instance()->rhi()->adoptTexture(std::move(image.prepared));
+		texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
 	}
-	SFE::Render::TextureDesc desc;
-	desc.width = static_cast<uint32_t>(texWidth);
-	desc.height = static_cast<uint32_t>(texHeight);
-	desc.format = format;
-	desc.dimension = SFE::Render::TextureDimension::Tex2D;
-	// Without these a distant character samples one texel of a full size texture per pixel: the armour
-	// sparkles, and TAA averages the sparkle into grey.
-	desc.mipLevels = SFE::Render::mipLevelsFor(desc.width, desc.height);
-
-	SFE::Render::SamplerDesc samplerDesc;
-	samplerDesc.minFilter = SFE::Render::FilterMode::LinearMipmapLinear;
-	samplerDesc.magFilter = SFE::Render::FilterMode::Linear;
-	samplerDesc.addressU = SFE::Render::AddressMode::Repeat;
-	samplerDesc.addressV = SFE::Render::AddressMode::Repeat;
-	samplerDesc.addressW = SFE::Render::AddressMode::Repeat;
-	// Without it a surface seen at a glancing angle picks the mip for the axis it is stretched along and
-	// loses the detail on the other one, which looks like a smeared, low resolution texture. Both backends
-	// clamp this to what the device allows. It is also the one piece of texture filtering the two implement
-	// differently, so the frame comparison shows about 6% of pixels differing at the horizon rather than 1%.
-	samplerDesc.maxAnisotropy = 16.f;
-
-
-	if (SFE::Engine::isMainThread()) {
+	else if (SFE::Engine::isMainThread()) {
 		texture->texture = createWithMips(desc, data);
 		texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
 		stbi_image_free(data);
 	}
 	else if (SFE::Render::activeGraphicsBackend() != SFE::Render::GraphicsBackend::OpenGL) {
-		// Vulkan resources are created on the main thread, the way MeshVaoRegistry uploads meshes: creating a
-		// texture submits an upload to the queue the frame submits to, and the resource pools are not synchronised.
-		// The task frees the pixels, so leaving the wait at shutdown cannot free them under it.
-		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([texture, desc, data, samplerDesc]() {
-			texture->texture = createWithMips(desc, data);
-			texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
+		// The texture is made and uploaded right here; only turning it into a handle, which touches the resource
+		// tables the frame reads, waits for the main thread.
+		// Where the RHI cannot, all of it happens there. The task owns the pixels or the prepared texture, so leaving
+		// the wait at shutdown cannot free them under it.
+		auto* prepared = SFE::Engine::instance()->rhi()->preparesTextures() ? prepareWithMips(desc, data).release() : nullptr;
+		if (prepared) {
 			stbi_image_free(data);
+		}
+		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([texture, desc, data, prepared, samplerDesc]() {
+			auto* rhi = SFE::Engine::instance()->rhi();
+			if (prepared) {
+				texture->texture = rhi->adoptTexture(std::unique_ptr<SFE::Render::PreparedTexture>(prepared));
+			}
+			else {
+				texture->texture = createWithMips(desc, data);
+				stbi_image_free(data);
+			}
+			texture->sampler = rhi->createSampler(samplerDesc);
 		});
 		if (fut.valid()) {
 			while (fut.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
@@ -158,6 +396,9 @@ Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Re
 					break;
 				}
 			}
+		}
+		else if (prepared) {
+			delete prepared;
 		}
 		else {
 			stbi_image_free(data);

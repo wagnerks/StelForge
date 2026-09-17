@@ -6,6 +6,7 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
+#include "renderModule/Atmosphere.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/RenderSystem.h"
 
@@ -80,6 +81,7 @@ void VolumetricPass::init(SystemsModule::RenderData&) {
 	SFE::Render::DescriptorSetLayoutDesc marchLayout;
 	marchLayout.bindings.emplace_back(0, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	marchLayout.bindings.emplace_back(8, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
+	marchLayout.bindings.emplace_back(21, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	marchLayout.bindings.emplace_back(5, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
 	marchLayout.bindings.emplace_back(11, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
 	marchLayout.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
@@ -102,7 +104,7 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 	auto* rhi = Engine::instance()->rhi();
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(SFE::Render::FrameId::Final);
-	const auto pos = frame.texture(SFE::Render::FrameId::GBufferPosition);
+	const auto pos = frame.texture(SFE::Render::FrameId::SceneDepth);
 	const auto shadow = frame.texture(SFE::Render::FrameId::ShadowCsm);
 	if (!renderDataHandle.graphics.volumetric) {
 		return;
@@ -119,6 +121,10 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 	mParams.anisotropy = renderDataHandle.graphics.volumetricAnisotropy;
 	mParams.intensity = renderDataHandle.graphics.volumetricIntensity;
 	mParams.maxDistance = renderDataHandle.graphics.volumetricDistance;
+	{
+		SFE::Render::Atmosphere::SkyParams sky;
+		mParams.cloudCoverage = SFE::Render::Atmosphere::skyParams(renderDataHandle, sky) ? sky.toSun[3] : 0.f;
+	}
 	{
 		const auto& screen = Engine::instance()->getWindow()->getScreenData();
 		mParams.resX = screen.renderW > 0 ? static_cast<float>(screen.renderW) : 1.f;
@@ -142,7 +148,7 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		SFE::Render::WriteDescriptor w{};
 		w.set = mMarchSet;
 		w.binding = 0;
-		w.images.push_back({ pos, frame.sampler(SFE::Render::FrameId::GBufferPosition) ? frame.sampler(SFE::Render::FrameId::GBufferPosition) : mNearest });
+		w.images.push_back({ pos, mNearest });
 		marchWrites.push_back(std::move(w));
 	}
 	if (shadow) {
@@ -150,6 +156,13 @@ void VolumetricPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Re
 		w.set = mMarchSet;
 		w.binding = 8;
 		w.images.push_back({ shadow, frame.sampler(SFE::Render::FrameId::ShadowCsm) });
+		marchWrites.push_back(std::move(w));
+	}
+	if (const auto clouds = SFE::Render::Atmosphere::cloudTexture(); clouds.texture) {
+		SFE::Render::WriteDescriptor w{};
+		w.set = mMarchSet;
+		w.binding = 21;
+		w.images.push_back({ clouds.texture, clouds.sampler });
 		marchWrites.push_back(std::move(w));
 	}
 	if (renderDataHandle.cameraMatricesUBO) {

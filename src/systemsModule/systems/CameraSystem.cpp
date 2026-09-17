@@ -44,7 +44,7 @@ namespace SFE::SystemsModule {
 	void CameraSystem::update(float_t dt) {
 		// A capture holds the scene still, and its window is visible and takes focus: keys typed into another
 		// window while it opens would fly the camera and make the frame depend on the user.
-		if (Engine::instance()->capturingFrame()) {
+		if (Engine::instance()->capturingFrame() || !userControl()) {
 			return;
 		}
 		auto cam = getCurrentCamera();
@@ -72,6 +72,28 @@ namespace SFE::SystemsModule {
 		if (keyDown(CoreModule::InputKey::KEY_LEFT_SHIFT)) {
 			processKeyboard(cam, BOTTOM, dt);
 		}
+	}
+
+	void CameraSystem::placeCamera(const Math::Vec3& pos, const Math::Vec3& rotate) {
+		const auto camera = getCurrentCamera();
+		Math::Mat4 viewMatrix{};
+		{
+			auto tc = ECSHandler::registry().pinComponent<TransformComponent>(camera);
+			if (!tc) {
+				return;
+			}
+			tc->setPos(pos);
+			tc->setRotate(rotate);
+			tc->reloadTransform();
+			viewMatrix = tc->getViewMatrix();
+			// The renderer draws from the copy this publishes. Left to the transform worker it lands this frame or the
+			// next, and whatever the camera follows, placed the same frame, would shake against it.
+			TasksManager::instance()->notify({ camera, TRAHSFORM_RELOADED, tc.get() });
+		}
+		if (auto cameraComp = ECSHandler::registry().pinComponent<CameraComponent>(camera)) {
+			cameraComp->updateFrustum(viewMatrix);
+		}
+		TasksManager::instance()->notify({ camera, CAMERA_UPDATED });
 	}
 
 	void CameraSystem::setCurrentCamera(ecss::EntityId camera) {
@@ -211,7 +233,7 @@ namespace SFE::SystemsModule {
 
 
 	void CameraSystem::processMouseMovement(float xoffset, float yoffset, bool constrainPitch) {
-		if (!processMouse || Engine::instance()->capturingFrame()) {
+		if (!processMouse || Engine::instance()->capturingFrame() || !userControl()) {
 			return;
 		}
 		xoffset *= mouseSensitivity;
@@ -243,7 +265,7 @@ namespace SFE::SystemsModule {
 	}
 
 	void CameraSystem::processMouseScroll(float yoffset) {
-		if (Engine::instance()->capturingFrame()) {
+		if (Engine::instance()->capturingFrame() || !userControl()) {
 			return;
 		}
 		const auto camera = getCurrentCamera();

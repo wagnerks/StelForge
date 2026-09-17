@@ -46,6 +46,8 @@ namespace SFE::Render {
 
 		// The output of culling one list for one view, drawn from the same frame's command list.
 		struct View {
+			// Levels of detail coarser than the size on screen picks, for a view whose image is seen blurred or small.
+			uint32_t lodBias = 0;
 			BufferHandle visible;   // SfeInstance records, bound at 3 by the draw
 			BufferHandle commands;  // one DrawIndexedArgs per batch (glass: per sorted instance)
 			BufferHandle keys;      // glass only: the sort keys
@@ -88,6 +90,13 @@ namespace SFE::Render {
 		// Visible when the bounds touch any sphere (xyz centre, w radius). At most kMaxSpheres.
 		bool cullSpheres(CommandListHandle cmd, List list, View& view, const std::vector<Math::Vec4>& spheres);
 
+		// A shadow cascade's casters: those inside `volume`, the cascade's own, and when `camera` is given only those
+		// whose shadow, cast along `lightTravel`, can reach inside the camera's frustum -- for a cascade redrawn every
+		// frame, whose map is never read from another view. `texelsPerMetre` is the cascade's resolution: casters
+		// smaller than a texel are left out, and levels of detail finer than a texel are not drawn.
+		bool cullShadowCasters(CommandListHandle cmd, View& view, const FrustumModule::Frustum& volume, const FrustumModule::Frustum* camera,
+			const Math::Vec3& lightTravel, float texelsPerMetre);
+
 		// Occlusion culling in two phases, for a view that renders its own depth. Phase one keeps what passed the
 		// occlusion test last frame; draw it with draw(..., false). Then build the depth pyramid from that depth,
 		// and phase two tests everything else against it; draw that with draw(..., true) into the same targets.
@@ -107,6 +116,9 @@ namespace SFE::Render {
 		const std::vector<DrawGroup>& groups(List list) const { return mLists[static_cast<size_t>(list)].groups; }
 		// The largest entity id any instance has referred to: the culls read its transform.
 		ecss::EntityId maxEntity() const { return mMaxEntity; }
+		// The entities the last update gave instances, sorted: their transforms have to be on the GPU before this
+		// frame draws them, or a reused id draws with whatever its slot held.
+		const std::vector<ecss::EntityId>& added() const { return mAdded; }
 
 		// For tests: every entity's references lead to instances it owns, and the ownership counters match the
 		// layout. Between updates only.
@@ -229,6 +241,7 @@ namespace SFE::Render {
 		std::atomic<bool> mDirty{ true };
 		std::array<ListData, static_cast<size_t>(List::Count)> mLists;
 		std::unordered_map<ecss::EntityId, std::vector<InstanceRef>> mEntityRefs;
+		std::vector<ecss::EntityId> mAdded;
 		ecss::EntityId mMaxEntity = 0;
 		uint64_t mCompactions = 0;
 		// The table instances hold references in, for removals; set by update.

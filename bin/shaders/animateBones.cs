@@ -17,8 +17,13 @@ struct BoneDesc {
     int boneId;
     float radius;    // the farthest vertex weighted to the bone, in its bind space
     uint boundsMask; // the pose boxes of the meshes it moves
+    // Ticks between a channel's keys when every gap is the same, else 0.
+    float posStep;
+    float rotStep;
+    float sclStep;
     float _p0;
     float _p1;
+    float _p2;
 };
 
 struct Vec3Key {
@@ -46,6 +51,7 @@ layout(SFE_SET(0, 9), std430) buffer PrevBones { mat4 prevBones[]; };
 
 const uint kPlaying = 1u;
 const uint kLoop = 2u;
+const uint kBlending = 4u;
 
 // Written only when the character's animation or armature changes.
 struct AnimRecord {
@@ -58,6 +64,15 @@ struct AnimRecord {
     float ticksPerSecond;
     float duration;
     float stoppedTime; // the tick shown while not playing
+    // The clip being faded out of, over the same armature; fromFlags has kBlending while there is one.
+    uint fromDescOffset;
+    uint fromFlags;
+    float fromStart;
+    float fromTicksPerSecond;
+    float fromDuration;
+    float fromStoppedTime;
+    float blendStart;
+    float blendDuration;
 };
 
 layout(SFE_SET(0, 25), std430) readonly buffer AnimRecords {
@@ -116,7 +131,16 @@ int keyIndex(int lo, int cnt) {
     return lo == cnt ? cnt - 2 : lo - 1;
 }
 
-int findKey(float t, int off, int cnt) {
+// With evenly spaced keys (step > 0) the key is worked out directly: a search's loop of buffer reads cost the pass
+// more than all its matrix work. The search is kept for clips whose keys are not evenly spaced.
+int keyForStep(float t, float firstTime, float step, int cnt) {
+    return clamp(int(floor((t - firstTime) / step)), 0, cnt - 2);
+}
+
+int findKey(float t, int off, int cnt, float step) {
+    if (step > 0.0) {
+        return keyForStep(t, posKeys[off].time, step, cnt);
+    }
     int lo = 1, hi = cnt;
     while (lo < hi) {
         int mid = (lo + hi) / 2;
@@ -125,7 +149,10 @@ int findKey(float t, int off, int cnt) {
     return keyIndex(lo, cnt);
 }
 
-int findQuatKey(float t, int off, int cnt) {
+int findQuatKey(float t, int off, int cnt, float step) {
+    if (step > 0.0) {
+        return keyForStep(t, rotKeys[off].time, step, cnt);
+    }
     int lo = 1, hi = cnt;
     while (lo < hi) {
         int mid = (lo + hi) / 2;
@@ -134,7 +161,10 @@ int findQuatKey(float t, int off, int cnt) {
     return keyIndex(lo, cnt);
 }
 
-int findSclKey(float t, int off, int cnt) {
+int findSclKey(float t, int off, int cnt, float step) {
+    if (step > 0.0) {
+        return keyForStep(t, sclKeys[off].time, step, cnt);
+    }
     int lo = 1, hi = cnt;
     while (lo < hi) {
         int mid = (lo + hi) / 2;
@@ -143,14 +173,14 @@ int findSclKey(float t, int off, int cnt) {
     return keyIndex(lo, cnt);
 }
 
-vec3 lerpVec3Keys(int off, int cnt, float t) {
+vec3 lerpVec3Keys(int off, int cnt, float t, float step) {
     if (cnt <= 0) {
         return vec3(0.0);
     }
     if (cnt == 1) {
         return posKeys[off].value;
     }
-    int i = findKey(t, off, cnt);
+    int i = findKey(t, off, cnt, step);
     Vec3Key a = posKeys[off + i];
     Vec3Key b = posKeys[off + i + 1];
     precise float f = (t - a.time) / (b.time - a.time);
@@ -158,14 +188,14 @@ vec3 lerpVec3Keys(int off, int cnt, float t) {
     return v;
 }
 
-vec3 lerpSclKeys(int off, int cnt, float t) {
+vec3 lerpSclKeys(int off, int cnt, float t, float step) {
     if (cnt <= 0) {
         return vec3(1.0);
     }
     if (cnt == 1) {
         return sclKeys[off].value;
     }
-    int i = findSclKey(t, off, cnt);
+    int i = findSclKey(t, off, cnt, step);
     Vec3Key a = sclKeys[off + i];
     Vec3Key b = sclKeys[off + i + 1];
     precise float f = (t - a.time) / (b.time - a.time);
@@ -184,7 +214,7 @@ vec4 nlerpQuat(vec4 q0, vec4 q1, float inFraction) {
     return q;
 }
 
-vec4 lerpQuatKeys(int off, int cnt, float t) {
+vec4 lerpQuatKeys(int off, int cnt, float t, float step) {
     if (cnt <= 0) {
         return vec4(0.0, 0.0, 0.0, 1.0);
     }
@@ -193,7 +223,7 @@ vec4 lerpQuatKeys(int off, int cnt, float t) {
         precise vec4 qn = q / sqrt(((q.x * q.x + q.y * q.y) + q.z * q.z) + q.w * q.w);
         return qn;
     }
-    int i = findQuatKey(t, off, cnt);
+    int i = findQuatKey(t, off, cnt, step);
     QuatKey a = rotKeys[off + i];
     QuatKey b = rotKeys[off + i + 1];
     precise float f = (t - a.time) / (b.time - a.time);
@@ -201,19 +231,58 @@ vec4 lerpQuatKeys(int off, int cnt, float t) {
 }
 
 // AnimationComponent::time() on the CPU is the same formula.
-float animTime(AnimRecord r) {
-    if ((r.flags & kPlaying) == 0u) {
-        return r.stoppedTime;
+float clipTime(uint flags, float start, float ticksPerSecond, float duration, float stoppedTime) {
+    if ((flags & kPlaying) == 0u) {
+        return stoppedTime;
     }
-    precise float t = (clock.now - r.start) * r.ticksPerSecond;
-    if (r.duration <= 0.0) {
+    precise float t = (clock.now - start) * ticksPerSecond;
+    if (duration <= 0.0) {
         return t;
     }
-    if ((r.flags & kLoop) != 0u) {
-        precise float looped = t - r.duration * floor(t / r.duration);
+    if ((flags & kLoop) != 0u) {
+        precise float looped = t - duration * floor(t / duration);
         return looped;
     }
-    return min(t, r.duration);
+    return min(t, duration);
+}
+
+float animTime(AnimRecord r) {
+    return clipTime(r.flags, r.start, r.ticksPerSecond, r.duration, r.stoppedTime);
+}
+
+// The rotation part of a matrix without scale or shear, as a quaternion.
+vec4 matToQuat(mat3 m) {
+    float trace = m[0][0] + m[1][1] + m[2][2];
+    vec4 q;
+    if (trace > 0.0) {
+        float s = 0.5 / sqrt(trace + 1.0);
+        q = vec4((m[1][2] - m[2][1]) * s, (m[2][0] - m[0][2]) * s, (m[0][1] - m[1][0]) * s, 0.25 / s);
+    } else if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) {
+        float s = 2.0 * sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]);
+        q = vec4(0.25 * s, (m[0][1] + m[1][0]) / s, (m[2][0] + m[0][2]) / s, (m[1][2] - m[2][1]) / s);
+    } else if (m[1][1] > m[2][2]) {
+        float s = 2.0 * sqrt(1.0 - m[0][0] + m[1][1] - m[2][2]);
+        q = vec4((m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s, (m[2][0] - m[0][2]) / s);
+    } else {
+        float s = 2.0 * sqrt(1.0 - m[0][0] - m[1][1] + m[2][2]);
+        q = vec4((m[2][0] + m[0][2]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s, (m[0][1] - m[1][0]) / s);
+    }
+    return normalize(q);
+}
+
+// A bone's local position, rotation and scale at `time`: its keys where it has them, its rest pose elsewhere.
+void samplePose(BoneDesc b, float time, out vec3 pos, out vec4 rot, out vec3 scl) {
+    mat4 rest = b.restLocal;
+    scl = vec3(length(rest[0].xyz), length(rest[1].xyz), length(rest[2].xyz));
+    pos = b.posCnt > 0 ? lerpVec3Keys(b.posOff, b.posCnt, time, b.posStep) : rest[3].xyz;
+    rot = b.rotCnt > 0 ? lerpQuatKeys(b.rotOff, b.rotCnt, time, b.rotStep)
+        : matToQuat(mat3(rest[0].xyz / max(scl.x, 1e-8), rest[1].xyz / max(scl.y, 1e-8), rest[2].xyz / max(scl.z, 1e-8)));
+    if (b.sclCnt > 0) {
+        scl = lerpSclKeys(b.sclOff, b.sclCnt, time, b.sclStep);
+    }
+    if (scl.x < 1e-8) scl.x = 1.0;
+    if (scl.y < 1e-8) scl.y = 1.0;
+    if (scl.z < 1e-8) scl.z = 1.0;
 }
 
 void main() {
@@ -223,6 +292,13 @@ void main() {
     }
     AnimRecord inst = records[index];
     float time = animTime(inst);
+    // How far into the current clip a crossfade has come; 1 when there is none, and then the blend is skipped.
+    float blend = 1.0;
+    float fromTime = 0.0;
+    if ((inst.fromFlags & kBlending) != 0u && inst.blendDuration > 0.0) {
+        blend = clamp((clock.now - inst.blendStart) / inst.blendDuration, 0.0, 1.0);
+        fromTime = clipTime(inst.fromFlags, inst.fromStart, inst.fromTicksPerSecond, inst.fromDuration, inst.fromStoppedTime);
+    }
     int row = int(inst.boneOffset);
     int desc = int(inst.descOffset);
     // The pose bounds of the entity's skinned meshes, in the matrices before its bones, grown below from every posed
@@ -236,17 +312,24 @@ void main() {
         BoneDesc b = bones[desc + bi];
 
         precise mat4 local = b.restLocal;
-        if (b.posCnt > 0 || b.rotCnt > 0 || b.sclCnt > 0) {
+        if (blend < 1.0) {
+            vec3 pos, scl, fromPos, fromScl;
+            vec4 rot, fromRot;
+            samplePose(b, time, pos, rot, scl);
+            samplePose(bones[inst.fromDescOffset + bi], fromTime, fromPos, fromRot, fromScl);
+            local = localTRS(mix(fromPos, pos, blend), nlerpQuat(fromRot, rot, blend), mix(fromScl, scl, blend));
+        }
+        else if (b.posCnt > 0 || b.rotCnt > 0 || b.sclCnt > 0) {
             vec3 pos = b.restLocal[3].xyz;
             precise vec3 scl = sqrt(vec3(dot(b.restLocal[0].xyz, b.restLocal[0].xyz), dot(b.restLocal[1].xyz, b.restLocal[1].xyz), dot(b.restLocal[2].xyz, b.restLocal[2].xyz)));
             if (b.posCnt > 0) {
-                pos = lerpVec3Keys(b.posOff, b.posCnt, time);
+                pos = lerpVec3Keys(b.posOff, b.posCnt, time, b.posStep);
             }
             if (b.sclCnt > 0) {
-                scl = lerpSclKeys(b.sclOff, b.sclCnt, time);
+                scl = lerpSclKeys(b.sclOff, b.sclCnt, time, b.sclStep);
             }
             if (b.rotCnt > 0) {
-                vec4 rot = lerpQuatKeys(b.rotOff, b.rotCnt, time);
+                vec4 rot = lerpQuatKeys(b.rotOff, b.rotCnt, time, b.rotStep);
                 if (scl.x < 1e-8) scl.x = 1.0;
                 if (scl.y < 1e-8) scl.y = 1.0;
                 if (scl.z < 1e-8) scl.z = 1.0;

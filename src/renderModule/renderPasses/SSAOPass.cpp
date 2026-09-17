@@ -72,6 +72,7 @@ void SSAOPass::init(SystemsModule::RenderData& renderDataHandle) {
 	texLayoutBlurDesc.bindings.emplace_back(0, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutBlurDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutBlurDesc.bindings.emplace_back(2, Render::DescriptorType::UniformBufferDynamic, Render::ShaderStage::Fragment);
+	texLayoutBlurDesc.bindings.emplace_back(3, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Fragment);
 	blurTexSetLayout = rhi->createDescriptorSetLayout(texLayoutBlurDesc);
 	mSlots.resize((std::max)(1u, rhi->framesInFlight()));
 	for (auto& slot : mSlots) {
@@ -121,8 +122,8 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comma
 
 	auto* rhi = Engine::instance()->rhi();
 	auto& slot = mSlots[rhi->frameInFlight() % mSlots.size()];
-	const auto gPos = renderDataHandle.frame.texture(FrameId::GBufferPosition);
-	const auto gPosSamp = renderDataHandle.frame.sampler(FrameId::GBufferPosition);
+	const auto gPos = renderDataHandle.frame.texture(FrameId::SceneDepth);
+	const auto gPosSamp = renderDataHandle.frame.sampler(FrameId::SceneDepth);
 	const auto gNrm = renderDataHandle.frame.texture(FrameId::GBufferNormal);
 	const auto gNrmSamp = renderDataHandle.frame.sampler(FrameId::GBufferNormal);
 	if (slot.position.id != gPos.id || slot.normal.id != gNrm.id) {
@@ -151,7 +152,10 @@ void SSAOPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comma
 
 	if (renderDataHandle.cameraMatricesUBO && slot.camera.id != renderDataHandle.cameraMatricesUBO.id) {
 		slot.camera = renderDataHandle.cameraMatricesUBO;
-		rhi->updateDescriptorSets({ { .set = slot.mainSet, .binding = 5, .buffers{ { renderDataHandle.cameraMatricesUBO } } } });
+		rhi->updateDescriptorSets({
+			{ .set = slot.mainSet, .binding = 5, .buffers{ { renderDataHandle.cameraMatricesUBO } } },
+			{ .set = slot.blurSet, .binding = 3, .buffers{ { renderDataHandle.cameraMatricesUBO } } },
+		});
 	}
 
 	const int w = mSsaoW > 0 ? mSsaoW : (std::max)(1, Engine::instance()->getWindow()->getScreenData().renderW / 2);

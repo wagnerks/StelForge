@@ -28,6 +28,9 @@ namespace SFE {
 	public:
 		const RenderMeshData& get(Mesh<Vertex3D>* mesh);
 		const RenderMeshData& initMesh(Mesh<Vertex3D>* mesh);
+		// All of a model's meshes in one trip to the main thread: from a loader thread, initMesh waits for the main
+		// thread once per mesh, and a terrain of a thousand chunks waited a thousand times.
+		void initMeshes(const std::vector<Mesh<Vertex3D>*>& meshes);
 
 		// Replaced when the buffers grow: fetch per frame, do not cache.
 		Render::BufferHandle vertexBuffer() const { return mVertexBuffer; }
@@ -39,7 +42,8 @@ namespace SFE {
 		size_t meshCount();
 
 	private:
-		void allocate(Mesh<Vertex3D>* mesh, RenderMeshData& data);
+		// `uploadNow` false for a caller that uploads a batch itself.
+		void allocate(Mesh<Vertex3D>* mesh, RenderMeshData& data, bool uploadNow = true);
 		void grow(size_t vertexCapacity, size_t indexCapacity);
 		void upload(const Mesh<Vertex3D>* mesh, const RenderMeshData& data) const;
 

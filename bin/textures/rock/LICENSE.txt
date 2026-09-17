@@ -1,0 +1,8 @@
+Rock materials from FreeStylized (https://freestylized.com), free for commercial and non-commercial use;
+redistributing the textures on their own is not allowed.
+
+cliff_rocks_07 - Cliff Rocks 07 (boulders, shore stones, pebbles)   https://freestylized.com/material/cliff_rocks_07/
+grass_04 - Grass 04 (moss on boulders)   https://freestylized.com/material/grass_04/
+
+<name>_albedo.png is the base colour, <name>_normal.png the OpenGL normal map.
+Packed by scripts/pack_freestylized_textures.py.

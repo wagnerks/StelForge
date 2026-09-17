@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cmath>
 #include "assetsModule/TextureHandler.h"
+#include "core/Engine.h"
+#include "renderModule/Atmosphere.h"
 #include "renderModule/IblBaker.h"
 #include "renderModule/Utils.h"
 #include "systemsModule/systems/RenderSystem.h"
@@ -34,6 +36,7 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	texLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(6, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
@@ -41,6 +44,7 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	texLayoutDesc.bindings.emplace_back(12, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(13, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(14, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(21, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
 	mTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
 
@@ -141,7 +145,17 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	}
 
 	mIbl = {};
-	mIbl = SFE::Render::bakeIbl(rhi);
+	bakeSkyLight(renderDataHandle);
+}
+
+void LightingPass::bakeSkyLight(SystemsModule::RenderData& renderDataHandle) {
+	auto* rhi = Engine::instance()->rhi();
+	if (mIbl.irradiance) {
+		mRetiredIbl.push_back({ mIbl, 0 });
+	}
+	mIbl = SFE::Render::bakeIbl(rhi, renderDataHandle.graphics.sunIntensity);
+	mIblKey = skyLightKey(renderDataHandle);
+	mIblBakedAt = Engine::clockSeconds();
 	if (mIbl.irradiance && mIbl.prefilter && mIbl.brdfLut) {
 		for (auto& slot : mSlots) {
 			rhi->updateDescriptorSets({
@@ -156,8 +170,45 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	}
 }
 
+std::array<float, 5> LightingPass::skyLightKey(const SystemsModule::RenderData& renderDataHandle) {
+	const auto sky = SFE::Render::Atmosphere::sceneSky();
+	if (!sky) {
+		return {};
+	}
+	return { sky->sunElevation, sky->sunAzimuth, sky->cloudCoverage, renderDataHandle.graphics.sunIntensity, 1.f };
+}
+
+void LightingPass::updateSkyLight(SystemsModule::RenderData& renderDataHandle) {
+	auto* rhi = Engine::instance()->rhi();
+	// Maps replaced a few frames ago are no longer named by any frame in flight.
+	for (size_t i = 0; i < mRetiredIbl.size();) {
+		if (++mRetiredIbl[i].second <= rhi->framesInFlight() + 1) {
+			++i;
+			continue;
+		}
+		const auto& maps = mRetiredIbl[i].first;
+		for (const auto texture : { maps.irradiance, maps.prefilter, maps.brdfLut }) {
+			if (texture) {
+				rhi->destroyTexture(texture);
+			}
+		}
+		for (const auto sampler : { maps.irradianceSampler, maps.prefilterSampler, maps.lutSampler }) {
+			if (sampler) {
+				rhi->destroySampler(sampler);
+			}
+		}
+		mRetiredIbl[i] = mRetiredIbl.back();
+		mRetiredIbl.pop_back();
+	}
+	// Baked again when the sun or the sky changed, at most a few times a second while a slider is dragged.
+	if (skyLightKey(renderDataHandle) != mIblKey && Engine::clockSeconds() - mIblBakedAt > 0.3) {
+		bakeSkyLight(renderDataHandle);
+	}
+}
+
 void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	assert(mTexSetInitialized);
+	updateSkyLight(renderDataHandle);
 	FUNCTION_BENCHMARK;
 
 	auto* rhi = Engine::instance()->rhi();
@@ -262,6 +313,13 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	drawData.padLook0 = renderDataHandle.graphics.sssWrap;
 	drawData.padLook1 = renderDataHandle.graphics.sssStrength;
 	drawData.debugTerm = static_cast<float>(Engine::instance()->lightingDebugTerm());
+	drawData.sheenStrength = renderDataHandle.graphics.sheen ? renderDataHandle.graphics.sheenStrength : 0.f;
+	drawData.rimStrength = renderDataHandle.graphics.rimStrength;
+	drawData.taaFrame = renderDataHandle.graphics.taa ? static_cast<float>(renderDataHandle.taaFrame % 4096) : -1.f;
+	{
+		Atmosphere::SkyParams sky;
+		drawData.cloudCoverage = Atmosphere::skyParams(renderDataHandle, sky) ? sky.toSun[3] : 0.f;
+	}
 
 	// Every block every frame: a dynamic binding needs this frame's offset even when its data did not change.
 	static const std::vector<Math::Mat4> noMatrices;
@@ -335,7 +393,8 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		});
 	};
 
-	addImage(0, frame.texture(FrameId::GBufferPosition), frame.sampler(FrameId::GBufferPosition), slotSets.gPos);
+	addImage(0, frame.texture(FrameId::GBufferMaterial), frame.sampler(FrameId::GBufferMaterial), slotSets.gMaterial);
+	addImage(4, frame.texture(FrameId::SceneDepth), frame.sampler(FrameId::SceneDepth), slotSets.sceneDepth);
 	addBuffer(11, blocks.lightMatrices.buffer, slotSets.lightMat, sizeof(Math::Mat4) * CsmFrame::kMaxCascades);
 	addImage(1, frame.texture(FrameId::GBufferNormal), frame.sampler(FrameId::GBufferNormal), slotSets.gNormal);
 	addImage(2, frame.texture(FrameId::GBufferAlbedo), frame.sampler(FrameId::GBufferAlbedo), slotSets.gAlbedo);
@@ -352,6 +411,11 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		addImage(3, ssaoTex, ssaoSampler, slotSets.ssao);
 	}
 
+	{
+		// The cloud layer, for the shadows the clouds lay over the ground.
+		const auto clouds = Atmosphere::cloudTexture();
+		addImage(21, clouds.texture, clouds.sampler, slotSets.clouds);
+	}
 	addBuffer(3, blocks.pointMatrices.buffer, slotSets.pointMat, sizeof(Math::Mat4) * PointShadowFrame::kMaxShadowFaces);
 	addImage(7, frame.texture(FrameId::ShadowPoint), frame.sampler(FrameId::ShadowPoint), slotSets.pointShadow);
 

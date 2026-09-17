@@ -9,7 +9,7 @@ layout(location = 6) flat in uint vMaterial;
 layout(location = 7) in vec4 vClip;
 layout(location = 8) in vec4 vPrevClip;
 
-layout(location = 0) out vec4 gPosition;
+layout(location = 0) out vec4 gMaterial;
 layout(location = 1) out vec4 gNormal;
 layout(location = 2) out vec4 gAlbedoSpec;
 layout(location = 3) out vec2 gVelocity;
@@ -61,16 +61,15 @@ void main() {
         discard;
     }
     vec4 diff = texture(texture_diffuse1, uvDiff);
-    diff.rgb = sfeMaskedAlbedo(texture_diffuse1, uvDiff);
+    diff.rgb = sfeMaskedAlbedo(texture_diffuse1, uvDiff, diff);
 
-    gPosition.rgb = FragPos;
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 
     vec3 geomN = normalize(TBN[2]);
     float sss = 0.0;
     gNormal.xyz = geomN;
 
-    gAlbedoSpec.rgb = pow(diff.rgb, vec3(2.2));
+    gAlbedoSpec.rgb = pow(diff.rgb, vec3(2.2)) * pc.tint;
 
     float roughness = pc.matRoughness;
     if ((maps & 1u) != 0u) {
@@ -88,6 +87,6 @@ void main() {
     specF = min(specF, 0.18);
 
     gAlbedoSpec.a = clamp(sfeFilteredRoughness(geomN, roughness, 1.0), 0.04, 1.0);
-    gPosition.a = sfePackGBufferPbr(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(pc.clearcoat, 0.0, 1.0), clamp(pc.clearcoatRough, 0.04, 1.0));
+    gMaterial = sfeGBufferMaterial(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(pc.clearcoat, 0.0, 1.0), clamp(pc.clearcoatRough, 0.04, 1.0));
     gVelocity = sfeVelocity(vClip, vPrevClip);
 }

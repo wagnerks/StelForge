@@ -4,6 +4,7 @@
 #include <string>
 
 #include "assetsModule/modelModule/Material.h"
+#include "componentsModule/WindComponent.h"
 #include "ecss/Types.h"
 #include "mathModule/Forward.h"
 #include "rhi/RenderHardwareInterface.h"
@@ -13,6 +14,8 @@ namespace SFE::ComponentsModule {
 	inline constexpr const char* DefaultGBufferVS = "shaders/g_buffer.vs";
 	inline constexpr const char* DefaultGBufferFS = "shaders/g_buffer.fs";
 	inline constexpr const char* DefaultGBufferMaskedFS = "shaders/g_buffer_masked.fs";
+	// DefaultGBufferFS without its cut-out path, for a material with nothing to discard; GpuScene picks it.
+	inline constexpr const char* DefaultGBufferSolidFS = "shaders/g_buffer_solid.fs";
 
 	struct MaterialData {
 		int slot = 0;
@@ -47,7 +50,23 @@ namespace SFE::ComponentsModule {
 		float specFactor = 1.f;
 		float clearcoat = 0.f;
 		float clearcoatRough = 0.04f;
+		// Multiplies the albedo; glass takes it as the colour it filters light through.
 		Math::Vec3 tint{ 1.f, 1.f, 1.f };
+		Sway sway = Sway::None;
+		// Not drawn at all: a part of a model switched off, such as a hairstyle nobody wears.
+		bool hidden = false;
+		// Where the texture coordinates fall inside `uv` (u min, v min, u max, v max), the surface takes the
+		// TRIPLANAR_ALBEDO and TRIPLANAR_NORMALS textures instead (the second: TRIPLANAR2_*), projected along the
+		// model's axes, a repeat every `metres`: bark on a trunk, or stone and moss on a rock, whose coordinates only
+		// pick colours out of a palette. `metres` 0 for none.
+		struct Triplanar {
+			float uv[4]{};
+			float metres = 0.f;
+			// The texture's u and v swapped: bark whose grain should run along a log lying down instead of up a trunk.
+			bool rotated = false;
+		};
+		static constexpr size_t kTriplanarLayers = 2;
+		Triplanar triplanar[kTriplanarLayers];
 	};
 
 	inline MaterialComponent fromAssetMaterial(const SFE::Material& src) {
@@ -63,6 +82,7 @@ namespace SFE::ComponentsModule {
 		out.specFactor = src.specFactor;
 		out.clearcoat = src.clearcoat;
 		out.clearcoatRough = src.clearcoatRough;
+		out.tint = src.baseColor;
 		if (src.alphaCutout) {
 			out.fragmentShader = DefaultGBufferMaskedFS;
 		}

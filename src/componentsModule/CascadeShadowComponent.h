@@ -13,7 +13,7 @@ namespace SFE::ComponentsModule {
 	struct ShadowCascade {
 		SFE::FrustumModule::Frustum frustum = {};
 		SFE::MathModule::PerspectiveProjection viewProjection {};
-		float bias = 0.f; // world units; converted to depth units per cascade when uploaded
+		float bias = 0.f; // in texels of this cascade, grown on grazing surfaces; deferred_shading.fs turns it into depth
 		int samples = 64;
 
 		Math::Vec2 zMult = { 1.f,1.f };

@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <unordered_map>
+#include "mathModule/Forward.h"
 #include "rhi/RenderHardwareInterface.h"
 
 namespace SFE {
@@ -10,7 +11,13 @@ namespace SFE {
 		SPECULAR,
 		ROUGHNESS,
 		METALLIC,
-		SUBSURFACE
+		SUBSURFACE,
+		// Textures laid over parts of the surface by where they are rather than by their texture coordinates; see
+		// MaterialComponent::triplanar.
+		TRIPLANAR_ALBEDO,
+		TRIPLANAR_NORMALS,
+		TRIPLANAR2_ALBEDO,
+		TRIPLANAR2_NORMALS
 	};
 
 	struct MaterialTexture {
@@ -47,5 +54,7 @@ namespace SFE {
 		float specFactor = 1.f;
 		float clearcoat = 0.f;
 		float clearcoatRough = 0.04f;
+		// glTF baseColorFactor: multiplies the albedo texture, or is the albedo where there is none.
+		Math::Vec3 baseColor{ 1.f, 1.f, 1.f };
 	};
 }

@@ -85,6 +85,9 @@ namespace SFE {
 		void setFixedDeltaTime(float seconds) { mFixedDeltaTime = seconds; }
 		float fixedDeltaTime() const { return mFixedDeltaTime; }
 		bool proceduralSpheres() const { return mProceduralSpheres; }
+		// A scene file, relative to the content root, loaded instead of the procedural chunks.
+		void setScenePath(std::string path) { mScenePath = std::move(path); }
+		const std::string& scenePath() const { return mScenePath; }
 		bool proceduralRooms() const { return mProceduralRooms; }
 
 	protected:
@@ -116,6 +119,7 @@ namespace SFE {
 		bool mProceduralRooms = false;
 		float mFixedDeltaTime = 0.f;
 		std::string mPassDumpDir;
+		std::string mScenePath;
 
 		CoreModule::Core mCore;
 		

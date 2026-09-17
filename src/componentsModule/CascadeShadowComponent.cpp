@@ -189,13 +189,16 @@ namespace SFE::ComponentsModule {
 			radius = (std::max)(radius, std::sqrt(dx * dx + dy * dy));
 		}
 
+		// Widened before the texel is sized: the map spans res texels, so a margin added after sizing them left the
+		// square 2r wide but starting at cx - 1.15r -- off centre by 0.15r, and the circle the lighting picks the
+		// cascade by cut off ground inside the slice on one side, near the camera, where the next cascade had no
+		// shadow for it.
+		radius *= 1.15f;
 		const float res = mapSize > 1.f ? mapSize : 1024.f;
 		float worldPerTexel = (radius * 2.f) / res;
 		if (worldPerTexel < 1e-6f) {
 			worldPerTexel = 1e-6f;
 		}
-		radius = std::ceil(radius / worldPerTexel) * worldPerTexel;
-		radius *= 1.15f;
 
 		minX = cx - radius;
 		maxX = cx + radius;

@@ -3,7 +3,7 @@
 layout(location = 0) out float FragColor;
 layout(location = 0) in vec2 TexCoords;
 
-layout(SFE_SET(0, 0)) uniform sampler2D gPosition;
+layout(SFE_SET(0, 0)) uniform sampler2D sceneDepth;
 layout(SFE_SET(0, 1)) uniform sampler2D gNormal;
 
 layout(SFE_SET(0, 3), std140) uniform SSAOParams {
@@ -28,19 +28,14 @@ vec2 vogel(int i, float phi) {
     return sfeCosSin(theta) * r;
 }
 
-vec3 toView(vec3 world) {
-    precise vec4 v = matrices.view * vec4(world, 1.0);
-    return v.xyz;
-}
-
 void main() {
-    vec3 worldP = texture(gPosition, TexCoords).rgb;
-    if (dot(worldP, worldP) < 1e-8) {
+    // Straight into view space: through world space and back was two matrix products a tap for nothing.
+    bool sky;
+    precise vec3 p = sfeSceneViewPosition(sceneDepth, TexCoords, matrices.invProjection, sky);
+    if (sky) {
         FragColor = 1.0;
         return;
     }
-
-    precise vec3 p = toView(worldP);
     vec3 n = texture(gNormal, TexCoords).xyz;
     float nLen2 = dot(n, n);
     if (nLen2 > 0.25) {
@@ -71,9 +66,12 @@ void main() {
     vec2 uvRad = min(0.5 * params.sample_rad * invZ * abs(vec2(matrices.projection[0][0], matrices.projection[1][1])), vec2(0.006));
     for (int i = 0; i < SAMPLE_COUNT; ++i) {
         vec2 uvOff = vogel(i, phi) * uvRad;
-        precise vec3 sampleView = toView(texture(gPosition, TexCoords + uvOff).rgb);
-        if (dot(sampleView, sampleView) < 1e-8) {
-            continue;
+        bool sampleSky;
+        precise vec3 sampleView = sfeSceneViewPosition(sceneDepth, TexCoords + uvOff, matrices.invProjection, sampleSky);
+        // Where nothing was drawn the world position was the origin, which in view space is the camera's offset from
+        // it: kept as it was, so the range check still decides what such a tap adds.
+        if (sampleSky) {
+            sampleView = matrices.view[3].xyz;
         }
         // Occlusion is "the sample sits above my tangent plane", not "the sample is nearer the
         // camera". A pure depth compare makes any plane seen at an angle occlude itself -- the

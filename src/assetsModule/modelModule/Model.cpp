@@ -87,12 +87,17 @@ namespace AssetsModule {
 	}
 
 	void Model::bindMeshes() {
+		std::vector<SFE::Mesh<SFE::Vertex3D>*> meshes;
 		for (auto& node : mMeshTree) {
-			// Before the upload: the registry puts the whole chain in the index buffer in one go.
-			SFE::weldMesh(node.value.mesh);
-			SFE::buildMeshLods(node.value.mesh);
-			SFE::MeshVaoRegistry::instance()->initMesh(&node.value.mesh);
+			// Before the upload: the registry puts the whole chain in the index buffer in one go. A mesh that comes with
+			// its levels already (the terrain, from its cache) keeps them, and the vertices they index.
+			if (node.value.mesh.lodIndices.empty()) {
+				SFE::weldMesh(node.value.mesh);
+				SFE::buildMeshLods(node.value.mesh);
+			}
+			meshes.push_back(&node.value.mesh);
 		}
+		SFE::MeshVaoRegistry::instance()->initMeshes(meshes);
 
 		mLODs.clear();
 		getLODs();

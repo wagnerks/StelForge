@@ -9,6 +9,9 @@
 #include "componentsModule/ModelComponent.h"
 #include "core/Engine.h"
 #include "renderModule/Utils.h"
+#include "renderModule/renderPasses/GarbagePass.h"
+#include "renderModule/renderPasses/GrassPass.h"
+#include "renderModule/renderPasses/ImpostorPass.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "systemsModule/systems/CameraSystem.h"
@@ -35,6 +38,7 @@
 #include "debugModule/Benchmark.h"
 #include "ecss/Registry.h"
 #include "logsModule/logger.h"
+#include "renderModule/Atmosphere.h"
 #include "mathModule/Forward.h"
 #include "propertiesModule/PropertiesSystem.h"
 #include "systemsModule/systems/OcTreeSystem.h"
@@ -77,6 +81,11 @@ void CascadedShadowPass::init(SystemsModule::RenderData& renderDataHandle) {
 	//cmp->shadowCascadeLevels = { cameraProjection.getNear(), 50.f, 150.f, /*500.f, 5000.f*/ };
 	//cmp->updateCascades(cameraProjection);
 	transform->setRotate({ -32.f, 28.f, 8.f });
+	// An outdoor scene places the sun itself, and the air it shines through colours it.
+	if (const auto sky = Render::Atmosphere::sceneSky()) {
+		transform->setRotate(sky->sunRotation());
+		worldLight->setLightColor(Render::Atmosphere::sunTransmittance(sky->toSun()));
+	}
 
 	initRender();
 	renderDataHandle.frame.setData(FrameId::Csm, &mData);
@@ -211,7 +220,9 @@ void CascadedShadowPass::initRender() {
 	bufferLayoutDesc.bindings.emplace_back(1, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	bufferLayoutDesc.bindings.emplace_back(2, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
 	bufferLayoutDesc.bindings.emplace_back(3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex);
-	bufferLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment);
+	bufferLayoutDesc.bindings.emplace_back(7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment);
+	// The wind, for casters that sway in it.
+	bufferLayoutDesc.bindings.emplace_back(5, Render::DescriptorType::UniformBuffer, Render::ShaderStage::Vertex);
 	mBufferLayout = rhi->createDescriptorSetLayout(bufferLayoutDesc);
 
 	Render::DescriptorSetLayoutDesc textureLayoutDesc;
@@ -251,6 +262,11 @@ void CascadedShadowPass::initRender() {
 	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/cascadeShadowMap_opaque.fs");
 	pipelineOpaque = rhi->createGraphicsPipeline(pipelineDesc);
 
+	// Cut-out casters are cards more often than not -- leaves, grass -- one polygon thick: culling either side leaves
+	// half of them out of the shadow, depending on which way each faces the sun.
+	pipelineDesc.cullMode = CullMode::None;
+	pipelineCutoutSolid = rhi->createGraphicsPipeline(pipelineDesc);
+
 	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/cascadeShadowMap.fs");
 	pipelineCutout = rhi->createGraphicsPipeline(pipelineDesc);
 
@@ -269,6 +285,25 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 
 	updateRenderData(renderDataHandle);
 
+	// The sun moves with the time of day, and once it is down the moon takes its place: the same light from the other
+	// side of the sky, faint and cold, so the night has a direction to it and the trees still lay shadows.
+	if (const auto sky = Render::Atmosphere::sceneSky()) {
+		const float night = std::clamp((0.04f - sky->toSun().y) / 0.1f, 0.f, 1.f);
+		const auto rotation = night > 0.5f ? sky->moonRotation() : sky->sunRotation();
+		if (rotation != mSunRotation) {
+			mSunRotation = rotation;
+			if (auto transform = ECSHandler::registry().pinComponent<TransformComponent>(mShadowSource)) {
+				transform->setRotate(rotation);
+			}
+		}
+		if (auto light = ECSHandler::registry().pinComponent<LightSourceComponent>(mShadowSource)) {
+			const auto sun = Render::Atmosphere::sunTransmittance(sky->toSun());
+			// Moonlight is sunlight bounced off a grey rock: a thousandth of it, and blue to the eye at that level.
+			const Math::Vec3 moon{ 0.55f * 0.02f, 0.65f * 0.02f, 1.0f * 0.02f };
+			light->setLightColor(night > 0.5f ? moon * night : sun);
+		}
+	}
+
 	auto shadowsComp = ECSHandler::registry().pinComponent<CascadeShadowComponent>(mShadowSource);
 	if (!shadowsComp) {
 		return;
@@ -282,6 +317,31 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 	if (!lightMatrices.empty()) {
 		mData.lightSpaceMatrices = lightMatrices;
 	}
+	// The far cascades take turns, one a frame: each costs about as much to draw as a near one, and past 60 m a
+	// shadow a frame late does not show. While the camera and the sun stay put a far cascade's volume does not move
+	// (it is fitted to a circle round its slice and snapped to texels, so turning on the spot keeps it too), and
+	// then its map is kept for up to kStaticRefreshFrames: past 60 m nothing sways enough to see. One that skips keeps
+	// the matrix it was last drawn with, so lighting reads its map where it was drawn.
+	++mFrame;
+	mCascades.resize(lightFbos.size());
+	std::vector<bool> skip(mCascades.size(), false);
+	for (size_t layer = 0; layer < mCascades.size() && layer < mData.lightSpaceMatrices.size() && layer < mData.shadowCascades.size(); ++layer) {
+		auto& cascade = mCascades[layer];
+		const bool unmoved = cascade.lightSpace == mData.lightSpaceMatrices[layer] && cascade.framesSinceDrawn < kStaticRefreshFrames;
+		const bool notItsTurn = (layer - kFirstAlternating) % 2 != mFrame % 2;
+		skip[layer] = cascade.drawn && layer >= kFirstAlternating && (unmoved || notItsTurn);
+		++cascade.framesSinceDrawn;
+		if (skip[layer]) {
+			mData.lightSpaceMatrices[layer] = cascade.lightSpace;
+			mData.shadowCascades[layer] = cascade.settings;
+		}
+		else {
+			cascade.lightSpace = mData.lightSpaceMatrices[layer];
+			cascade.settings = mData.shadowCascades[layer];
+			cascade.drawn = true;
+			cascade.framesSinceDrawn = 0;
+		}
+	}
 	const auto matrices = Utils::allocMatrices(mData.lightSpaceMatrices, CsmFrame::kMaxCascades);
 
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
@@ -292,12 +352,17 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 	}
 	const auto materials = renderSystem->materials().upload();
 	const auto* meshes = SFE::MeshVaoRegistry::instance();
+	auto* impostors = dynamic_cast<ImpostorPass*>(renderSystem->renderPass("Impostors"));
+	auto* garbage = dynamic_cast<GarbagePass*>(renderSystem->renderPass("Garbage"));
+	auto* grass = dynamic_cast<GrassPass*>(renderSystem->renderPass("Grass"));
+	if (impostors) {
+		impostors->bakeIfNeeded(cmd);
+	}
 
 	// A caster only needs the fragment shader when something can make it transparent: an alpha cutout, a
 	// mask or a dithered opacity. Everything else writes depth on a pipeline with no fragment shader work,
 	// which keeps early-Z for the bulk of the scene.
 	const auto& groups = scene.groups(GpuScene::List::Shadow);
-	mCascades.resize(lightFbos.size());
 
 	// Every layer, not just the ones with casters. A cascade that renders no pass keeps last frame's depth
 	// and, on Vulkan, never reaches SHADER_READ_ONLY, so sampling it is undefined.
@@ -311,8 +376,24 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		auto frustum = layer < shadowsComp->cascades.size() ? shadowsComp->cascades[layer].frustum : FrustumModule::Frustum{};
 		for (auto* plane : { &frustum.leftFace, &frustum.rightFace, &frustum.topFace, &frustum.bottomFace, &frustum.nearFace, &frustum.farFace }) {
 			plane->distance += 16.f;
-		}		const bool visible = layer < shadowsComp->cascades.size()
-			&& scene.cullVisibleLastFrame(cmd, GpuScene::List::Shadow, cascade.view, frustum);
+		}
+		// Towards the sun without a limit that matters: the casters shaders press onto the near plane (pancaking) still
+		// have to be drawn, and at a low sun they stand far up-sun of what they shade.
+		frustum.nearFace.distance += kCasterReachTowardsSun;
+		// Texels a metre covers: the light's projection is orthographic, so its x row's length in NDC per metre.
+		float texelsPerMetre = 0.f;
+		if (layer < mData.lightSpaceMatrices.size()) {
+			const auto& lightSpace = mData.lightSpaceMatrices[layer];
+			texelsPerMetre = Math::length(Math::Vec3{ lightSpace[0][0], lightSpace[1][0], lightSpace[2][0] }) * shadowsComp->resolution.x * 0.5f;
+		}
+		// No occlusion culling: building a depth pyramid of each cascade every frame cost more than the casters it
+		// saved. The cascades redrawn every frame also leave out casters whose shadow falls outside the camera's view;
+		// a kept map may be read after the camera has turned, so those draw everything in their volume.
+		// Past the first cascade a caster's own shading is too far off to show the coarser silhouette.
+		cascade.view.lodBias = layer > 0 ? 1u : 0u;
+		const bool visible = !skip[layer] && layer < shadowsComp->cascades.size()
+			&& scene.cullShadowCasters(cmd, cascade.view, frustum, layer < kFirstAlternating ? &renderDataHandle.mCamFrustum : nullptr,
+				mData.lightDirection, texelsPerMetre);
 
 		if (visible) {
 			if (!cascade.set) {
@@ -322,7 +403,8 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 				cascade.matricesId = matrices.buffer.id;
 				rhi->updateDescriptorSets({ { .set = cascade.set, .binding = 11, .buffers{ { matrices.buffer, 0, sizeof(Math::Mat4) * CsmFrame::kMaxCascades } } } });
 			}
-			const uint32_t ids[4] = { renderDataHandle.transformsSSBO.id, renderDataHandle.bonesSSBO.id, cascade.view.visible.id, materials.id };
+			const uint32_t ids[5] = { renderDataHandle.transformsSSBO.id, renderDataHandle.bonesSSBO.id, cascade.view.visible.id, materials.id,
+				renderDataHandle.cameraMatricesUBO.id };
 			if (!std::equal(std::begin(ids), std::end(ids), std::begin(cascade.boundIds))) {
 				std::copy(std::begin(ids), std::end(ids), std::begin(cascade.boundIds));
 				rhi->updateDescriptorSets({
@@ -330,12 +412,14 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 					{ .set = cascade.set, .binding = 2, .buffers{ { renderDataHandle.bonesSSBO } } },
 					{ .set = cascade.set, .binding = 3, .buffers{ { cascade.view.visible } } },
 					{ .set = cascade.set, .binding = 7, .buffers{ { materials } } },
+					{ .set = cascade.set, .binding = 5, .buffers{ { renderDataHandle.cameraMatricesUBO } } },
 				});
 			}
 		}
 
 		RenderPassBeginInfo begin;
-		begin.renderPass = renderPass;
+		// A skipped cascade still gets its (empty) pass, keeping last frame's depth.
+		begin.renderPass = skip[layer] ? loadRenderPass : renderPass;
 		begin.framebuffer = lightFbos[layer];
 		begin.x = 0;
 		begin.y = 0;
@@ -343,19 +427,25 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		begin.height = static_cast<int>(shadowsComp->resolution.y);
 		rhi->cmdBeginRenderPass(cmd, begin);
 
-		const auto drawCasters = [&](const bool secondPhase) {
+		const auto drawCasters = [&]() {
 			struct ShadowPush {
 				int cascadeLayer = 0;
 				float pad[3]{};
 			} push;
 			push.cascadeLayer = static_cast<int>(layer);
 
+			// Past the first cascade (24 m) a leaf card's cut-out outline hardly reads in the shadow, only its coverage: drawn
+			// solid there, the depth test rejects hidden leaves before shading them instead of after a texture fetch and a
+			// discard. In a forest that halves the pass.
+			const bool solidCutouts = layer >= 1;
 			PipelineHandle bound{};
+			// Solid casters first, so their depth is there to reject the cut-out ones behind them.
+			for (const bool cutoutPass : { false, true })
 			for (const auto& group : groups) {
-				if (group.batchCount == 0) {
+				if (group.batchCount == 0 || (group.cutout && !solidCutouts) != cutoutPass) {
 					continue;
 				}
-				const auto pipeline = group.cutout ? pipelineCutout : pipelineOpaque;
+				const auto pipeline = !group.cutout ? pipelineOpaque : solidCutouts ? pipelineCutoutSolid : pipelineCutout;
 				if (pipeline.id != bound.id) {
 					bound = pipeline;
 					rhi->cmdBindPipeline(cmd, pipeline);
@@ -366,30 +456,25 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 				}
 				const DescriptorSetHandle sets[] = { cascade.set, mMaskSets.get(mTextureLayout, 4, group.maskTexture) };
 				rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2, &matrices.offset, 1);
-				scene.draw(cmd, cascade.view, group, secondPhase);
+				scene.draw(cmd, cascade.view, group);
 			}
 		};
 
 		if (visible) {
-			drawCasters(false);
+			drawCasters();
+		}
+		if (!skip[layer] && impostors && layer < mData.lightSpaceMatrices.size()) {
+			const auto& lightSpace = mData.lightSpaceMatrices[layer];
+			impostors->drawShadow(cmd, renderDataHandle.cameraMatricesUBO, lightSpace, frustum, mData.lightDirection, texelsPerMetre);
+		}
+		if (!skip[layer] && garbage && layer < mData.lightSpaceMatrices.size()) {
+			garbage->drawShadow(renderDataHandle, cmd, mData.lightSpaceMatrices[layer], static_cast<uint32_t>(layer));
+		}
+		if (!skip[layer] && grass && layer < mData.lightSpaceMatrices.size()) {
+			grass->drawShadow(cmd, mData.lightSpaceMatrices[layer], static_cast<uint32_t>(layer));
 		}
 
 		rhi->cmdEndRenderPass(cmd);
-
-		// A caster hidden from the light is inside another caster's shadow, so its own shadow adds nothing: the
-		// cascade's depth culls the rest of them the way the camera's depth culls what it cannot see.
-		if (visible) {
-			scene.buildDepthPyramid(cmd, cascade.view, lightDepthMa, lightDepthSampler,
-				static_cast<uint32_t>(shadowsComp->resolution.x), static_cast<uint32_t>(shadowsComp->resolution.y), static_cast<uint32_t>(layer));
-			const bool occludedVisible = layer < mData.lightSpaceMatrices.size()
-				&& scene.cullOccluded(cmd, GpuScene::List::Shadow, cascade.view, frustum, mData.lightSpaceMatrices[layer]);
-			begin.renderPass = loadRenderPass;
-			rhi->cmdBeginRenderPass(cmd, begin);
-			if (occludedVisible) {
-				drawCasters(true);
-			}
-			rhi->cmdEndRenderPass(cmd);
-		}
 	}
 
 	{

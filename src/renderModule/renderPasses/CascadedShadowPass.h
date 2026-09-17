@@ -27,6 +27,7 @@ namespace SFE::Render::RenderPasses {
 
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
 	private:
+		Math::Vec3 mSunRotation{ 1e9f, 0.f, 0.f }; // the sun last placed, degrees
 		void updateRenderData(SystemsModule::RenderData& renderDataHandle);
 		void debug(SystemsModule::RenderData& renderDataHandle);
 
@@ -41,6 +42,7 @@ namespace SFE::Render::RenderPasses {
 		// fragment shader with discard, which costs early-Z, so it gets its own pipeline.
 		PipelineHandle pipelineOpaque;
 		PipelineHandle pipelineCutout;
+		PipelineHandle pipelineCutoutSolid; // a cut-out caster drawn solid in the far cascades
 		RenderPassHandle renderPass;
 		RenderPassHandle loadRenderPass; // the second occlusion phase draws over the first one's depth
 
@@ -49,9 +51,22 @@ namespace SFE::Render::RenderPasses {
 		struct Cascade {
 			GpuScene::View view;
 			DescriptorSetHandle set;
-			uint32_t boundIds[4]{};
+			uint32_t boundIds[5]{};
 			uint32_t matricesId = UINT32_MAX; // transient buffer binding 11 was last written with
+			// What the map was last drawn with; a cascade that skips a frame is lit with these.
+			bool drawn = false;
+			uint32_t framesSinceDrawn = 0;
+			Math::Mat4 lightSpace;
+			ComponentsModule::ShadowCascade settings;
 		};
+		// Cascades from this one out take turns, one a frame.
+		static constexpr size_t kFirstAlternating = 2;
+		// Metres up-sun past a cascade's near plane that its casters are still drawn from.
+		static constexpr float kCasterReachTowardsSun = 400.f;
+		// Frames a far cascade whose volume has not moved keeps its map at most, so what moved inside it (a fallen
+		// log spawned, a tree swapped for its picture) still shows up.
+		static constexpr uint32_t kStaticRefreshFrames = 30;
+		uint32_t mFrame = 0;
 		Render::DescriptorSetLayoutHandle mBufferLayout;
 		Render::DescriptorSetLayoutHandle mTextureLayout;
 		std::vector<Cascade> mCascades;

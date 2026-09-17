@@ -21,6 +21,8 @@ namespace SFE::PropertiesModule {
 
 		static void bindRenderable(ecss::EntityId entity);
 		static ecss::EntityId spawnDefaultScene();
+		// A model at a place, ready to draw: loaded (once per path), bound and with its render transform seeded.
+		static ecss::EntityId spawnModel(const std::string& path, const Math::Vec3& pos, const Math::Vec3& scale, const Math::Vec3& rotate);
 		static void spawnSphereGrid(int chunkX, int chunkZ, float chunkSize, float spacing);
 		static void spawnVampireGrid(int chunkX, int chunkZ, float chunkSize, float spacing);
 		// Walled rooms with characters inside, for testing occlusion culling.

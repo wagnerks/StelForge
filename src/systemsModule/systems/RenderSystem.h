@@ -42,12 +42,19 @@ namespace SFE::SystemsModule {
 		// the jitter would show up in them as a wobble that TAA then chases.
 		Math::Mat4 PVNoJitter = {};
 		Math::Mat4 prevPVNoJitter = {};
+		// The scene's wind for the vertex shaders: xz the unit direction it blows along, y its strength, w the clock in
+		// seconds. The one before is last frame's, so a swaying leaf's motion vector is right too.
+		Math::Vec4 wind = {};
+		Math::Vec4 windBefore = {};
+		// Of the matrices above, as the GPU gets them: screen passes put world positions back together from depth.
+		Math::Mat4 invProjection = {};
+		Math::Mat4 invView = {};
 	};
 
 	struct GraphicsSettings {
 		bool ssao = true;
 		bool ssr = true;
-		bool volumetric = false;
+		bool volumetric = true;
 		bool taa = true;
 		bool dof = false;
 		bool bloom = true;
@@ -57,10 +64,10 @@ namespace SFE::SystemsModule {
 
 		float ssrDistance = 12.f;
 
-		float volumetricDensity = 0.008f;
-		float volumetricIntensity = 0.8f;
+		float volumetricDensity = 0.004f;
+		float volumetricIntensity = 1.5f;
 		float volumetricAnisotropy = 0.68f;
-		float volumetricDistance = 70.f;
+		float volumetricDistance = 90.f;
 
 		// History weight. Must stay high enough that the jitter pattern averages out over its 8
 		// phases -- at 0.72 the resolve settles in ~3.6 frames and the pattern shows as shimmer.
@@ -77,8 +84,23 @@ namespace SFE::SystemsModule {
 		// Contrast adaptive sharpening after the tonemap: 0 leaves the image as TAA resolved it, 1 is as far
 		// as the filter goes before it starts ringing.
 		float sharpness = 0.5f;
+		// The eye following the scene's brightness: exposure then only nudges it.
+		bool autoExposure = true;
+		float adaptationSpeed = 1.5f; // per second
+		float flareStrength = 0.6f;
+		// The grade: -1 cool .. 1 warm, and saturation and contrast around 1.
+		float warmth = 0.2f;
+		float saturation = 1.15f;
+		float contrast = 1.05f;
 
 		float fogStart = 0.82f;
+		// Metres the camera sees at most: its far plane. Past it the scene fades into the haze, and nothing further
+		// out is drawn at all.
+		float viewDistance = 3000.f;
+		// Hours, 0..24, placing the sun of an outdoor scene; below 0 the scene's own sun.
+		float timeOfDay = -1.f;
+		// 0 still air, 1 a strong breeze; below 0 the scene's own wind.
+		float windStrength = -1.f;
 		float glassRoughness = 0.02f;
 
 		float sheenStrength = 0.85f;
@@ -95,6 +117,23 @@ namespace SFE::SystemsModule {
 		float sunIntensity = 3.2f;
 		float iblStrength = 1.f;
 		float shadowAmbient = 0.42f;
+
+		// The grass clumps: how many to a square metre against the default, and metres out to which they grow.
+		float grassDensity = 1.f;
+		float grassDistance = 90.f;
+		// How far the models keep their full detail: 1 drops a level as its triangles reach a pixel, 2 holds each
+		// level to twice the distance.
+		float lodDetail = 1.8f;
+
+		// How much the time of day grades the picture (warm low sun, blue night), and the film grain.
+		float timeGrade = 1.f;
+		float filmGrain = 0.012f;
+		// Shafts of light from the sun through the gaps in the clouds and the trees, gathered over the bloom pass.
+		float sunRays = 0.45f;
+
+		// Dust and pollen in the sunlight, midges and flies: whether, and how many of them show.
+		bool airLife = true;
+		float airLifeAmount = 1.f;
 	};
 
 	struct RenderData {
@@ -137,6 +176,7 @@ namespace SFE::SystemsModule {
 		struct PassTime {
 			const char* name = "";
 			float cpuMs = 0.f;
+			float gpuMs = 0.f; // of the latest frame the GPU finished, where the backend times passes
 		};
 
 		size_t objectsRendered = 0;
@@ -151,9 +191,11 @@ namespace SFE::SystemsModule {
 		uint32_t shadowPipeline = 0;
 		float shadowIntensity = 0.f;
 
-		PassTime passTimes[16]{};
+		PassTime passTimes[Render::RenderHardwareInterface::kMaxGpuMarks - 1]{};
 		int passCount = 0;
 		float cpuMs = 0.f;
+		float prepareMs = 0.f; // the passes' prepare(), before the command list
+		float waitMs = 0.f;    // beginning the command list: on Vulkan, waiting for the frame in flight to finish
 		float submitMs = 0.f;
 		float presentMs = 0.f;
 		float gpuMs = 0.f;
@@ -213,6 +255,8 @@ namespace SFE::SystemsModule {
 		// Removes and destroys the named pass; false when there is none. Main thread, between frames.
 		bool removeRenderPass(std::string_view name);
 		std::vector<std::string> renderPassNames() const { return mPassNames; }
+		// The named pass, or null. Main thread.
+		Render::RenderPass* renderPass(std::string_view name) const;
 
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
 		// waits for in-flight readers, so a waiting mutate never blocks readers already running.
@@ -307,7 +351,8 @@ namespace SFE::SystemsModule {
 		void bindGpuFrame();
 		void createGpuFrameResources(uint32_t slot);
 		void createSceneBuffers(size_t capacity);
-		void uploadTransforms(const std::vector<ecss::EntityId>& sortedIds);
+		// `previousToo` also as last frame's, for an entity that has no last frame: no motion on its first one.
+		void uploadTransforms(const std::vector<ecss::EntityId>& sortedIds, bool previousToo = false);
 		void uploadBones(const std::vector<ecss::EntityId>& sortedIds);
 		void markGpuDirty(std::vector<ecss::EntityId>& list, ecss::EntityId id);
 

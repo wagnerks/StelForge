@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <unordered_map>
 
 #include "assetsModule/AssetsManager.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
@@ -336,6 +337,27 @@ namespace SFE::PropertiesModule {
 
 		auto scene = ECSHandler::registry().takeEntity();
 		fillTree(scene, FileSystem::readJson(path));
+
+		// The same as spawnModelEntity: a scene loaded before RenderSystem exists never reaches it through the
+		// transform notify, so the render copy of every transform is seeded here, parents before children.
+		std::unordered_map<ecss::EntityId, Math::Mat4> world;
+		auto nodes = Hierarchy::descendants(scene);
+		nodes.insert(nodes.begin(), scene);
+		for (const auto id : nodes) {
+			const auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(id);
+			if (!transform) {
+				continue;
+			}
+			const auto local = Math::translate(Math::Mat4{ 1.f }, transform->getPos())
+				* Math::Quaternion<float>::fromEulerDegrees(transform->getRotate()).toMat4()
+				* Math::scale(Math::Mat4{ 1.f }, transform->getScale());
+			const auto parent = world.find(Hierarchy::parent(id));
+			const auto matrix = parent != world.end() ? parent->second * local : local;
+			world[id] = matrix;
+			if (!ECSHandler::registry().hasComponent<ComponentsModule::TransformMatComp>(id)) {
+				ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(id, matrix);
+			}
+		}
 		return scene;
 	}
 
@@ -589,6 +611,10 @@ namespace SFE::PropertiesModule {
 			ids.push_back(entity);
 		}
 		return ids;
+	}
+
+	ecss::EntityId PropertiesSystem::spawnModel(const std::string& path, const Math::Vec3& pos, const Math::Vec3& scale, const Math::Vec3& rotate) {
+		return spawnModelEntity(AssetsModule::ModelLoader::instance()->load(path), path.c_str(), pos, scale, false, rotate);
 	}
 
 	ecss::EntityId PropertiesSystem::spawnDefaultScene() {

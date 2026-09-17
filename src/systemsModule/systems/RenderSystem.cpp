@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "renderModule/Atmosphere.h"
 #include "renderModule/FrameCapture.h"
 
 #include "CameraSystem.h"
@@ -154,7 +155,8 @@ namespace SFE::SystemsModule {
 				{ 3, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment },
 				{ 8, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex },
 				{ 9, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
-				{ 7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Fragment },
+				// Vertex too: the G-buffer vertex shader reads how a material sways in the wind.
+				{ 7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment },
 			};
 			frameSetLayout = rhi->createDescriptorSetLayout(frameLayout);
 			mRenderData.frameSetLayout = frameSetLayout;
@@ -222,8 +224,46 @@ namespace SFE::SystemsModule {
 		bindGpuFrame();
 		auto frameLock = tryLockWorldRead();
 
+		// This frame's camera, read before it becomes current: taken after, it was the previous frame's camera drawing
+		// this frame's objects, and anything the camera follows shook by however long the last frame took.
+		{
+			auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
+			const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
+			// The copy the transform worker publishes, not TransformComponent itself: the worker rewrites that
+			// matrix while this thread reads it, and a moving camera now and then got a half-written view.
+			// Replacing the copy waits for pins, so a pinned copy is whole.
+			Math::Mat4 cameraTransform{ 1.f };
+			if (const auto copy = ECSHandler::registry().pinComponent<const ComponentsModule::TransformMatComp>(playerCamera)) {
+				cameraTransform = copy->mTransform;
+			}
+			else if (const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera)) {
+				cameraTransform = transformComp->copyTransform(); // before the first reload reached RenderSystem
+			}
+
+			mRenderData.nextCameraProjection = cameraComp->getProjection();
+			const float viewDistance = (std::max)(mRenderData.graphics.viewDistance, mRenderData.nextCameraProjection.getNear() + 1.f);
+			mRenderData.nextCameraProjection.setFar((std::min)(mRenderData.nextCameraProjection.getFar(), viewDistance));
+			mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
+			mRenderData.next.view = inverse(cameraTransform);
+			mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
+
+			mRenderData.mNextCameraPos = cameraTransform[3].xyz;
+			const Math::Vec3 forward = -cameraTransform[2];
+			mRenderData.mNextViewDir = normalize(forward);
+			mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
+		}
+
 		mRenderData.prevPV = mRenderData.current.PV;
+		const auto windBefore = mRenderData.current.wind;
 		mRenderData.current = mRenderData.next;
+		{
+			// Wrapped so the float keeps its precision in a long session; the sway jumps once an hour.
+			const float seconds = static_cast<float>(std::fmod(Engine::instance()->animationClock(), 3600.0));
+			const auto wind = Render::Atmosphere::sceneWind();
+			const auto along = wind ? wind->blowing() : Math::Vec2{ 1.f, 0.f };
+			mRenderData.current.wind = { along.x, wind ? wind->strength : 0.f, along.y, seconds };
+			mRenderData.current.windBefore = windBefore.w != 0.f ? windBefore : mRenderData.current.wind;
+		}
 		mRenderData.cameraProjection = mRenderData.nextCameraProjection;
 
 		mRenderData.mCameraPos = mRenderData.mNextCameraPos;
@@ -257,32 +297,10 @@ namespace SFE::SystemsModule {
 			}
 		}
 
+		gpuMatrices.invProjection = Math::inverse(gpuMatrices.projection);
+		gpuMatrices.invView = Math::inverse(gpuMatrices.view);
 		Engine::instance()->rhi()->updateBuffer(cameraMatricesUBO, 0, sizeof(RenderMatrices), &gpuMatrices);
 
-		{
-			auto playerCamera = ECSHandler::getSystem<CameraSystem>()->getCurrentCamera();
-			const auto cameraComp = ECSHandler::registry().pinComponent<const CameraComponent>(playerCamera);
-			// The copy the transform worker publishes, not TransformComponent itself: the worker rewrites that
-			// matrix while this thread reads it, and a moving camera now and then got a half-written view.
-			// Replacing the copy waits for pins, so a pinned copy is whole.
-			Math::Mat4 cameraTransform{ 1.f };
-			if (const auto copy = ECSHandler::registry().pinComponent<const ComponentsModule::TransformMatComp>(playerCamera)) {
-				cameraTransform = copy->mTransform;
-			}
-			else if (const auto transformComp = ECSHandler::registry().pinComponent<const TransformComponent>(playerCamera)) {
-				cameraTransform = transformComp->copyTransform(); // before the first reload reached RenderSystem
-			}
-
-			mRenderData.nextCameraProjection = cameraComp->getProjection();
-			mRenderData.next.projection = mRenderData.nextCameraProjection.getProjectionsMatrix();
-			mRenderData.next.view = inverse(cameraTransform);
-			mRenderData.next.PV = mRenderData.next.projection * mRenderData.next.view;
-
-			mRenderData.mNextCameraPos = cameraTransform[3].xyz;
-			const Math::Vec3 forward = -cameraTransform[2];
-			mRenderData.mNextViewDir = normalize(forward);
-			mRenderData.mNextCamFrustum = FrustumModule::createFrustum(mRenderData.next.PV);
-		}
 
 		if (frameLock) {
 			if (mRefreshTransforms) {
@@ -302,6 +320,10 @@ namespace SFE::SystemsModule {
 			// An entity can join the scene after this frame's dirty transforms were taken, its id past the
 			// buffer; the grow uploads every live transform, its own included.
 			ensureGpuCapacity(mScene.maxEntity());
+			// The dirty transforms were taken before the scene read its pending entities, and a transform the worker
+			// published in between would reach the GPU a frame after its instances. Most of these went up already;
+			// sending them again is cheap and closes that gap.
+			uploadTransforms(mScene.added(), true);
 			// Before the frame is recorded, so new materials go up with the frame's queued uploads; the passes'
 			// own upload() calls then find nothing to send. Sent after the list began, Vulkan would submit and
 			// wait for each one.
@@ -520,7 +542,7 @@ namespace SFE::SystemsModule {
 		list.push_back(id);
 	}
 
-	void RenderSystem::uploadTransforms(const std::vector<ecss::EntityId>& sortedIds) {
+	void RenderSystem::uploadTransforms(const std::vector<ecss::EntityId>& sortedIds, const bool previousToo) {
 		auto* rhi = Engine::instance()->rhi();
 		auto& registry = ECSHandler::registry();
 		// Consecutive ids go up as one range, so a spawned chunk is one copy rather than one per entity.
@@ -529,6 +551,9 @@ namespace SFE::SystemsModule {
 		const auto flush = [&] {
 			if (!run.empty()) {
 				rhi->updateBuffer(transforms, static_cast<size_t>(runStart) * sizeof(Math::Mat4), run.size() * sizeof(Math::Mat4), run.data());
+				if (previousToo) {
+					rhi->updateBuffer(prevTransforms, static_cast<size_t>(runStart) * sizeof(Math::Mat4), run.size() * sizeof(Math::Mat4), run.data());
+				}
 				run.clear();
 			}
 		};
@@ -680,6 +705,11 @@ namespace SFE::SystemsModule {
 		return true;
 	}
 
+	Render::RenderPass* RenderSystem::renderPass(const std::string_view name) const {
+		const auto it = std::find(mPassNames.begin(), mPassNames.end(), name);
+		return it == mPassNames.end() ? nullptr : mRenderPasses[static_cast<size_t>(it - mPassNames.begin())].get();
+	}
+
 	bool RenderSystem::removeRenderPass(const std::string_view name) {
 		const auto it = std::find(mPassNames.begin(), mPassNames.end(), name);
 		if (it == mPassNames.end()) {
@@ -713,9 +743,6 @@ namespace SFE::SystemsModule {
 		}
 		if (std::strcmp(name, "DoF") == 0) {
 			return gfx.dof;
-		}
-		if (std::strcmp(name, "Sheen") == 0) {
-			return gfx.sheen;
 		}
 		if (std::strcmp(name, "SSS") == 0) {
 			return gfx.sss;
@@ -767,17 +794,23 @@ namespace SFE::SystemsModule {
 				mRenderPasses[i]->prepare(mRenderData);
 			}
 		}
+		const auto tBegin = std::chrono::high_resolution_clock::now();
+		info->prepareMs = std::chrono::duration<float, std::milli>(tBegin - tFrame).count();
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);
+		info->waitMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tBegin).count();
+		rhi->cmdGpuMark(cmd, 0);
 		for (size_t i = 0; i < mRenderPasses.size(); ++i) {
 			if (!shouldRunPass(i)) {
 				continue;
 			}
 			const auto tPass = std::chrono::high_resolution_clock::now();
 			mRenderPasses[i]->render(mRenderData, cmd);
-			if (info->passCount < 16) {
+			if (info->passCount < static_cast<int>(std::size(info->passTimes))) {
+				rhi->cmdGpuMark(cmd, static_cast<uint32_t>(info->passCount) + 1);
 				info->passTimes[info->passCount] = {
 					mPassNames[i].c_str(),
-					std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPass).count()
+					std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - tPass).count(),
+					static_cast<float>(rhi->gpuMarkMs(static_cast<uint32_t>(info->passCount)))
 				};
 				++info->passCount;
 			}

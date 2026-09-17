@@ -108,6 +108,7 @@ int main(int argc, char** argv)
 	std::string cameraPos;
 	std::string cameraRot;
 	std::string contentDir;
+	std::string scenePath;
 	for (int i = 1; i < argc; ++i) {
 		if (!argv[i]) {
 			continue;
@@ -147,6 +148,9 @@ int main(int argc, char** argv)
 		}
 		else if (arg == "--rooms") {
 			proceduralRooms = true;
+		}
+		else if (arg == "--scene" && i + 1 < argc && argv[i + 1]) {
+			scenePath = argv[++i];
 		}
 		else if (arg == "--spheres") {
 			proceduralSpheres = true;
@@ -293,6 +297,7 @@ int main(int argc, char** argv)
 	engine->setTemporalAccumulation(temporalAccumulation);
 	engine->setProceduralSpheres(proceduralSpheres);
 	engine->setProceduralRooms(proceduralRooms);
+	engine->setScenePath(scenePath);
 	engine->setFixedDeltaTime(fixedDeltaTime);
 	if (!capturePath.empty() && !passDumpDir.empty()) {
 		const std::filesystem::path requested(passDumpDir);
@@ -387,8 +392,12 @@ int main(int argc, char** argv)
 	const auto reproStart = std::chrono::steady_clock::now();
 	int frames = 0;
 	struct PerfTotals {
-		double frameMs = 0, cpuMs = 0, submitMs = 0, presentMs = 0, gpuMs = 0;
-		std::vector<std::pair<std::string, double>> passes;
+		double frameMs = 0, cpuMs = 0, prepareMs = 0, waitMs = 0, submitMs = 0, presentMs = 0, gpuMs = 0;
+		struct Pass {
+			std::string name;
+			double cpuMs = 0, gpuMs = 0;
+		};
+		std::vector<Pass> passes;
 		int samples = 0;
 	} perf;
 	auto perfLast = std::chrono::steady_clock::now();
@@ -412,17 +421,20 @@ int main(int argc, char** argv)
 				const auto* info = SFE::SystemsModule::RenderDebugInfo::instance();
 				perf.frameMs += frameMs;
 				perf.cpuMs += info->cpuMs;
+				perf.prepareMs += info->prepareMs;
+				perf.waitMs += info->waitMs;
 				perf.submitMs += info->submitMs;
 				perf.presentMs += info->presentMs;
 				perf.gpuMs += info->gpuMs;
 				for (int p = 0; p < info->passCount; ++p) {
 					const std::string name = info->passTimes[p].name;
-					auto it = std::find_if(perf.passes.begin(), perf.passes.end(), [&](const auto& e) { return e.first == name; });
+					auto it = std::find_if(perf.passes.begin(), perf.passes.end(), [&](const auto& e) { return e.name == name; });
 					if (it == perf.passes.end()) {
-						perf.passes.emplace_back(name, 0.0);
+						perf.passes.push_back({ name });
 						it = perf.passes.end() - 1;
 					}
-					it->second += info->passTimes[p].cpuMs;
+					it->cpuMs += info->passTimes[p].cpuMs;
+					it->gpuMs += info->passTimes[p].gpuMs;
 				}
 				++perf.samples;
 			}
@@ -431,8 +443,10 @@ int main(int argc, char** argv)
 					const double n = (std::max)(1, perf.samples);
 					std::fprintf(f, "frames %d\nframe %.2f ms (%.1f fps)\nrender cpu %.2f\nsubmit %.2f\npresent %.2f\ngpu %.2f\n",
 						perf.samples, perf.frameMs / n, 1000.0 * n / (std::max)(1e-3, perf.frameMs), perf.cpuMs / n, perf.submitMs / n, perf.presentMs / n, perf.gpuMs / n);
-					for (const auto& [name, ms] : perf.passes) {
-						std::fprintf(f, "  %-16s %.2f\n", name.c_str(), ms / n);
+					std::fprintf(f, "prepare %.2f\nwait %.2f\n", perf.prepareMs / n, perf.waitMs / n);
+					std::fprintf(f, "  %-16s %6s %6s\n", "pass", "cpu", "gpu");
+					for (const auto& pass : perf.passes) {
+						std::fprintf(f, "  %-16s %6.2f %6.2f\n", pass.name.c_str(), pass.cpuMs / n, pass.gpuMs / n);
 					}
 					std::fclose(f);
 				}

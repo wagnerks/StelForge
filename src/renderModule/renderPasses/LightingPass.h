@@ -1,4 +1,8 @@
 ﻿#pragma once
+#include <array>
+#include <utility>
+#include <vector>
+
 #include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/IblBaker.h"
 
@@ -39,6 +43,13 @@ namespace SFE::Render::RenderPasses {
 			// term instead of the lit result, so each term can be diffed on its own. Reuses the
 			// last free pad slot, so the UBO layout does not change.
 			float debugTerm = 0.f;
+			// The soft sheen and rim light on rough dielectrics; 0 with GraphicsSettings::sheen off.
+			float sheenStrength = 0.f;
+			float rimStrength = 0.f;
+			// The TAA frame for noise that moves every frame, or -1 without TAA to resolve it.
+			float taaFrame = -1.f;
+			// The scene sky's cloud coverage, for the shadows the clouds cast on the ground.
+			float cloudCoverage = 0.f;
 		};
 
 		struct CascadData {
@@ -100,6 +111,13 @@ namespace SFE::Render::RenderPasses {
 		int mPresentShow = 0;
 
 		IblMaps mIbl;
+		// What the sky light was baked from, when, and the maps it replaced with the frames since.
+		std::array<float, 5> mIblKey{};
+		double mIblBakedAt = 0.0;
+		std::vector<std::pair<IblMaps, uint32_t>> mRetiredIbl;
+		void bakeSkyLight(SystemsModule::RenderData& renderDataHandle);
+		void updateSkyLight(SystemsModule::RenderData& renderDataHandle);
+		static std::array<float, 5> skyLightKey(const SystemsModule::RenderData& renderDataHandle);
 
 		struct BoundImage {
 			TextureHandle texture;
@@ -110,12 +128,14 @@ namespace SFE::Render::RenderPasses {
 		struct Slot {
 			Render::DescriptorSetHandle texSet{};
 			Render::DescriptorSetHandle uboSet{};
-			BoundImage gPos{};
+			BoundImage gMaterial{};
+			BoundImage sceneDepth{};
 			BoundImage gNormal{};
 			BoundImage gAlbedo{};
 			BoundImage ssao{};
 			BoundImage pointShadow{};
 			BoundImage outlines{};
+			BoundImage clouds{};
 			BoundImage csm{};
 			BoundImage csmDepth{};
 			BoundImage iblIrr{};

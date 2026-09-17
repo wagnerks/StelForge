@@ -37,6 +37,11 @@ namespace SFE::Render::RenderPasses {
 
 		PipelineHandle mBloomPipeline{};
 		PipelineHandle mPostPipeline{};
+		// The frame through the tonemap alone, for the sharpening to read its neighbours from.
+		PipelineHandle mTonePipeline{};
+		std::vector<DescriptorSetHandle> mToneSets; // one per frame slot
+		TextureHandle mToneTex{};
+		FramebufferHandle mToneFbo{};
 		RenderPassHandle mBloomPass{};
 		RenderPassHandle mDisplayPass{};
 		DescriptorSetLayoutHandle mLayout{};
@@ -44,13 +49,46 @@ namespace SFE::Render::RenderPasses {
 		std::vector<DescriptorSetHandle> mPostSets; // one per frame slot
 		SamplerHandle mSampler{};
 
+		// Mirrors PostBlock in sfe_post.glsl. std140.
 		struct PostParams {
 			float bloomStrength = 0.62f;
 			float exposure = 0.92f;
 			float vignette = 0.14f;
 			float ca = 0.0028f;
 			float sharpness = 0.5f;
+			float autoExposure = 1.f;
+			float flareStrength = 0.f;
+			float warmth = 0.f;
+			float saturation = 1.f;
+			float contrast = 1.f;
+			float sunU = 0.f;
+			float sunV = 0.f;
+			float sunInFront = 0.f;
+			float aspect = 1.f;
+			float adaptSeconds = 0.f;
+			float adaptSpeed = 1.f;
+			float sunColor[4]{};
+			float grade[4]{ 1.f, 0.f, 0.f, 0.f }; // see sfe_post.glsl
+			float extra[4]{};
 		} mPostParams;
+
+		// Auto exposure and the sun's visibility for the flare: the frame's log luminance from 64x64 down to 1x1, and
+		// what the eye has adapted to, carried from frame to frame in two 1x1 targets that take turns.
+		struct Target {
+			TextureHandle texture{};
+			FramebufferHandle fbo{};
+			uint32_t size = 0;
+		};
+		void adapt(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd, TextureHandle src, const TransientAllocation& post);
+		std::vector<Target> mLuminance;
+		Target mAdapted[2];
+		uint32_t mAdaptedCurrent = 0;
+		bool mAdaptedValid = false;
+		double mLastFrameAt = 0.0;
+		PipelineHandle mLuminanceLogPipeline{};
+		PipelineHandle mLuminanceDownPipeline{};
+		PipelineHandle mAdaptPipeline{};
+		std::vector<std::vector<DescriptorSetHandle>> mAdaptSets; // per frame slot, one per step
 
 		TextureHandle mBloomTex{};
 		FramebufferHandle mBloomFbo{};

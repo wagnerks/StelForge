@@ -152,7 +152,7 @@ namespace SFE::Render
 		void cleanup() override;
 		void waitIdle() override;
 
-		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data, uint32_t mip) override;
+		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data, uint32_t mip, uint32_t layer) override;
 		void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) override;
 		uint64_t getNativeTextureId(TextureHandle tex) const override;
 

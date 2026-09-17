@@ -4,8 +4,13 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 TexCoords;
 
 layout(SFE_SET(0, 0)) uniform sampler2D sceneHdr;
-layout(SFE_SET(0, 1)) uniform sampler2D worldPos;
-layout(SFE_SET(0, 2)) uniform sampler2D gAlbedoSpec;
+layout(SFE_SET(0, 1)) uniform sampler2D sceneDepth;
+layout(SFE_SET(0, 2)) uniform sampler2D gMaterial;
+layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
+    SFE_SHARED_MATRICES
+} matrices;
+// How much the surface scatters, as the G-buffer wrote it: a normal shortened by up to half.
+layout(SFE_SET(0, 3)) uniform sampler2D gNormal;
 
 layout(SFE_SET(0, 15), std140) uniform PushConstants {
     float strength;
@@ -24,23 +29,18 @@ const vec3 kW[7] = vec3[](
     vec3(0.020, 0.002, 0.000)
 );
 
-float skinMask(vec3 albedo, float metallic) {
-    return sfeSkinSss(albedo, metallic);
-}
-
 void main() {
     vec3 center = texture(sceneHdr, TexCoords).rgb;
-    vec4 posS = texture(worldPos, TexCoords);
-    vec3 world = posS.rgb;
-    if (dot(world, world) < 1e-6) {
+    // The mask first: most of a frame does not scatter, and the position costs a matrix product.
+    vec3 nSample = texture(gNormal, TexCoords).xyz;
+    float metallic = texture(gMaterial, TexCoords).r;
+    float mask = dot(nSample, nSample) < 1e-6 ? 0.0 : clamp((1.0 - length(nSample)) * 2.0, 0.0, 1.0) * (1.0 - metallic);
+    if (mask < 0.01 || params.strength < 0.001) {
         FragColor = vec4(center, 1.0);
         return;
     }
-
-    vec4 albS = texture(gAlbedoSpec, TexCoords);
-    float metallic = sfeGBufferPbr(posS.a).x;
-    float mask = skinMask(albS.rgb, metallic);
-    if (mask < 0.01 || params.strength < 0.001) {
+    vec3 world = sfeScenePosition(sceneDepth, TexCoords, matrices.invProjection, matrices.invView);
+    if (dot(world, world) < 1e-6) {
         FragColor = vec4(center, 1.0);
         return;
     }
@@ -53,8 +53,8 @@ void main() {
     for (int i = 0; i < 7; ++i) {
         vec2 uvH = TexCoords + vec2(kOff[i], 0.0) * texel;
         vec2 uvV = TexCoords + vec2(0.0, kOff[i]) * texel;
-        vec3 pH = texture(worldPos, uvH).rgb;
-        vec3 pV = texture(worldPos, uvV).rgb;
+        vec3 pH = sfeScenePosition(sceneDepth, uvH, matrices.invProjection, matrices.invView);
+        vec3 pV = sfeScenePosition(sceneDepth, uvV, matrices.invProjection, matrices.invView);
         float aH = exp(-dot(pH - world, pH - world) / (depthScale * depthScale));
         float aV = exp(-dot(pV - world, pV - world) / (depthScale * depthScale));
         vec3 wH = kW[i] * aH;

@@ -139,6 +139,42 @@ namespace SFE::ComponentsModule {
 			mPlay = play;
 			setTime(t, clock);
 		}
+
+		// The clip being faded out while a crossfade lasts: its own start, loop and play state, frozen at the switch.
+		const AssetsModule::Animation* mFromAnimation = nullptr;
+		double mFromStart = 0.0;
+		float mFromStoppedTime = 0.f;
+		bool mFromPlay = true;
+		bool mFromLoop = true;
+		// The clock value the fade began at, and how long it takes; no fade while the duration is 0.
+		double mBlendStart = 0.0;
+		float mBlendDuration = 0.f;
+
+		// Switches to `next` from its first tick, blending out of the current clip over `seconds`. Main thread: it
+		// reads the clock. Nothing happens when `next` is already playing.
+		void crossfade(const AssetsModule::Animation* next, bool loop, float seconds, double clock) {
+			if (next == mCurrentAnimation) {
+				return;
+			}
+			mBlendDuration = 0.f;
+			mFromAnimation = nullptr;
+			if (mCurrentAnimation && seconds > 0.f) {
+				if (mPlay && std::isnan(mStart)) {
+					setTime(mStoppedTime, clock);
+				}
+				mFromAnimation = mCurrentAnimation;
+				mFromStart = mStart;
+				mFromStoppedTime = mStoppedTime;
+				mFromPlay = mPlay;
+				mFromLoop = mLoop;
+				mBlendStart = clock;
+				mBlendDuration = seconds;
+			}
+			mCurrentAnimation = next;
+			mLoop = loop;
+			mPlay = true;
+			setTime(0.f, clock);
+		}
 	};
 }
 

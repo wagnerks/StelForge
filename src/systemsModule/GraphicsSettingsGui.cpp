@@ -1,6 +1,12 @@
 #include "GraphicsSettingsGui.h"
 
 #include "imgui.h"
+#include "core/ECSHandler.h"
+#include "core/Engine.h"
+#include "renderModule/Atmosphere.h"
+#include "componentsModule/CharacterComponent.h"
+#include "systemsModule/systems/AppearanceSystem.h"
+#include "systemsModule/systems/AudioSystem.h"
 
 #include <json/reader.h>
 #include <json/value.h>
@@ -8,6 +14,75 @@
 #include <sstream>
 
 namespace SFE::SystemsModule {
+	bool environmentSliders(GraphicsSettings& gfx) {
+		bool changed = false;
+		// Until moved, the sliders start from the scene's own sun and wind.
+		const auto sky = Render::Atmosphere::sceneSky(false);
+		float hours = gfx.timeOfDay >= 0.f ? gfx.timeOfDay : (sky ? sky->timeOfDay() : 12.f);
+		if (ImGui::SliderFloat("time of day", &hours, 0.f, 24.f, "%.1f h")) {
+			gfx.timeOfDay = hours;
+			changed = true;
+		}
+		const auto wind = Render::Atmosphere::sceneWind(false);
+		float strength = gfx.windStrength >= 0.f ? gfx.windStrength : (wind ? wind->strength : 0.f);
+		if (ImGui::SliderFloat("wind", &strength, 0.f, 1.f, "%.2f")) {
+			gfx.windStrength = strength;
+			changed = true;
+		}
+		return changed;
+	}
+
+	void volumeSlider() {
+		auto* audio = ECSHandler::getSystem<AudioSystem>();
+		if (!audio) {
+			return;
+		}
+		float volume = audio->masterVolume();
+		if (ImGui::SliderFloat("volume", &volume, 0.f, 1.f, "%.2f")) {
+			audio->setMasterVolume(volume);
+		}
+	}
+
+	void characterAppearance() {
+		for (auto [entity, character, look] : ECSHandler::registry().view<const ComponentsModule::CharacterComponent, ComponentsModule::CharacterAppearanceComponent>()) {
+			if (!character || !look) {
+				continue;
+			}
+			// A few natural skin tones to start from; the picker takes any.
+			static const Math::Vec3 kSkins[] = { { 1.f, 1.f, 1.f }, { 0.93f, 0.8f, 0.68f }, { 0.78f, 0.58f, 0.42f }, { 0.55f, 0.38f, 0.26f }, { 0.36f, 0.24f, 0.17f } };
+			ImGui::TextUnformatted("skin");
+			for (size_t i = 0; i < std::size(kSkins); ++i) {
+				ImGui::SameLine();
+				ImGui::PushID(static_cast<int>(i));
+				if (ImGui::ColorButton("##skin", ImVec4(kSkins[i].x, kSkins[i].y, kSkins[i].z, 1.f))) {
+					look->skinColor = kSkins[i];
+				}
+				ImGui::PopID();
+			}
+			ImGui::ColorEdit3("skin colour", &look->skinColor.x);
+			static const Math::Vec3 kHairs[] = { { 0.1f, 0.08f, 0.07f }, { 0.36f, 0.24f, 0.15f }, { 0.62f, 0.42f, 0.22f }, { 0.9f, 0.76f, 0.46f }, { 0.62f, 0.28f, 0.14f }, { 0.75f, 0.75f, 0.73f } };
+			ImGui::TextUnformatted("hair");
+			for (size_t i = 0; i < std::size(kHairs); ++i) {
+				ImGui::SameLine();
+				ImGui::PushID(static_cast<int>(100 + i));
+				if (ImGui::ColorButton("##hair", ImVec4(kHairs[i].x, kHairs[i].y, kHairs[i].z, 1.f))) {
+					look->hairColor = kHairs[i];
+				}
+				ImGui::PopID();
+			}
+			ImGui::ColorEdit3("hair colour", &look->hairColor.x);
+			if (ImGui::BeginCombo("hairstyle", look->hairStyle.c_str())) {
+				for (const auto& style : AppearanceSystem::hairStyles(entity)) {
+					if (ImGui::Selectable(style.c_str(), style == look->hairStyle)) {
+						look->hairStyle = style;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			break;
+		}
+	}
+
 	bool drawGraphicsSettings(GraphicsSettings& gfx) {
 		bool changed = false;
 
@@ -16,15 +91,49 @@ namespace SFE::SystemsModule {
 			changed = true;
 		}
 
+		if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
+			changed |= ImGui::SliderFloat("view distance", &gfx.viewDistance, 100.f, 5000.f, "%.0f m", ImGuiSliderFlags_Logarithmic);
+			changed |= ImGui::SliderFloat("lod detail", &gfx.lodDetail, 0.3f, 4.f, "%.2f");
+			changed |= environmentSliders(gfx);
+		}
+
+		if (ImGui::CollapsingHeader("Debug view")) {
+			// One term of the lighting instead of the lit image: see deferred_shading.fs's debugTerm.
+			static constexpr const char* kViews[] = { "off", "shadow", "ambient", "direct light", "albedo", "normals", "SSAO", "irradiance",
+				"reflection", "BRDF", "cascade", "cascade coverage" };
+			int view = SFE::Engine::instance()->lightingDebugTerm();
+			if (ImGui::Combo("view", &view, kViews, IM_ARRAYSIZE(kViews))) {
+				SFE::Engine::instance()->setLightingDebugTerm(view);
+			}
+		}
+
+		if (ImGui::CollapsingHeader("Sound", ImGuiTreeNodeFlags_DefaultOpen)) {
+			volumeSlider();
+		}
+
 		if (ImGui::CollapsingHeader("Look", ImGuiTreeNodeFlags_DefaultOpen)) {
 			changed |= ImGui::SliderFloat("exposure", &gfx.exposure, 0.2f, 2.5f, "%.2f");
+			changed |= ImGui::Checkbox("auto exposure", &gfx.autoExposure);
+			changed |= ImGui::SliderFloat("adaptation speed", &gfx.adaptationSpeed, 0.1f, 8.f, "%.2f");
+			changed |= ImGui::SliderFloat("warmth", &gfx.warmth, -1.f, 1.f, "%.2f");
+			changed |= ImGui::SliderFloat("saturation", &gfx.saturation, 0.f, 2.f, "%.2f");
+			changed |= ImGui::SliderFloat("contrast", &gfx.contrast, 0.5f, 1.5f, "%.2f");
+			changed |= ImGui::SliderFloat("lens flare", &gfx.flareStrength, 0.f, 2.f, "%.2f");
 			changed |= ImGui::SliderFloat("sun intensity", &gfx.sunIntensity, 0.f, 8.f, "%.2f");
 			changed |= ImGui::SliderFloat("IBL", &gfx.iblStrength, 0.f, 2.f, "%.2f");
 			changed |= ImGui::SliderFloat("shadow fill", &gfx.shadowAmbient, 0.f, 1.f, "%.2f");
 			changed |= ImGui::SliderFloat("bloom", &gfx.bloomStrength, 0.f, 2.f, "%.2f");
 			changed |= ImGui::SliderFloat("vignette", &gfx.vignette, 0.f, 0.5f, "%.3f");
+			changed |= ImGui::SliderFloat("time of day grade", &gfx.timeGrade, 0.f, 2.f, "%.2f");
+			changed |= ImGui::SliderFloat("film grain", &gfx.filmGrain, 0.f, 0.1f, "%.3f");
+			changed |= ImGui::SliderFloat("sun rays", &gfx.sunRays, 0.f, 3.f, "%.2f");
+			changed |= ImGui::SliderFloat("air life", &gfx.airLifeAmount, 0.f, 3.f, "%.2f");
 		}
 
+		if (ImGui::CollapsingHeader("Grass", ImGuiTreeNodeFlags_DefaultOpen)) {
+			changed |= ImGui::SliderFloat("grass density", &gfx.grassDensity, 0.2f, 2.f, "%.2f");
+			changed |= ImGui::SliderFloat("grass distance", &gfx.grassDistance, 20.f, 200.f, "%.0f m");
+		}
 		if (ImGui::CollapsingHeader("Fur / skin", ImGuiTreeNodeFlags_DefaultOpen)) {
 			changed |= ImGui::Checkbox("sheen", &gfx.sheen);
 			changed |= ImGui::SliderFloat("sheen strength", &gfx.sheenStrength, 0.f, 3.f, "%.2f");
@@ -42,6 +151,7 @@ namespace SFE::SystemsModule {
 			changed |= ImGui::Checkbox("TAA", &gfx.taa);
 			changed |= ImGui::Checkbox("DoF", &gfx.dof);
 			changed |= ImGui::Checkbox("Bloom", &gfx.bloom);
+			changed |= ImGui::Checkbox("Air life", &gfx.airLife);
 			changed |= ImGui::Checkbox("Contact GI", &gfx.contactGi);
 		}
 
@@ -101,6 +211,15 @@ namespace SFE::SystemsModule {
 		root["chromaticAberration"] = gfx.chromaticAberration;
 		root["sharpness"] = gfx.sharpness;
 		root["fogStart"] = gfx.fogStart;
+		root["viewDistance"] = gfx.viewDistance;
+		root["autoExposure"] = gfx.autoExposure;
+		root["adaptationSpeed"] = gfx.adaptationSpeed;
+		root["flareStrength"] = gfx.flareStrength;
+		root["warmth"] = gfx.warmth;
+		root["saturation"] = gfx.saturation;
+		root["contrast"] = gfx.contrast;
+		root["timeOfDay"] = gfx.timeOfDay;
+		root["windStrength"] = gfx.windStrength;
 		root["glassRoughness"] = gfx.glassRoughness;
 		root["sheenStrength"] = gfx.sheenStrength;
 		root["rimStrength"] = gfx.rimStrength;
@@ -115,6 +234,14 @@ namespace SFE::SystemsModule {
 		root["sunIntensity"] = gfx.sunIntensity;
 		root["iblStrength"] = gfx.iblStrength;
 		root["shadowAmbient"] = gfx.shadowAmbient;
+		root["grassDensity"] = gfx.grassDensity;
+		root["grassDistance"] = gfx.grassDistance;
+		root["lodDetail"] = gfx.lodDetail;
+		root["timeGrade"] = gfx.timeGrade;
+		root["filmGrain"] = gfx.filmGrain;
+		root["sunRays"] = gfx.sunRays;
+		root["airLife"] = gfx.airLife;
+		root["airLifeAmount"] = gfx.airLifeAmount;
 		Json::StreamWriterBuilder builder;
 		builder["indentation"] = "";
 		return Json::writeString(builder, root);
@@ -155,6 +282,15 @@ namespace SFE::SystemsModule {
 		f("chromaticAberration", gfx.chromaticAberration);
 		f("sharpness", gfx.sharpness);
 		f("fogStart", gfx.fogStart);
+		f("viewDistance", gfx.viewDistance);
+		b("autoExposure", gfx.autoExposure);
+		f("adaptationSpeed", gfx.adaptationSpeed);
+		f("flareStrength", gfx.flareStrength);
+		f("warmth", gfx.warmth);
+		f("saturation", gfx.saturation);
+		f("contrast", gfx.contrast);
+		f("timeOfDay", gfx.timeOfDay);
+		f("windStrength", gfx.windStrength);
 		f("glassRoughness", gfx.glassRoughness);
 		f("sheenStrength", gfx.sheenStrength);
 		f("rimStrength", gfx.rimStrength);
@@ -169,6 +305,14 @@ namespace SFE::SystemsModule {
 		f("sunIntensity", gfx.sunIntensity);
 		f("iblStrength", gfx.iblStrength);
 		f("shadowAmbient", gfx.shadowAmbient);
+		f("grassDensity", gfx.grassDensity);
+		f("grassDistance", gfx.grassDistance);
+		f("lodDetail", gfx.lodDetail);
+		f("timeGrade", gfx.timeGrade);
+		f("filmGrain", gfx.filmGrain);
+		f("sunRays", gfx.sunRays);
+		b("airLife", gfx.airLife);
+		f("airLifeAmount", gfx.airLifeAmount);
 	}
 
 	bool graphicsFromJson(const std::string& json, GraphicsSettings& gfx) {

@@ -1,4 +1,6 @@
-﻿#include "rhi/VulkanRHI.h"
+﻿#include <cstdlib>
+#include <string_view>
+#include "rhi/VulkanRHI.h"
 
 #include <algorithm>
 #include <array>
@@ -533,7 +535,10 @@ namespace SFE::Render {
 		vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
 
 		// Prefer a discrete GPU. Enumeration lists the integrated one first on hybrid laptops, which ran Vulkan
-		// on the iGPU while OpenGL, steered by NvOptimusEnablement, ran on the discrete card.
+		// on the iGPU while OpenGL, steered by NvOptimusEnablement, ran on the discrete card. SFE_GPU=integrated
+		// prefers the integrated one instead, to see how the game runs on a machine without a discrete card.
+		const char* wanted = std::getenv("SFE_GPU");
+		const bool preferIntegrated = wanted && std::string_view(wanted) == "integrated";
 		int bestScore = -1;
 		for (const auto device : devices) {
 			if (!isDeviceSuitable(device, m_surface)) {
@@ -541,8 +546,9 @@ namespace SFE::Render {
 			}
 			VkPhysicalDeviceProperties props{};
 			vkGetPhysicalDeviceProperties(device, &props);
-			const int score = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 2
-				: props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 1 : 0;
+			const int discrete = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 1 : 0;
+			const int integrated = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 1 : 0;
+			const int score = preferIntegrated ? integrated * 2 + discrete : discrete * 2 + integrated;
 			if (score > bestScore) {
 				bestScore = score;
 				m_physicalDevice = device;
@@ -894,6 +900,10 @@ namespace SFE::Render {
 			RhiLog::error("VulkanRHI: failed to create timestamp query pool");
 			m_timestampPool = VK_NULL_HANDLE;
 		}
+		info.queryCount = kMaxFramesInFlight * kMaxGpuMarks;
+		if (vkCreateQueryPool(m_device, &info, nullptr, &m_markPool) != VK_SUCCESS) {
+			m_markPool = VK_NULL_HANDLE;
+		}
 	}
 
 	void VulkanRHI::destroyTimestampQueries() {
@@ -901,11 +911,27 @@ namespace SFE::Render {
 			vkDestroyQueryPool(m_device, m_timestampPool, nullptr);
 			m_timestampPool = VK_NULL_HANDLE;
 		}
+		if (m_markPool != VK_NULL_HANDLE) {
+			vkDestroyQueryPool(m_device, m_markPool, nullptr);
+			m_markPool = VK_NULL_HANDLE;
+		}
 		m_timestampPending[0] = false;
 		m_timestampPending[1] = false;
 	}
 
 	void VulkanRHI::collectGpuTimestamp() {
+		const uint64_t validMask = m_timestampValidBits >= 64 ? ~uint64_t{ 0 } : ((uint64_t{ 1 } << m_timestampValidBits) - 1);
+		if (const uint32_t marks = m_markCount[m_currentFrame]; m_markPool != VK_NULL_HANDLE && marks > 1) {
+			uint64_t stamps[kMaxGpuMarks]{};
+			if (vkGetQueryPoolResults(m_device, m_markPool, m_currentFrame * kMaxGpuMarks, marks, sizeof(uint64_t) * marks, stamps,
+				sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
+				for (uint32_t i = 0; i < kMaxGpuMarks; ++i) {
+					m_markMs[i] = i + 1 < marks
+						? static_cast<double>((stamps[i + 1] - stamps[i]) & validMask) * static_cast<double>(m_timestampPeriod) / 1'000'000.0
+						: 0.0;
+				}
+			}
+		}
 		if (m_timestampPool == VK_NULL_HANDLE || !m_timestampPending[m_currentFrame]) {
 			return;
 		}

@@ -1,97 +1,269 @@
-﻿//#include "PhysicsSystem.h"
-//
-//#include "componentsModule/TransformComponent.h"
-//#include "Jolt/Renderer/DebugRenderer.h"
-//#include "renderModule/Utils.h"
-//
-//namespace SFE::SystemsModule {
-//
-//	using namespace JPH;
-//
-//	void Physics::update(float dt) {
-//		auto& bodyInterface = physics_system->GetBodyInterface();
-//		for (const auto& [entity, physicsComp, transform] : ECSHandler::registry().forEach<PhysicsComponent, TransformComponent>()) {
-//			if (!transform) {
-//				continue;
-//			}
-//			const auto& pos = transform->getPos(true);
-//			if (pos != physicsComp->lastPos || transform->getRotate() != physicsComp->lastRotate) {
-//				bodyInterface.SetPositionAndRotationWhenChanged(physicsComp->mBodyID, toVec3(pos), toQuat(transform->getQuaternion()), EActivation::Activate);
-//
-//				physicsComp->lastPos = pos;
-//			}
-//
-//			if (bodyInterface.IsActive(physicsComp->mBodyID) == physicsComp->isSleeping) {
-//				continue;
-//			}
-//
-//			physicsComp->lastPos = toVec3(bodyInterface.GetCenterOfMassPosition(physicsComp->mBodyID));
-//			transform->setPos(physicsComp->lastPos);
-//
-//			physicsComp->lastRotate = Math::degrees(toVec3(bodyInterface.GetRotation(physicsComp->mBodyID).GetEulerAngles()));
-//			transform->setRotate(physicsComp->lastRotate);
-//		}
-//
-//		// If you take larger steps than 1 / 60th of a second you need to do multiple collision steps in order to keep the simulation stable. Do 1 collision step per 1 / 60th of a second (round up).
-//		//dt *= 0.5f;
-//		const int cCollisionSteps = 20 * static_cast<int>(std::ceil(dt * 60.f));
-//		if (!cCollisionSteps) {
-//			return;
-//		}
-//		// Step the world
-//		physics_system->Update(dt, cCollisionSteps, temp_allocator, job_system);
-//	}
-//
-//	void Physics::debugUpdate(float dt) {
-//		/*class renderer : public DebugRenderer {
-//		public:
-//			renderer() {
-//				Initialize();
-//			}
-//			void DrawLine(RVec3Arg inFrom, RVec3Arg inTo, ColorArg inColor) override {
-//				Render::Utils::renderLine(toVec3(inFrom), toVec3(inTo), Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
-//			};
-//
-//			void DrawTriangle(RVec3Arg inV1, RVec3Arg inV2, RVec3Arg inV3, ColorArg inColor, ECastShadow inCastShadow) override {
-//				Render::Utils::Triangle triangle;
-//				triangle.A.position = toVec3(inV1);
-//				triangle.B.position = toVec3(inV2);
-//				triangle.C.position = toVec3(inV3);
-//				Render::Utils::renderTriangle(triangle, Math::Vec4{ (float)inColor.r, (float)inColor.g, (float)inColor.b, (float)inColor.a});
-//			};
-//
-//			Batch CreateTriangleBatch(const Triangle* inTriangles, int inTriangleCount) override {
-//				return{};
-//			};
-//
-//			Batch CreateTriangleBatch(const Vertex* inVertices, int inVertexCount, const uint32* inIndices,
-//				int inIndexCount) override {
-//				return{};
-//			};
-//
-//			void DrawGeometry(RMat44Arg inModelMatrix, const AABox& inWorldSpaceBounds, float inLODScaleSq,
-//				ColorArg inModelColor, const GeometryRef& inGeometry, ECullMode inCullMode, ECastShadow inCastShadow,
-//				EDrawMode inDrawMode) override {
-//				
-//			};
-//
-//			void DrawText3D(RVec3Arg inPosition, const string_view& inString, ColorArg inColor,
-//				float inHeight) override {
-//				
-//			};
-//
-//
-//		};
-//
-//		static renderer lel;
-//		BodyManager::DrawSettings settings;
-//		settings.mDrawShapeWireframe = false;
-//		settings.mDrawShape = true;
-//		settings.mDrawBoundingBox = true;
-//		settings.mDrawCenterOfMassTransform = true;
-//		settings.mDrawMassAndInertia = true;
-//		settings.mDrawSleepStats = true;
-//		settings.mDrawSupportDirection = true;
-//		physics_system->DrawBodies(settings, &lel, nullptr );*/
-//	}
-//}
+#include "PhysicsSystem.h"
+
+#include <algorithm>
+#include <execution>
+#include <mutex>
+#include <numeric>
+#include <unordered_map>
+#include <thread>
+
+#include <Jolt/RegisterTypes.h>
+#include <Jolt/Core/Factory.h>
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
+
+#include "assetsModule/modelModule/Model.h"
+#include "componentsModule/ModelComponent.h"
+#include "componentsModule/TerrainComponent.h"
+#include "componentsModule/TransformComponent.h"
+#include "componentsModule/VegetationComponent.h"
+#include "core/ECSHandler.h"
+#include "core/Engine.h"
+#include "logsModule/logger.h"
+
+namespace SFE::SystemsModule {
+	namespace {
+		constexpr float kStep = 1.f / 60.f;
+
+		namespace BroadPhaseLayers {
+			constexpr JPH::BroadPhaseLayer kStatic{ 0 };
+			constexpr JPH::BroadPhaseLayer kMoving{ 1 };
+			constexpr JPH::uint kCount = 2;
+		}
+
+		// Jolt's allocator, factory and type registry are process-wide and set up once.
+		void initJolt() {
+			static std::once_flag once;
+			std::call_once(once, [] {
+				JPH::RegisterDefaultAllocator();
+				JPH::Factory::sInstance = new JPH::Factory();
+				JPH::RegisterTypes();
+			});
+		}
+	}
+
+	struct PhysicsSystem::Layers {
+		struct BroadPhase final : JPH::BroadPhaseLayerInterface {
+			JPH::uint GetNumBroadPhaseLayers() const override { return BroadPhaseLayers::kCount; }
+			JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer layer) const override {
+				return layer == kStatic ? BroadPhaseLayers::kStatic : BroadPhaseLayers::kMoving;
+			}
+#if defined(JPH_EXTERNAL_PROFILE) || defined(JPH_PROFILE_ENABLED)
+			const char* GetBroadPhaseLayerName(JPH::BroadPhaseLayer layer) const override {
+				return layer == BroadPhaseLayers::kStatic ? "static" : "moving";
+			}
+#endif
+		} broadPhase;
+
+		struct ObjectVsBroadPhase final : JPH::ObjectVsBroadPhaseLayerFilter {
+			bool ShouldCollide(JPH::ObjectLayer layer, JPH::BroadPhaseLayer broadPhaseLayer) const override {
+				// Static against static is never tested.
+				return layer != kStatic || broadPhaseLayer == BroadPhaseLayers::kMoving;
+			}
+		} objectVsBroadPhase;
+
+		struct ObjectPairs final : JPH::ObjectLayerPairFilter {
+			bool ShouldCollide(JPH::ObjectLayer a, JPH::ObjectLayer b) const override {
+				return a != kStatic || b != kStatic;
+			}
+		} objectPairs;
+	};
+
+	PhysicsSystem::PhysicsSystem() {
+		initJolt();
+		mLayers = std::make_unique<Layers>();
+		mTempAllocator = std::make_unique<JPH::TempAllocatorImpl>(16 * 1024 * 1024);
+		const int threads = (std::max)(1, static_cast<int>(std::thread::hardware_concurrency()) / 2 - 1);
+		mJobs = std::make_unique<JPH::JobSystemThreadPool>(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, threads);
+		mWorld = std::make_unique<JPH::PhysicsSystem>();
+		// Bodies: the terrain and vegetation compounds, and every loose piece of litter.
+		mWorld->Init(16384, 0, 16384, 16384, mLayers->broadPhase, mLayers->objectVsBroadPhase, mLayers->objectPairs);
+		mWorld->SetGravity({ 0.f, -9.81f, 0.f });
+		addStaticColliders();
+		mWorld->OptimizeBroadPhase();
+	}
+
+	PhysicsSystem::~PhysicsSystem() = default;
+
+	const JPH::ObjectVsBroadPhaseLayerFilter& PhysicsSystem::broadPhaseFilter() const {
+		return mLayers->objectVsBroadPhase;
+	}
+
+	const JPH::ObjectLayerPairFilter& PhysicsSystem::layerPairFilter() const {
+		return mLayers->objectPairs;
+	}
+
+	void PhysicsSystem::update(float dt) {
+		// A long frame (a hitch, a breakpoint) is not replayed in full: the world just runs slow for a moment.
+		mAccumulated = (std::min)(mAccumulated + dt, kStep * 4.f);
+		const double now = Engine::clockSeconds();
+		while (mAccumulated >= kStep) {
+			// What is left over after this step is time the world has not reached yet.
+			mStepTime = now - (mAccumulated - kStep);
+			for (const auto& callback : mStepCallbacks) {
+				callback(kStep);
+			}
+			mWorld->Update(kStep, 1, mTempAllocator.get(), mJobs.get());
+			mAccumulated -= kStep;
+		}
+	}
+
+	std::optional<float> PhysicsSystem::castRay(const Math::Vec3& from, const Math::Vec3& direction) const {
+		JPH::RRayCast ray{ JPH::RVec3(from.x, from.y, from.z), JPH::Vec3(direction.x, direction.y, direction.z) };
+		JPH::RayCastResult hit;
+		if (mWorld->GetNarrowPhaseQuery().CastRay(ray, hit)) {
+			return hit.mFraction;
+		}
+		return std::nullopt;
+	}
+
+	void PhysicsSystem::addStaticColliders() {
+		auto& registry = ECSHandler::registry();
+		auto& bodies = mWorld->GetBodyInterface();
+		for (const auto& [id, terrain, model, matrix] : registry.view<const ComponentsModule::TerrainComponent, const ModelComponent,
+			const ComponentsModule::TransformMatComp>()) {
+			if (!terrain || !model || !matrix) {
+				continue;
+			}
+			const auto& world = matrix->mTransform;
+
+			// The finest level of detail, in world space.
+			JPH::VertexList vertices;
+			JPH::IndexedTriangleList triangles;
+			for (const auto* meshObject : model->getModel().meshes) {
+				if (!meshObject) {
+					continue;
+				}
+				const auto base = static_cast<JPH::uint32>(vertices.size());
+				for (const auto& v : meshObject->mesh.vertices) {
+					const auto p = world * Math::Vec4{ v.position.x, v.position.y, v.position.z, 1.f };
+					vertices.push_back(JPH::Float3(p.x, p.y, p.z));
+				}
+				const auto& indices = meshObject->mesh.indices;
+				for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+					triangles.push_back(JPH::IndexedTriangle(base + indices[i], base + indices[i + 1], base + indices[i + 2], 0));
+				}
+			}
+			if (triangles.empty()) {
+				continue;
+			}
+
+			// Cut into a grid of pieces by where each triangle is, each its own shape built on its own thread: one
+			// shape over a big terrain takes seconds to build.
+			constexpr int kPieces = 8;
+			float minX = vertices[0].x;
+			float maxX = vertices[0].x;
+			float minZ = vertices[0].z;
+			float maxZ = vertices[0].z;
+			for (const auto& v : vertices) {
+				minX = (std::min)(minX, v.x);
+				maxX = (std::max)(maxX, v.x);
+				minZ = (std::min)(minZ, v.z);
+				maxZ = (std::max)(maxZ, v.z);
+			}
+			const auto pieceOf = [&](const JPH::IndexedTriangle& triangle) {
+				float cx = 0.f;
+				float cz = 0.f;
+				for (const auto index : triangle.mIdx) {
+					cx += vertices[index].x;
+					cz += vertices[index].z;
+				}
+				const int px = std::clamp(static_cast<int>((cx / 3.f - minX) / (maxX - minX + 1e-3f) * kPieces), 0, kPieces - 1);
+				const int pz = std::clamp(static_cast<int>((cz / 3.f - minZ) / (maxZ - minZ + 1e-3f) * kPieces), 0, kPieces - 1);
+				return pz * kPieces + px;
+			};
+			std::vector<JPH::IndexedTriangleList> pieces(kPieces * kPieces);
+			for (const auto& triangle : triangles) {
+				pieces[pieceOf(triangle)].push_back(triangle);
+			}
+			std::vector<JPH::ShapeRefC> shapes(pieces.size());
+			std::vector<size_t> order(pieces.size());
+			std::iota(order.begin(), order.end(), size_t{ 0 });
+			std::for_each(std::execution::par, order.begin(), order.end(), [&](const size_t p) {
+				if (pieces[p].empty()) {
+					return;
+				}
+				// Only this piece's vertices, renumbered.
+				std::unordered_map<JPH::uint32, JPH::uint32> remap;
+				JPH::VertexList pieceVertices;
+				for (auto& triangle : pieces[p]) {
+					for (auto& index : triangle.mIdx) {
+						const auto [it, added] = remap.try_emplace(index, static_cast<JPH::uint32>(pieceVertices.size()));
+						if (added) {
+							pieceVertices.push_back(vertices[index]);
+						}
+						index = it->second;
+					}
+				}
+				JPH::MeshShapeSettings shape(std::move(pieceVertices), std::move(pieces[p]));
+				const auto result = shape.Create();
+				if (result.HasError()) {
+					LogsModule::Logger::LOG_ERROR("terrain collider: %s", result.GetError().c_str());
+					return;
+				}
+				shapes[p] = result.Get();
+			});
+			for (const auto& shape : shapes) {
+				if (!shape) {
+					continue;
+				}
+				JPH::BodyCreationSettings body(shape, JPH::RVec3::sZero(), JPH::Quat::sIdentity(), JPH::EMotionType::Static, kStatic);
+				bodies.CreateAndAddBody(body, JPH::EActivation::DontActivate);
+			}
+		}
+
+		// Upright capsules for the vegetation that has them: tree trunks, boulders. A static compound per group of
+		// cells rather than a body each: a forest has far more of them than the world takes bodies.
+		constexpr int kCellsPerGroup = 4;
+		for (const auto& [id, vegetation, placements] : registry.view<const ComponentsModule::VegetationComponent, const ComponentsModule::VegetationPlacementsComponent>()) {
+			if (!vegetation || !placements) {
+				continue;
+			}
+			// Each group's compound built on its own thread; the bodies are added here, in order.
+			const int groups = (placements->cellsPerSide + kCellsPerGroup - 1) / kCellsPerGroup;
+			std::vector<JPH::ShapeRefC> shapes(static_cast<size_t>(groups) * groups);
+			std::vector<size_t> order(shapes.size());
+			std::iota(order.begin(), order.end(), size_t{ 0 });
+			std::for_each(std::execution::par, order.begin(), order.end(), [&](const size_t group) {
+				const int gx = static_cast<int>(group % groups);
+				const int gz = static_cast<int>(group / groups);
+				JPH::StaticCompoundShapeSettings compound;
+				for (int cz = gz * kCellsPerGroup; cz < (std::min)((gz + 1) * kCellsPerGroup, placements->cellsPerSide); ++cz) {
+					for (int cx = gx * kCellsPerGroup; cx < (std::min)((gx + 1) * kCellsPerGroup, placements->cellsPerSide); ++cx) {
+						const size_t cell = static_cast<size_t>(cz) * placements->cellsPerSide + cx;
+						for (uint32_t i = placements->cellStart[cell]; i < placements->cellStart[cell + 1]; ++i) {
+							const auto& instance = placements->instances[i];
+							const auto& layer = vegetation->layers[instance.layer];
+							if (layer.colliderRadius <= 0.f || layer.pitch != 0.f) {
+								continue;
+							}
+							const float radius = layer.colliderRadius * instance.scale;
+							const float halfHeight = (std::max)(layer.colliderHeight * instance.scale * 0.5f - radius, 0.01f);
+							compound.AddShape(JPH::Vec3(instance.pos.x, instance.pos.y + halfHeight + radius, instance.pos.z), JPH::Quat::sIdentity(),
+								new JPH::CapsuleShape(halfHeight, radius));
+						}
+					}
+				}
+				if (compound.mSubShapes.empty()) {
+					return;
+				}
+				const auto result = compound.Create();
+				if (result.HasError()) {
+					LogsModule::Logger::LOG_ERROR("vegetation colliders: %s", result.GetError().c_str());
+					return;
+				}
+				shapes[group] = result.Get();
+			});
+			for (const auto& shape : shapes) {
+				if (shape) {
+					JPH::BodyCreationSettings body(shape, JPH::RVec3::sZero(), JPH::Quat::sIdentity(), JPH::EMotionType::Static, kStatic);
+					bodies.CreateAndAddBody(body, JPH::EActivation::DontActivate);
+				}
+			}
+		}
+	}
+}

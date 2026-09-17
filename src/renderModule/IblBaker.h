@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
@@ -11,5 +11,6 @@ namespace SFE::Render {
 		SamplerHandle lutSampler;
 	};
 
-	IblMaps bakeIbl(RenderHardwareInterface* rhi);
+	// The scene's sky when it has one, the studio environment otherwise.
+	IblMaps bakeIbl(RenderHardwareInterface* rhi, float sunIntensity);
 }

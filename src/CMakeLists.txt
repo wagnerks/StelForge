@@ -8,7 +8,7 @@ file(GLOB_RECURSE SRC
 	"${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
 )
 
-set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss ${CMAKE_CURRENT_SOURCE_DIR}/submodules/meshoptimizer)
+set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss ${CMAKE_CURRENT_SOURCE_DIR}/submodules/meshoptimizer ${CMAKE_CURRENT_SOURCE_DIR}/submodules/miniaudio)
 # file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/*")
 # list(REMOVE_ITEM SRC ${SUBMODULES_FILES})
 # file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss/*")
@@ -65,6 +65,12 @@ target_link_libraries(${ENGINE_NAME} PUBLIC ecss)
 add_subdirectory(submodules/meshoptimizer)
 target_link_libraries(${ENGINE_NAME} PRIVATE meshoptimizer)
 
+# Audio. miniaudio is one C file; its own CMakeLists also looks for libvorbis/libopus and builds extra nodes,
+# none of which the engine uses.
+add_library(miniaudio STATIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/miniaudio/miniaudio.c")
+target_include_directories(miniaudio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/miniaudio")
+target_link_libraries(${ENGINE_NAME} PRIVATE miniaudio)
+
 # ecss is header-only and templated, so every translation unit that opens a view has to
 # parse the whole thing, and only a fifth of that is ecss's own code -- the rest is the
 # <vector>/<atomic>/<algorithm>/<memory> closure underneath it. Thirty-one files here
@@ -86,13 +92,13 @@ set_source_files_properties(
 )
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/myPhysicsEngine")
-#target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics")
+target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics")
 target_include_directories(${ENGINE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/jsoncpp/include")
 target_include_directories(${ENGINE_NAME} PUBLIC "${ENGINE_PATH}/lib/stb")
 
-#target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
+target_link_libraries(${ENGINE_NAME} LINK_PUBLIC Jolt)
 
 find_package(OpenGL REQUIRED)
 

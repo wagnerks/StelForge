@@ -1,9 +1,11 @@
 ﻿#pragma once
 #include <cstdint>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -296,6 +298,43 @@ namespace SFE::Render
 		uint32_t         sampleCount = 1; // 1, 2, 4, or 8
 	};
 
+	inline uint32_t bytesPerPixel(TextureFormat format) {
+		switch (format) {
+		case TextureFormat::R8: return 1;
+		case TextureFormat::RG8: return 2;
+		case TextureFormat::RGB8: return 3;
+		case TextureFormat::RGBA8:
+		case TextureFormat::SRGB8_ALPHA8:
+		case TextureFormat::R32F:
+		case TextureFormat::DEPTH_COMPONENT32:
+		case TextureFormat::DEPTH_COMPONENT32F:
+		case TextureFormat::DEPTH_COMPONENT24:
+		case TextureFormat::DEPTH24_STENCIL8: return 4;
+		case TextureFormat::R16F: return 2;
+		case TextureFormat::RG16F:
+		case TextureFormat::DEPTH_COMPONENT16: return 4;
+		case TextureFormat::RGBA16F:
+		case TextureFormat::RG32F:
+		case TextureFormat::DEPTH32F_STENCIL8: return 8;
+		case TextureFormat::RGBA32F: return 16;
+		default: return 4;
+		}
+	}
+
+	// Bytes a texture of this description takes on the device, every level, layer and sample of it.
+	inline uint64_t textureBytes(const TextureDesc& desc) {
+		// An array gives its layers in depth or arrayLayers (usually both); depth also counts for a volume.
+		const uint64_t layers = desc.dimension == TextureDimension::Cube ? 6u
+			: desc.dimension == TextureDimension::Array ? (std::max)({ 1u, desc.depth, desc.arrayLayers })
+			: desc.dimension == TextureDimension::Tex3D ? (std::max)(1u, desc.depth) : 1u;
+		const uint32_t levels = desc.sampleCount > 1 ? 1u : (std::max)(1u, desc.mipLevels);
+		uint64_t texels = 0;
+		for (uint32_t level = 0; level < levels; ++level) {
+			texels += static_cast<uint64_t>((std::max)(1u, desc.width >> level)) * (std::max)(1u, desc.height >> level);
+		}
+		return texels * layers * (std::max)(1u, desc.sampleCount) * bytesPerPixel(desc.format);
+	}
+
 	// Full mip chain for a texture of this size. Both backends build the levels from level 0 when the
 	// description asks for more than one.
 	inline uint32_t mipLevelsFor(uint32_t width, uint32_t height) {
@@ -533,6 +572,12 @@ namespace SFE::Render
 		virtual void onShaderCompile(std::string_view name, bool finished) const { (void)name; (void)finished; }
 	};
 
+	// A texture made off the device thread: the device object with its contents, not a handle yet. See prepareTexture.
+	class PreparedTexture {
+	public:
+		virtual ~PreparedTexture() = default;
+	};
+
 	class RenderHardwareInterface {
 	public:
 		RenderHardwareInterface(const RenderHardwareInterface& other) = delete;
@@ -547,6 +592,21 @@ namespace SFE::Render
 		// no window, which is exactly what an offscreen test wants.
 		void setHost(RhiHost* host) { m_host = host; }
 		RhiHost* host() const { return m_host; }
+
+		// What the textures and buffers created through this RHI take on the device, by their descriptions: the
+		// driver's own overhead and the swapchain are not in it. Any thread.
+		struct GpuMemory {
+			uint64_t targets = 0;  // textures rendered into
+			uint64_t depth = 0;    // depth attachments: shadow maps, depth buffers
+			uint64_t textures = 0; // only sampled: material textures, lookup tables
+			uint64_t meshes = 0;   // vertex and index buffers
+			uint64_t buffers = 0;  // every other buffer
+			uint64_t total() const { return targets + depth + textures + meshes + buffers; }
+		};
+		GpuMemory gpuMemory() const {
+			const auto read = [this](const MemoryKind kind) { return static_cast<uint64_t>(m_memory[static_cast<size_t>(kind)].load(std::memory_order_relaxed)); };
+			return { read(MemoryKind::Targets), read(MemoryKind::Depth), read(MemoryKind::Textures), read(MemoryKind::Meshes), read(MemoryKind::Buffers) };
+		}
 
 		virtual void init() = 0;
 		virtual void cleanup() = 0;
@@ -568,6 +628,13 @@ namespace SFE::Render
 		virtual PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) = 0;
 		virtual void destroyGraphicsPipeline(PipelineHandle pipeline) = 0;
 		virtual TextureHandle createTexture(const TextureDesc& desc, const void* data = nullptr) = 0;
+		// Whether prepareTexture works, and from any thread. Where it does not, textures are made with createTexture
+		// and updateTexture on the device thread.
+		virtual bool preparesTextures() const { return false; }
+		// Any thread, when preparesTextures(): a sampled 2D texture with each of its desc.mipLevels levels given in
+		// `levels`, uploaded in one go. adoptTexture, on the device thread, makes it a handle.
+		virtual std::unique_ptr<PreparedTexture> prepareTexture(const TextureDesc& desc, const std::vector<const void*>& levels) { return nullptr; }
+		virtual TextureHandle adoptTexture(std::unique_ptr<PreparedTexture> texture) { return {}; }
 		virtual void destroyTexture(TextureHandle texture) = 0;
 
 		virtual SamplerHandle createSampler(const SamplerDesc& desc) = 0;
@@ -660,6 +727,11 @@ namespace SFE::Render
 		virtual void submit(CommandListHandle list) = 0;
 		virtual void present() = 0;
 		virtual double lastGpuMs() const { return 0.0; }
+		// GPU time between marks a frame writes into its command lists, from the latest frame the GPU has finished:
+		// gpuMarkMs(i) runs from mark i to mark i + 1. Zero where the backend has no timestamps.
+		static constexpr uint32_t kMaxGpuMarks = 32;
+		virtual void cmdGpuMark(CommandListHandle, uint32_t) {}
+		virtual double gpuMarkMs(uint32_t) const { return 0.0; }
 		// The GPU this backend picked, as the driver names it. Empty before the device exists.
 		virtual const char* deviceName() const { return ""; }
 		// Exact readback of one colour texture -- full resolution, no rescale, converted to RGBA8
@@ -671,7 +743,8 @@ namespace SFE::Render
 
 		// Writes one mip level and nothing else: it never builds the rest of the chain, so a caller that wants
 		// the same pixels on every backend uploads every level itself.
-		virtual void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data, uint32_t mip = 0) = 0;
+		// `layer` picks the layer of a texture array; other textures have only 0.
+		virtual void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data, uint32_t mip = 0, uint32_t layer = 0) = 0;
 		virtual void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) = 0;
 		virtual void updateCubeMip(TextureHandle tex, uint32_t mip, const void* packed6Faces, size_t faceBytes);
 		virtual uint64_t getNativeTextureId(TextureHandle tex) const = 0;
@@ -697,6 +770,23 @@ namespace SFE::Render
 	protected:
 		RhiSurface hostSurface() const { return m_host ? m_host->surface() : RhiSurface{}; }
 		bool hostPresentsToScreen() const { return m_host && m_host->presentToScreen(); }
+		// Backends call these where a texture or buffer is created and where it is finally released.
+		void trackTextureMemory(const TextureDesc& desc, const bool created) {
+			const auto kind = (desc.usage & TextureUsage::DepthStencilAttachment) ? MemoryKind::Depth
+				: (desc.usage & TextureUsage::ColorAttachment) ? MemoryKind::Targets : MemoryKind::Textures;
+			track(kind, static_cast<int64_t>(textureBytes(desc)), created);
+		}
+		void trackBufferMemory(const BufferDesc& desc, const bool created) {
+			const auto kind = (desc.usage & (BufferUsage::Vertex | BufferUsage::Index)) ? MemoryKind::Meshes : MemoryKind::Buffers;
+			track(kind, static_cast<int64_t>(desc.size), created);
+		}
+
+	private:
+		enum class MemoryKind : uint8_t { Targets, Depth, Textures, Meshes, Buffers, Count };
+		void track(const MemoryKind kind, const int64_t bytes, const bool created) {
+			m_memory[static_cast<size_t>(kind)].fetch_add(created ? bytes : -bytes, std::memory_order_relaxed);
+		}
+		std::atomic<int64_t> m_memory[static_cast<size_t>(MemoryKind::Count)]{};
 
 	private:
 		RhiHost* m_host = nullptr;

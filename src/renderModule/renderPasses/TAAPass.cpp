@@ -80,7 +80,7 @@ void TAAPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 	const auto mSet = mSets[rhi->frameInFlight() % mSets.size()];
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(SFE::Render::FrameId::Final);
-	const auto pos = frame.texture(SFE::Render::FrameId::GBufferPosition);
+	const auto pos = frame.texture(SFE::Render::FrameId::SceneDepth);
 	const auto velocity = frame.texture(SFE::Render::FrameId::GBufferVelocity);
 	if (!renderDataHandle.graphics.taa) {
 		mHasHistory = false;

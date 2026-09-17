@@ -121,6 +121,10 @@ namespace SFE::Render {
 			m_timestampStartWritten[m_currentFrame] = false;
 			m_timestampEndWritten[m_currentFrame] = false;
 		}
+		if (m_markPool != VK_NULL_HANDLE) {
+			vkResetQueryPool(m_device, m_markPool, m_currentFrame * kMaxGpuMarks, kMaxGpuMarks);
+			m_markCount[m_currentFrame] = 0;
+		}
 		m_uploadRingUsed = 0;
 		m_uploadOps.clear();
 		m_uploadsFlushed = false;
@@ -218,10 +222,14 @@ namespace SFE::Render {
 	}
 
 	void VulkanRHI::executeImmediate(const std::function<void(VkCommandBuffer)>& fn) {
+		executeImmediate(fn, m_uploadCommandPool, m_uploadFence);
+	}
+
+	void VulkanRHI::executeImmediate(const std::function<void(VkCommandBuffer)>& fn, const VkCommandPool pool, const VkFence fence) {
 		VkCommandBufferAllocateInfo allocInfo{};
 		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		allocInfo.commandPool = m_uploadCommandPool;
+		allocInfo.commandPool = pool;
 		allocInfo.commandBufferCount = 1;
 
 		VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
@@ -238,16 +246,16 @@ namespace SFE::Render {
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffer;
-		if (m_uploadFence != VK_NULL_HANDLE) {
-			vkResetFences(m_device, 1, &m_uploadFence);
+		if (fence != VK_NULL_HANDLE) {
+			vkResetFences(m_device, 1, &fence);
 			{
 				std::lock_guard lock(m_queueMutex);
-				const VkResult submitResult = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_uploadFence);
+				const VkResult submitResult = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, fence);
 				if (submitResult != VK_SUCCESS) {
 					RhiLog::fatal("VulkanRHI: upload submit failed (%d)", static_cast<int>(submitResult));
 				}
 			}
-			vkWaitForFences(m_device, 1, &m_uploadFence, VK_TRUE, UINT64_MAX);
+			vkWaitForFences(m_device, 1, &fence, VK_TRUE, UINT64_MAX);
 		}
 		else {
 			{
@@ -257,7 +265,7 @@ namespace SFE::Render {
 			vkQueueWaitIdle(m_graphicsQueue);
 		}
 
-		vkFreeCommandBuffers(m_device, m_uploadCommandPool, 1, &commandBuffer);
+		vkFreeCommandBuffers(m_device, pool, 1, &commandBuffer);
 	}
 
 	void VulkanRHI::createDescriptorPool() {
@@ -472,6 +480,7 @@ namespace SFE::Render {
 			resource.deviceLocal = false;
 		}
 
+		trackBufferMemory(desc, true);
 		BufferHandle handle{};
 		handle.id = storeResource(m_buffers, m_freeBuffers, std::move(resource));
 
@@ -502,6 +511,7 @@ namespace SFE::Render {
 	void VulkanRHI::destroyBuffer(const BufferHandle handle) {
 		if (auto* buffer = getLive(m_buffers, handle.id)) {
 			destroyBufferInternal(*buffer);
+			trackBufferMemory(buffer->desc, false);
 			recycleResource(m_buffers, m_freeBuffers, handle.id);
 		}
 	}
@@ -759,12 +769,12 @@ namespace SFE::Render {
 		vkCmdCopyBufferToImage(cmd, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 	}
 
-	void VulkanRHI::createImage(VkTextureResource& out, const TextureDesc& desc, const void* data) {
+	void VulkanRHI::createImageObjects(VkTextureResource& out, const TextureDesc& desc, uint32_t& mipLevels, uint32_t& arrayLayers) {
 		out.desc = desc;
 		out.format = toVkFormat(desc.format);
 
-		const uint32_t mipLevels = desc.sampleCount > 1 ? 1u : (std::max)(1u, desc.mipLevels);
-		uint32_t arrayLayers = 1;
+		mipLevels = desc.sampleCount > 1 ? 1u : (std::max)(1u, desc.mipLevels);
+		arrayLayers = 1;
 		VkImageCreateFlags flags = 0;
 		VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
 		if (desc.dimension == TextureDimension::Cube) {
@@ -813,6 +823,12 @@ namespace SFE::Render {
 		if (vkCreateImageView(m_device, &viewInfo, nullptr, &out.view) != VK_SUCCESS) {
 			RhiLog::fatal("VulkanRHI: vkCreateImageView failed");
 		}
+	}
+
+	void VulkanRHI::createImage(VkTextureResource& out, const TextureDesc& desc, const void* data) {
+		uint32_t mipLevels = 1;
+		uint32_t arrayLayers = 1;
+		createImageObjects(out, desc, mipLevels, arrayLayers);
 
 		out.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		if (data && desc.dimension == TextureDimension::Tex2D && desc.sampleCount <= 1) {
@@ -876,50 +892,148 @@ namespace SFE::Render {
 		}
 	}
 
+	namespace {
+		// The usage Vulkan needs on top of what the caller asked for.
+		TextureDesc vulkanTextureDesc(const TextureDesc& desc, const bool hasData) {
+			TextureDesc fixed = desc;
+			if (hasData || (fixed.usage & TextureUsage::Sampled)) {
+				fixed.usage = fixed.usage | TextureUsage::TransferDst;
+			}
+			if (fixed.dimension == TextureDimension::Cube) {
+				// Cubes are filled via updateCubeFace; always allow transfer + sampling.
+				fixed.usage = fixed.usage | TextureUsage::TransferDst | TextureUsage::Sampled;
+			}
+			if (fixed.mipLevels > 1) {
+				fixed.usage = fixed.usage | TextureUsage::TransferSrc | TextureUsage::TransferDst;
+			}
+			// Blit / layout transitions between passes need transfer usage on RT textures.
+			if ((fixed.usage & TextureUsage::ColorAttachment) || (fixed.usage & TextureUsage::DepthStencilAttachment)) {
+				fixed.usage = fixed.usage | TextureUsage::TransferSrc | TextureUsage::TransferDst;
+			}
+			if (!(fixed.usage & TextureUsage::Sampled) && !(fixed.usage & TextureUsage::ColorAttachment)
+				&& !(fixed.usage & TextureUsage::DepthStencilAttachment)) {
+				fixed.usage = fixed.usage | TextureUsage::Sampled;
+			}
+			return fixed;
+		}
+	}
+
 	TextureHandle VulkanRHI::createTexture(const TextureDesc& desc, const void* data) {
 		if (desc.dimension == TextureDimension::Tex3D) {
 			RhiLog::error("VulkanRHI: Tex3D textures not supported yet");
 			return {};
 		}
 
-		TextureDesc fixed = desc;
-		if (data || (fixed.usage & TextureUsage::Sampled)) {
-			fixed.usage = fixed.usage | TextureUsage::TransferDst;
-		}
-		if (fixed.dimension == TextureDimension::Cube) {
-			// Cubes are filled via updateCubeFace; always allow transfer + sampling.
-			fixed.usage = fixed.usage | TextureUsage::TransferDst | TextureUsage::Sampled;
-		}
-		if (fixed.mipLevels > 1) {
-			fixed.usage = fixed.usage | TextureUsage::TransferSrc | TextureUsage::TransferDst;
-		}
-		// Blit / layout transitions between passes need transfer usage on RT textures.
-		if ((fixed.usage & TextureUsage::ColorAttachment) || (fixed.usage & TextureUsage::DepthStencilAttachment)) {
-			fixed.usage = fixed.usage | TextureUsage::TransferSrc | TextureUsage::TransferDst;
-		}
-		if (!(fixed.usage & TextureUsage::Sampled) && !(fixed.usage & TextureUsage::ColorAttachment)
-			&& !(fixed.usage & TextureUsage::DepthStencilAttachment)) {
-			fixed.usage = fixed.usage | TextureUsage::Sampled;
-		}
-
+		const TextureDesc fixed = vulkanTextureDesc(desc, data != nullptr);
 		VkTextureResource resource{};
 		resource.live = true;
 		createImage(resource, fixed, data);
+		if (resource.image != VK_NULL_HANDLE) {
+			trackTextureMemory(resource.desc, true);
+		}
 
 		TextureHandle handle{};
 		handle.id = storeResource(m_textures, m_freeTextures, std::move(resource));
 		return handle;
 	}
 
+	namespace {
+		struct VulkanPreparedTexture : PreparedTexture {
+			VkTextureResource resource;
+			std::function<void(VkTextureResource&)> destroy;
+			~VulkanPreparedTexture() override {
+				if (resource.image != VK_NULL_HANDLE) {
+					destroy(resource);
+				}
+			}
+		};
+	}
+
+	std::unique_ptr<PreparedTexture> VulkanRHI::prepareTexture(const TextureDesc& desc, const std::vector<const void*>& levels) {
+		const uint32_t levelCount = (std::max)(1u, desc.mipLevels);
+		if (desc.dimension != TextureDimension::Tex2D || desc.sampleCount > 1 || levels.size() != levelCount) {
+			return nullptr;
+		}
+		auto prepared = std::make_unique<VulkanPreparedTexture>();
+		prepared->destroy = [this](VkTextureResource& resource) { destroyTextureInternal(resource); };
+		auto& resource = prepared->resource;
+		resource.live = true;
+		uint32_t mipLevels = 1;
+		uint32_t arrayLayers = 1;
+		createImageObjects(resource, vulkanTextureDesc(desc, true), mipLevels, arrayLayers);
+
+		// Every level in one staging buffer, one after another, and one command buffer copying them all.
+		const size_t pixelSize = bytesPerPixel(desc.format);
+		std::vector<VkBufferImageCopy> regions(levelCount);
+		size_t total = 0;
+		for (uint32_t level = 0; level < levelCount; ++level) {
+			const uint32_t w = (std::max)(1u, desc.width >> level);
+			const uint32_t h = (std::max)(1u, desc.height >> level);
+			auto& region = regions[level];
+			region.bufferOffset = total;
+			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.imageSubresource.mipLevel = level;
+			region.imageSubresource.layerCount = 1;
+			region.imageExtent = { w, h, 1 };
+			total += static_cast<size_t>(w) * h * pixelSize;
+		}
+		VmaAllocation stagingMemory = VK_NULL_HANDLE;
+		const VkBuffer staging = createStagingBuffer(total, stagingMemory, nullptr);
+		void* mapped = nullptr;
+		vmaMapMemory(m_allocator, stagingMemory, &mapped);
+		for (uint32_t level = 0; level < levelCount; ++level) {
+			const auto& extent = regions[level].imageExtent;
+			std::memcpy(static_cast<char*>(mapped) + regions[level].bufferOffset, levels[level], static_cast<size_t>(extent.width) * extent.height * pixelSize);
+		}
+		vmaFlushAllocation(m_allocator, stagingMemory, 0, total);
+		vmaUnmapMemory(m_allocator, stagingMemory);
+
+		// This thread's own pool and fence: the shared ones belong to the device thread.
+		VkCommandPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		poolInfo.queueFamilyIndex = m_graphicsQueueFamily;
+		VkCommandPool pool = VK_NULL_HANDLE;
+		vkCreateCommandPool(m_device, &poolInfo, nullptr, &pool);
+		VkFenceCreateInfo fenceInfo{};
+		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		VkFence fence = VK_NULL_HANDLE;
+		vkCreateFence(m_device, &fenceInfo, nullptr, &fence);
+		executeImmediate([&](VkCommandBuffer cmd) {
+			transitionImageLayout(cmd, resource.image, resource.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, arrayLayers, mipLevels);
+			vkCmdCopyBufferToImage(cmd, staging, resource.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, levelCount, regions.data());
+			transitionImageLayout(cmd, resource.image, resource.format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, arrayLayers, mipLevels);
+		}, pool, fence);
+		vkDestroyFence(m_device, fence, nullptr);
+		vkDestroyCommandPool(m_device, pool, nullptr);
+		destroyStagingBuffer(staging, stagingMemory);
+		resource.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		return prepared;
+	}
+
+	TextureHandle VulkanRHI::adoptTexture(std::unique_ptr<PreparedTexture> texture) {
+		auto* prepared = dynamic_cast<VulkanPreparedTexture*>(texture.get());
+		if (!prepared || prepared->resource.image == VK_NULL_HANDLE) {
+			return {};
+		}
+		trackTextureMemory(prepared->resource.desc, true);
+		TextureHandle handle{};
+		handle.id = storeResource(m_textures, m_freeTextures, std::move(prepared->resource));
+		prepared->resource = {};
+		return handle;
+	}
+
 	void VulkanRHI::destroyTexture(const TextureHandle texture) {
 		if (auto* tex = getLive(m_textures, texture.id)) {
+			if (tex->image != VK_NULL_HANDLE) {
+				trackTextureMemory(tex->desc, false);
+			}
 			destroyTextureInternal(*tex);
 			recycleResource(m_textures, m_freeTextures, texture.id);
 		}
 	}
 
 	void VulkanRHI::updateTexture(const TextureHandle tex, const uint32_t x, const uint32_t y,
-		const uint32_t w, const uint32_t h, const TextureFormat, const void* data, const uint32_t mip)
+		const uint32_t w, const uint32_t h, const TextureFormat, const void* data, const uint32_t mip, const uint32_t layer)
 	{
 		auto* texture = getLive(m_textures, tex.id);
 		if (!texture || !data || w == 0 || h == 0) {
@@ -934,7 +1048,7 @@ namespace SFE::Render {
 			region.bufferOffset = 0;
 			region.imageSubresource.aspectMask = aspectMaskForFormat(texture->format);
 			region.imageSubresource.mipLevel = mip;
-			region.imageSubresource.baseArrayLayer = 0;
+			region.imageSubresource.baseArrayLayer = layer;
 			region.imageSubresource.layerCount = 1;
 			region.imageOffset = { static_cast<int32_t>(x), static_cast<int32_t>(y), 0 };
 			region.imageExtent = { w, h, 1 };
@@ -1532,5 +1646,14 @@ namespace SFE::Render {
 		region.dstOffset = dstOffset;
 		region.size = size;
 		vkCmdCopyBuffer(list->cmd, source->buffer, destination->buffer, 1, &region);
+	}
+
+	void VulkanRHI::cmdGpuMark(const CommandListHandle cmd, const uint32_t mark) {
+		auto* list = getLive(m_commandLists, cmd.id);
+		if (!list || m_markPool == VK_NULL_HANDLE || mark >= kMaxGpuMarks || mark < m_markCount[m_currentFrame]) {
+			return;
+		}
+		vkCmdWriteTimestamp(list->cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_markPool, m_currentFrame * kMaxGpuMarks + mark);
+		m_markCount[m_currentFrame] = mark + 1;
 	}
 }

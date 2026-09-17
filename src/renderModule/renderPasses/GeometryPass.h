@@ -20,7 +20,7 @@ namespace SFE::Render::RenderPasses {
 		struct Data {
 			FramebufferHandle gFramebuffer;
 
-			TextureHandle positionBuffer;
+			TextureHandle materialBuffer;
 			TextureHandle viewPositionBuffer;
 			TextureHandle normalBuffer;
 			TextureHandle albedoBuffer;
@@ -55,6 +55,12 @@ namespace SFE::Render::RenderPasses {
 
 		void init(SystemsModule::RenderData& renderDataHandle) override;
 		void render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) override;
+
+		// The opaque scene culled into `view`, drawn with each material's G-buffer pipeline into whatever render pass
+		// is open, as long as it has this pass's attachments. `frameSet` is laid out like the renderer's frame set and
+		// carries the camera to draw from; the visible list and the materials are written into it here.
+		void drawGBuffer(CommandListHandle cmd, const GpuScene::View& view, DescriptorSetHandle frameSet, BufferHandle materials,
+			PolygonFillMode fillMode = PolygonFillMode::Fill, bool secondPhase = false);
 	private:
 		// The fill mode is part of the key: wireframe is a second pipeline, not a state change. The
 		// RHI has no dynamic polygon mode -- Vulkan bakes it into the PSO and cannot override it.
@@ -63,7 +69,6 @@ namespace SFE::Render::RenderPasses {
 		void initGrid(Render::DescriptorSetLayoutHandle frameLayout);
 		void drawGrid(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd);
 
-		void drawScene(CommandListHandle cmd, PolygonFillMode fillMode, BufferHandle materials, bool secondPhase);
 
 		bool mInited = false;
 		std::vector<Data> mFrames; // one per frame the RHI keeps in flight

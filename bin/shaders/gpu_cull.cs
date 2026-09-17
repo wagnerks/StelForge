@@ -86,6 +86,9 @@ layout(SFE_SET(0, 31), std430) readonly buffer CullView {
     uint levelOffsets[16];
     // xyz the player camera, w the pixels a unit of radius covers a unit away.
     vec4 lodOrigin;
+    // A shadow cascade's texels per metre, 0 for other views, and the fewest texels a caster must span.
+    float texelsPerMetre;
+    float minTexels;
 } view;
 
 // Which level of a chain belongs on screen at this size. The bands are in pixels of screen height, so they
@@ -224,11 +227,20 @@ void main() {
         // The mesh table holds one entry per level and the scene registers the instance once under each, so
         // every batch is asked whether this instance belongs to it at this distance and exactly one says yes.
         bool draw = visibleInView(center, extents);
+        float radius = length(extents);
+        // In a shadow map a caster covers texels, not pixels: one smaller than a texel leaves the map as it is.
+        float texels = radius * view.texelsPerMetre;
+        if (view.texelsPerMetre > 0.0 && texels < view.minTexels) {
+            draw = false;
+        }
         if (mesh.lodCount > 1u) {
-            float radius = length(extents);
             float distance = max(length(center - view.lodOrigin.xyz), 1e-3);
-            uint level = lodForSize(radius * view.lodOrigin.w / distance, mesh.lodCount);
-            draw = draw && min(level + view.lodBias, mesh.lodCount - 1u) == mesh.lodIndex;
+            uint level = min(lodForSize(radius * view.lodOrigin.w / distance, mesh.lodCount) + view.lodBias, mesh.lodCount - 1u);
+            // Never finer than the map's texels show, which in a far cascade is coarser than the camera's pixels ask.
+            if (view.texelsPerMetre > 0.0) {
+                level = max(level, lodForSize(texels, mesh.lodCount));
+            }
+            draw = draw && level == mesh.lodIndex;
         }
         if (view.occlusion == 1u) {
             draw = draw && lastVisible[slot] == 1u;

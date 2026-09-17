@@ -1,25 +1,4 @@
-// Material parameters, one entry per distinct material. Mirrors SFE::Render::GpuMaterial; the pass
-// rules (dither cutoff, caster opacity, glass defaults) are resolved on the CPU when an entry is made.
-struct SfeMaterial {
-    float matRoughness;
-    float matMetallic;
-    float mapMask;
-    float alphaCutoff;     // g-buffer: > 1 dithers
-    float uvSel;
-    float specFactor;
-    float clearcoat;
-    float clearcoatRough;
-    vec3 tint;
-    float opacity;         // glass density
-    float ior;             // glass
-    float casterOpacity;   // shadow casters
-    float shadowCutoff;    // shadow casters: < 0 takes the mask from r/g
-    float albedoSlot;      // glass: index into the glass albedo array
-};
-
-layout(SFE_SET(0, 7), std430) readonly buffer SfeMaterials {
-    SfeMaterial sfeMaterials[];
-};
+#include "sfe_material_table.glsl"
 
 // How rough this surface has to be written down as for the highlight to survive being squeezed into one
 // pixel. Two things spread the normal inside a pixel footprint and both read as a wider highlight: the
@@ -42,12 +21,12 @@ float sfeFilteredRoughness(vec3 worldNormal, float roughness, float normalMapLen
 }
 
 // Fragment only: it needs the mip the rasterizer would have picked.
-vec3 sfeMaskedAlbedo(sampler2D tex, vec2 uv) {
+vec3 sfeMaskedAlbedo(sampler2D tex, vec2 uv, vec4 base) {
     // A cutout texture keeps junk under its transparent texels, so a pixel on the edge takes the colour of
     // the nearest texel that is actually there. Everything here happens at the mip this pixel would have
     // sampled anyway: done at level 0, the search picked a different texel every frame once the model was
     // small on screen, and TAA averaged that flicker into grey.
-    vec4 base = texture(tex, uv);
+    // `base` is texture(tex, uv), which the caller has already read.
     if (base.a > 0.5) {
         return base.rgb;
     }

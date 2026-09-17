@@ -5,12 +5,12 @@
 
 namespace SFE::Render {
 	namespace {
-		TextureHandle solidTexture(const uint8_t r, const uint8_t g, const uint8_t b) {
+		TextureHandle solidTexture(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a = 255) {
 			TextureDesc desc;
 			desc.width = 1;
 			desc.height = 1;
 			desc.format = TextureFormat::RGBA8;
-			const uint8_t px[4] = { r, g, b, 255 };
+			const uint8_t px[4] = { r, g, b, a };
 			return Engine::instance()->rhi()->createTexture(desc, px);
 		}
 	}
@@ -18,6 +18,9 @@ namespace SFE::Render {
 	std::vector<WriteDescriptor> materialTextureWrites(const DescriptorSetHandle set, const ComponentsModule::Materials& materials) {
 		static const TextureHandle black = solidTexture(0, 0, 0);
 		static const TextureHandle gray = solidTexture(128, 128, 128);
+		// Clear, alpha too: the G-buffer reads a subsurface amount from the alpha when red is empty, and an opaque
+		// default made every material without a map scatter light like skin.
+		static const TextureHandle clear = solidTexture(0, 0, 0, 0);
 		const auto* white = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
 		const auto* normal = AssetsModule::TextureHandler::instance()->loadTexture("defaultNormal.png");
 		const auto sampler = white->sampler;
@@ -28,7 +31,11 @@ namespace SFE::Render {
 			{ .set = set, .binding = SFE::SPECULAR, .images{ { black, sampler } } },
 			{ .set = set, .binding = SFE::ROUGHNESS, .images{ { gray, sampler } } },
 			{ .set = set, .binding = SFE::METALLIC, .images{ { black, sampler } } },
-			{ .set = set, .binding = SFE::SUBSURFACE, .images{ { black, sampler } } },
+			{ .set = set, .binding = SFE::SUBSURFACE, .images{ { clear, sampler } } },
+			{ .set = set, .binding = SFE::TRIPLANAR_ALBEDO, .images{ { white->texture, white->sampler } } },
+			{ .set = set, .binding = SFE::TRIPLANAR_NORMALS, .images{ { normal->texture, normal->sampler } } },
+			{ .set = set, .binding = SFE::TRIPLANAR2_ALBEDO, .images{ { white->texture, white->sampler } } },
+			{ .set = set, .binding = SFE::TRIPLANAR2_NORMALS, .images{ { normal->texture, normal->sampler } } },
 		};
 		for (uint8_t i = 0; i < materials.materialsCount; ++i) {
 			const auto& slot = materials.material[i];

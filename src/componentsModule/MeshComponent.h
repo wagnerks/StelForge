@@ -21,7 +21,7 @@ namespace SFE::ComponentsModule {
 					mat = &meshMaterials[i];
 				}
 				++i;
-				if (!node.value) {
+				if (!node.value || (mat && mat->hidden)) {
 					continue;
 				}
 				fn(node.value, mat);

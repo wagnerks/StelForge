@@ -13,3 +13,6 @@
 [submodule "src/submodules/meshoptimizer"]
 	path = src/submodules/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
+[submodule "src/submodules/miniaudio"]
+	path = src/submodules/miniaudio
+	url = https://github.com/mackron/miniaudio.git

@@ -6,9 +6,14 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "assetsModule/modelModule/Vertex.h"
 #include "core/Engine.h"
+#include "debugModule/ProcessMemory.h"
 #include "rhi/GraphicsBackend.h"
+#include "renderModule/Atmosphere.h"
 #include "renderModule/TextRenderer.h"
 #include "renderModule/Utils.h"
+#include "componentsModule/TransformComponent.h"
+#include "core/ECSHandler.h"
+#include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 
 using namespace SFE::Render::RenderPasses;
@@ -42,6 +47,8 @@ void FinalPass::init(SystemsModule::RenderData&) {
 	DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(2, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(3, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
@@ -49,6 +56,7 @@ void FinalPass::init(SystemsModule::RenderData&) {
 	for (uint32_t i = 0; i < (std::max)(1u, rhi->framesInFlight()); ++i) {
 		mBloomSets.push_back(rhi->allocateDescriptorSet(mLayout));
 		mPostSets.push_back(rhi->allocateDescriptorSet(mLayout));
+		mToneSets.push_back(rhi->allocateDescriptorSet(mLayout));
 	}
 
 	RenderPassDesc bloomRp;
@@ -67,6 +75,38 @@ void FinalPass::init(SystemsModule::RenderData&) {
 
 	mBloomPipeline = makeFullscreen(rhi, mBloomPass, "shaders/deferred_shading.vs", "shaders/bloom_extract.fs");
 	mPostPipeline = makeFullscreen(rhi, mDisplayPass, "shaders/deferred_shading.vs", "shaders/post.fs");
+	mTonePipeline = makeFullscreen(rhi, mBloomPass, "shaders/deferred_shading.vs", "shaders/post_tonemap.fs");
+	mLuminanceLogPipeline = makeFullscreen(rhi, mBloomPass, "shaders/deferred_shading.vs", "shaders/luminance_log.fs");
+	mLuminanceDownPipeline = makeFullscreen(rhi, mBloomPass, "shaders/deferred_shading.vs", "shaders/luminance_down.fs");
+	mAdaptPipeline = makeFullscreen(rhi, mBloomPass, "shaders/deferred_shading.vs", "shaders/luminance_adapt.fs");
+	const auto target = [&](const uint32_t size) {
+		TextureDesc desc;
+		desc.width = size;
+		desc.height = size;
+		desc.format = TextureFormat::RGBA16F;
+		desc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+		Target t;
+		t.size = size;
+		t.texture = rhi->createTexture(desc);
+		FramebufferDesc fb;
+		fb.width = size;
+		fb.height = size;
+		fb.renderPass = mBloomPass;
+		fb.colorAttachments = { { t.texture } };
+		t.fbo = rhi->createFramebuffer(fb);
+		return t;
+	};
+	for (const uint32_t size : { 64u, 16u, 4u, 1u }) {
+		mLuminance.push_back(target(size));
+	}
+	mAdapted[0] = target(1);
+	mAdapted[1] = target(1);
+	mAdaptSets.resize((std::max)(1u, rhi->framesInFlight()));
+	for (auto& sets : mAdaptSets) {
+		for (size_t i = 0; i < mLuminance.size() + 1; ++i) {
+			sets.push_back(rhi->allocateDescriptorSet(mLayout));
+		}
+	}
 
 	TextureDesc bloomDesc;
 	bloomDesc.width = std::max(1, w / 4);
@@ -80,6 +120,20 @@ void FinalPass::init(SystemsModule::RenderData&) {
 	bloomFb.renderPass = mBloomPass;
 	bloomFb.colorAttachments = { { mBloomTex } };
 	mBloomFbo = rhi->createFramebuffer(bloomFb);
+
+	// Half floats: the tonemapped colour is in 0..1, and 8 bits would round the neighbours the sharpening compares.
+	TextureDesc toneDesc;
+	toneDesc.width = w;
+	toneDesc.height = h;
+	toneDesc.format = TextureFormat::RGBA16F;
+	toneDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+	mToneTex = rhi->createTexture(toneDesc);
+	FramebufferDesc toneFb;
+	toneFb.width = w;
+	toneFb.height = h;
+	toneFb.renderPass = mBloomPass;
+	toneFb.colorAttachments = { { mToneTex } };
+	mToneFbo = rhi->createFramebuffer(toneFb);
 
 	TextureDesc displayDesc;
 	displayDesc.width = w;
@@ -122,8 +176,8 @@ namespace {
 	// The overlay panel, in pixels from the top left.
 	constexpr float kPanelX = 12.f;
 	constexpr float kPanelY = 12.f;
-	constexpr float kPanelWidth = 380.f;
-	constexpr float kTextHeight = 86.f;
+	constexpr float kPanelWidth = 700.f;
+	constexpr float kTextHeight = 156.f;
 	constexpr float kGraphHeight = 44.f;
 	constexpr float kGraphGap = 6.f;
 
@@ -225,20 +279,78 @@ void FinalPass::drawOverlay(const Render::CommandListHandle cmd, const int scree
 	addGraph(gpuGraph, info->gpuMsHistory, SystemsModule::RenderDebugInfo::kHistory, info->historyCursor, scale, mOverlayVertices);
 	drawShapes(cmd, mOverlayLinePipeline, mOverlayVertices, kGpuColor);
 
-	char overlay[256];
+	constexpr double kMegabyte = 1024.0 * 1024.0;
+	const auto gpuMemory = rhi->gpuMemory();
+	const auto processMemory = Debug::processMemory();
+	// Where the camera is and which way it looks, in the form --camera and --camera-rot take.
+	Math::Vec3 cameraPos{};
+	Math::Vec3 cameraRot{};
+	if (auto* cameras = ECSHandler::getSystem<SystemsModule::CameraSystem>()) {
+		if (const auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(cameras->getCurrentCamera())) {
+			cameraPos = transform->getPos(true);
+			cameraRot = transform->getRotate();
+		}
+	}
+	char overlay[512];
 	std::snprintf(
 		overlay,
 		sizeof(overlay),
-		"%s | %s\nframe %.1f ms (%.0f fps)  worst %.1f\ngpu %.1f ms  cpu %.1f ms",
+		"%s | %s\nframe %.1f ms (%.0f fps)  worst %.1f\ngpu %.1f ms  cpu %.1f ms\nram %.0f MB (committed %.0f)\nvram %.0f MB: targets %.0f  depth %.0f  textures %.0f  meshes %.0f  buffers %.0f\ncamera %.1f,%.1f,%.1f  rot %.1f,%.1f,%.1f",
 		graphicsBackendName(activeGraphicsBackend()),
 		rhi->deviceName(),
 		static_cast<double>(average),
 		average > 0.f ? 1000.0 / static_cast<double>(average) : 0.0,
 		static_cast<double>(worst),
 		static_cast<double>(info->gpuMs),
-		static_cast<double>(info->cpuMs)
+		static_cast<double>(info->cpuMs),
+		static_cast<double>(processMemory.inRam) / kMegabyte,
+		static_cast<double>(processMemory.committed) / kMegabyte,
+		static_cast<double>(gpuMemory.total()) / kMegabyte,
+		static_cast<double>(gpuMemory.targets) / kMegabyte,
+		static_cast<double>(gpuMemory.depth) / kMegabyte,
+		static_cast<double>(gpuMemory.textures) / kMegabyte,
+		static_cast<double>(gpuMemory.meshes) / kMegabyte,
+		static_cast<double>(gpuMemory.buffers) / kMegabyte,
+		static_cast<double>(cameraPos.x), static_cast<double>(cameraPos.y), static_cast<double>(cameraPos.z),
+		static_cast<double>(cameraRot.x), static_cast<double>(cameraRot.y), static_cast<double>(cameraRot.z)
 	);
 	TextRenderer::instance()->renderText(cmd, overlay, kPanelX + 8.f, kPanelY + 22.f, 1.f, Math::Vec3{ 1.f, 0.92f, 0.2f }, mOverlayFont);
+}
+
+void FinalPass::adapt(SystemsModule::RenderData& renderDataHandle, const Render::CommandListHandle cmd, const TextureHandle src,
+	const TransientAllocation& post) {
+	auto* rhi = Engine::instance()->rhi();
+	auto& sets = mAdaptSets[rhi->frameInFlight() % mAdaptSets.size()];
+	const auto position = renderDataHandle.frame.texture(FrameId::SceneDepth);
+	const auto run = [&](const PipelineHandle pipeline, const DescriptorSetHandle set, const Target& target, std::vector<WriteDescriptor> writes) {
+		writes.push_back({ .set = set, .binding = 15, .buffers{ { post.buffer, 0, sizeof(PostParams) } } });
+		rhi->updateDescriptorSets(writes);
+		RenderPassBeginInfo begin;
+		begin.renderPass = mBloomPass;
+		begin.framebuffer = target.fbo;
+		begin.width = target.size;
+		begin.height = target.size;
+		rhi->cmdBeginRenderPass(cmd, begin);
+		rhi->cmdBindPipeline(cmd, pipeline);
+		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, &set, 1, &post.offset, 1);
+		Utils::renderQuad(cmd);
+		rhi->cmdEndRenderPass(cmd);
+	};
+
+	run(mLuminanceLogPipeline, sets[0], mLuminance[0], { { .set = sets[0], .binding = 0, .images{ { src, mSampler } } } });
+	for (size_t i = 1; i < mLuminance.size(); ++i) {
+		run(mLuminanceDownPipeline, sets[i], mLuminance[i], { { .set = sets[i], .binding = 0, .images{ { mLuminance[i - 1].texture, mSampler } } } });
+	}
+	const uint32_t next = 1 - mAdaptedCurrent;
+	const auto& previous = mAdaptedValid ? mAdapted[mAdaptedCurrent].texture : mLuminance.back().texture;
+	const auto adaptSet = sets[mLuminance.size()];
+	run(mAdaptPipeline, adaptSet, mAdapted[next], {
+		{ .set = adaptSet, .binding = 0, .images{ { mLuminance.back().texture, mSampler } } },
+		{ .set = adaptSet, .binding = 1, .images{ { previous, mSampler } } },
+		{ .set = adaptSet, .binding = 2, .images{ { position ? position : src, mSampler } } },
+	});
+	mAdaptedCurrent = next;
+	mAdaptedValid = true;
 }
 
 void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
@@ -258,6 +370,40 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	mPostParams.vignette = gfx.vignette;
 	mPostParams.ca = gfx.chromaticAberration;
 	mPostParams.sharpness = gfx.sharpness;
+	mPostParams.autoExposure = gfx.autoExposure ? 1.f : 0.f;
+	mPostParams.flareStrength = gfx.flareStrength;
+	mPostParams.warmth = gfx.warmth;
+	mPostParams.saturation = gfx.saturation;
+	mPostParams.contrast = gfx.contrast;
+	mPostParams.aspect = static_cast<float>((std::max)(1, screen.renderW)) / static_cast<float>((std::max)(1, screen.renderH));
+	mPostParams.adaptSpeed = gfx.adaptationSpeed;
+	{
+		const double now = Engine::clockSeconds();
+		// A capture adapts at once, so the same frame comes out the same whatever ran before it.
+		mPostParams.adaptSeconds = !mAdaptedValid || Engine::instance()->capturingFrame() ? 1e6f : static_cast<float>((std::min)(now - mLastFrameAt, 1.0));
+		mLastFrameAt = now;
+	}
+	// Where the sun is on screen, and how bright, for the flare.
+	mPostParams.sunInFront = 0.f;
+	mPostParams.sunColor[0] = mPostParams.sunColor[1] = mPostParams.sunColor[2] = 0.f;
+	Atmosphere::SkyParams sky;
+	const bool outdoor = Atmosphere::skyParams(renderDataHandle, sky);
+	if (outdoor && sky.toSun[1] > -0.05f) {
+		const Math::Vec3 far = renderDataHandle.mCameraPos + Math::Vec3{ sky.toSun[0], sky.toSun[1], sky.toSun[2] } * 1000.f;
+		const auto clip = renderDataHandle.current.PV * Math::Vec4{ far.x, far.y, far.z, 1.f };
+		if (clip.w > 0.f) {
+			mPostParams.sunU = clip.x / clip.w * 0.5f + 0.5f;
+			mPostParams.sunV = clip.y / clip.w * 0.5f + 0.5f;
+			mPostParams.sunInFront = 1.f;
+		}
+		std::copy(std::begin(sky.sunColor), std::begin(sky.sunColor) + 3, mPostParams.sunColor);
+	}
+	mPostParams.grade[0] = outdoor ? sky.toSun[1] : 1.f;
+	mPostParams.grade[1] = gfx.timeGrade;
+	mPostParams.grade[2] = gfx.filmGrain;
+	mPostParams.extra[0] = gfx.sunRays;
+	// A capture's grain the same every run.
+	mPostParams.grade[3] = Engine::instance()->capturingFrame() ? 0.f : static_cast<float>(std::fmod(Engine::clockSeconds(), 1000.0));
 
 	// A debug term carries a value to be read off the image, not a picture to be graded. Exposure
 	// and vignette silently rescale it, which turns any absolute reading into nonsense.
@@ -268,6 +414,7 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		mPostParams.ca = 0.f;
 	}
 	const auto post = rhi->allocTransient(mPostParams);
+	adapt(renderDataHandle, cmd, src, post);
 
 	if (gfx.bloom && mBloomPipeline) {
 		WriteDescriptor w{};
@@ -293,6 +440,26 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		rhi->cmdEndRenderPass(cmd);
 	}
 
+	if (mTonePipeline) {
+		const auto toneSet = mToneSets[rhi->frameInFlight() % mToneSets.size()];
+		rhi->updateDescriptorSets({
+			{ .set = toneSet, .binding = 0, .images{ { src, mSampler } } },
+			{ .set = toneSet, .binding = 1, .images{ { mBloomTex, mSampler } } },
+			{ .set = toneSet, .binding = 2, .images{ { mAdapted[mAdaptedCurrent].texture, mSampler } } },
+			{ .set = toneSet, .binding = 15, .buffers{ { post.buffer, 0, sizeof(PostParams) } } },
+		});
+		RenderPassBeginInfo beginInfo;
+		beginInfo.framebuffer = mToneFbo;
+		beginInfo.renderPass = mBloomPass;
+		beginInfo.width = screen.renderW;
+		beginInfo.height = screen.renderH;
+		rhi->cmdBeginRenderPass(cmd, beginInfo);
+		rhi->cmdBindPipeline(cmd, mTonePipeline);
+		rhi->cmdBindDescriptorSets(cmd, mTonePipeline, 0, &toneSet, 1, &post.offset, 1);
+		Utils::renderQuad(cmd);
+		rhi->cmdEndRenderPass(cmd);
+	}
+
 	{
 		std::vector<WriteDescriptor> writes;
 		{
@@ -305,8 +472,22 @@ void FinalPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		{
 			WriteDescriptor w{};
 			w.set = mPostSet;
+			w.binding = 3;
+			w.images.push_back({ mToneTex, mSampler });
+			writes.push_back(std::move(w));
+		}
+		{
+			WriteDescriptor w{};
+			w.set = mPostSet;
 			w.binding = 1;
 			w.images.push_back({ mBloomTex, mSampler });
+			writes.push_back(std::move(w));
+		}
+		{
+			WriteDescriptor w{};
+			w.set = mPostSet;
+			w.binding = 2;
+			w.images.push_back({ mAdapted[mAdaptedCurrent].texture, mSampler });
 			writes.push_back(std::move(w));
 		}
 		{

@@ -179,29 +179,6 @@ namespace SFE::Render::VulkanVkUtil {
 		}
 	}
 
-	inline uint32_t bytesPerPixel(TextureFormat format) {
-		switch (format) {
-		case TextureFormat::R8: return 1;
-		case TextureFormat::RG8: return 2;
-		case TextureFormat::RGB8: return 3;
-		case TextureFormat::RGBA8:
-		case TextureFormat::SRGB8_ALPHA8:
-		case TextureFormat::R32F:
-		case TextureFormat::DEPTH_COMPONENT32:
-		case TextureFormat::DEPTH_COMPONENT32F:
-		case TextureFormat::DEPTH_COMPONENT24:
-		case TextureFormat::DEPTH24_STENCIL8: return 4;
-		case TextureFormat::R16F: return 2;
-		case TextureFormat::RG16F:
-		case TextureFormat::DEPTH_COMPONENT16: return 4;
-		case TextureFormat::RGBA16F:
-		case TextureFormat::RG32F:
-		case TextureFormat::DEPTH32F_STENCIL8: return 8;
-		case TextureFormat::RGBA32F: return 16;
-		default: return 4;
-		}
-	}
-
 	inline VkFormat vertexFormatToVk(VertexFormat format) {
 		switch (format) {
 		case VertexFormat::Float: return VK_FORMAT_R32_SFLOAT;

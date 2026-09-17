@@ -10,8 +10,16 @@ namespace SFE {
 	// that needs to know which triangles touch -- simplification above all -- can do nothing.
 	void weldMesh(Mesh<Vertex3D>& mesh);
 
+	struct MeshLodOptions {
+		// Fraction of the mesh's size a vertex may move, per level.
+		float errorPerLevel = 0.03f;
+		// The open edges stay where they are: a piece of a larger surface, such as a terrain chunk, then meets its
+		// neighbour at any level of either.
+		bool lockBorder = false;
+	};
+
 	// Fills mesh.lodIndices with coarser index sets over the mesh's own vertices. Index only: a vertex is
 	// either kept with everything it carries -- bone weights included -- or no longer referenced, so a
 	// skinned mesh simplifies without touching the skinning. Weld first.
-	void buildMeshLods(Mesh<Vertex3D>& mesh);
+	void buildMeshLods(Mesh<Vertex3D>& mesh, const MeshLodOptions& options = {});
 }

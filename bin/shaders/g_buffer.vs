@@ -1,6 +1,8 @@
 #version 450 core
 #include "sfe.glsl"
 #include "sfe_scene.glsl"
+#include "sfe_material_table.glsl"
+#include "sfe_wind.glsl"
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
@@ -22,6 +24,9 @@ layout(location = 6) flat out uint vMaterial;
 // Unjittered clip positions, this frame and the last: their difference is the pixel's motion.
 layout(location = 7) out vec4 vClip;
 layout(location = 8) out vec4 vPrevClip;
+// Where on the model this is, in world metres from its origin and before the wind: what a triplanar texture is laid
+// by, so it neither slides as the model moves nor swims as it sways.
+layout(location = 9) out vec3 vSurface;
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
@@ -72,6 +77,8 @@ void main() {
     precise vec4 newPos = BoneTransform * vec4(aPos.xyz, 1.0);
     newPos /= newPos.w;
     precise vec4 worldPos = model[index] * newPos;
+    vSurface = worldPos.xyz - model[index][3].xyz;
+    worldPos.xyz += sfeWindSway(worldPos.xyz, model[index][3].xyz, instance.material, matrices.wind);
 
     FragPos = worldPos.xyz;
     TexCoords = aTexCoords;
@@ -99,7 +106,9 @@ void main() {
     vec4 prevPos = prevBoneTransform * vec4(aPos.xyz, 1.0);
     prevPos /= prevPos.w;
     vClip = matrices.PVNoJitter * worldPos;
-    vPrevClip = matrices.prevPVNoJitter * (prevModel[index] * prevPos);
+    vec4 prevWorld = prevModel[index] * prevPos;
+    prevWorld.xyz += sfeWindSway(prevWorld.xyz, prevModel[index][3].xyz, instance.material, matrices.windBefore);
+    vPrevClip = matrices.prevPVNoJitter * prevWorld;
 
     precise vec4 clipPos = matrices.PV * worldPos;
     gl_Position = clipPos;

@@ -47,6 +47,8 @@ void SSSPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(0, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(2, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(3, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
@@ -77,12 +79,13 @@ void SSSPass::render(SystemsModule::RenderData& renderDataHandle, CommandListHan
 	const auto mSet = mSets[rhi->frameInFlight() % mSets.size()];
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(FrameId::Final);
-	const auto pos = frame.texture(FrameId::GBufferPosition);
-	const auto alb = frame.texture(FrameId::GBufferAlbedo);
+	const auto pos = frame.texture(FrameId::SceneDepth);
+	const auto material = frame.texture(FrameId::GBufferMaterial);
+	const auto nrm = frame.texture(FrameId::GBufferNormal);
 	if (!renderDataHandle.graphics.sss) {
 		return;
 	}
-	if (!src || !pos || !alb || !mPipeline) {
+	if (!src || !pos || !material || !nrm || !mPipeline || !renderDataHandle.cameraMatricesUBO) {
 		return;
 	}
 
@@ -110,14 +113,28 @@ void SSSPass::render(SystemsModule::RenderData& renderDataHandle, CommandListHan
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.images.push_back({ pos, sampOr(FrameId::GBufferPosition, mNearest) });
+		w.images.push_back({ pos, sampOr(FrameId::SceneDepth, mNearest) });
 		writes.push_back(std::move(w));
 	}
 	{
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 2;
-		w.images.push_back({ alb, sampOr(FrameId::GBufferAlbedo, mLinear) });
+		w.images.push_back({ material, mNearest });
+		writes.push_back(std::move(w));
+	}
+	{
+		WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 5;
+		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
+		writes.push_back(std::move(w));
+	}
+	{
+		WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 3;
+		w.images.push_back({ nrm, sampOr(FrameId::GBufferNormal, mNearest) });
 		writes.push_back(std::move(w));
 	}
 	{

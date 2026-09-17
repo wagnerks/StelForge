@@ -1,10 +1,12 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_sky.glsl"
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 TexCoords;
 
-layout(SFE_SET(0, 0)) uniform sampler2D gPosition;
+layout(SFE_SET(0, 0)) uniform sampler2D gMaterial;
+layout(SFE_SET(0, 4)) uniform sampler2D sceneDepth;
 layout(SFE_SET(0, 1)) uniform sampler2D gNormal;
 layout(SFE_SET(0, 2)) uniform sampler2D gAlbedoSpec;
 layout(SFE_SET(0, 3)) uniform sampler2D ssao;
@@ -16,6 +18,7 @@ layout(SFE_SET(0, 8)) uniform sampler2DArrayShadow shadowMap;
 layout(SFE_SET(0, 12)) uniform samplerCube irradianceMap;
 layout(SFE_SET(0, 13)) uniform samplerCube prefilterMap;
 layout(SFE_SET(0, 14)) uniform sampler2D brdfLUT;
+layout(SFE_SET(0, 21)) uniform sampler2D cloudLayer;
 
 layout(SFE_SET(1, 15), std140) uniform PushConstants {
     vec3 viewPos;
@@ -35,6 +38,10 @@ layout(SFE_SET(1, 15), std140) uniform PushConstants {
     float padLook0;
     float padLook1;
     float debugTerm;
+    float sheenStrength;
+    float rimStrength;
+    float taaFrame;  // -1 without TAA
+    float cloudCoverage;
 } pc;
 
 
@@ -123,7 +130,7 @@ float TechniqueVogelCascaded(int layer, float bias, vec3 projCoords) {
 
     float angle = sfeInterleavedGradientNoise(gl_FragCoord.xy, 0u) * 6.28318530718;
     float uvTexel = max(cascadedShadow.data[layer].cascade.x, 1.0 / 4096.0);
-    projCoords.z -= max(bias, uvTexel * 1.25);
+    projCoords.z -= bias;
 
     const int sampleCount = clamp(int(cascadedShadow.data[layer].cascade.w + 0.5), 4, 16);
 
@@ -199,8 +206,13 @@ float sampleCascade(int layer, vec3 worldPos, vec3 Normal) {
     float slope = 1.0 - nDotL;
     vec3 proj = worldToShadowUv(layer, worldPos + Normal * (worldTexel * (1.0 + 3.0 * slope)));
 
-    float bias = cascadedShadow.data[layer].cascade.z * mix(0.6, 0.15, nDotL);
-    return TechniqueVogelCascaded(layer, bias, proj);
+    // The residual depth bias, measured in texels of this cascade and turned into its depth units here. It was a
+    // fixed share of the depth range (plus a UV texel read as depth), and the range is padded far past the slice, so
+    // the bias came out at centimetres on the first cascade and decimetres further out: at a low sun every shadow
+    // stood that far off the foot that cast it.
+    float texelBias = cascadedShadow.data[layer].cascade.z * (1.0 + 2.0 * slope);
+    float depthRange = max(cascadedShadow.data[layer].cascadeExtra.x, 1e-4);
+    return TechniqueVogelCascaded(layer, texelBias * worldTexel / depthRange, proj);
 }
 
 bool shadowUvOk(vec3 proj) {
@@ -245,6 +257,19 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
 
     float edge = 1.0;
     int layer = selectCascade(fragPosWorldSpace, cc, edge);
+    // Faded over the outer fifth of the circle, so the change of resolution arrives as a ring that grows
+    // out of the ground rather than an edge.
+    float blend = smoothstep(0.8, 1.0, edge);
+    // Only cross-fade into the next cascade when the fragment actually lands inside it.
+    // TechniqueVogelCascaded answers "lit" for out-of-range coordinates, so blending towards a
+    // cascade that does not cover this fragment faded real shadows out at every boundary.
+    bool fade = layer + 1 < cc && blend > 0.0 && shadowUvOk(worldToShadowUv(layer + 1, fragPosWorldSpace));
+    // Under TAA the ring takes one cascade a pixel, the next one as often as its weight, and the history averages that
+    // into the same cross-fade for one filtered lookup instead of two: the filter is most of the lighting's cost.
+    if (fade && pc.taaFrame >= 0.0) {
+        float pick = sfeInterleavedGradientNoise(gl_FragCoord.xy, uint(pc.taaFrame) + 17u);
+        return sampleCascade(pick < blend ? layer + 1 : layer, fragPosWorldSpace, Normal);
+    }
     float shadow = sampleCascade(layer, fragPosWorldSpace, Normal);
     if (layer + 1 >= cc) {
         // Nothing past the last cascade to hand over to. Left alone, the shadow stops wherever its square
@@ -253,19 +278,7 @@ float ShadowCascadedCalculation(vec3 fragPosWorldSpace, vec3 Normal)
         return shadow * (1.0 - smoothstep(0.8, 1.0, edge));
     }
 
-    // Faded over the outer fifth of the circle, so the change of resolution arrives as a ring that grows
-    // out of the ground rather than an edge.
-    float blend = smoothstep(0.8, 1.0, edge);
-    if (blend <= 0.0) {
-        return shadow;
-    }
-    // Only cross-fade into the next cascade when the fragment actually lands inside it.
-    // TechniqueVogelCascaded answers "lit" for out-of-range coordinates, so blending towards a
-    // cascade that does not cover this fragment faded real shadows out at every boundary.
-    if (!shadowUvOk(worldToShadowUv(layer + 1, fragPosWorldSpace))) {
-        return shadow;
-    }
-    return mix(shadow, sampleCascade(layer + 1, fragPosWorldSpace, Normal), blend);
+    return fade ? mix(shadow, sampleCascade(layer + 1, fragPosWorldSpace, Normal), blend) : shadow;
 }
 
 
@@ -331,12 +344,14 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
     return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
 }
 
-vec3 cookTorrance(vec3 N, vec3 V, vec3 L, vec3 albedo, vec3 F0, float roughness, float metallic, vec3 radiance) {
+// f90: how far the reflectance may rise at grazing angles. 1 for anything with a normal specular level; a surface that
+// asks for less (grass, soil) keeps its grazing highlight down too instead of turning into a white sheen against the sun.
+vec3 cookTorrance(vec3 N, vec3 V, vec3 L, vec3 albedo, vec3 F0, float roughness, float metallic, vec3 radiance, float f90) {
     vec3 H = normalize(V + L);
     float NdotL = max(dot(N, L), 0.0);
     float NDF = distributionGGX(N, H, roughness);
     float G = geometrySmith(N, V, L, roughness);
-    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+    vec3 F = F0 + (max(vec3(f90), F0) - F0) * pow(clamp(1.0 - max(dot(H, V), 0.0), 0.0, 1.0), 5.0);
     vec3 specular = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * NdotL, 0.001);
     vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
     return (kD * albedo / PI + specular) * radiance * NdotL;
@@ -356,17 +371,23 @@ float customMix(float x, float y, float a) {
 }
 
 void main() {
-    vec4 posSample = texture(gPosition, TexCoords);
-    const vec3 FragPos = posSample.rgb;
-    const vec3 nSample = texture(gNormal, TexCoords).rgb;
+    const vec3 FragPos = sfeScenePosition(sceneDepth, TexCoords, matrices.invProjection, matrices.invView);
+    const vec4 normalSample = texture(gNormal, TexCoords);
+    const vec3 nSample = normalSample.rgb;
+    // Nothing drawn here (the sky, which SkyPass paints over): black, as the end of the shader would have written it
+    // after lighting it and filtering the shadow for nothing. The debug views still go through.
+    if (dot(nSample, nSample) < 0.01 && pc.debugTerm < 0.5) {
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
     const float nLen = length(nSample);
     const vec3 Normal = nLen > 1e-5 ? nSample / nLen : vec3(0.0, 1.0, 0.0);
     const float sssAmt = clamp((1.0 - nLen) * 2.0, 0.0, 1.0);
-    const float Depth = texture(gNormal, TexCoords).a;
+    const float Depth = normalSample.a;
     vec4 albedoSample = texture(gAlbedoSpec, TexCoords);
     vec3 albedo = albedoSample.rgb;
     float roughness = clamp(albedoSample.a, 0.04, 1.0);
-    vec4 pbr = sfeGBufferPbr(posSample.a);
+    vec4 pbr = texture(gMaterial, TexCoords);
     float metallic = pbr.x;
     float specFactor = pbr.y;
     float clearcoat = pbr.z;
@@ -379,19 +400,32 @@ void main() {
     darkDiel *= 1.0 - smoothstep(0.05, 0.25, clearcoat);
     roughness = mix(roughness, max(roughness, 0.62), darkDiel);
     vec3 F0 = mix(vec3(0.04 * specFactor), albedo, metallic);
+    float f90 = clamp(50.0 * mix(0.04 * specFactor, 1.0, metallic), 0.0, 1.0);
     F0 *= mix(1.0, 0.35, darkDiel);
 
     vec3 Lsun = normalize(-cascadedShadow.direction_intensity.xyz);
     vec3 Lo = cookTorrance(
         Normal, V, Lsun,
         albedo, F0, roughness, metallic,
-        cascadedShadow.color_and_misc.xyz * PI);
+        cascadedShadow.color_and_misc.xyz * PI, f90);
+
+    // Leaves and blades let the sun through (see sfeGBufferMaterial): lit from behind they glow, most where the eye
+    // looks towards the sun through them. In shadow like the rest of the direct light.
+    const float translucency = clearcoat < 0.01 ? smoothstep(0.1, 1.0, pbr.w) : 0.0;
+    if (translucency > 0.0) {
+        const float behind = max(dot(-Normal, Lsun), 0.0);
+        const float intoSun = pow(max(dot(-V, Lsun), 0.0), 6.0);
+        Lo += albedo * cascadedShadow.color_and_misc.xyz * translucency * (behind * 0.55 + intoSun * 1.1);
+    }
 
     float nDotLSun = max(dot(Normal, Lsun), 0.0);
     float shadow = 0.0;
-    if (nDotLSun > 0.001) {
+    if (nDotLSun > 0.001 || translucency > 0.0) {
         shadow = ShadowCascadedCalculation(FragPos, Normal);
     }
+    // The clouds overhead shade the ground too: their shadows drift across the forest with them.
+    const float clouded = sfeCloudShadow(cloudLayer, FragPos, Lsun, pc.cloudCoverage, sfeCloudDrift(matrices.wind, matrices.wind.w));
+    shadow = 1.0 - (1.0 - shadow) * clouded;
 
     for (int idx = 0; idx < pc.pointLightsSize; idx++) {
         float distance = length(plb.pointLight[idx].Position - FragPos);
@@ -406,11 +440,17 @@ void main() {
             shadow = customMix(shadow, pointShadow, 1.0 - k);
         }
         const float attenuation = 1.0 / (1.0 + plb.pointLight[idx].Linear * distance + plb.pointLight[idx].Quadratic * distance * distance);
-        Lo += cookTorrance(Normal, V, Lp, albedo, F0, roughness, metallic, plb.pointLight[idx].Color * attenuation);
+        Lo += cookTorrance(Normal, V, Lp, albedo, F0, roughness, metallic, plb.pointLight[idx].Color * attenuation, f90);
     }
 
     const float shadowFactor = 1.0 - pc.shadowIntensity * shadow;
     Lo *= shadowFactor;
+    // Over a wide range of angles: a normal map's bumps swing the normal across the terminator, and a narrow one cut
+    // hard black blotches into a sunlit trunk.
+    // A side turned away from the sun is as much out of it as one under a cast shadow: the ambient and sheen below
+    // dim alike, or the back of a trunk stays brighter than the ground in its shadow. Not where light comes through.
+    const float turnedAway = translucency > 0.0 ? 0.0 : 1.0 - smoothstep(-0.35, 0.3, dot(Normal, Lsun));
+    const float sunVisible = min(shadowFactor, 1.0 - pc.shadowIntensity * turnedAway);
 
     vec3 F = fresnelSchlickRoughness(max(dot(Normal, V), 0.0), F0, roughness);
     vec3 kD = (1.0 - F) * (1.0 - metallic);
@@ -427,7 +467,7 @@ void main() {
         vec3 sunCol = cascadedShadow.color_and_misc.xyz * PI;
         vec3 Fc = fresnelSchlickRoughness(max(dot(Normal, V), 0.0), Fc0, ccRough);
         float coatRough = max(ccRough, 0.08);
-        Lo += cookTorrance(Normal, V, Lsun, vec3(0.0), Fc0, coatRough, 0.0, sunCol) * clearcoat;
+        Lo += cookTorrance(Normal, V, Lsun, vec3(0.0), Fc0, coatRough, 0.0, sunCol, 1.0) * clearcoat;
         vec3 preCc = textureLod(prefilterMap, R, coatRough * MAX_REFLECTION_LOD).rgb * pc.iblStrength;
         vec2 brdfCc = texture(brdfLUT, vec2(max(dot(Normal, V), 0.0), coatRough)).rg;
         specular += preCc * (Fc * brdfCc.x + brdfCc.y) * clearcoat;
@@ -436,7 +476,7 @@ void main() {
     float ao = mix(1.0, AmbientOcclusion, pc.ssaoAmount);
     ao = mix(ao, 1.0, clearcoat);
     vec3 ambient = kD * diffuse * ao + specular;
-    ambient *= mix(pc.shadowAmbient, 1.0, shadowFactor);
+    ambient *= mix(pc.shadowAmbient, 1.0, sunVisible);
 
     // Backend-parity debugging: isolate one term so it can be captured and diffed on its own.
     // 1 shadow factor, 2 ambient/IBL, 3 direct light, 4 albedo, 5 normal, 6 AO, 7 irradiance,
@@ -503,8 +543,7 @@ void main() {
         return;
     }
 
-    float skin = sfeSkinSss(albedo, metallic);
-    float sssW = max(sssAmt, skin);
+    float sssW = sssAmt;
     vec3 lighting = ambient + Lo;
     if (sssW > 0.05 && metallic < 0.25 && clearcoat < 0.5) {
         float wrap = max(pc.padLook0, 0.0);
@@ -516,6 +555,19 @@ void main() {
         vec3 sssL = scatter * cascadedShadow.color_and_misc.xyz * 3.14159265
             * (trans * 0.9 + wrapL * 0.25) * sssW * str;
         lighting += sssL * mix(shadowFactor, 1.0, trans * 0.5);
+    }
+
+    // Sheen: a soft wrapped light and a rim on rough dielectrics, strongest on the roughest, by the sun's colour
+    // held to a modest brightness.
+    float fabric = (1.0 - metallic) * mix(0.15, 0.85, clamp(albedoSample.a, 0.04, 1.0)) * (1.0 - clearcoat);
+    if (fabric >= 0.02 && pc.sheenStrength >= 0.01) {
+        vec3 sheenLight = cascadedShadow.color_and_misc.xyz;
+        float peak = max(sheenLight.r, max(sheenLight.g, sheenLight.b));
+        sheenLight *= peak > 1.0 ? 1.25 / peak : 1.0;
+        float wrap = max(pc.padLook0, 0.0);
+        float wrapL = clamp((dot(Normal, Lsun) + wrap) / max(1.0 + wrap, 1e-3), 0.0, 1.0);
+        float rim = pow(1.0 - max(dot(Normal, V), 0.0), 3.0) * pc.rimStrength;
+        lighting += vec3(luma) * sheenLight * (wrapL * 0.12 + rim * 0.04) * pc.sheenStrength * fabric * sunVisible;
     }
 
     const float outlines = texture(gOutlines, TexCoords).b;

@@ -5,7 +5,7 @@ layout(location = 0) in vec2 TexCoords;
 
 layout(SFE_SET(0, 0)) uniform sampler2D sceneHdr;
 layout(SFE_SET(0, 1)) uniform sampler2D historyColor;
-layout(SFE_SET(0, 2)) uniform sampler2D worldPos;
+layout(SFE_SET(0, 2)) uniform sampler2D sceneDepth; // 1 where nothing was drawn
 // Where each pixel was last frame, written by the G-buffer from the previous pose and transform.
 layout(SFE_SET(0, 3)) uniform sampler2D velocity;
 
@@ -92,9 +92,8 @@ void main() {
     // every animated model. Both clip positions behind it are unjittered, so a still surface gives exactly zero.
     // Where nothing was drawn (the sky) the velocity is zero and the camera difference on the world position
     // still applies.
-    vec3 world = texture(worldPos, TexCoords).rgb;
     vec2 prevUV = TexCoords;
-    if (dot(world, world) > 1e-4) {
+    if (texture(sceneDepth, TexCoords).r < 1.0) {
         prevUV = TexCoords - texture(velocity, TexCoords).xy;
     }
 
@@ -110,7 +109,8 @@ void main() {
     vec3 m2 = vec3(0.0);
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
-            vec3 c = rgbToYCoCg(texture(sceneHdr, TexCoords + vec2(x, y) * texel).rgb);
+            // The centre is `current` already.
+            vec3 c = rgbToYCoCg(x == 0 && y == 0 ? current : texture(sceneHdr, TexCoords + vec2(x, y) * texel).rgb);
             m1 += c;
             m2 += c * c;
         }

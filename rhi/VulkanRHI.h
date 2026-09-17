@@ -150,6 +150,9 @@ namespace SFE::Render
 		PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override;
 		void destroyGraphicsPipeline(PipelineHandle pipeline) override;
 		TextureHandle createTexture(const TextureDesc& desc, const void* data = nullptr) override;
+		bool preparesTextures() const override { return true; }
+		std::unique_ptr<PreparedTexture> prepareTexture(const TextureDesc& desc, const std::vector<const void*>& levels) override;
+		TextureHandle adoptTexture(std::unique_ptr<PreparedTexture> texture) override;
 		void destroyTexture(TextureHandle texture) override;
 		SamplerHandle createSampler(const SamplerDesc& desc) override;
 		void destroySampler(SamplerHandle sampler) override;
@@ -195,8 +198,10 @@ namespace SFE::Render
 		void submit(CommandListHandle list) override;
 		void present() override;
 		double lastGpuMs() const override { return mLastGpuMs; }
+		void cmdGpuMark(CommandListHandle cmd, uint32_t mark) override;
+		double gpuMarkMs(uint32_t mark) const override { return mark < kMaxGpuMarks ? m_markMs[mark] : 0.0; }
 		const char* deviceName() const override { return m_deviceName.c_str(); }
-		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data, uint32_t mip) override;
+		void updateTexture(TextureHandle tex, uint32_t x, uint32_t y, uint32_t w, uint32_t h, TextureFormat fmt, const void* data, uint32_t mip, uint32_t layer) override;
 		void updateCubeFace(TextureHandle tex, uint32_t face, uint32_t mip, const void* data) override;
 		void updateCubeMip(TextureHandle tex, uint32_t mip, const void* packed6Faces, size_t faceBytes) override;
 		uint64_t getNativeTextureId(TextureHandle tex) const override;
@@ -258,6 +263,8 @@ namespace SFE::Render
 		uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 		void destroyBufferInternal(VkBufferResource& buffer);
 		void createImage(VkTextureResource& out, const TextureDesc& desc, const void* data);
+		// The image and its view, nothing in them yet. Any thread.
+		void createImageObjects(VkTextureResource& out, const TextureDesc& desc, uint32_t& mipLevels, uint32_t& arrayLayers);
 		void destroyTextureInternal(VkTextureResource& texture);
 		void transitionImageLayout(VkCommandBuffer cmd, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t layerCount = 1, uint32_t mipLevels = 1);
 		void ensureTextureLayout(VkCommandBuffer cmd, VkTextureResource& texture, VkImageLayout newLayout);
@@ -266,7 +273,10 @@ namespace SFE::Render
 		void blitTextureToTexture(VkCommandBuffer cmd, VkTextureResource& src, VkTextureResource& dst);
 		void blitToSwapchain(VkCommandBuffer cmd, VkTextureResource& src);
 		void ensureBackbufferHandle();
+		// Records `fn` into a one-off command buffer and waits for it on the graphics queue. The shared upload pool and
+		// fence are the device thread's; any other thread brings its own.
 		void executeImmediate(const std::function<void(VkCommandBuffer)>& fn);
+		void executeImmediate(const std::function<void(VkCommandBuffer)>& fn, VkCommandPool pool, VkFence fence);
 		void createDescriptorPool();
 		void destroyDescriptorPool();
 		void expandSetLayouts(const std::vector<DescriptorSetLayoutHandle>& handles, std::vector<VkDescriptorSetLayout>& out) const;
@@ -381,6 +391,10 @@ namespace SFE::Render
 		static constexpr uint32_t kTimestampsPerFrame = 2;
 		static constexpr VkDeviceSize kUploadRingSize = 8 * 1024 * 1024;
 		VkQueryPool m_timestampPool = VK_NULL_HANDLE;
+		// cmdGpuMark's timestamps: kMaxGpuMarks a frame slot, how many the slot's frame wrote, and the times between.
+		VkQueryPool m_markPool = VK_NULL_HANDLE;
+		uint32_t m_markCount[kMaxFramesInFlight]{};
+		double m_markMs[kMaxGpuMarks]{};
 		float m_timestampPeriod = 0.f;
 		uint32_t m_timestampValidBits = 0;
 		bool m_timestampPending[kMaxFramesInFlight]{};

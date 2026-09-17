@@ -18,6 +18,7 @@ namespace SFE::Render::RenderPasses {
 			float resX = 1.f, resY = 1.f;
 			int cascadeCount = 4;
 			float maxDistance = 70.f;
+			float cloudCoverage = 0.f;
 		};
 
 		Params mParams;

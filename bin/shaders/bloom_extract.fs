@@ -1,5 +1,6 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_post.glsl"
 layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 TexCoords;
 
@@ -19,6 +20,33 @@ void main() {
         }
     }
     vec3 filtered = acc / max(wsum, 1e-4);
+    // The sun's rays: the light between the camera and the sun, gathered along the line towards it, so every gap in
+    // the clouds or the crowns that lets the bright sky through draws a shaft out of it. Bloom carries them, so they
+    // are divided by its strength here and multiplied by it again with the rest of the glow.
+    vec2 sun = vec2(params.sunU, params.sunV);
+    // Only near the sun: a shaft is gathered along the line to it, and far enough away that line holds nothing but
+    // what the fade below throws away anyway.
+    if (params.extra.x > 0.0 && params.sunInFront > 0.5 && params.bloomStrength > 0.0 && distance(TexCoords, sun) < 0.8) {
+        const int kSteps = 16;
+        vec2 toSun = (sun - TexCoords) / float(kSteps) * 0.9;
+        vec2 at = TexCoords;
+        vec3 gathered = vec3(0.0);
+        float weight = 1.0;
+        float total = 0.0;
+        for (int i = 0; i < kSteps; ++i) {
+            at += toSun;
+            // Only what is brighter than the scene around it: the sky in a gap, not the lit ground.
+            gathered += max(texture(inputTexture, at).rgb - 1.6, vec3(0.0)) * weight;
+            total += weight;
+            weight *= 0.94;
+        }
+        // Fading out towards the edges of the screen, and away altogether once the sun itself is off it: the line to
+        // a sun beyond the edge ends there, and what it gathers piles up along that edge as a bright band.
+        vec2 off = abs(TexCoords - 0.5) * 2.0;
+        float beyond = max(max(-sun.x, sun.x - 1.0), max(-sun.y, sun.y - 1.0));
+        float onScreen = (1.0 - smoothstep(0.7, 1.0, max(off.x, off.y))) * (1.0 - smoothstep(0.0, 0.25, beyond));
+        filtered += gathered / max(total, 1e-4) * params.extra.x * onScreen / params.bloomStrength;
+    }
     float lum = dot(filtered, vec3(0.2126, 0.7152, 0.0722));
     float knee = 0.6;
     float t = max(lum - 1.15, 0.0);

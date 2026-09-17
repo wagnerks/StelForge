@@ -1,8 +1,10 @@
-#include "IblBaker.h"
+﻿#include "IblBaker.h"
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
+
+#include "renderModule/Atmosphere.h"
 
 namespace SFE::Render {
 	namespace {
@@ -177,17 +179,50 @@ namespace SFE::Render {
 			dst[i + 3] = 1.f;
 		}
 
+		// The scene's own sky and the ground under it, the light an outdoor scene is bathed in. Clouds are not
+		// drawn in: they only whiten the sky in proportion to how much of it they cover.
+		constexpr float kSkyLightCap = 0.9f;
+
+		F3 outdoorColor(F3 dir, const ComponentsModule::SkyComponent& sky, float sunIntensity) {
+			const auto toSun = sky.toSun();
+			const auto sky3 = [&](const Math::Vec3& d) {
+				auto clear = Atmosphere::radiance(d, toSun) * (Atmosphere::kSkyBrightness * sunIntensity);
+				// The glow right around the sun is the sun itself as far as lighting goes, and the direct light already
+				// carries it: left in, a low sun washes every slope facing it out to beige.
+				const float peak = (std::max)({ clear.x, clear.y, clear.z });
+				if (peak > kSkyLightCap) {
+					clear = clear * (kSkyLightCap / peak);
+				}
+				const float grey = (clear.x + clear.y + clear.z) / 3.f * 1.6f;
+				const float cover = std::clamp(sky.cloudCoverage, 0.f, 1.f) * 0.55f;
+				return F3{ clear.x + (grey - clear.x) * cover, clear.y + (grey - clear.y) * cover, clear.z + (grey - clear.z) * cover };
+			};
+			dir = norm(dir);
+			if (dir.y >= 0.f) {
+				return sky3({ dir.x, dir.y, dir.z });
+			}
+			// Grass and earth lit by the sun and the sky above them.
+			const auto sun = Atmosphere::sunTransmittance(toSun) * (sunIntensity * (std::max)(toSun.y, 0.f));
+			const F3 zenith = sky3({ 0.f, 1.f, 0.f });
+			const F3 irradiance = add(F3{ sun.x, sun.y, sun.z }, mul(zenith, kPi));
+			const F3 ground = mul(mul(F3{ 0.10f, 0.12f, 0.07f }, irradiance), 1.f / kPi);
+			const F3 horizon = sky3({ dir.x, 0.f, dir.z });
+			const float t = std::clamp(-dir.y / 0.08f, 0.f, 1.f);
+			return add(mul(horizon, 1.f - t), mul(ground, t));
+		}
+
 		void uploadCube(RenderHardwareInterface* rhi, TextureHandle tex, int size, int mip, const std::vector<float>& faces) {
 			const size_t faceBytes = static_cast<size_t>(size) * static_cast<size_t>(size) * 4u * sizeof(float);
 			rhi->updateCubeMip(tex, static_cast<uint32_t>(mip), faces.data(), faceBytes);
 		}
 	}
 
-	IblMaps bakeIbl(RenderHardwareInterface* rhi) {
+	IblMaps bakeIbl(RenderHardwareInterface* rhi, float sunIntensity) {
 		IblMaps maps{};
 		if (!rhi) {
 			return maps;
 		}
+		const auto sky = Atmosphere::sceneSky();
 
 		std::vector<float> env(6 * kEnvSize * kEnvSize * 4);
 		for (int face = 0; face < 6; ++face) {
@@ -195,7 +230,8 @@ namespace SFE::Render {
 				for (int x = 0; x < kEnvSize; ++x) {
 					const float u = 2.f * (static_cast<float>(x) + 0.5f) / static_cast<float>(kEnvSize) - 1.f;
 					const float v = 2.f * (static_cast<float>(y) + 0.5f) / static_cast<float>(kEnvSize) - 1.f;
-					writeRgba(env, ((face * kEnvSize + y) * kEnvSize + x) * 4, skyColor(faceDir(face, u, v)));
+					const F3 dir = faceDir(face, u, v);
+					writeRgba(env, ((face * kEnvSize + y) * kEnvSize + x) * 4, sky ? outdoorColor(dir, *sky, sunIntensity) : skyColor(dir));
 				}
 			}
 		}

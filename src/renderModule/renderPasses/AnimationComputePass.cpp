@@ -18,13 +18,14 @@ using namespace SFE::Render;
 using namespace SFE::Render::RenderPasses;
 
 namespace {
-	static_assert(sizeof(AnimationComputePass::GpuBoneDesc) == 176);
+	static_assert(sizeof(AnimationComputePass::GpuBoneDesc) == 192);
 	static_assert(sizeof(AnimationComputePass::GpuVec3Key) == 16);
 	static_assert(sizeof(AnimationComputePass::GpuQuatKey) == 32);
-	static_assert(sizeof(AnimationComputePass::GpuRecord) == 96);
+	static_assert(sizeof(AnimationComputePass::GpuRecord) == 128);
 
 	constexpr uint32_t kPlaying = 1u;
 	constexpr uint32_t kLoop = 2u;
+	constexpr uint32_t kBlending = 4u;
 	// The shader's time is a float of seconds since the epoch; this keeps its step under 1e-4 s.
 	constexpr double kRebaseSeconds = 512.0;
 
@@ -40,6 +41,24 @@ namespace {
 		desc.cpuAccess = data ? SFE::Render::CpuAccess::Write : SFE::Render::CpuAccess::None;
 		desc.debugName = name;
 		return rhi->createBuffer(desc, data);
+	}
+
+	// The gap between a channel's keys when every gap is the same (to a thousandth of it), else 0.
+	template<typename Key>
+	float uniformKeyStep(const std::vector<Key>& keys) {
+		if (keys.size() < 2) {
+			return 0.f;
+		}
+		const double step = keys[1].timeStamp - keys[0].timeStamp;
+		if (step <= 0.0) {
+			return 0.f;
+		}
+		for (size_t i = 2; i < keys.size(); ++i) {
+			if (std::abs((keys[i].timeStamp - keys[i - 1].timeStamp) - step) > step * 1e-3) {
+				return 0.f;
+			}
+		}
+		return static_cast<float>(step);
 	}
 
 	void collectOrder(const std::vector<AssetsModule::Bone>& bones, uint32_t idx, std::vector<int>& order, std::vector<char>& seen) {
@@ -128,6 +147,10 @@ const AnimationComputePass::ClipInfo* AnimationComputePass::packClip(const Asset
 			continue;
 		}
 
+		desc.posStep = uniformKeyStep(keys->positions);
+		desc.rotStep = uniformKeyStep(keys->rotations);
+		desc.sclStep = uniformKeyStep(keys->scales);
+
 		desc.posOff = static_cast<int>(mPosKeys.size());
 		desc.posCnt = static_cast<int>(keys->positions.size());
 		for (const auto& k : keys->positions) {
@@ -189,6 +212,20 @@ void AnimationComputePass::writeRecord(const ecss::EntityId entity) {
 	record.ticksPerSecond = ComponentsModule::AnimationComponent::ticksPerSecond(*anim);
 	record.duration = anim->getDuration();
 	record.stoppedTime = animation->mStoppedTime;
+	record.fromFlags = 0;
+	if (animation->mFromAnimation && animation->mBlendDuration > 0.f) {
+		if (const auto* from = packClip(animation->mFromAnimation, armature->armature); from && from->boneCount == clip->boneCount) {
+			const auto* fromAnim = animation->mFromAnimation;
+			record.fromDescOffset = from->descOffset;
+			record.fromFlags = kBlending | (animation->mFromPlay ? kPlaying : 0u) | (animation->mFromLoop ? kLoop : 0u);
+			record.fromStart = static_cast<float>(animation->mFromStart - mEpoch);
+			record.fromTicksPerSecond = ComponentsModule::AnimationComponent::ticksPerSecond(*fromAnim);
+			record.fromDuration = fromAnim->getDuration();
+			record.fromStoppedTime = animation->mFromStoppedTime;
+			record.blendStart = static_cast<float>(animation->mBlendStart - mEpoch);
+			record.blendDuration = animation->mBlendDuration;
+		}
+	}
 	markRecord(it->second);
 	mWorldsRows = (std::max)(mWorldsRows, static_cast<size_t>(bones.offset) + clip->boneCount);
 }

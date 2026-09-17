@@ -29,7 +29,11 @@ add_subdirectory(lib/imgui/)
 
 add_subdirectory(rhi)
 add_subdirectory(src)
-#add_subdirectory(src/submodules/JoltPhysics/Build)
+# Jolt, the library alone: its own Build/CMakeLists.txt replaces the configuration list (no RelWithDebInfo) and the
+# compiler flags. Baseline SSE2 and the dynamic runtime, like the rest of the engine.
+set(PHYSICS_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src/submodules/JoltPhysics)
+set(OBJECT_LAYER_BITS 16)
+include(${PHYSICS_REPO_ROOT}/Jolt/Jolt.cmake)
 
 set_property(TARGET ${ENGINE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${ENGINE_PATH}/bin)
 set_property(TARGET ${ENGINE_NAME} PROPERTY WORKING_DIRECTORY ${ENGINE_PATH}/bin)

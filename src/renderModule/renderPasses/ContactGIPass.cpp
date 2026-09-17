@@ -82,7 +82,7 @@ void ContactGIPass::render(SystemsModule::RenderData& renderDataHandle, CommandL
 	const auto mSet = mSets[rhi->frameInFlight() % mSets.size()];
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(FrameId::Final);
-	const auto pos = frame.texture(FrameId::GBufferPosition);
+	const auto pos = frame.texture(FrameId::SceneDepth);
 	const auto nrm = frame.texture(FrameId::GBufferNormal);
 	const auto alb = frame.texture(FrameId::GBufferAlbedo);
 	if (!renderDataHandle.graphics.contactGi) {
@@ -143,7 +143,7 @@ void ContactGIPass::render(SystemsModule::RenderData& renderDataHandle, CommandL
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.images.push_back({ pos, sampOr(FrameId::GBufferPosition, mNearest) });
+		w.images.push_back({ pos, sampOr(FrameId::SceneDepth, mNearest) });
 		writes.push_back(std::move(w));
 	}
 	{

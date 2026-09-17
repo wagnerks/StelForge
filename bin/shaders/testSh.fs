@@ -1,5 +1,5 @@
 #version 420
-layout (location = 0) out highp vec4 gPosition;
+layout(location = 0) out vec4 gMaterial;
 layout (location = 1) out vec4 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
 layout (location = 3) out highp vec3 gViewPosition;
@@ -57,8 +57,7 @@ void main()
 { 
     FragColor = vec4(1.0);
 
-    gPosition.rgb = FragPos;
-    gPosition.a = 0.0;
+    gMaterial = vec4(0.0);
     gNormal.xyz = vec3(0.0, 1.0, 0.0);
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 

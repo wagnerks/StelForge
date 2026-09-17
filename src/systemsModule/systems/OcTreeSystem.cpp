@@ -92,6 +92,24 @@ namespace SFE::SystemsModule {
 		(void)dt;
 	}
 
+	void OcTreeSystem::detach(const std::vector<ecss::EntityId>& entities) {
+		for (const auto id : entities) {
+			std::vector<OcTreeComponent::ParentTree> parents;
+			{
+				auto octreeComp = ECSHandler::registry().pinComponent<OcTreeComponent>(id);
+				if (octreeComp) {
+					parents = octreeComp->parents;
+				}
+			}
+			for (const auto& parent : parents) {
+				if (auto* tree = getOctree(parent.pos)) {
+					auto lock = tree->writeLock();
+					tree->erase(id, parent.node);
+				}
+			}
+		}
+	}
+
 	std::vector<Math::Vec3> OcTreeSystem::getAABBOctrees(const FrustumModule::AABB& aabb) {
 		std::vector<Math::Vec3> octreesInFrust;
 		forEachOctreePosInAABB(aabb, [&octreesInFrust](const Math::Vec3& octreePos) {

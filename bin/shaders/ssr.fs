@@ -3,7 +3,8 @@
 layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 TexCoords;
 
-layout(SFE_SET(0, 0)) uniform sampler2D gPosition;
+layout(SFE_SET(0, 0)) uniform sampler2D sceneDepth;
+layout(SFE_SET(0, 6)) uniform sampler2D gMaterial;
 layout(SFE_SET(0, 1)) uniform sampler2D gNormal;
 layout(SFE_SET(0, 2)) uniform sampler2D gAlbedoSpec;
 layout(SFE_SET(0, 4)) uniform sampler2D sceneColor;
@@ -36,12 +37,17 @@ float screenFade(vec2 uv) {
     return fade.x * fade.y;
 }
 
-float viewZ(vec3 worldPos) {
-    return -(matrices.view * vec4(worldPos, 1.0)).z;
+// The view distance of what the scene shows at `uv`, straight from the depth buffer: the TAA jitter only moves x and
+// y, so the jittered projection's depth terms are the plain ones. Negative where nothing was drawn.
+float sceneViewZ(vec2 uv) {
+    float depth = textureLod(sceneDepth, uv, 0.0).r;
+    if (depth >= 1.0) {
+        return -1.0;
+    }
+    return matrices.projection[3][2] / ((depth * 2.0 - 1.0) + matrices.projection[2][2]);
 }
 
-bool project(vec3 worldPos, out vec2 uv) {
-    vec4 clip = matrices.PV * vec4(worldPos, 1.0);
+bool project(vec4 clip, out vec2 uv) {
     if (clip.w <= 1e-4) {
         return false;
     }
@@ -49,30 +55,29 @@ bool project(vec3 worldPos, out vec2 uv) {
     return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
 }
 
-bool closerThanSurface(vec3 rayPos, vec3 sampled, float thickness) {
-    float dz = viewZ(rayPos) - viewZ(sampled);
+bool closerThanSurface(float rayViewZ, float sampledViewZ, float thickness) {
+    float dz = rayViewZ - sampledViewZ;
     return dz > 0.0 && dz < thickness;
 }
 
 void main() {
     vec4 lit = texture(sceneColor, TexCoords);
-    vec4 posSample = texture(gPosition, TexCoords);
-    vec3 worldPos = posSample.rgb;
-    if (dot(worldPos, worldPos) < 1e-6) {
-        FragColor = lit;
-        return;
-    }
-
+    // Roughness first: in a forest almost nothing is glossy enough, and that is one texel against a march.
     vec4 albedoSample = texture(gAlbedoSpec, TexCoords);
-    vec3 albedo = albedoSample.rgb;
     float roughness = clamp(albedoSample.a, 0.04, 1.0);
-    vec4 pbr = sfeGBufferPbr(posSample.a);
-    float metallic = pbr.x;
-    float specFactor = pbr.y;
     if (roughness > 0.72) {
         FragColor = lit;
         return;
     }
+    vec3 worldPos = sfeScenePosition(sceneDepth, TexCoords, matrices.invProjection, matrices.invView);
+    if (dot(worldPos, worldPos) < 1e-6) {
+        FragColor = lit;
+        return;
+    }
+    vec3 albedo = albedoSample.rgb;
+    vec4 pbr = texture(gMaterial, TexCoords);
+    float metallic = pbr.x;
+    float specFactor = pbr.y;
 
     vec3 N = normalize(texture(gNormal, TexCoords).rgb);
     vec3 V = normalize(params.viewPos - worldPos);
@@ -97,43 +102,49 @@ void main() {
     stepLen *= mix(0.96, 1.04, ign(gl_FragCoord.xy));
     float thickness = max(params.thickness, stepLen * 1.25);
 
-    vec3 ray = worldPos + R * (0.08 + ign(gl_FragCoord.yx) * 0.04);
-    vec3 prev = ray;
+    // The march by its distance along R: the ray's clip position and view distance are linear in it, so each step is
+    // additions and one depth fetch instead of five matrix products.
+    float start = 0.08 + ign(gl_FragCoord.yx) * 0.04;
+    vec4 clipAt = matrices.PV * vec4(worldPos + R * start, 1.0);
+    vec4 clipAlong = matrices.PV * vec4(R, 0.0);
+    float viewZAt = -(matrices.view * vec4(worldPos + R * start, 1.0)).z;
+    float viewZAlong = -(matrices.view * vec4(R, 0.0)).z;
+    float along = 0.0;
     vec2 hitUV = TexCoords;
     bool hit = false;
 
     for (int i = 0; i < STEPS; ++i) {
-        prev = ray;
-        ray += R * stepLen;
-        if (distance(worldPos, ray) > maxDist) {
+        float before = along;
+        along += stepLen;
+        if (start + along > maxDist) {
             break;
         }
 
         vec2 uv;
-        if (!project(ray, uv)) {
+        if (!project(clipAt + clipAlong * along, uv)) {
             break;
         }
 
-        vec3 sampled = texture(gPosition, uv).rgb;
-        if (dot(sampled, sampled) < 1e-6) {
+        float sampledZ = sceneViewZ(uv);
+        if (sampledZ < 0.0) {
             continue;
         }
-        if (!closerThanSurface(ray, sampled, thickness)) {
+        if (!closerThanSurface(viewZAt + viewZAlong * along, sampledZ, thickness)) {
             continue;
         }
 
         hit = true;
         hitUV = uv;
-        vec3 lo = prev;
-        vec3 hi = ray;
+        float lo = before;
+        float hi = along;
         for (int k = 0; k < REFINE; ++k) {
-            vec3 mid = mix(lo, hi, 0.5);
+            float mid = 0.5 * (lo + hi);
             vec2 midUV;
-            if (!project(mid, midUV)) {
+            if (!project(clipAt + clipAlong * mid, midUV)) {
                 break;
             }
-            vec3 midSampled = texture(gPosition, midUV).rgb;
-            if (dot(midSampled, midSampled) > 1e-6 && closerThanSurface(mid, midSampled, thickness)) {
+            float midZ = sceneViewZ(midUV);
+            if (midZ >= 0.0 && closerThanSurface(viewZAt + viewZAlong * mid, midZ, thickness)) {
                 hi = mid;
                 hitUV = midUV;
             } else {
@@ -154,7 +165,7 @@ void main() {
         return;
     }
 
-    vec3 hitPos = texture(gPosition, hitUV).rgb;
+    vec3 hitPos = sfeScenePosition(sceneDepth, hitUV, matrices.invProjection, matrices.invView);
     vec3 hitN = normalize(texture(gNormal, hitUV).rgb);
     if (dot(hitN, -R) < 0.05) {
         FragColor = lit;

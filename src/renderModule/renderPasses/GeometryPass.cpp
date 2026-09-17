@@ -7,6 +7,7 @@
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
+#include "renderModule/Atmosphere.h"
 #include "renderModule/MaterialTextures.h"
 #include "renderModule/Utils.h"
 #include "componentsModule/ArmatureComponent.h"
@@ -48,16 +49,16 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 		? renderDataHandle.frameSetLayout
 		: (renderSystem ? renderSystem->frameSetLayoutHandle() : Render::DescriptorSetLayoutHandle{});
 
-	SamplerDesc positionSamplerDesc;
-	positionSamplerDesc.minFilter = FilterMode::Nearest;
-	positionSamplerDesc.magFilter = FilterMode::Nearest;
-	mSampler = rhi->createSampler(positionSamplerDesc);
+	SamplerDesc gbufferSamplerDesc;
+	gbufferSamplerDesc.minFilter = FilterMode::Nearest;
+	gbufferSamplerDesc.magFilter = FilterMode::Nearest;
+	mSampler = rhi->createSampler(gbufferSamplerDesc);
 
-	TextureDesc positionBufDesc;
-	positionBufDesc.width = w;
-	positionBufDesc.height = h;
-	positionBufDesc.format = TextureFormat::RGBA32F;
-	positionBufDesc.usage = TextureUsage::Sampled | TextureUsage::ColorAttachment;
+	TextureDesc materialBufDesc;
+	materialBufDesc.width = w;
+	materialBufDesc.height = h;
+	materialBufDesc.format = TextureFormat::RGBA8;
+	materialBufDesc.usage = TextureUsage::Sampled | TextureUsage::ColorAttachment;
 
 	TextureDesc normalBufDesc;
 	normalBufDesc.width = w;
@@ -89,7 +90,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 
 	RenderPassDesc geometryPassDesc;
 	geometryPassDesc.colorAttachmentCount = 4;
-	geometryPassDesc.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA32F };
+	geometryPassDesc.colorAttachments[0] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA8 };
 	geometryPassDesc.colorAttachments[1] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA16F };
 	geometryPassDesc.colorAttachments[2] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 1.f}, TextureFormat::RGBA16F };
 	geometryPassDesc.colorAttachments[3] = { AttachmentLoadOp::Clear, AttachmentStoreOp::Store, {0.f, 0.f, 0.f, 0.f}, TextureFormat::RGBA16F };
@@ -105,7 +106,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 
 	for (uint32_t i = 0; i < mGpuFrames; ++i) {
 		auto& slot = mFrames[i];
-		slot.positionBuffer = rhi->createTexture(positionBufDesc);
+		slot.materialBuffer = rhi->createTexture(materialBufDesc);
 		slot.normalBuffer = rhi->createTexture(normalBufDesc);
 		slot.albedoBuffer = rhi->createTexture(albedoBufDesc);
 		slot.velocityBuffer = rhi->createTexture(velocityBufDesc);
@@ -114,7 +115,7 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 		mainFboDesc.width = w;
 		mainFboDesc.height = h;
 		mainFboDesc.renderPass = geometryPass;
-		mainFboDesc.colorAttachments = { {slot.positionBuffer}, {slot.normalBuffer}, {slot.albedoBuffer}, {slot.velocityBuffer} };
+		mainFboDesc.colorAttachments = { {slot.materialBuffer}, {slot.normalBuffer}, {slot.albedoBuffer}, {slot.velocityBuffer} };
 		mainFboDesc.depthStencilAttachment = FramebufferAttachmentDesc{.texture = slot.depthsBuffer };
 		slot.gFramebuffer = rhi->createFramebuffer(mainFboDesc);
 	}
@@ -168,6 +169,10 @@ void GeometryPass::init(SystemsModule::RenderData& renderDataHandle) {
 	texLayoutDescGBuf.bindings.emplace_back(4, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDescGBuf.bindings.emplace_back(5, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDescGBuf.bindings.emplace_back(6, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(7, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(8, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(9, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDescGBuf.bindings.emplace_back(10, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	gBuffetLayout = rhi->createDescriptorSetLayout(texLayoutDescGBuf);
 	gBuffetLayoutSet = rhi->allocateDescriptorSet(gBuffetLayout);
 	if (frameLayout) {
@@ -258,7 +263,7 @@ void GeometryPass::publish(SystemsModule::RenderData& renderDataHandle) {
 	const auto& slot = mFrames[Engine::instance()->rhi()->frameInFlight() % mGpuFrames];
 	frame.set(FrameId::GBufferFbo, { .framebuffer = slot.gFramebuffer });
 	frame.set(FrameId::GBufferOutlineFbo, { .framebuffer = outlineFramebuffer });
-	frame.set(FrameId::GBufferPosition, { .texture = slot.positionBuffer, .sampler = s });
+	frame.set(FrameId::GBufferMaterial, { .texture = slot.materialBuffer, .sampler = s });
 	frame.set(FrameId::GBufferNormal, { .texture = slot.normalBuffer, .sampler = s });
 	frame.set(FrameId::GBufferAlbedo, { .texture = slot.albedoBuffer, .sampler = s });
 	frame.set(FrameId::GBufferVelocity, { .texture = slot.velocityBuffer, .sampler = s });
@@ -293,7 +298,7 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
 	const auto fillMode = wireframe ? PolygonFillMode::Line : PolygonFillMode::Fill;
 	if (sceneVisible) {
-		drawScene(cmd, fillMode, materials, false);
+		drawGBuffer(cmd, mCameraView, renderSystem->frameSetHandle(), materials, fillMode, false);
 	}
 	rhi->cmdEndRenderPass(cmd);
 
@@ -305,11 +310,14 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	geometryPassBegin.renderPass = mGeometryLoadPass;
 	rhi->cmdBeginRenderPass(cmd, geometryPassBegin);
 	if (occludedVisible) {
-		drawScene(cmd, fillMode, materials, true);
+		drawGBuffer(cmd, mCameraView, renderSystem->frameSetHandle(), materials, fillMode, true);
 	}
 	// The grid keeps its own pipeline, so it stays filled in wireframe mode -- which is what it
 	// already did, since binding a pipeline reset the polygon mode on OpenGL anyway.
-	drawGrid(renderDataHandle, cmd);
+	// An outdoor scene has its own ground; the grid would only cut through it.
+	if (!Atmosphere::sceneSky()) {
+		drawGrid(renderDataHandle, cmd);
+	}
 	rhi->cmdEndRenderPass(cmd);
 
 	if (outlinePipeline && outlineFramebuffer && outlineVisible) {
@@ -415,16 +423,16 @@ void GeometryPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	}
 }
 
-void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode fillMode, const BufferHandle materials, const bool secondPhase) {
+void GeometryPass::drawGBuffer(const CommandListHandle cmd, const GpuScene::View& view, const DescriptorSetHandle frameSet,
+	const BufferHandle materials, const PolygonFillMode fillMode, const bool secondPhase) {
 	auto* rhi = Engine::instance()->rhi();
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
-	const auto frameSet = renderSystem->frameSetHandle();
 
 	auto& written = mFrameSetBuffers[frameSet.id];
-	if (written.first != mCameraView.visible.id || written.second != materials.id) {
-		written = { mCameraView.visible.id, materials.id };
+	if (written.first != view.visible.id || written.second != materials.id) {
+		written = { view.visible.id, materials.id };
 		rhi->updateDescriptorSets({
-			{ .set = frameSet, .binding = 3, .buffers{ { mCameraView.visible } } },
+			{ .set = frameSet, .binding = 3, .buffers{ { view.visible } } },
 			{ .set = frameSet, .binding = 7, .buffers{ { materials } } },
 		});
 	}
@@ -432,8 +440,11 @@ void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode 
 	const auto* meshes = SFE::MeshVaoRegistry::instance();
 	PipelineHandle bound{};
 	auto& scene = renderSystem->scene();
+	// Solid surfaces first, cut-out ones (leaves, grass cards) after: a discarding shader turns early depth testing off,
+	// so a leaf hidden behind a trunk or the ground is only rejected before shading if their depth is already there.
+	for (const bool cutoutPass : { false, true })
 	for (const auto& group : scene.groups(GpuScene::List::GBuffer)) {
-		if (group.batchCount == 0) {
+		if (group.batchCount == 0 || group.cutout != cutoutPass) {
 			continue;
 		}
 		const auto pipeline = getGBufferPipeline(group.vertexShader, group.fragmentShader, fillMode);
@@ -452,7 +463,7 @@ void GeometryPass::drawScene(const CommandListHandle cmd, const PolygonFillMode 
 		}
 		const DescriptorSetHandle sets[] = { frameSet, textures };
 		rhi->cmdBindDescriptorSets(cmd, pipeline, 0, sets, 2);
-		scene.draw(cmd, mCameraView, group, secondPhase);
+		scene.draw(cmd, view, group, secondPhase);
 	}
 }
 

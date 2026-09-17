@@ -1,103 +1,86 @@
 {
-	"Properties" : 
-	{
-		"CascadeShadowComponent" : 
-		{
-			"cascaded_levels" : 
-			[
+	"Properties": {
+		"CascadeShadowComponent": {
+			"cascaded_levels": [
 				0.10000000149011612,
 				24.0,
 				60.0,
 				120.0,
-				3500.0
+				400.0
 			],
-			"cascades" : 
-			[
+			"cascades": [
 				{
-					"bias" : 0.0015,
-					"samples" : 12,
-					"texel_size" : 
-					[
+					"bias": 1.0,
+					"samples": 12,
+					"texel_size": [
 						0.0008,
 						0.0008
 					],
-					"z_mult" : 
-					[
+					"z_mult": [
 						1.5,
 						1.5
 					]
 				},
 				{
-					"bias" : 0.002,
-					"samples" : 10,
-					"texel_size" : 
-					[
+					"bias": 1.0,
+					"samples": 10,
+					"texel_size": [
 						0.0012,
 						0.0012
 					],
-					"z_mult" : 
-					[
+					"z_mult": [
 						1.5,
 						1.5
 					]
 				},
 				{
-					"bias" : 0.0025,
-					"samples" : 8,
-					"texel_size" : 
-					[
+					"bias": 1.0,
+					"samples": 8,
+					"texel_size": [
 						0.0016,
 						0.0016
 					],
-					"z_mult" : 
-					[
+					"z_mult": [
 						1.5,
 						1.5
 					]
 				},
 				{
-					"bias" : 0.003,
-					"samples" : 6,
-					"texel_size" : 
-					[
+					"bias": 1.0,
+					"samples": 6,
+					"texel_size": [
 						0.002,
 						0.002
 					],
-					"z_mult" : 
-					[
+					"z_mult": [
 						1.5,
 						1.5
 					]
 				}
 			],
-			"resolution" : 
-			[
-				4096.0,
-				4096.0
+			"resolution": [
+				2048.0,
+				2048.0
 			],
-			"shadow_intensity" : 1.0
+			"shadow_intensity": 1.0
 		},
-		"TransformComponent" : 
-		{
-			"Pos" : 
-			[
+		"TransformComponent": {
+			"Pos": [
 				0.0,
 				0.0,
 				0.0
 			],
-			"Rotate" : 
-			[
+			"Rotate": [
 				-46.0,
 				0.0,
 				2.0
 			],
-			"Scale" : 
-			[
+			"Scale": [
 				1.0,
 				1.0,
 				1.0
 			]
 		}
 	},
-	"id" : "cascadeShadows"
+	"id": "cascadeShadows"
 }

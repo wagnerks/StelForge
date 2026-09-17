@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <memory>
+
 #include "systemsModule/SystemBase.h"
 
 namespace ecss {
@@ -7,7 +9,7 @@ namespace ecss {
 		SystemManager(const SystemManager&) = delete;
 		SystemManager& operator=(SystemManager&) = delete;
 	public:
-		SystemManager() = default;
+		SystemManager();
 		~SystemManager();
 		
 		void update(float_t dt);
@@ -64,13 +66,14 @@ namespace ecss {
 		};
 
 		void addTickSystem(System* system, float ticks);
-		std::thread startTickSystem(System* system, float ticks = 32);
 
 		std::vector<System*> mSystemsMap;
 
 		std::vector<System*> mMainThreadSystems;
 
-		std::vector<std::thread> mTickSystemThreads;
+		// Tick systems on their own threads, all woken on time by one scheduler. See SystemManager.cpp.
+		class TickScheduler;
+		std::unique_ptr<TickScheduler> mTickScheduler;
 		std::vector<SteppedTickSystem> mSteppedTickSystems;
 		bool mStepTickSystems = false;
 	};

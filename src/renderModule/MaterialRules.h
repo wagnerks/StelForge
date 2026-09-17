@@ -68,6 +68,11 @@ namespace SFE::Render::MaterialRules {
 		if (alphaFromMaps) {
 			mask += 8.f;
 		}
+		// The albedo comes from a texture, so a skin tone in it may be taken for skin. A flat material colour never
+		// is: an orange mannequin is not a person.
+		if (diffuseTexture(materials)) {
+			mask += 16.f;
+		}
 		return mask;
 	}
 
@@ -125,6 +130,14 @@ namespace SFE::Render::MaterialRules {
 		mix(static_cast<uint64_t>(material.tint.x * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.y * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.z * 4096.f));
+		mix(static_cast<uint64_t>(material.sway));
+		for (const auto& layer : material.triplanar) {
+			for (const float bound : layer.uv) {
+				mix(static_cast<uint64_t>(bound * 4096.f));
+			}
+			mix(static_cast<uint64_t>(layer.metres * 4096.f));
+			mix(layer.rotated ? 1ull : 0ull);
+		}
 		mix(material.materials.materialsCount);
 		for (uint8_t i = 0; i < material.materials.materialsCount; ++i) {
 			const auto& slot = material.materials.material[i];

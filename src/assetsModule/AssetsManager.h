@@ -7,15 +7,12 @@
 #include "Asset.h"
 #include "containersModule/Singleton.h"
 #include "modelModule/Model.h"
-#include "memoryModule/GlobalMemoryUser.h"
 
 namespace AssetsModule {
 
-	inline static constexpr size_t ASSETS_MEMORY_BUFFER_SIZE = 256ll * 1024u * 1024u;//256MB
-
-	class AssetsManager : public SFE::Singleton<AssetsManager>, SFE::MemoryModule::GlobalMemoryUser {
+	class AssetsManager : public SFE::Singleton<AssetsManager> {
 	public:
-		AssetsManager();
+		AssetsManager() = default;
 		~AssetsManager() override;
 
 		template <class T>
@@ -39,13 +36,7 @@ namespace AssetsModule {
 				return asset;
 			}
 
-			void* pAssetMem = mAssetsAllocator->allocate(sizeof(T), alignof(T));
-			if (!pAssetMem) {
-				assert(false);
-				return nullptr;
-			}
-
-			asset = new(pAssetMem)T(std::forward<ARGS>(Args)...);
+			asset = new T(std::forward<ARGS>(Args)...);
 
 			auto id = mHasher(path);
 			asset->assetId = id;
@@ -56,7 +47,6 @@ namespace AssetsModule {
 		}
 
 	private:
-		SFE::MemoryModule::Allocator* mAssetsAllocator;
 		std::unordered_map<size_t, Asset*> mAssetsMap;
 		std::hash<std::string> mHasher;
 	};

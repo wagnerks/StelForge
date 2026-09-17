@@ -4,7 +4,7 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 TexCoords;
 
 layout(SFE_SET(0, 0)) uniform sampler2D sceneHdr;
-layout(SFE_SET(0, 1)) uniform sampler2D worldPos;
+layout(SFE_SET(0, 1)) uniform sampler2D sceneDepth;
 layout(SFE_SET(0, 2)) uniform sampler2D gAlbedoSpec;
 layout(SFE_SET(0, 3)) uniform sampler2D gNormal;
 
@@ -68,7 +68,7 @@ float contactShadow(vec3 world, vec3 N, vec3 L, float noise) {
         if (!project(rayPos, uv)) {
             break;
         }
-        vec3 sampled = texture(worldPos, uv).rgb;
+        vec3 sampled = sfeScenePosition(sceneDepth, uv, matrices.invProjection, matrices.invView);
         if (dot(sampled, sampled) < 1e-6) {
             continue;
         }
@@ -97,7 +97,7 @@ vec3 screenGI(vec3 world, vec3 N, vec3 albedo, float noise) {
         if (!project(probe, uv)) {
             continue;
         }
-        vec3 sampledPos = texture(worldPos, uv).rgb;
+        vec3 sampledPos = sfeScenePosition(sceneDepth, uv, matrices.invProjection, matrices.invView);
         if (dot(sampledPos, sampledPos) < 1e-6) {
             continue;
         }
@@ -128,8 +128,7 @@ vec3 screenGI(vec3 world, vec3 N, vec3 albedo, float noise) {
 
 void main() {
     vec3 scene = texture(sceneHdr, TexCoords).rgb;
-    vec4 posS = texture(worldPos, TexCoords);
-    vec3 world = posS.rgb;
+    vec3 world = sfeScenePosition(sceneDepth, TexCoords, matrices.invProjection, matrices.invView);
     if (dot(world, world) < 1e-6) {
         FragColor = vec4(scene, 1.0);
         return;

@@ -46,6 +46,7 @@ void SSRPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layoutDesc.bindings.emplace_back(4, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(3, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(6, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
 	// frame still binds costs a copy of it.
@@ -101,7 +102,14 @@ void SSRPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comman
 		WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 0;
-		w.images.push_back({ frame.texture(FrameId::GBufferPosition), frame.sampler(FrameId::GBufferPosition) });
+		w.images.push_back({ frame.texture(FrameId::SceneDepth), frame.sampler(FrameId::SceneDepth) });
+		writes.push_back(std::move(w));
+	}
+	{
+		WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 6;
+		w.images.push_back({ frame.texture(FrameId::GBufferMaterial), frame.sampler(FrameId::GBufferMaterial) });
 		writes.push_back(std::move(w));
 	}
 	{

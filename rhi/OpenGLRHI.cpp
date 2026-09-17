@@ -2122,7 +2122,8 @@ namespace SFE::Render
 		uint32_t w, uint32_t h,
 		TextureFormat fmt,
 		const void* data,
-		uint32_t mip)
+		uint32_t mip,
+		uint32_t layer)
 	{
 		const GLTexture* t = getLive(textures, tex.id);
 		if (!data || !t) {
@@ -2135,6 +2136,10 @@ namespace SFE::Render
 
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
+		if (t->desc.dimension == TextureDimension::Array) {
+			glTexSubImage3D(target, static_cast<GLint>(mip), x, y, static_cast<GLint>(layer), w, h, 1, ToGLFormat(fmt), ToGLType(fmt), data);
+			return;
+		}
 		glTexSubImage2D(
 			target,
 			static_cast<GLint>(mip),
@@ -2368,6 +2373,7 @@ namespace SFE::Render
 		glt.id = tex;
 		glt.desc = desc;
 		glt.live = true;
+		trackTextureMemory(desc, true);
 
 		TextureHandle handle;
 		handle.id = storeResource(textures, m_freeTextures, std::move(glt));
@@ -2383,6 +2389,7 @@ namespace SFE::Render
 		if (t->id != 0) {
 			glDeleteTextures(1, &t->id);
 		}
+		trackTextureMemory(t->desc, false);
 		recycleResource(textures, m_freeTextures, texture.id);
 	}
 
@@ -2667,6 +2674,7 @@ namespace SFE::Render
 		glBindBuffer(glb.target, 0);
 
 		glb.live = true;
+		trackBufferMemory(desc, true);
 
 		BufferHandle handle;
 		handle.id = storeResource(m_buffers, m_freeBuffers, std::move(glb));
@@ -2692,6 +2700,7 @@ namespace SFE::Render
 		{
 			glDeleteBuffers(1, &glb->id);
 		}
+		trackBufferMemory(glb->desc, false);
 		recycleResource(m_buffers, m_freeBuffers, handle.id);
 	}
 

@@ -1,0 +1,15 @@
+Ground materials from FreeStylized (https://freestylized.com), free for commercial and non-commercial use;
+redistributing the textures on their own is not allowed.
+
+grass    - Ground 05 (grass)        https://freestylized.com/material/ground_05/
+moss     - Ground 02 (bare earth, road)   https://freestylized.com/material/ground_02/
+mud      - Ground 08 (bank, lake bed)     https://freestylized.com/material/ground_08/
+sand     - Ground 08 (bank)       https://freestylized.com/material/ground_08/
+rocks    - Ground with Rocks 03   https://freestylized.com/material/ground_with_rocks_03/
+
+litter   - Ground with Roots 01   https://freestylized.com/material/ground_with_roots_01/
+track    - Ground 03 (between the road ruts)   https://freestylized.com/material/ground_03/
+
+Packed per material: <name>_albedo_height.png (rgb base colour, a height) and
+<name>_normal_rough_ao.png (rg OpenGL normal xy, b roughness, a ambient occlusion).
+All but rocks are packed by scripts/pack_freestylized_textures.py.

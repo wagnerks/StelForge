@@ -67,16 +67,80 @@ vec2 sfeCosSin(float a) {
     return vec2(c, s);
 }
 
-vec4 sfeGBufferPbr(float packedA) {
-    return unpackUnorm4x8(floatBitsToUint(packedA));
+// The G-buffer's first target, RGBA8: metallic, specular factor, clearcoat, clearcoat roughness. A surface with no
+// clearcoat has no use for its roughness: there that channel says how much sunlight it lets through, as leaves and
+// blades of grass do (0.04, what everything else writes, is none).
+vec4 sfeGBufferMaterial(float metallic, float specFactor, float clearcoat, float clearcoatRough) {
+    return clamp(vec4(metallic, specFactor, clearcoat, clearcoatRough), 0.0, 1.0);
+}
+const float kSfeTranslucentFoliage = 0.7;
+
+// The world position of what the scene shows at `uv`, from SceneDepthPass's copy of the depth buffer and the
+// camera's inverse matrices (the jittered ones the G-buffer was drawn with); zero where nothing was drawn. The
+// G-buffer used to keep positions in an RGBA32F target of their own, written for every fragment of every
+// overdrawn leaf.
+vec3 sfeScenePosition(sampler2D sceneDepth, vec2 uv, mat4 invProjection, mat4 invView) {
+    float depth = textureLod(sceneDepth, uv, 0.0).r;
+    if (depth >= 1.0) {
+        return vec3(0.0);
+    }
+    vec4 viewPos = invProjection * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    return (invView * vec4(viewPos.xyz / viewPos.w, 1.0)).xyz;
 }
 
-float sfePackGBufferPbr(float metallic, float specFactor, float clearcoat, float clearcoatRough) {
-    return uintBitsToFloat(packUnorm4x8(vec4(metallic, specFactor, clearcoat, clearcoatRough)));
+// sfeScenePosition in view space, for a caller that only wants view space: one matrix product instead of the round
+// trip through world space. `sky` is set where nothing was drawn, and the position is then the origin's.
+vec3 sfeSceneViewPosition(sampler2D sceneDepth, vec2 uv, mat4 invProjection, out bool sky) {
+    float depth = textureLod(sceneDepth, uv, 0.0).r;
+    sky = depth >= 1.0;
+    if (sky) {
+        return vec3(0.0);
+    }
+    vec4 viewPos = invProjection * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    return viewPos.xyz / viewPos.w;
 }
 
 
 
+
+// Value noise in [0, 1] on an integer lattice hash, so both backends see the same field.
+uint sfeCellHash(ivec2 cell) {
+    uvec2 v = uvec2(cell) * uvec2(1664525u, 1013904223u);
+    uint h = v.x ^ (v.y * 747796405u) ^ 2891336453u;
+    h ^= h >> 16u;
+    h *= 2246822519u;
+    h ^= h >> 13u;
+    h *= 3266489917u;
+    h ^= h >> 16u;
+    return h;
+}
+
+float sfeValueNoise(vec2 p) {
+    vec2 cell = floor(p);
+    vec2 f = p - cell;
+    // Quintic: the slope is continuous too, so a normal taken from this noise shows no creases along the cells.
+    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    ivec2 c = ivec2(cell);
+    float a = float(sfeCellHash(c) >> 8u) / 16777216.0;
+    float b = float(sfeCellHash(c + ivec2(1, 0)) >> 8u) / 16777216.0;
+    float d = float(sfeCellHash(c + ivec2(0, 1)) >> 8u) / 16777216.0;
+    float e = float(sfeCellHash(c + ivec2(1, 1)) >> 8u) / 16777216.0;
+    return mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
+}
+
+// Octaves of sfeValueNoise, each rotated against the last so the lattice does not show; in [0, 1].
+float sfeFbm(vec2 p, int octaves) {
+    float sum = 0.0;
+    float amp = 0.5;
+    float norm = 0.0;
+    for (int i = 0; i < octaves; ++i) {
+        sum += sfeValueNoise(p) * amp;
+        norm += amp;
+        p = mat2(1.6, 1.2, -1.2, 1.6) * p + vec2(3.1, 7.7);
+        amp *= 0.5;
+    }
+    return sum / norm;
+}
 
 // Rec. 709 luminance, the weighting every pass here already used inline.
 float sfeLuma(vec3 color) {
@@ -112,4 +176,8 @@ vec2 sfeVelocity(vec4 clipNow, vec4 clipBefore) {
     mat4 view; \
     mat4 PV; \
     mat4 PVNoJitter; \
-    mat4 prevPVNoJitter;
+    mat4 prevPVNoJitter; \
+    vec4 wind;       /* xz the direction it blows along, y strength, w seconds; see sfe_wind.glsl */ \
+    vec4 windBefore; /* the same, last frame */ \
+    mat4 invProjection; /* of the jittered projection */ \
+    mat4 invView;

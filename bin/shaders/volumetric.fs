@@ -1,10 +1,12 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_sky.glsl"
 layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 TexCoords;
 
-layout(SFE_SET(0, 0)) uniform sampler2D worldPos;
+layout(SFE_SET(0, 0)) uniform sampler2D sceneDepth;
 layout(SFE_SET(0, 8)) uniform sampler2DArrayShadow shadowMap;
+layout(SFE_SET(0, 21)) uniform sampler2D cloudLayer;
 
 layout(SFE_SET(0, 11), std140) uniform LightSpaceMatrices {
     mat4 lightSpaceMatrices[6];
@@ -24,6 +26,7 @@ layout(SFE_SET(0, 15), std140) uniform PushConstants {
     vec2 resolution;
     int cascadeCount;
     float maxDistance;
+    float cloudCoverage;
 } params;
 
 const int STEPS = 16;
@@ -39,12 +42,17 @@ float henyeyGreenstein(float cosTheta, float g) {
     return (1.0 - g2) / (4.0 * PI * denom);
 }
 
-float sunVisibility(vec3 worldP) {
+// A point on the ray in every cascade's light space is linear in the distance along it (the light's projection is
+// orthographic): each cascade's start and step are worked out once for the ray, not once a step.
+vec4 cascadeStart[6];
+vec4 cascadeStep[6];
+
+float sunVisibility(float along) {
     int cc = params.cascadeCount < 1 ? 4 : params.cascadeCount;
     int layer = 0;
     vec3 proj = vec3(0.0);
     for (; layer < cc; ++layer) {
-        vec4 ls = lightSpaceMatrices[layer] * vec4(worldP, 1.0);
+        vec4 ls = cascadeStart[layer] + cascadeStep[layer] * along;
         proj = ls.xyz / max(ls.w, 1e-4);
         proj = proj * 0.5 + 0.5;
         if (proj.x > 0.0 && proj.x < 1.0 && proj.y > 0.0 && proj.y < 1.0 && proj.z > 0.0 && proj.z < 1.0) {
@@ -59,13 +67,13 @@ float sunVisibility(vec3 worldP) {
 
 vec3 cameraRay(vec2 uv) {
     vec4 ndc = vec4(uv * 2.0 - 1.0, 1.0, 1.0);
-    vec4 viewP = inverse(matrices.projection) * ndc;
+    vec4 viewP = matrices.invProjection * ndc;
     viewP /= max(viewP.w, 1e-4);
-    return normalize(mat3(inverse(matrices.view)) * viewP.xyz);
+    return normalize(mat3(matrices.invView) * viewP.xyz);
 }
 
 void main() {
-    vec3 posSample = texture(worldPos, TexCoords).rgb;
+    vec3 posSample = sfeScenePosition(sceneDepth, TexCoords, matrices.invProjection, matrices.invView);
     vec3 origin = params.viewPos;
     vec3 rayDir;
     float rayLen;
@@ -85,14 +93,27 @@ void main() {
     vec3 inScatter = vec3(0.0);
     float trans = 1.0;
     float dens = max(params.density, 0.0);
+    float lit = 0.0;
+    int cc = params.cascadeCount < 1 ? 4 : params.cascadeCount;
+    for (int c = 0; c < cc; ++c) {
+        cascadeStart[c] = lightSpaceMatrices[c] * vec4(origin, 1.0);
+        cascadeStep[c] = lightSpaceMatrices[c] * vec4(rayDir, 0.0);
+    }
 
+    vec2 cloudDrift = sfeCloudDrift(matrices.wind, matrices.wind.w);
     for (int i = 0; i < STEPS; ++i) {
-        vec3 p = origin + rayDir * min(t, rayLen);
-        float vis = sunVisibility(p);
+        float vis = sunVisibility(min(t, rayLen));
+        // Under a cloud there is no shaft: the sun is already cut off far above the trees.
+        vis *= sfeCloudShadow(cloudLayer, origin + rayDir * min(t, rayLen), L, params.cloudCoverage, cloudDrift);
+        lit += vis;
         inScatter += params.lightColor * params.intensity * dens * phase * vis * stepLen * trans;
         trans *= exp(-dens * stepLen);
         t += stepLen;
     }
 
-    FragColor = vec4(inScatter, trans);
+    // Shafts, not haze: a ray lit all along its length, out in the open, scatters only a little, and one that crosses
+    // shade -- under the trees -- keeps its light, which is where the shafts are seen.
+    float shaded = 1.0 - lit / float(STEPS);
+    float shafts = mix(0.2, 1.0, smoothstep(0.05, 0.5, shaded));
+    FragColor = vec4(inScatter * shafts, mix(1.0, trans, shafts));
 }

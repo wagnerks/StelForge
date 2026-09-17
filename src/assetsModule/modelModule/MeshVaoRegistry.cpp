@@ -55,7 +55,80 @@ namespace SFE {
 		return mMeshVAO[mesh];
 	}
 
-	void MeshVaoRegistry::allocate(Mesh<Vertex3D>* mesh, RenderMeshData& data) {
+	void MeshVaoRegistry::initMeshes(const std::vector<Mesh<Vertex3D>*>& meshes) {
+		if (SFE::Engine::isMainThread()) {
+			std::unique_lock lock(mMutex);
+			// The meshes not uploaded yet, back to back: the buffers grow once for all of them, and their vertices and
+			// indices go up as one copy each. Uploaded one by one, a terrain's thousand chunks took seconds.
+			std::vector<Mesh<Vertex3D>*> pending;
+			size_t vertexEnd = mVertexUsed;
+			size_t indexEnd = mIndexUsed;
+			for (auto* mesh : meshes) {
+				const auto& data = mMeshVAO[mesh];
+				if (data.meshId != 0 || (mesh->vertices.empty() && mesh->indices.empty())) {
+					continue;
+				}
+				pending.push_back(mesh);
+				vertexEnd += mesh->vertices.size();
+				indexEnd += mesh->indices.size();
+				for (const auto& level : mesh->lodIndices) {
+					indexEnd += level.size();
+				}
+			}
+			if (pending.empty()) {
+				return;
+			}
+			if (vertexEnd <= UINT32_MAX && indexEnd <= UINT32_MAX && (!mVertexBuffer || vertexEnd > mVertexCapacity || indexEnd > mIndexCapacity)) {
+				size_t vertexCapacity = mVertexCapacity ? mVertexCapacity : kInitialVertices;
+				size_t indexCapacity = mIndexCapacity ? mIndexCapacity : kInitialIndices;
+				while (vertexCapacity < vertexEnd) {
+					vertexCapacity *= 2;
+				}
+				while (indexCapacity < indexEnd) {
+					indexCapacity *= 2;
+				}
+				grow(vertexCapacity, indexCapacity);
+			}
+			const uint32_t firstVertex = mVertexUsed;
+			const uint32_t firstIndex = mIndexUsed;
+			std::vector<Vertex3D> vertices;
+			std::vector<unsigned int> indices;
+			vertices.reserve(vertexEnd - firstVertex);
+			indices.reserve(indexEnd - firstIndex);
+			for (auto* mesh : pending) {
+				auto& data = mMeshVAO[mesh];
+				allocate(mesh, data, false);
+				if (data.meshId == 0) {
+					break;
+				}
+				vertices.insert(vertices.end(), mesh->vertices.begin(), mesh->vertices.end());
+				indices.insert(indices.end(), mesh->indices.begin(), mesh->indices.end());
+				for (const auto& level : mesh->lodIndices) {
+					indices.insert(indices.end(), level.begin(), level.end());
+				}
+			}
+			auto* rhi = Engine::instance()->rhi();
+			if (!vertices.empty()) {
+				rhi->updateBuffer(mVertexBuffer, static_cast<size_t>(firstVertex) * sizeof(Vertex3D), vertices.size() * sizeof(Vertex3D), vertices.data());
+			}
+			if (!indices.empty()) {
+				rhi->updateBuffer(mIndexBuffer, static_cast<size_t>(firstIndex) * sizeof(unsigned int), indices.size() * sizeof(unsigned int), indices.data());
+			}
+			return;
+		}
+		auto futur = ThreadPool::instance()->addTask<WorkerType::SYNC>([&meshes]() {
+			MeshVaoRegistry::instance()->initMeshes(meshes);
+		});
+		if (futur.valid()) {
+			while (futur.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+				if (!ThreadPool::isAlive() || ThreadPool::instance()->isShuttingDown()) {
+					break;
+				}
+			}
+		}
+	}
+
+	void MeshVaoRegistry::allocate(Mesh<Vertex3D>* mesh, RenderMeshData& data, const bool uploadNow) {
 		size_t lodIndices = 0;
 		for (const auto& level : mesh->lodIndices) {
 			lodIndices += level.size();
@@ -89,7 +162,9 @@ namespace SFE {
 		data.lodCount = 1u + static_cast<uint32_t>(mesh->lodIndices.size());
 		mVertexUsed = static_cast<uint32_t>(vertexEnd);
 		mIndexUsed = static_cast<uint32_t>(indexEnd);
-		upload(mesh, data);
+		if (uploadNow) {
+			upload(mesh, data);
+		}
 
 		GpuMesh entry;
 		entry.firstIndex = data.firstIndex;

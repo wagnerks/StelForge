@@ -7,7 +7,7 @@ layout(location = 3) in vec3 ViewPos;
 layout(location = 4) in vec4 vClip;
 layout(location = 5) in vec4 vPrevClip;
 
-layout(location = 0) out vec4 gPosition;
+layout(location = 0) out vec4 gMaterial;
 layout(location = 1) out vec4 gNormal;
 layout(location = 2) out vec4 gAlbedoSpec;
 layout(location = 3) out vec2 gVelocity;
@@ -49,8 +49,7 @@ float computeLinearDepth(vec3 pos) {
 }
 
 void main() {
-    gPosition.rgb = FragPos;
-    gPosition.a = sfePackGBufferPbr(0.0, 1.0, 0.0, 0.04);
+    gMaterial = sfeGBufferMaterial(0.0, 1.0, 0.0, 0.04);
     gNormal.xyz = vec3(0.0, 1.0, 0.0);
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
 

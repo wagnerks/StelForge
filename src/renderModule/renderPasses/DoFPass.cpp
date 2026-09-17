@@ -46,6 +46,7 @@ void DoFPass::init(SystemsModule::RenderData&) {
 	SFE::Render::DescriptorSetLayoutDesc layoutDesc;
 	layoutDesc.bindings.emplace_back(0, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(1, SFE::Render::DescriptorType::CombinedImageSampler, SFE::Render::ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(5, SFE::Render::DescriptorType::UniformBuffer, SFE::Render::ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, SFE::Render::DescriptorType::UniformBufferDynamic, SFE::Render::ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	// One set per frame slot: what it binds alternates with the slot, and writing a set the previous
@@ -76,11 +77,11 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 	const auto mSet = mSets[rhi->frameInFlight() % mSets.size()];
 	auto& frame = renderDataHandle.frame;
 	const auto src = frame.texture(SFE::Render::FrameId::Final);
-	const auto pos = frame.texture(SFE::Render::FrameId::GBufferPosition);
+	const auto pos = frame.texture(SFE::Render::FrameId::SceneDepth);
 	if (!renderDataHandle.graphics.dof) {
 		return;
 	}
-	if (!src || !pos || !mPipeline) {
+	if (!src || !pos || !mPipeline || !renderDataHandle.cameraMatricesUBO) {
 		return;
 	}
 
@@ -107,7 +108,14 @@ void DoFPass::render(SystemsModule::RenderData& renderDataHandle, SFE::Render::C
 		SFE::Render::WriteDescriptor w{};
 		w.set = mSet;
 		w.binding = 1;
-		w.images.push_back({ pos, frame.sampler(SFE::Render::FrameId::GBufferPosition) ? frame.sampler(SFE::Render::FrameId::GBufferPosition) : mNearest });
+		w.images.push_back({ pos, mNearest });
+		writes.push_back(std::move(w));
+	}
+	{
+		SFE::Render::WriteDescriptor w{};
+		w.set = mSet;
+		w.binding = 5;
+		w.buffers.push_back({ renderDataHandle.cameraMatricesUBO });
 		writes.push_back(std::move(w));
 	}
 	{

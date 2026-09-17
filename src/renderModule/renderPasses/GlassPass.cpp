@@ -76,7 +76,7 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layoutDesc.bindings.emplace_back(8, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(9, DescriptorType::StorageBuffer, ShaderStage::Vertex);
 	layoutDesc.bindings.emplace_back(3, DescriptorType::StorageBuffer, ShaderStage::Vertex);
-	layoutDesc.bindings.emplace_back(7, DescriptorType::StorageBuffer, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(7, DescriptorType::StorageBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
