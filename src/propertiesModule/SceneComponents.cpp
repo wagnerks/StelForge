@@ -9,7 +9,6 @@
 #include "componentsModule/MeshComponent.h"
 #include "core/ECSHandler.h"
 #include "propertiesModule/PropertiesSystem.h"
-#include "propertiesModule/Vegetation.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/TasksManager.h"
 
@@ -399,85 +398,10 @@ namespace SFE::PropertiesModule {
 
 	// ===== CharacterComponent =================================================
 
-	void ComponentSerializer<CharacterComponent>::save(const CharacterComponent& component, Json::Value& data) {
-		data["walk_speed"] = component.walkSpeed;
-		data["run_speed"] = component.runSpeed;
-		data["sprint_speed"] = component.sprintSpeed;
-		data["jump_height"] = component.jumpHeight;
-		if (!component.animations.empty()) {
-			data["animations"] = component.animations;
-		}
-	}
-
-	void ComponentSerializer<CharacterComponent>::load(ecss::EntityId entity, const Json::Value& data) {
-		auto component = ECSHandler::registry().addComponent<CharacterComponent>(entity);
-		if (!component) {
-			return;
-		}
-		component->walkSpeed = data.get("walk_speed", component->walkSpeed).asFloat();
-		component->runSpeed = data.get("run_speed", component->runSpeed).asFloat();
-		component->sprintSpeed = data.get("sprint_speed", component->sprintSpeed).asFloat();
-		component->jumpHeight = data.get("jump_height", component->jumpHeight).asFloat();
-		component->animations = data.get("animations", component->animations).asString();
-	}
-
 	// ===== CharacterAppearanceComponent =======================================
-
-	void ComponentSerializer<CharacterAppearanceComponent>::save(const CharacterAppearanceComponent& component, Json::Value& data) {
-		const auto colour = [](const Math::Vec3& c) {
-			Json::Value out(Json::arrayValue);
-			out.append(c.x);
-			out.append(c.y);
-			out.append(c.z);
-			return out;
-		};
-		data["skin_color"] = colour(component.skinColor);
-		data["hair_color"] = colour(component.hairColor);
-		data["hair_style"] = component.hairStyle;
-	}
-
-	void ComponentSerializer<CharacterAppearanceComponent>::load(ecss::EntityId entity, const Json::Value& data) {
-		auto component = ECSHandler::registry().addComponent<CharacterAppearanceComponent>(entity);
-		if (!component) {
-			return;
-		}
-		const auto colour = [&](const char* key, Math::Vec3& out) {
-			const auto& value = data[key];
-			if (value.isArray() && value.size() == 3) {
-				out = { value[0].asFloat(), value[1].asFloat(), value[2].asFloat() };
-			}
-		};
-		colour("skin_color", component->skinColor);
-		colour("hair_color", component->hairColor);
-		component->hairStyle = data.get("hair_style", component->hairStyle).asString();
-	}
 
 	// ===== VegetationComponent ================================================
 
-	namespace {
-		// Every field of a layer, by the name it has in the scene file.
-		template<class Visit>
-		void forEachLayerField(Visit&& visit) {
-			visit("count", &VegetationLayer::count);
-			visit("min_scale", &VegetationLayer::minScale);
-			visit("max_scale", &VegetationLayer::maxScale);
-			visit("min_height", &VegetationLayer::minHeight);
-			visit("max_height", &VegetationLayer::maxHeight);
-			visit("max_slope", &VegetationLayer::maxSlope);
-			visit("spacing", &VegetationLayer::spacing);
-			visit("noise_scale", &VegetationLayer::noiseScale);
-			visit("noise_threshold", &VegetationLayer::noiseThreshold);
-			visit("sink", &VegetationLayer::sink);
-			visit("collider_radius", &VegetationLayer::colliderRadius);
-			visit("collider_height", &VegetationLayer::colliderHeight);
-			visit("draw_distance", &VegetationLayer::drawDistance);
-			visit("pitch", &VegetationLayer::pitch);
-			visit("impostor", &VegetationLayer::impostor);
-			visit("canopy", &VegetationLayer::canopy);
-			visit("forest_min", &VegetationLayer::forestMin);
-			visit("forest_max", &VegetationLayer::forestMax);
-		}
-	}
 
 	namespace {
 		constexpr std::pair<std::string_view, Sway> kSways[] = { { "none", Sway::None }, { "tree", Sway::Tree }, { "plant", Sway::Plant } };
@@ -499,76 +423,6 @@ namespace SFE::PropertiesModule {
 			}
 			return Sway::None;
 		}
-	}
-
-	void ComponentSerializer<VegetationComponent>::save(const VegetationComponent& component, Json::Value& data) {
-		data["seed"] = component.seed;
-		data["layers"] = Json::arrayValue;
-		for (const auto& layer : component.layers) {
-			Json::Value item = Json::objectValue;
-			for (const auto& model : layer.models) {
-				item["models"].append(model);
-			}
-			for (const auto& model : layer.rootModels) {
-				item["root_models"].append(model);
-			}
-			forEachLayerField([&](const char* name, auto member) { item[name] = layer.*member; });
-			item["sway"] = std::string(swayName(layer.sway));
-			for (const auto& surface : layer.surfaces) {
-				Json::Value value = Json::objectValue;
-				value["on"] = surface.on;
-				value["texture"] = surface.texture;
-				for (const float bound : surface.uv) {
-					value["uv"].append(bound);
-				}
-				value["metres"] = surface.metres;
-				if (surface.rotate) {
-					value["rotate"] = true;
-				}
-				item["surfaces"].append(value);
-			}
-			data["layers"].append(item);
-		}
-	}
-
-	void ComponentSerializer<VegetationComponent>::load(ecss::EntityId entity, const Json::Value& data) {
-		VegetationComponent component;
-		component.seed = data.get("seed", component.seed).asInt();
-		for (const auto& item : data["layers"]) {
-			VegetationLayer layer;
-			for (const auto& model : item["models"]) {
-				layer.models.push_back(model.asString());
-			}
-			for (const auto& model : item["root_models"]) {
-				layer.rootModels.push_back(model.asString());
-			}
-			forEachLayerField([&](const char* name, auto member) {
-				if (!item.isMember(name)) {
-					return;
-				}
-				using Field = std::remove_cvref_t<decltype(layer.*member)>;
-				layer.*member = std::is_same_v<Field, int> ? static_cast<Field>(item[name].asInt()) : static_cast<Field>(item[name].asFloat());
-			});
-			if (item.isMember("sway")) {
-				layer.sway = swayFromName(item["sway"].asString());
-			}
-			for (const auto& value : item["surfaces"]) {
-				VegetationSurface surface;
-				surface.on = value.get("on", "").asString();
-				surface.texture = value.get("texture", "").asString();
-				for (const auto& bound : value["uv"]) {
-					surface.uv.push_back(bound.asFloat());
-				}
-				surface.metres = value.get("metres", surface.metres).asFloat();
-				surface.rotate = value.get("rotate", false).asBool();
-				layer.surfaces.push_back(std::move(surface));
-			}
-			component.layers.push_back(std::move(layer));
-		}
-		if (!ECSHandler::registry().addComponent<VegetationComponent>(entity, std::move(component))) {
-			return;
-		}
-		generateVegetation(entity);
 	}
 
 	// ===== WindComponent ======================================================
@@ -619,135 +473,31 @@ namespace SFE::PropertiesModule {
 
 	// ===== SoundscapeComponent ================================================
 
-	void ComponentSerializer<SoundscapeComponent>::save(const SoundscapeComponent& component, Json::Value& data) {
-		data["wind"] = component.wind;
-		data["wind_volume"] = component.windVolume;
-		data["lake"] = component.lake;
-		data["lake_volume"] = component.lakeVolume;
-		data["birds"] = Json::Value(Json::arrayValue);
-		for (const auto& bird : component.birds) {
-			data["birds"].append(bird);
-		}
-		data["bird_volume"] = component.birdVolume;
-		data["frogs"] = Json::Value(Json::arrayValue);
-		for (const auto& frog : component.frogs) {
-			data["frogs"].append(frog);
-		}
-		data["frog_volume"] = component.frogVolume;
-		data["seed"] = component.seed;
-		data["footsteps"] = Json::Value(Json::arrayValue);
-		for (const auto& surface : component.footsteps) {
-			Json::Value entry;
-			entry["surface"] = surface.surface;
-			for (const auto& clip : surface.clips) {
-				entry["clips"].append(clip);
-			}
-			entry["volume"] = surface.volume;
-			entry["max_length"] = surface.maxLength;
-			data["footsteps"].append(entry);
-		}
-	}
-
-	void ComponentSerializer<SoundscapeComponent>::load(ecss::EntityId entity, const Json::Value& data) {
-		auto component = ECSHandler::registry().addComponent<SoundscapeComponent>(entity);
-		if (!component) {
-			return;
-		}
-		component->wind = data.get("wind", "").asString();
-		component->windVolume = data.get("wind_volume", component->windVolume).asFloat();
-		component->lake = data.get("lake", "").asString();
-		component->lakeVolume = data.get("lake_volume", component->lakeVolume).asFloat();
-		component->birds.clear();
-		for (const auto& bird : data["birds"]) {
-			component->birds.push_back(bird.asString());
-		}
-		component->birdVolume = data.get("bird_volume", component->birdVolume).asFloat();
-		component->frogs.clear();
-		for (const auto& frog : data["frogs"]) {
-			component->frogs.push_back(frog.asString());
-		}
-		component->frogVolume = data.get("frog_volume", component->frogVolume).asFloat();
-		component->seed = data.get("seed", component->seed).asUInt();
-		component->footsteps.clear();
-		for (const auto& entry : data["footsteps"]) {
-			ComponentsModule::FootstepSurface surface;
-			surface.surface = entry.get("surface", "").asString();
-			for (const auto& clip : entry["clips"]) {
-				surface.clips.push_back(clip.asString());
-			}
-			surface.volume = entry.get("volume", surface.volume).asFloat();
-			surface.maxLength = entry.get("max_length", surface.maxLength).asFloat();
-			component->footsteps.push_back(std::move(surface));
-		}
-	}
-
 	// ===== GarbageComponent ===================================================
-
-	void ComponentSerializer<GarbageComponent>::save(const GarbageComponent& component, Json::Value& data) {
-		data["seed"] = component.seed;
-		data["shore_count"] = component.shoreCount;
-		data["shore_below"] = component.shoreBelow;
-		data["shore_above"] = component.shoreAbove;
-		data["float_count"] = component.floatCount;
-		data["float_depth"] = component.floatDepth;
-		auto& items = data["items"];
-		items = Json::Value(Json::arrayValue);
-		for (const auto& item : component.items) {
-			Json::Value entry;
-			entry["model"] = item.model;
-			entry["size"] = item.size;
-			entry["mass"] = item.mass;
-			entry["buoyancy"] = item.buoyancy;
-			entry["weight"] = item.weight;
-			items.append(entry);
-		}
-	}
-
-	void ComponentSerializer<GarbageComponent>::load(ecss::EntityId entity, const Json::Value& data) {
-		auto component = ECSHandler::registry().addComponent<GarbageComponent>(entity);
-		if (!component) {
-			return;
-		}
-		component->seed = data.get("seed", component->seed).asUInt();
-		component->shoreCount = data.get("shore_count", component->shoreCount).asUInt();
-		component->shoreBelow = data.get("shore_below", component->shoreBelow).asFloat();
-		component->shoreAbove = data.get("shore_above", component->shoreAbove).asFloat();
-		component->floatCount = data.get("float_count", component->floatCount).asUInt();
-		component->floatDepth = data.get("float_depth", component->floatDepth).asFloat();
-		component->items.clear();
-		for (const auto& entry : data["items"]) {
-			ComponentsModule::GarbageItem item;
-			item.model = entry.get("model", item.model).asString();
-			item.size = entry.get("size", item.size).asFloat();
-			item.mass = entry.get("mass", item.mass).asFloat();
-			item.buoyancy = entry.get("buoyancy", item.buoyancy).asFloat();
-			item.weight = entry.get("weight", item.weight).asFloat();
-			component->items.push_back(std::move(item));
-		}
-	}
 
 	// ===== GrassComponent =====================================================
 
-	void ComponentSerializer<GrassComponent>::save(const GrassComponent& component, Json::Value& data) {
-		data["density"] = component.density;
-		data["height"] = component.height;
-		data["radius"] = component.radius;
-	}
-
-	void ComponentSerializer<GrassComponent>::load(ecss::EntityId entity, const Json::Value& data) {
-		auto component = ECSHandler::registry().addComponent<GrassComponent>(entity);
-		if (!component) {
-			return;
-		}
-		component->density = data.get("density", component->density).asFloat();
-		component->height = data.get("height", component->height).asFloat();
-		component->radius = data.get("radius", component->radius).asFloat();
-	}
-
 	// ===== The table ==========================================================
 
+	namespace {
+		// The engine's own, and the games' after them: a game's component may be read only once the
+		// engine's are in, and the order here is the order both directions walk.
+		std::vector<ComponentRegistry::Entry>& table() {
+			static std::vector<ComponentRegistry::Entry> table = ComponentRegistry::engineEntries();
+			return table;
+		}
+	}
+
+	void ComponentRegistry::add(Entry entry) {
+		table().push_back(entry);
+	}
+
 	const std::vector<ComponentRegistry::Entry>& ComponentRegistry::entries() {
-		static const std::vector<Entry> table = {
+		return table();
+	}
+
+	std::vector<ComponentRegistry::Entry> ComponentRegistry::engineEntries() {
+		return {
 			entryFor<ModelComponent>(LoadPhase::Direct),
 			entryFor<TransformComponent>(LoadPhase::Direct),
 			entryFor<LightSourceComponent>(LoadPhase::Direct),
@@ -762,17 +512,8 @@ namespace SFE::PropertiesModule {
 			// After bind: it builds its own mesh and binds it.
 			entryFor<TerrainComponent>(LoadPhase::AfterBind),
 			entryFor<WaterComponent>(LoadPhase::Direct),
-			entryFor<CharacterComponent>(LoadPhase::Direct),
-			// After the terrain it stands on.
-			entryFor<VegetationComponent>(LoadPhase::AfterBind),
 			entryFor<WindComponent>(LoadPhase::Direct),
-			entryFor<GrassComponent>(LoadPhase::Direct),
 			entryFor<AudioSourceComponent>(LoadPhase::Direct),
-			entryFor<GarbageComponent>(LoadPhase::Direct),
-			entryFor<SoundscapeComponent>(LoadPhase::Direct),
-			entryFor<CharacterAppearanceComponent>(LoadPhase::Direct),
 		};
-
-		return table;
 	}
 }

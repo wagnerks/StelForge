@@ -16,9 +16,6 @@
 #include "renderModule/renderPasses/SkyPass.h"
 #include "renderModule/renderPasses/WaterPass.h"
 #include "renderModule/renderPasses/GlassPass.h"
-#include "renderModule/renderPasses/GrassPass.h"
-#include "renderModule/renderPasses/GarbagePass.h"
-#include "renderModule/renderPasses/ImpostorPass.h"
 #include "renderModule/renderPasses/MistPass.h"
 #include "renderModule/renderPasses/VolumetricPass.h"
 #include "renderModule/renderPasses/TAAPass.h"
@@ -41,9 +38,6 @@ namespace SFE::SystemsModule {
 		{ "CascadedShadow", true,  &createRenderPass<Render::RenderPasses::CascadedShadowPass> },
 		{ "PointLight",     true,  &createRenderPass<Render::RenderPasses::PointLightPass> },
 		{ "Geometry",       true,  &createRenderPass<Render::RenderPasses::GeometryPass> },
-		{ "Grass",          true,  &createRenderPass<Render::RenderPasses::GrassPass> },
-		{ "Impostors",      true,  &createRenderPass<Render::RenderPasses::ImpostorPass> },
-		{ "Garbage",        true,  &createRenderPass<Render::RenderPasses::GarbagePass> },
 		{ "SceneDepth",     true,  &createRenderPass<Render::RenderPasses::SceneDepthPass> },
 		{ "SSAO",           true,  &createRenderPass<Render::RenderPasses::SSAOPass> },
 		{ "Lighting",       true,  &createRenderPass<Render::RenderPasses::LightingPass> },

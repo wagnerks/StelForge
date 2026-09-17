@@ -9,9 +9,6 @@
 #include "componentsModule/ModelComponent.h"
 #include "core/Engine.h"
 #include "renderModule/Utils.h"
-#include "renderModule/renderPasses/GarbagePass.h"
-#include "renderModule/renderPasses/GrassPass.h"
-#include "renderModule/renderPasses/ImpostorPass.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "assetsModule/modelModule/BoundingVolume.h"
 #include "systemsModule/systems/CameraSystem.h"
@@ -352,11 +349,14 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 	}
 	const auto materials = renderSystem->materials().upload();
 	const auto* meshes = SFE::MeshVaoRegistry::instance();
-	auto* impostors = dynamic_cast<ImpostorPass*>(renderSystem->renderPass("Impostors"));
-	auto* garbage = dynamic_cast<GarbagePass*>(renderSystem->renderPass("Garbage"));
-	auto* grass = dynamic_cast<GrassPass*>(renderSystem->renderPass("Grass"));
-	if (impostors) {
-		impostors->bakeIfNeeded(cmd);
+	// Whatever else draws casters of its own -- grass, impostors, a game's own -- says so by implementing
+	// ShadowCasterPass; this pass does not know what they are.
+	std::vector<ShadowCasterPass*> casters;
+	for (const auto& pass : renderSystem->renderPasses()) {
+		if (auto* caster = dynamic_cast<ShadowCasterPass*>(pass.get())) {
+			caster->prepareShadows(renderDataHandle, cmd);
+			casters.push_back(caster);
+		}
 	}
 
 	// A caster only needs the fragment shader when something can make it transparent: an alpha cutout, a
@@ -463,15 +463,12 @@ void CascadedShadowPass::render(SystemsModule::RenderData& renderDataHandle, Ren
 		if (visible) {
 			drawCasters();
 		}
-		if (!skip[layer] && impostors && layer < mData.lightSpaceMatrices.size()) {
-			const auto& lightSpace = mData.lightSpaceMatrices[layer];
-			impostors->drawShadow(cmd, renderDataHandle.cameraMatricesUBO, lightSpace, frustum, mData.lightDirection, texelsPerMetre);
-		}
-		if (!skip[layer] && garbage && layer < mData.lightSpaceMatrices.size()) {
-			garbage->drawShadow(renderDataHandle, cmd, mData.lightSpaceMatrices[layer], static_cast<uint32_t>(layer));
-		}
-		if (!skip[layer] && grass && layer < mData.lightSpaceMatrices.size()) {
-			grass->drawShadow(cmd, mData.lightSpaceMatrices[layer], static_cast<uint32_t>(layer));
+		if (!skip[layer] && layer < mData.lightSpaceMatrices.size()) {
+			const ShadowCascade shadow{ renderDataHandle, cmd, mData.lightSpaceMatrices[layer], frustum,
+				mData.lightDirection, texelsPerMetre, static_cast<uint32_t>(layer) };
+			for (auto* caster : casters) {
+				caster->drawShadowCasters(shadow);
+			}
 		}
 
 		rhi->cmdEndRenderPass(cmd);

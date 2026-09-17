@@ -33,12 +33,40 @@ namespace SFE {
 		return sRoot;
 	}
 
+	void FileSystem::setEngineRoot(std::string_view path) {
+		if (path.empty()) {
+			sEngineRoot.clear();
+			return;
+		}
+		std::error_code ec;
+		auto p = std::filesystem::path(std::string(path));
+		if (!p.is_absolute()) {
+			p = std::filesystem::absolute(p, ec);
+		}
+		sEngineRoot = p.lexically_normal();
+	}
+
+	const std::filesystem::path& FileSystem::engineRoot() {
+		return sEngineRoot;
+	}
+
 	std::filesystem::path FileSystem::resolve(std::string_view path) {
 		const auto p = std::filesystem::path(std::string(path));
 		if (p.empty() || p.is_absolute() || sRoot.empty()) {
 			return p;
 		}
-		return (sRoot / p).lexically_normal();
+		auto inContent = (sRoot / p).lexically_normal();
+		// The game's content first, the engine's own assets behind it: a game ships its scene and models,
+		// the engine its shaders and fonts, and either may stand in for the other by name.
+		if (sEngineRoot.empty() || sEngineRoot == sRoot) {
+			return inContent;
+		}
+		std::error_code ec;
+		if (std::filesystem::exists(inContent, ec)) {
+			return inContent;
+		}
+		auto inEngine = (sEngineRoot / p).lexically_normal();
+		return std::filesystem::exists(inEngine, ec) ? inEngine : inContent;
 	}
 
 	std::filesystem::path FileSystem::executableDir() {
@@ -61,6 +89,11 @@ namespace SFE {
 		auto probe = [&](const fs::path& p) -> fs::path {
 			if (hasAssets(p)) {
 				return p;
+			}
+			// A game keeps its own in "content" and the engine keeps its in "bin"; a game's comes first, since a
+			// game's executable may have a "bin" of its own beside it holding what a run left behind.
+			if (hasAssets(p / "content")) {
+				return p / "content";
 			}
 			if (hasAssets(p / "bin")) {
 				return p / "bin";

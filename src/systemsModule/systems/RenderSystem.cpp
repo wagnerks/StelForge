@@ -16,6 +16,7 @@
 #include "CameraSystem.h"
 #include "OcTreeSystem.h"
 #include "systemsModule/SystemManager.h"
+#include "core/GameModule.h"
 #include "systemsModule/SystemsPriority.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "componentsModule/CameraComponent.h"
@@ -171,9 +172,9 @@ namespace SFE::SystemsModule {
 		bindGpuFrame();
 
 		SFE::Engine::reproTrace("RenderSystem passes");
-		mRenderPasses.reserve(std::size(RENDER_PASSES));
-		for (size_t i = 0; i < std::size(RENDER_PASSES); ++i) {
-			const auto& entry = RENDER_PASSES[i];
+		const auto& passes = GameModule::passes();
+		mRenderPasses.reserve(passes.size());
+		for (const auto& entry : passes) {
 			if (!entry.enabled || !entry.create) {
 				continue;
 			}

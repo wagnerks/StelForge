@@ -4,8 +4,6 @@
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "renderModule/Atmosphere.h"
-#include "componentsModule/CharacterComponent.h"
-#include "systemsModule/systems/AppearanceSystem.h"
 #include "systemsModule/systems/AudioSystem.h"
 
 #include <json/reader.h>
@@ -43,45 +41,6 @@ namespace SFE::SystemsModule {
 		}
 	}
 
-	void characterAppearance() {
-		for (auto [entity, character, look] : ECSHandler::registry().view<const ComponentsModule::CharacterComponent, ComponentsModule::CharacterAppearanceComponent>()) {
-			if (!character || !look) {
-				continue;
-			}
-			// A few natural skin tones to start from; the picker takes any.
-			static const Math::Vec3 kSkins[] = { { 1.f, 1.f, 1.f }, { 0.93f, 0.8f, 0.68f }, { 0.78f, 0.58f, 0.42f }, { 0.55f, 0.38f, 0.26f }, { 0.36f, 0.24f, 0.17f } };
-			ImGui::TextUnformatted("skin");
-			for (size_t i = 0; i < std::size(kSkins); ++i) {
-				ImGui::SameLine();
-				ImGui::PushID(static_cast<int>(i));
-				if (ImGui::ColorButton("##skin", ImVec4(kSkins[i].x, kSkins[i].y, kSkins[i].z, 1.f))) {
-					look->skinColor = kSkins[i];
-				}
-				ImGui::PopID();
-			}
-			ImGui::ColorEdit3("skin colour", &look->skinColor.x);
-			static const Math::Vec3 kHairs[] = { { 0.1f, 0.08f, 0.07f }, { 0.36f, 0.24f, 0.15f }, { 0.62f, 0.42f, 0.22f }, { 0.9f, 0.76f, 0.46f }, { 0.62f, 0.28f, 0.14f }, { 0.75f, 0.75f, 0.73f } };
-			ImGui::TextUnformatted("hair");
-			for (size_t i = 0; i < std::size(kHairs); ++i) {
-				ImGui::SameLine();
-				ImGui::PushID(static_cast<int>(100 + i));
-				if (ImGui::ColorButton("##hair", ImVec4(kHairs[i].x, kHairs[i].y, kHairs[i].z, 1.f))) {
-					look->hairColor = kHairs[i];
-				}
-				ImGui::PopID();
-			}
-			ImGui::ColorEdit3("hair colour", &look->hairColor.x);
-			if (ImGui::BeginCombo("hairstyle", look->hairStyle.c_str())) {
-				for (const auto& style : AppearanceSystem::hairStyles(entity)) {
-					if (ImGui::Selectable(style.c_str(), style == look->hairStyle)) {
-						look->hairStyle = style;
-					}
-				}
-				ImGui::EndCombo();
-			}
-			break;
-		}
-	}
 
 	bool drawGraphicsSettings(GraphicsSettings& gfx) {
 		bool changed = false;

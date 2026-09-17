@@ -20,7 +20,6 @@
 #include "componentsModule/ModelComponent.h"
 #include "componentsModule/TerrainComponent.h"
 #include "componentsModule/TransformComponent.h"
-#include "componentsModule/VegetationComponent.h"
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "logsModule/logger.h"
@@ -216,47 +215,46 @@ namespace SFE::SystemsModule {
 			}
 		}
 
-		// Upright capsules for the vegetation that has them: tree trunks, boulders. A static compound per group of
-		// cells rather than a body each: a forest has far more of them than the world takes bodies.
-		constexpr int kCellsPerGroup = 4;
-		for (const auto& [id, vegetation, placements] : registry.view<const ComponentsModule::VegetationComponent, const ComponentsModule::VegetationPlacementsComponent>()) {
-			if (!vegetation || !placements) {
-				continue;
+		// Whatever else stands in the world: a game reports upright capsules -- tree trunks, boulders -- and they are
+		// batched into static compounds here. A body each would be far more than a world takes.
+		std::vector<StaticCapsule> capsules;
+		for (const auto& source : mCapsuleSources) {
+			source(capsules);
+		}
+		if (!capsules.empty()) {
+			// Grouped by where they stand, so one compound holds neighbours and its bounds stay tight.
+			constexpr float kGroupMetres = 64.f;
+			std::unordered_map<int64_t, std::vector<const StaticCapsule*>> groups;
+			for (const auto& capsule : capsules) {
+				const int64_t gx = static_cast<int64_t>(std::floor(capsule.base.x / kGroupMetres));
+				const int64_t gz = static_cast<int64_t>(std::floor(capsule.base.z / kGroupMetres));
+				groups[(gx << 32) ^ (gz & 0xffffffff)].push_back(&capsule);
 			}
-			// Each group's compound built on its own thread; the bodies are added here, in order.
-			const int groups = (placements->cellsPerSide + kCellsPerGroup - 1) / kCellsPerGroup;
-			std::vector<JPH::ShapeRefC> shapes(static_cast<size_t>(groups) * groups);
-			std::vector<size_t> order(shapes.size());
+			std::vector<std::vector<const StaticCapsule*>> cells;
+			cells.reserve(groups.size());
+			for (auto& [key, group] : groups) {
+				cells.push_back(std::move(group));
+			}
+			std::vector<JPH::ShapeRefC> shapes(cells.size());
+			std::vector<size_t> order(cells.size());
 			std::iota(order.begin(), order.end(), size_t{ 0 });
-			std::for_each(std::execution::par, order.begin(), order.end(), [&](const size_t group) {
-				const int gx = static_cast<int>(group % groups);
-				const int gz = static_cast<int>(group / groups);
+			std::for_each(std::execution::par, order.begin(), order.end(), [&](const size_t index) {
 				JPH::StaticCompoundShapeSettings compound;
-				for (int cz = gz * kCellsPerGroup; cz < (std::min)((gz + 1) * kCellsPerGroup, placements->cellsPerSide); ++cz) {
-					for (int cx = gx * kCellsPerGroup; cx < (std::min)((gx + 1) * kCellsPerGroup, placements->cellsPerSide); ++cx) {
-						const size_t cell = static_cast<size_t>(cz) * placements->cellsPerSide + cx;
-						for (uint32_t i = placements->cellStart[cell]; i < placements->cellStart[cell + 1]; ++i) {
-							const auto& instance = placements->instances[i];
-							const auto& layer = vegetation->layers[instance.layer];
-							if (layer.colliderRadius <= 0.f || layer.pitch != 0.f) {
-								continue;
-							}
-							const float radius = layer.colliderRadius * instance.scale;
-							const float halfHeight = (std::max)(layer.colliderHeight * instance.scale * 0.5f - radius, 0.01f);
-							compound.AddShape(JPH::Vec3(instance.pos.x, instance.pos.y + halfHeight + radius, instance.pos.z), JPH::Quat::sIdentity(),
-								new JPH::CapsuleShape(halfHeight, radius));
-						}
-					}
+				for (const auto* capsule : cells[index]) {
+					const float radius = capsule->radius;
+					const float halfHeight = (std::max)(capsule->height * 0.5f - radius, 0.01f);
+					compound.AddShape(JPH::Vec3(capsule->base.x, capsule->base.y + halfHeight + radius, capsule->base.z), JPH::Quat::sIdentity(),
+						new JPH::CapsuleShape(halfHeight, radius));
 				}
 				if (compound.mSubShapes.empty()) {
 					return;
 				}
 				const auto result = compound.Create();
 				if (result.HasError()) {
-					LogsModule::Logger::LOG_ERROR("vegetation colliders: %s", result.GetError().c_str());
+					LogsModule::Logger::LOG_ERROR("static capsules: %s", result.GetError().c_str());
 					return;
 				}
-				shapes[group] = result.Get();
+				shapes[index] = result.Get();
 			});
 			for (const auto& shape : shapes) {
 				if (shape) {

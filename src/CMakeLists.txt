@@ -21,7 +21,6 @@ endforeach()
 
 list(REMOVE_ITEM SRC
 	"${CMAKE_CURRENT_SOURCE_DIR}/core/main.cpp"
-	"${CMAKE_CURRENT_SOURCE_DIR}/runtime/main.cpp"
 )
 list(APPEND SRC "${CMAKE_CURRENT_SOURCE_DIR}/assetsModule/modelModule/mikktspace.c")
 
@@ -41,21 +40,8 @@ if(EDITOR)
 	target_compile_definitions(${ENGINE_NAME} PRIVATE EDITOR_ENABLED)
 endif()
 
-add_executable(StelForgeRuntime "${CMAKE_CURRENT_SOURCE_DIR}/runtime/main.cpp")
-target_link_libraries(StelForgeRuntime PRIVATE ${ENGINE_NAME})
-target_include_directories(StelForgeRuntime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-set_target_properties(StelForgeRuntime PROPERTIES
-	FOLDER Engine
-	CXX_STANDARD 23
-	VS_DEBUGGER_WORKING_DIRECTORY "${ENGINE_PATH}/bin"
-	WORKING_DIRECTORY "${ENGINE_PATH}/bin"
-)
-if(MSVC)
-	set_target_properties(StelForgeRuntime PROPERTIES
-		LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
-	)
-endif()
-
+# The engine is a library. Whoever builds a game with it brings its own executable, links this and calls its
+# registration before Engine::init; see core/GameModule.h.
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC})
 
 add_subdirectory(submodules/ecss)
@@ -177,7 +163,7 @@ macro(sfe_stage_app tgt)
 		endif()
 	endif()
 endmacro()
-sfe_stage_app(StelForgeRuntime)
+# A game's executable calls this itself: sfe_stage_app(MyGame) puts the runtime libraries beside it.
 
 if(MSVC)
 	# Add PDH for SystemLoadHelper + Windows version/UNICODE defines

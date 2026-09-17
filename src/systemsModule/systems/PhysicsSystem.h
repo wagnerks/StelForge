@@ -28,6 +28,16 @@ namespace SFE::SystemsModule {
 		~PhysicsSystem() override;
 		void update(float dt) override;
 
+		/// @brief An upright capsule standing in the world: where its foot is, how thick and how tall.
+		struct StaticCapsule {
+			Math::Vec3 base;
+			float radius = 0.f;
+			float height = 0.f;
+		};
+		// Static bodies a game brings -- the trunks of its trees, its boulders. Called once while the world is built;
+		// fill the list with everything that stands. Register before the world is built.
+		void addStaticCapsules(std::function<void(std::vector<StaticCapsule>&)> source) { mCapsuleSources.push_back(std::move(source)); }
+
 		// Called on the physics thread before every fixed step with its length: the place for anything that moves
 		// through the world with it, such as a character controller. Register before the system starts ticking.
 		void addStepCallback(std::function<void(float)> callback) { mStepCallbacks.push_back(std::move(callback)); }
@@ -53,6 +63,7 @@ namespace SFE::SystemsModule {
 		std::unique_ptr<JPH::JobSystemThreadPool> mJobs;
 		std::unique_ptr<JPH::PhysicsSystem> mWorld;
 		std::vector<std::function<void(float)>> mStepCallbacks;
+		std::vector<std::function<void(std::vector<StaticCapsule>&)>> mCapsuleSources;
 		float mAccumulated = 0.f;
 		double mStepTime = 0.0;
 	};

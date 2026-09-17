@@ -50,8 +50,18 @@ namespace SFE::PropertiesModule {
 			void (*load)(ecss::EntityId, const Json::Value&);
 		};
 
-		/// @brief The table itself. @see SceneComponents.cpp
+		/// @brief The engine's own components, and whatever a game added. @see SceneComponents.cpp
 		static const std::vector<Entry>& entries();
+
+		/// @brief Add a component of a game's, so scenes carry it and the editor can show it.
+		static void add(Entry entry);
+
+		/// @brief Add T, taking its contract from its ComponentSerializer.
+		template<class T>
+		static void add(LoadPhase phase) { add(entryFor<T>(phase)); }
+
+		/// @brief The engine's own components, in the order they are read. @see SceneComponents.cpp
+		static std::vector<Entry> engineEntries();
 
 		/// @brief Write every registered component this entity has into @p properties.
 		static void save(ecss::EntityId entity, Json::Value& properties) {

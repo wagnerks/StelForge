@@ -257,6 +257,8 @@ namespace SFE::SystemsModule {
 		std::vector<std::string> renderPassNames() const { return mPassNames; }
 		// The named pass, or null. Main thread.
 		Render::RenderPass* renderPass(std::string_view name) const;
+		// Every pass in draw order, for whoever needs to ask them all something.
+		const std::vector<std::unique_ptr<Render::RenderPass>>& renderPasses() const { return mRenderPasses; }
 
 		// Readers skip when a chunk mutate is in flight. Mutate sets the flag first, then
 		// waits for in-flight readers, so a waiting mutate never blocks readers already running.

@@ -10,6 +10,11 @@ namespace SFE {
 	public:
 		static void setRoot(std::string_view path);
 		static const std::filesystem::path& root();
+		/// @brief Where the engine's own assets are -- shaders, fonts, the stand-in textures.
+		/// A game's content root is searched first and this one is the fallback, so a game may
+		/// override any of them by putting a file of the same name in its own content.
+		static void setEngineRoot(std::string_view path);
+		static const std::filesystem::path& engineRoot();
 		static std::filesystem::path resolve(std::string_view path);
 		static std::filesystem::path executableDir();
 		static std::filesystem::path guessContentRoot(std::string_view exeDir = {});
@@ -25,5 +30,6 @@ namespace SFE {
 
 	private:
 		inline static std::filesystem::path sRoot{};
+		inline static std::filesystem::path sEngineRoot{};
 	};
 }

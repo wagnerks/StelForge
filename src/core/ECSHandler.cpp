@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "core/GameModule.h"
 #include "assetsModule/AssetsManager.h"
 #include "assetsModule/modelModule/MeshVaoRegistry.h"
 #include "assetsModule/modelModule/ModelLoader.h"
@@ -23,19 +24,14 @@
 #include "systemsModule/systems/AABBSystem.h"
 #include "systemsModule/systems/ActionSystem.h"
 #include "systemsModule/systems/AudioSystem.h"
-#include "systemsModule/systems/SoundscapeSystem.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/ChunksSystem.h"
 #include "systemsModule/systems/LODSystem.h"
 #include "systemsModule/systems/OcTreeSystem.h"
 #include "systemsModule/systems/PhysicsSystem.h"
-#include "systemsModule/systems/AppearanceSystem.h"
-#include "systemsModule/systems/CharacterSystem.h"
-#include "systemsModule/systems/GarbageSystem.h"
 #include "systemsModule/systems/RenderSystem.h"
 #include "systemsModule/systems/SkeletalAnimationSystem.h"
 #include "systemsModule/systems/TransformSystem.h"
-#include "systemsModule/systems/VegetationSystem.h"
 #include "systemsModule/systems/WorldTimeSystem.h"
 
 namespace SectorsArrayTest
@@ -84,12 +80,9 @@ void ECSHandler::initSystems() {
 	// Physics is the exception: a capture still steps it, from the frame, so a character stands on the ground in it.
 	// The character registers its step with the world before the physics thread starts.
 	mSystemManager.createSystem<SFE::SystemsModule::PhysicsSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::GarbageSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::CharacterSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::VegetationSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::AudioSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::SoundscapeSystem>();
-	mSystemManager.createSystem<SFE::SystemsModule::AppearanceSystem>();
+	// Whatever game is built with this engine, once everything it stands on exists.
+	SFE::GameModule::createSystems(mSystemManager);
 	const bool capturing = SFE::Engine::instance()->capturingFrame();
 	mSystemManager.setStepTickSystems(capturing || SFE::Engine::instance()->fixedDeltaTime() > 0.f);
 	mSystemManager.addTickSystems<SFE::SystemsModule::PhysicsSystem>(60);
@@ -101,8 +94,9 @@ void ECSHandler::initSystems() {
 	// In this order: the character takes its pose from the physics thread and places the camera, the litter follows its
 	// bodies, the camera flies (when the character does not hold it), the vegetation around it is brought in, sounds are heard from the camera's
 	// new place, then the frame is drawn from where the camera ended up.
-	mSystemManager.addRootSystems<SFE::SystemsModule::CharacterSystem, SFE::SystemsModule::GarbageSystem, SFE::SystemsModule::CameraSystem, SFE::SystemsModule::VegetationSystem,
-		SFE::SystemsModule::SoundscapeSystem, SFE::SystemsModule::AudioSystem, SFE::SystemsModule::AppearanceSystem, SFE::SystemsModule::RenderSystem>();
+	// The camera flies (when nothing else holds it), what it hears follows it, then the frame is drawn from where it
+	// ended up. A game adds its own ahead of these, in GameModule::addSystems.
+	mSystemManager.addRootSystems<SFE::SystemsModule::CameraSystem, SFE::SystemsModule::AudioSystem, SFE::SystemsModule::RenderSystem>();
 
 	if (auto chunks = mSystemManager.getSystem<SFE::SystemsModule::ChunksSystem>()) {
 		if (auto cam = mSystemManager.getSystem<SFE::SystemsModule::CameraSystem>()) {

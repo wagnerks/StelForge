@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "ecss/Types.h"
 #include "mathModule/Forward.h"
 
 namespace SFE::ComponentsModule {

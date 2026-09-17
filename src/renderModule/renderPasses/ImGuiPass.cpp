@@ -1,4 +1,5 @@
 #include "ImGuiPass.h"
+#include "core/GameModule.h"
 
 #include "backends/imgui_impl_glfw.h"
 #include "core/Engine.h"
@@ -101,11 +102,14 @@ namespace SFE::Render::RenderPasses {
 			SystemsModule::drawGraphicsSettings(renderDataHandle.graphics);
 		}
 		ImGui::End();
-		ImGui::SetNextWindowSize(ImVec2(340.f, 170.f), ImGuiCond_FirstUseEver);
-		if (ImGui::Begin("Character")) {
-			SystemsModule::characterAppearance();
+		// Whatever windows the game brought: the engine has none of its own past the graphics settings.
+		for (const auto& panel : GameModule::panels()) {
+			ImGui::SetNextWindowSize(ImVec2(340.f, 170.f), ImGuiCond_FirstUseEver);
+			if (ImGui::Begin(panel.title.c_str())) {
+				panel.draw();
+			}
+			ImGui::End();
 		}
-		ImGui::End();
 		ImGui::Render();
 
 		// The frame is built either way, since windows elsewhere call into ImGui every frame and would find no

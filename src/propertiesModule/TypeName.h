@@ -14,12 +14,7 @@
 #include "componentsModule/TerrainComponent.h"
 #include "componentsModule/WaterComponent.h"
 #include "componentsModule/AudioSourceComponent.h"
-#include "componentsModule/CharacterComponent.h"
-#include "componentsModule/GarbageComponent.h"
-#include "componentsModule/SoundscapeComponent.h"
-#include "componentsModule/VegetationComponent.h"
 #include "componentsModule/WindComponent.h"
-#include "componentsModule/GrassComponent.h"
 
 namespace SFE::PropertiesModule {
 #define TYPE_NAME(type)									\
@@ -53,12 +48,6 @@ namespace SFE::PropertiesModule {
 	TYPE_NAME(SkyComponent);
 	TYPE_NAME(TerrainComponent);
 	TYPE_NAME(WaterComponent);
-	TYPE_NAME(CharacterComponent);
-	TYPE_NAME(VegetationComponent);
 	TYPE_NAME(WindComponent);
-	TYPE_NAME(GrassComponent);
 	TYPE_NAME(AudioSourceComponent);
-	TYPE_NAME(GarbageComponent);
-	TYPE_NAME(SoundscapeComponent);
-	TYPE_NAME(CharacterAppearanceComponent);
 }
