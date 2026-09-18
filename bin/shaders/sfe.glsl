@@ -180,4 +180,5 @@ vec2 sfeVelocity(vec4 clipNow, vec4 clipBefore) {
     vec4 wind;       /* xz the direction it blows along, y strength, w seconds; see sfe_wind.glsl */ \
     vec4 windBefore; /* the same, last frame */ \
     mat4 invProjection; /* of the jittered projection */ \
-    mat4 invView;
+    mat4 invView; \
+    vec4 style;      /* x the drawn look, GraphicsSettings::stylise */

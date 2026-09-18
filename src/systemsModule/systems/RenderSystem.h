@@ -49,6 +49,8 @@ namespace SFE::SystemsModule {
 		// Of the matrices above, as the GPU gets them: screen passes put world positions back together from depth.
 		Math::Mat4 invProjection = {};
 		Math::Mat4 invView = {};
+		// x GraphicsSettings::stylise: a shader drawing in that look can leave out what it would not show.
+		Math::Vec4 style = {};
 	};
 
 	struct GraphicsSettings {

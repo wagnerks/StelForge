@@ -73,8 +73,9 @@ struct GroundSample {
 
 // One material at `p`, twice: the second sample turned and scaled against the first and faded in by a slow noise, so
 // the tiles do not line up into a grid across a meadow. Gradients are given: only some materials are sampled, and
-// the implicit ones are undefined inside that branch.
-GroundSample sampleGround(int layer, vec2 p, vec2 dpdx, vec2 dpdy, float variation, vec3 viewTangent, float parallax) {
+// the implicit ones are undefined inside that branch. Drawn, it is the colour alone: those materials are flat paint,
+// their normal maps level, and nothing is left for the second sample or the normal map to add.
+GroundSample sampleGround(int layer, vec2 p, vec2 dpdx, vec2 dpdy, float variation, vec3 viewTangent, float parallax, bool drawn) {
     const mat2 turn = mat2(0.6, 0.8, -0.8, 0.6);
     const float scale2 = 0.71;
     float tile = kTile[layer];
@@ -96,11 +97,15 @@ GroundSample sampleGround(int layer, vec2 p, vec2 dpdx, vec2 dpdy, float variati
     vec4 n1 = vec4(0.5, 0.5, 1.0, 1.0);
     vec4 a2 = vec4(0.0);
     vec4 n2 = vec4(0.5, 0.5, 1.0, 1.0);
-    if (variation < 0.999) {
+    if (drawn) {
+        a1 = textureGrad(groundAlbedo, at, dx, dy);
+        variation = 0.0;
+    }
+    else if (variation < 0.999) {
         a1 = textureGrad(groundAlbedo, at, dx, dy);
         n1 = textureGrad(groundNormal, at, dx, dy);
     }
-    if (variation > 0.001) {
+    if (!drawn && variation > 0.001) {
         a2 = textureGrad(groundAlbedo, at2, dx2, dy2);
         n2 = textureGrad(groundNormal, at2, dx2, dy2);
     }
@@ -132,8 +137,11 @@ void main() {
     vec3 toEye = normalize(camera - FragPos);
     vec3 viewTangent = vec3(dot(toEye, T), dot(toEye, B), dot(toEye, N));
     float footprint = length(fwidth(p));
+    // The drawn look paints the ground flat: no relief, no hummocks, no ruts in the normal. Those were most of what
+    // this shader cost.
+    bool drawn = matrices.style.x > 0.5;
     // Parallax only up close, where a height map's centimetres still cover a few pixels.
-    float parallax = 1.0 - smoothstep(0.01, 0.04, footprint);
+    float parallax = drawn ? 0.0 : 1.0 - smoothstep(0.01, 0.04, footprint);
 
     vec4 noise = sfeTerrainNoise(terrainNoise, p);
     SfeTerrainLayers layers = sfeTerrainLayers(p, height, slope, sfeForest(forestMap, p), noise);
@@ -191,7 +199,7 @@ void main() {
         if (weight[i] < 0.01) {
             continue;
         }
-        samples[i] = sampleGround(i, p, dpdx, dpdy, variation, viewTangent, parallax);
+        samples[i] = sampleGround(i, p, dpdx, dpdy, variation, viewTangent, parallax, drawn);
         // Stones stand out of the mud, grass tufts out of the sand.
         blend[i] = weight[i] + samples[i].height * 0.3;
         highest = max(highest, blend[i]);
@@ -230,15 +238,17 @@ void main() {
     // The material's normal on the ground's own frame: u runs along +x and v along +z, and the maps are OpenGL ones,
     // green towards the top of the image, where v is smallest.
     // The hummocks first, on the mesh's normal, faded out where they would only shimmer.
-    vec2 bumps = noiseSlope(p, 0.6, 3) * 0.6;
-    float fineBumps = detail(2.4, footprint);
-    if (fineBumps > 0.001) {
-        bumps += noiseSlope(p, 2.4, 2) * 0.15 * fineBumps;
+    if (!drawn) {
+        vec2 bumps = noiseSlope(p, 0.6, 3) * 0.6;
+        float fineBumps = detail(2.4, footprint);
+        if (fineBumps > 0.001) {
+            bumps += noiseSlope(p, 2.4, 2) * 0.15 * fineBumps;
+        }
+        N = normalize(N - vec3(bumps.x, 0.0, bumps.y) * bumpiness * detail(0.6, footprint));
     }
-    N = normalize(N - vec3(bumps.x, 0.0, bumps.y) * bumpiness * detail(0.6, footprint));
     // The ruts are a few centimetres deep, too narrow for the mesh: tilt the normal across the road by their slope,
     // the road's direction from how the distance to it changes.
-    if (road > 0.01) {
+    if (!drawn && road > 0.01) {
         const float e = 0.5;
         float along = (sfeTerrainNoise(terrainNoise, p + vec2(e, 0.0)).a - noise.a) * kSfeRoadTextureRange / e;
         float across = (sfeTerrainNoise(terrainNoise, p + vec2(0.0, e)).a - noise.a) * kSfeRoadTextureRange / e;

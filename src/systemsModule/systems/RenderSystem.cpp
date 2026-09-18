@@ -300,6 +300,7 @@ namespace SFE::SystemsModule {
 
 		gpuMatrices.invProjection = Math::inverse(gpuMatrices.projection);
 		gpuMatrices.invView = Math::inverse(gpuMatrices.view);
+		gpuMatrices.style = { mRenderData.graphics.stylise, 0.f, 0.f, 0.f };
 		Engine::instance()->rhi()->updateBuffer(cameraMatricesUBO, 0, sizeof(RenderMatrices), &gpuMatrices);
 
 
