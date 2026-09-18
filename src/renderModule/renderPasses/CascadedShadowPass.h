@@ -75,6 +75,8 @@ namespace SFE::Render::RenderPasses {
 
 		ecss::EntityId mShadowSource;
 		bool mInited = false;
+		// The drawn look, read once when the maps are made: a smaller map, coarser casters, fewer of them.
+		bool mStylised = false;
 		Data mData;
 
 		SFE::MeshObject3D mGlassShadowMesh;
