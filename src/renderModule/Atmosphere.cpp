@@ -168,6 +168,7 @@ namespace SFE::Render::Atmosphere {
 		out.wind[0] = renderData.current.wind.x;
 		out.wind[1] = renderData.current.wind.y;
 		out.wind[2] = renderData.current.wind.z;
+		out.wind[3] = renderData.graphics.stylise;
 		return true;
 	}
 

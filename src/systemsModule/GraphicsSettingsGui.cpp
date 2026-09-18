@@ -53,6 +53,7 @@ namespace SFE::SystemsModule {
 		if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
 			changed |= ImGui::SliderFloat("view distance", &gfx.viewDistance, 100.f, 5000.f, "%.0f m", ImGuiSliderFlags_Logarithmic);
 			changed |= ImGui::SliderFloat("lod detail", &gfx.lodDetail, 0.3f, 4.f, "%.2f");
+			changed |= ImGui::SliderFloat("stylise", &gfx.stylise, 0.f, 1.f, "%.2f");
 			changed |= environmentSliders(gfx);
 		}
 
@@ -196,6 +197,7 @@ namespace SFE::SystemsModule {
 		root["grassDensity"] = gfx.grassDensity;
 		root["grassDistance"] = gfx.grassDistance;
 		root["lodDetail"] = gfx.lodDetail;
+		root["stylise"] = gfx.stylise;
 		root["timeGrade"] = gfx.timeGrade;
 		root["filmGrain"] = gfx.filmGrain;
 		root["sunRays"] = gfx.sunRays;
@@ -267,6 +269,7 @@ namespace SFE::SystemsModule {
 		f("grassDensity", gfx.grassDensity);
 		f("grassDistance", gfx.grassDistance);
 		f("lodDetail", gfx.lodDetail);
+		f("stylise", gfx.stylise);
 		f("timeGrade", gfx.timeGrade);
 		f("filmGrain", gfx.filmGrain);
 		f("sunRays", gfx.sunRays);

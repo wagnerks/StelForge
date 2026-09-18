@@ -42,6 +42,10 @@ layout(SFE_SET(1, 15), std140) uniform PushConstants {
     float rimStrength;
     float taaFrame;  // -1 without TAA
     float cloudCoverage;
+    // How far the picture is pushed from what the light really does towards a painted one: the sun's light in steps
+    // rather than a gradient, no highlight to speak of, and the colour flattened.
+    float stylise;
+    float pad0, pad1, pad2;
 } pc;
 
 
@@ -443,6 +447,14 @@ void main() {
         Lo += cookTorrance(Normal, V, Lp, albedo, F0, roughness, metallic, plb.pointLight[idx].Color * attenuation, f90);
     }
 
+    // Cartoon light: a surface is either in the sun or turned from it, with a soft edge between the two rather than
+    // the long falloff real light has -- two tones, the way an animated film paints a round shape. Taken on the light,
+    // so a cloud's shadow or a tree's shade still falls where it did.
+    if (pc.stylise > 0.0) {
+        const float toon = smoothstep(0.0, 0.32, nDotLSun) * 0.85 + nDotLSun * 0.15;
+        Lo *= mix(1.0, nDotLSun > 0.0001 ? toon / max(nDotLSun, 1e-3) : 1.0, pc.stylise);
+    }
+
     const float shadowFactor = 1.0 - pc.shadowIntensity * shadow;
     Lo *= shadowFactor;
     // Over a wide range of angles: a normal map's bumps swing the normal across the terminator, and a narrow one cut
@@ -475,7 +487,8 @@ void main() {
     }
     float ao = mix(1.0, AmbientOcclusion, pc.ssaoAmount);
     ao = mix(ao, 1.0, clearcoat);
-    vec3 ambient = kD * diffuse * ao + specular;
+    // A painted surface has no highlight to speak of: the sky lights it flatly and the sun does the shaping.
+    vec3 ambient = kD * diffuse * ao + specular * mix(1.0, 0.15, pc.stylise);
     ambient *= mix(pc.shadowAmbient, 1.0, sunVisible);
 
     // Backend-parity debugging: isolate one term so it can be captured and diffed on its own.
@@ -574,7 +587,27 @@ void main() {
     vec3 fogColor = pc.ambientColor * 0.15 + vec3(0.08, 0.10, 0.14);
     float distFog = smoothstep(pc.fogStart, pc.drawDistance, Depth);
     float fogFactor = clamp(distFog * 0.45, 0.0, 0.35);
+    if (pc.stylise > 0.0) {
+        // Depth carries the palette: a drawing of a lake has everything past the near bank in one flat tone of the
+        // sky's colour, and only what is close keeps its own. The haze does this already, far more gently. The tone
+        // is the sky's own low towards the horizon this way, so at night it is the night's blue and not a grey.
+        vec3 horizon = normalize(vec3(-V.x, 0.08, -V.z));
+        fogColor = mix(fogColor, texture(irradianceMap, horizon).rgb * pc.iblStrength * 1.6, pc.stylise);
+        fogFactor = max(fogFactor, smoothstep(40.0, 320.0, Depth) * 0.58 * pc.stylise);
+        // Shade is coloured, not dark: the sky fills it with its own blue, and at night the moon lights everything
+        // plainly rather than leaving it black. Most where the sun does not reach.
+        float inShade = 1.0 - sunVisible * smoothstep(0.0, 0.32, nDotLSun);
+        lighting += albedo * texture(irradianceMap, Normal).rgb * pc.iblStrength * (0.8 + 1.8 * inShade) * pc.stylise * ao;
+        // A bright rim where a shape turns away from the eye: what outlines it against what is behind in a cartoon.
+        float rim = pow(1.0 - max(dot(Normal, V), 0.0), 3.0);
+        lighting += texture(irradianceMap, -V).rgb * pc.iblStrength * rim * 0.9 * pc.stylise * albedo;
+    }
     vec3 color = mix(lighting, fogColor, fogFactor);
+    if (pc.stylise > 0.0) {
+        // A cartoon's colours are fuller than the world's.
+        float grey = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        color = max(mix(vec3(grey), color, 1.0 + 0.15 * pc.stylise), vec3(0.0));
+    }
     if (dot(nSample, nSample) < 0.01) {
         FragColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;

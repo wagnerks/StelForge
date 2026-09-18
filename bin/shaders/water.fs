@@ -269,6 +269,9 @@ void main() {
         // What is drawn is no longer only guessed at: the rest still spreads the glitter and the reflections.
         spread *= 0.55;
     }
+    // Painted water is nearly still: the waves are there, but only enough to break a reflection, not to speckle it.
+    float cartoon = water.wind.w;
+    slope *= mix(1.0, 0.22, cartoon);
     vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
 
@@ -320,15 +323,40 @@ void main() {
         float onScreen = edge.x * edge.y;
         vec3 hitColor = texture(sceneColor, hitUv).rgb;
         reflected = onScreen >= 1.0 ? hitColor
-            : mix(sfeSky(skyLut, cloudLayer, R, toSun, sun, brightness, water.toSun.w, sfeCloudDrift(water.wind, seconds), false), hitColor, onScreen);
+            : mix(sfeSky(skyLut, cloudLayer, R, toSun, sun, brightness, water.toSun.w, sfeCloudDrift(water.wind, seconds), false, water.wind.w), hitColor, onScreen);
     }
     else {
-        reflected = sfeSky(skyLut, cloudLayer, R, toSun, sun, brightness, water.toSun.w, sfeCloudDrift(water.wind, seconds), false);
+        reflected = sfeSky(skyLut, cloudLayer, R, toSun, sun, brightness, water.toSun.w, sfeCloudDrift(water.wind, seconds), false, water.wind.w);
     }
 
     float cosTheta = max(dot(N, V), 0.0);
     float fresnel = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
+    // A painted lake is one blue that takes some sky, not a mirror that turns clear underfoot: the mix stays much the
+    // same wherever you look, which is what makes it read as a flat sheet of water.
+    fresnel = mix(fresnel, mix(0.35, 0.85, fresnel), cartoon);
     vec3 color = mix(refracted, reflected, fresnel);
+
+    if (cartoon > 0.5) {
+        // The light's path drawn as a handful of flat streaks lying across the water, the way a picture shows a moon
+        // path: a noise cut hard into ovals, stretched along the line to the light and drifting with the wind.
+        vec3 toLight = toSun.y > 0.02 ? toSun : -toSun;
+        vec3 lightColour = toSun.y > 0.02 ? sun : vec3(0.7, 0.78, 1.0) * brightness * 0.03;
+        vec2 along = normalize(toLight.xz + vec2(1e-4));
+        vec2 across = vec2(-along.y, along.x);
+        vec2 p = vWorld.xz - along * seconds * 0.35;
+        // Stretched across the path, short along it.
+        // Sized on screen rather than in the world: a painter draws the same little ovals near and far, so the
+        // pattern is read finer the further off the water is.
+        float scale = 0.45 * (0.5 + eyeDistance * 0.075);
+        vec2 stretched = vec2(dot(p, along) * 0.35, dot(p, across) * 1.6) * scale;
+        float n = sfeFbm(stretched, 3);
+        float streak = smoothstep(0.55, 0.62, n) * (1.0 - smoothstep(0.62, 0.72, n) * 0.35);
+        // Only where the light would glance off the water towards the eye, and thinning into the distance.
+        vec3 H = normalize(V + toLight);
+        float lobe = pow(max(dot(N, H), 0.0), 8.0);
+        float path = smoothstep(0.55, 0.95, lobe) * 0.6 + pow(max(dot(reflect(-V, vec3(0.0, 1.0, 0.0)), toLight), 0.0), 60.0);
+        color += lightColour * streak * clamp(path, 0.0, 1.5) * 0.32 * (1.0 - smoothstep(90.0, 260.0, eyeDistance));
+    }
 
     // The sun's glitter: a sharp lobe on the waves, softened in the distance where many facets share a pixel.
     vec3 H = normalize(V + toSun);
@@ -339,7 +367,7 @@ void main() {
     float d = nh * nh * (a2 - 1.0) + 1.0;
     float ggx = a2 / (PI * d * d);
     float sunFresnel = 0.02 + 0.98 * pow(1.0 - max(dot(H, V), 0.0), 5.0);
-    color += sun * ggx * sunFresnel * max(dot(N, toSun), 0.0) * 0.07 / max(cosTheta, 0.1);
+    color += sun * ggx * sunFresnel * max(dot(N, toSun), 0.0) * 0.07 / max(cosTheta, 0.1) * (1.0 - cartoon);
 
     // A little froth along the shore, broken up and drifting: a lake has no surf.
     float shore = 1.0 - smoothstep(0.0, 0.35, depthBelow);

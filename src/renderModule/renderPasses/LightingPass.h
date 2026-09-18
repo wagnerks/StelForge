@@ -50,6 +50,9 @@ namespace SFE::Render::RenderPasses {
 			float taaFrame = -1.f;
 			// The scene sky's cloud coverage, for the shadows the clouds cast on the ground.
 			float cloudCoverage = 0.f;
+			// See deferred_shading.fs: 0 leaves the lighting as it is, 1 paints it.
+			float stylise = 0.f;
+			float pad0 = 0.f, pad1 = 0.f, pad2 = 0.f;
 		};
 
 		struct CascadData {

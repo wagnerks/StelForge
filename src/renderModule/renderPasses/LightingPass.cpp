@@ -319,6 +319,7 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 	{
 		Atmosphere::SkyParams sky;
 		drawData.cloudCoverage = Atmosphere::skyParams(renderDataHandle, sky) ? sky.toSun[3] : 0.f;
+		drawData.stylise = renderDataHandle.graphics.stylise;
 	}
 
 	// Every block every frame: a dynamic binding needs this frame's offset even when its data did not change.

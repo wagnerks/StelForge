@@ -14,6 +14,6 @@ layout(SFE_SET(0, 15), std140) uniform SkyBlock {
 void main() {
     vec4 far = sky.invViewProj * vec4(vNdc, 0.5, 1.0);
     vec3 dir = normalize(far.xyz / far.w - sky.cameraPos.xyz);
-    vec3 color = sfeSky(skyLut, cloudLayer, dir, sky.toSun.xyz, sky.sunColor.rgb, sky.cameraPos.w, sky.toSun.w, sfeCloudDrift(sky.wind, sky.sunColor.w), true);
+    vec3 color = sfeSky(skyLut, cloudLayer, dir, sky.toSun.xyz, sky.sunColor.rgb, sky.cameraPos.w, sky.toSun.w, sfeCloudDrift(sky.wind, sky.sunColor.w), true, sky.wind.w);
     FragColor = vec4(color, 1.0);
 }

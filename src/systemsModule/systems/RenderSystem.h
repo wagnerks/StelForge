@@ -125,6 +125,10 @@ namespace SFE::SystemsModule {
 		// level to twice the distance.
 		float lodDetail = 1.8f;
 
+		// How far the picture is pushed from what the light really does towards a painted one: 0 leaves it, 1 puts the
+		// sun's light in steps, takes the highlights off and flattens the colour.
+		float stylise = 1.f;
+
 		// How much the time of day grades the picture (warm low sun, blue night), and the film grain.
 		float timeGrade = 1.f;
 		float filmGrain = 0.012f;

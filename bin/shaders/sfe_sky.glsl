@@ -10,7 +10,7 @@
     vec4 toSun;        /* xyz towards the sun, w cloud coverage */ \
     vec4 sunColor;     /* rgb sun radiance reaching the ground, w seconds for the cloud drift */ \
     vec4 cameraPos;    /* xyz, w sky brightness per unit of sun */ \
-    vec4 wind;         /* xz the direction the wind blows along, y its strength */
+    vec4 wind;         /* xz the direction the wind blows along, y its strength, w how cartoon the look is */
 
 // The sky's radiance towards `dir` for this frame's sun, per unit of sky brightness, from the texture
 // Atmosphere::skyTexture bakes: marching the atmosphere for every pixel cost a pass as much as all its other work.
@@ -102,8 +102,90 @@ float sfeStars(vec3 dir, vec3 toSun) {
     return star * star * bright * bright;
 }
 
+// The sky painted, for the cartoon look: two colours and a clean sweep between them where the real one scatters, a
+// sun and a moon drawn large enough to read, and clouds as round heaps in two flat tones with a bright rim where the
+// light catches their edge. Cheaper than the real one: two reads of the cloud layer, both coarse.
+vec3 sfeCartoonSky(sampler2D skyLut, sampler2D clouds, vec3 dir, vec3 toSun, vec3 sunColor, float brightness, float coverage, vec2 drift, bool withSunDisk) {
+    dir = normalize(dir);
+    vec3 around = normalize(vec3(dir.x, 0.0, dir.z) + vec3(1e-4, 0.0, 0.0));
+    vec3 horizon = sfeSkyRadiance(skyLut, normalize(around + vec3(0.0, 0.04, 0.0))) * brightness;
+    vec3 zenith = sfeSkyRadiance(skyLut, vec3(0.0, 1.0, 0.0)) * brightness;
+    float night = clamp((0.06 - toSun.y) / 0.16, 0.0, 1.0);
+    // A painted sky is a clean blue overhead, however murky the real one is with a low sun: the real zenith's
+    // brightness, in the blue a picture book would use -- a deep one at night.
+    float greyZenith = dot(zenith, vec3(0.2126, 0.7152, 0.0722));
+    // And bright by day whatever the hour: a low sun darkens the real sky long before a painter's does.
+    greyZenith = mix(greyZenith, max(greyZenith, 0.1 * brightness), 1.0 - night);
+    vec3 paintedBlue = mix(vec3(0.32, 0.56, 1.0), vec3(0.18, 0.26, 0.62), night);
+    zenith = mix(zenith, paintedBlue * greyZenith * 1.9, 0.7);
+    // The horizon a paler blue, except towards the sun, where the warm glow of the real one is what a painter keeps.
+    float greyHorizon = dot(horizon, vec3(0.2126, 0.7152, 0.0722));
+    greyHorizon = mix(greyHorizon, max(greyHorizon, 0.12 * brightness), 1.0 - night);
+    vec2 sunAround = normalize(toSun.xz + vec2(1e-4));
+    float sunSide = pow(max(dot(around.xz, sunAround), 0.0), 2.0) * (1.0 - night);
+    vec3 paleBlue = mix(vec3(0.66, 0.8, 1.0), vec3(0.3, 0.36, 0.62), night);
+    horizon = mix(horizon, paleBlue * greyHorizon * 1.35, 0.7 * (1.0 - 0.75 * sunSide));
+    vec3 sky = mix(horizon, zenith, pow(smoothstep(-0.02, 0.6, dir.y), 0.8));
+
+    if (withSunDisk) {
+        // Drawn several times the size of the real one, with a wide soft glow: a sun a child would draw.
+        float cosSun = dot(dir, toSun);
+        float disk = smoothstep(0.99905, 0.99935, cosSun);
+        float glow = pow(max(cosSun, 0.0), 60.0) * 0.3 + pow(max(cosSun, 0.0), 8.0) * 0.08;
+        sky += sunColor * (disk * 5.0 + glow) * step(0.0, dir.y + 0.02) * (1.0 - night);
+    }
+    if (night > 0.0) {
+        sky += vec3(0.85, 0.9, 1.0) * sfeStars(dir, toSun) * night * 0.08;
+        if (withSunDisk) {
+            float cosMoon = dot(dir, -toSun);
+            float disk = smoothstep(0.9989, 0.99915, cosMoon);
+            float halo = pow(max(cosMoon, 0.0), 90.0) * 0.35 + pow(max(cosMoon, 0.0), 12.0) * 0.06;
+            sky += vec3(1.0, 0.96, 0.82) * (disk * 1.6 + halo * brightness * 0.05) * night * step(0.0, dir.y + 0.02);
+        }
+    }
+
+    if (dir.y > 0.01 && coverage > 0.001) {
+        vec2 xz = dir.xz * (kSfeCloudHeight / dir.y);
+        // The coarse lumps only: a cartoon cloud is a few big round heaps, not a froth of small ones.
+        float field = sfeCloudField(clouds, xz, coverage, drift, 0.0);
+        // A clean edge: the body is there or it is not, over a narrow soft rim.
+        float body = smoothstep(0.0, 0.05, field);
+        if (body > 0.001) {
+            // What lights it: the sun by day, the moon by night.
+            vec3 toLight = night > 0.5 ? -toSun : toSun;
+            vec3 lightColour = night > 0.5 ? horizon * 3.5 + vec3(0.06, 0.07, 0.1) * brightness * 0.02 : sunColor;
+            vec2 towardLight = normalize(toLight.xz + vec2(1e-4));
+            float ahead = sfeCloudField(clouds, xz + towardLight * 700.0, coverage, drift, 0.0);
+            // Two tones with a soft step between: lit along its edges and on the side towards the light, and a
+            // darker belly deep inside, away from it -- a heap seen from below, not a ring drawn round a shape.
+            float facing = clamp(0.5 + (field - ahead) * 2.0, 0.0, 1.0);
+            float deep = smoothstep(0.08, 0.4, field);
+            float tone = smoothstep(0.4, 0.6, facing * 0.7 + (1.0 - deep) * 0.6);
+            vec3 skyTone = mix(zenith, horizon, 0.55);
+            float skyGrey = dot(skyTone, vec3(0.2126, 0.7152, 0.0722));
+            // The belly the sky's own colour, a touch towards violet, as painted shade is.
+            vec3 shade = skyTone * 1.2 + vec3(0.04, 0.0, 0.1) * skyGrey;
+            // The lit side a warm white a little brighter than the sky round it, not the sun's full glare: a
+            // painted cloud sits in its sky rather than burning out of it.
+            vec3 lit = vec3(1.0, 0.97, 0.92) * skyGrey * 2.1 + lightColour * 0.12;
+            vec3 cloud = mix(shade, lit, tone);
+            // The rim: a thin bright band round the edge, strongest towards the light.
+            float edge = 1.0 - smoothstep(0.03, 0.14, field);
+            float towards = pow(max(dot(dir, toLight), 0.0), 3.0);
+            cloud += (lightColour * 0.2 + vec3(skyGrey)) * edge * (0.1 + 0.8 * towards);
+            float fade = smoothstep(0.015, 0.2, dir.y);
+            sky = mix(sky, cloud, body * fade);
+        }
+    }
+    return sky;
+}
+
 // Everything above the ground along dir: the atmosphere, the clouds in front of it and, when asked, the sun disk.
-vec3 sfeSky(sampler2D skyLut, sampler2D clouds, vec3 dir, vec3 toSun, vec3 sunColor, float brightness, float coverage, vec2 drift, bool withSunDisk) {
+vec3 sfeSky(sampler2D skyLut, sampler2D clouds, vec3 dir, vec3 toSun, vec3 sunColor, float brightness, float coverage, vec2 drift, bool withSunDisk, float cartoon) {
+    // The painted sky instead, past halfway: the two are too different to blend into anything but mud.
+    if (cartoon > 0.5) {
+        return sfeCartoonSky(skyLut, clouds, dir, toSun, sunColor, brightness, coverage, drift, withSunDisk);
+    }
     dir = normalize(dir);
     vec3 sky = sfeSkyRadiance(skyLut, dir) * brightness;
 
