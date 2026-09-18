@@ -74,12 +74,13 @@ void CascadedShadowPass::init(SystemsModule::RenderData& renderDataHandle) {
 	auto shadow = FileSystem::readJson("cascadedShadows.json");
 
 	PropertiesModule::PropertiesSystem::deserializeProperty<CascadeShadowComponent>(mShadowSource, shadow["Properties"]);
-	// A drawn frame does not want a photographic shadow: it wants a soft shape under a tree. Half the map a side is a
-	// quarter of the texels to fill -- most of what this pass costs -- and the wider texel blurs the edge the style
-	// is after anyway. Read once: the maps are made here and never resized.
+	// A drawn frame does not want a photographic shadow: it wants a soft shape under a tree. A quarter of the map a
+	// side is a sixteenth of the texels to fill -- most of what this pass costs -- and the wider texel blurs the edge
+	// the style is after anyway: against the half-size map a sunlit meadow differs in a few hundred pixels of two
+	// million. Read once: the maps are made here and never resized.
 	mStylised = renderDataHandle.graphics.stylise > 0.5f;
 	if (mStylised) {
-		cmp->resolution *= 0.5f;
+		cmp->resolution *= 0.25f;
 		// And half the distance. The last cascade is fitted to the slice from 120 m out, so every tree in the forest
 		// stands in it; drawing it to 200 m instead of 400 is most of what this pass costs in a wood, and past that
 		// the air has taken the contrast out of the trees anyway.
