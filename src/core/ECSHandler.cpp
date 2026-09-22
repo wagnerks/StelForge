@@ -24,6 +24,7 @@
 #include "systemsModule/systems/AABBSystem.h"
 #include "systemsModule/systems/ActionSystem.h"
 #include "systemsModule/systems/AudioSystem.h"
+#include "networkModule/NetworkSystem.h"
 #include "systemsModule/systems/CameraSystem.h"
 #include "systemsModule/systems/ChunksSystem.h"
 #include "systemsModule/systems/LODSystem.h"
@@ -40,6 +41,12 @@ namespace SectorsArrayTest
 }
 
 void ECSHandler::initSystems() {
+	// Systems that keep state per entity hear of every destroy, including one made straight on the registry: one
+	// that went unheard left its instances drawn where it stood.
+	mRegistry.setDestroyListener([](ecss::EntityId entity, void*) {
+		SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ENTITY_DESTROYED });
+	});
+
 	//todo separate systems into  drawData preparing and logic update
 	/*
 	 * draw data preparing functions should not be updated while scene is rendering (or it should have its own ecs registries to apply double buffering (updating data in one buffer, while draw data from other buffer)
@@ -80,12 +87,23 @@ void ECSHandler::initSystems() {
 	// Physics is the exception: a capture still steps it, from the frame, so a character stands on the ground in it.
 	// The character registers its step with the world before the physics thread starts.
 	mSystemManager.createSystem<SFE::SystemsModule::PhysicsSystem>();
+	mSystemManager.createSystem<SFE::SystemsModule::LoosePhysicsSystem>();
 	mSystemManager.createSystem<SFE::SystemsModule::AudioSystem>();
+	// The session first of all, so what arrived is handled before anything of the frame is decided; the game's systems
+	// listen to it as they are made.
+	mSystemManager.addRootSystems<SFE::Network::NetworkSystem>();
 	// Whatever game is built with this engine, once everything it stands on exists.
 	SFE::GameModule::createSystems(mSystemManager);
+	if (auto* physics = getSystem<SFE::SystemsModule::PhysicsSystem>()) {
+		physics->addStaticCapsuleBodies();
+		if (auto* loose = getSystem<SFE::SystemsModule::LoosePhysicsSystem>()) {
+			loose->shareStaticCapsules(*physics);
+			loose->addStaticCapsuleBodies();
+		}
+	}
 	const bool capturing = SFE::Engine::instance()->capturingFrame();
 	mSystemManager.setStepTickSystems(capturing || SFE::Engine::instance()->fixedDeltaTime() > 0.f);
-	mSystemManager.addTickSystems<SFE::SystemsModule::PhysicsSystem>(60);
+	mSystemManager.addTickSystems<SFE::SystemsModule::PhysicsSystem, SFE::SystemsModule::LoosePhysicsSystem>(60);
 	if (!capturing) {
 		mSystemManager.addTickSystems<SFE::SystemsModule::WorldTimeSystem>(1);
 		mSystemManager.addTickSystems<SFE::SystemsModule::SkeletalAnimationSystem>(24);

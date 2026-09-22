@@ -16,3 +16,6 @@
 [submodule "src/submodules/miniaudio"]
 	path = src/submodules/miniaudio
 	url = https://github.com/mackron/miniaudio.git
+[submodule "src/submodules/enet"]
+	path = src/submodules/enet
+	url = https://github.com/lsalzman/enet.git

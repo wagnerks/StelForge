@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <array>
 #include <cstdio>
 #include <string>
 #include <thread>
@@ -8,6 +9,7 @@
 #include "FileSystem.h"
 #include "InputHandler.h"
 #include "containersModule/Singleton.h"
+#include "networkModule/NetworkSettings.h"
 #include "rhi/GraphicsBackend.h"
 #include "rhi/RenderHardwareInterface.h"
 
@@ -58,6 +60,8 @@ namespace SFE {
 		bool publishEditorDisplay() const { return mPublishEditorDisplay; }
 		void setPresentToScreen(bool present) { mPresentToScreen = present; }
 		bool presentToScreen() const { return mPresentToScreen; }
+		// Escape closes the window, unless the app handles it itself.
+		void setEscapeCloses(bool closes) { mEscapeCloses = closes; }
 		// Set for a deterministic frame capture: passes must drop anything that differs from one
 		// run to the next (FPS counters, timing overlays) so two captures compare pixel for pixel.
 		void setCapturingFrame(bool capturing) { mCapturingFrame = capturing; }
@@ -88,6 +92,9 @@ namespace SFE {
 		// A scene file, relative to the content root, loaded instead of the procedural chunks.
 		void setScenePath(std::string path) { mScenePath = std::move(path); }
 		const std::string& scenePath() const { return mScenePath; }
+		// Online play, read by NetworkSystem as it starts: set before initThread.
+		void setNetwork(Network::Settings settings) { mNetwork = std::move(settings); }
+		const Network::Settings& network() const { return mNetwork; }
 		bool proceduralRooms() const { return mProceduralRooms; }
 
 	protected:
@@ -99,8 +106,13 @@ namespace SFE {
 		void updateDelta();
 		bool checkNeedClose();
 
-		float mLastFrame = 0.f;
+		// Seconds, as a double: a float clock an hour in steps a quarter of a millisecond, and the frame times with it.
+		double mLastFrame = 0.0;
 		float mDeltaTime = 0.f;
+		// The last few frames' real durations, which the step is the mean of; see updateDelta.
+		std::array<float, 8> mRecentDeltas{};
+		size_t mRecentCount = 0;
+		size_t mRecentNext = 0;
 		double mAnimationClock = 0.0;
 		float mFramesTimer = 0.f;
 		int mFramesCounter = 0;
@@ -111,6 +123,7 @@ namespace SFE {
 		bool mEmbeddedInEditor = false;
 		bool mPublishEditorDisplay = false;
 		bool mPresentToScreen = false;
+		bool mEscapeCloses = true;
 		bool mCapturingFrame = false;
 		int mCaptureFrame = 0;
 		int mLightingDebugTerm = 0;
@@ -120,6 +133,7 @@ namespace SFE {
 		float mFixedDeltaTime = 0.f;
 		std::string mPassDumpDir;
 		std::string mScenePath;
+		Network::Settings mNetwork;
 
 		CoreModule::Core mCore;
 		

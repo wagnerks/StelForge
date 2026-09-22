@@ -8,7 +8,7 @@ file(GLOB_RECURSE SRC
 	"${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
 )
 
-set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss ${CMAKE_CURRENT_SOURCE_DIR}/submodules/meshoptimizer ${CMAKE_CURRENT_SOURCE_DIR}/submodules/miniaudio)
+set(EXCLUDE_DIR_1 ${CMAKE_CURRENT_SOURCE_DIR}/submodules/JoltPhysics ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss ${CMAKE_CURRENT_SOURCE_DIR}/submodules/meshoptimizer ${CMAKE_CURRENT_SOURCE_DIR}/submodules/miniaudio ${CMAKE_CURRENT_SOURCE_DIR}/submodules/enet)
 # file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/*")
 # list(REMOVE_ITEM SRC ${SUBMODULES_FILES})
 # file(GLOB_RECURSE SUBMODULES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/ecss/*")
@@ -56,6 +56,16 @@ target_link_libraries(${ENGINE_NAME} PRIVATE meshoptimizer)
 add_library(miniaudio STATIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/miniaudio/miniaudio.c")
 target_include_directories(miniaudio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/miniaudio")
 target_link_libraries(${ENGINE_NAME} PRIVATE miniaudio)
+
+# Online play over UDP (networkModule/EnetTransport). ENet is a handful of C files; its own CMakeLists builds them the
+# same way, but also sets up install rules and a shared variant the engine has no use for.
+file(GLOB ENET_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/submodules/enet/*.c")
+add_library(enet STATIC ${ENET_SOURCES})
+target_include_directories(enet PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/submodules/enet/include")
+if (WIN32)
+	target_link_libraries(enet PUBLIC ws2_32 winmm)
+endif()
+target_link_libraries(${ENGINE_NAME} PRIVATE enet)
 
 # ecss is header-only and templated, so every translation unit that opens a view has to
 # parse the whole thing, and only a fifth of that is ecss's own code -- the rest is the

@@ -1,4 +1,5 @@
 ﻿#include "Engine.h"
+#include "core/LoadTrace.h"
 
 #include <chrono>
 #include <cstdio>
@@ -55,11 +56,15 @@ namespace SFE {
 		}
 		if (mRHI) {
 			reproTrace("initThread rhi");
+			LoadTrace::Step step("graphics device");
 			mRHI->init();
 			reproTrace("initThread rhi ok");
 		}
 		reproTrace("initThread core");
-		mCore.init();
+		{
+			LoadTrace::Step step("systems");
+			mCore.init();
+		}
 		reproTrace("initThread core ok");
 
 		onKeyEvent = [this](CoreModule::InputKey key, CoreModule::InputEventType type) {
@@ -67,7 +72,7 @@ namespace SFE {
 				return;
 			}
 
-			if (key == CoreModule::InputKey::KEY_ESCAPE && mPresentToScreen) {
+			if (key == CoreModule::InputKey::KEY_ESCAPE && mPresentToScreen && mEscapeCloses) {
 				mWindow->close();
 			}
 		};
@@ -107,6 +112,11 @@ namespace SFE {
 			return;
 		}
 
+		// The GPU first: the frame's time is taken once the frame it replaces has left the GPU, so each frame is one of
+		// the GPU's, and what is read from the input is as fresh as it can be for the picture it goes into.
+		if (mRHI) {
+			mRHI->beginFrame();
+		}
 		updateDelta();
 
 		mCore.update(mDeltaTime);
@@ -141,12 +151,35 @@ namespace SFE {
 			mLastFrame += mDeltaTime;
 		}
 		else {
-			const auto currentFrame = static_cast<float>(clockSeconds());
-			mDeltaTime = currentFrame - mLastFrame;
+			const double currentFrame = clockSeconds();
+			const auto raw = static_cast<float>(currentFrame - mLastFrame);
 			mLastFrame = currentFrame;
+			// The GPU turns frames out at a steady pace, but they reach the CPU in bursts -- two quick frames and a long
+			// one -- so the real duration jitters though nothing on screen does, and everything moved by it judders. The
+			// step is the mean of the last few instead; over any stretch the steps still add up to the time that passed.
+			// A real stall is not spread out: it is stepped as it came, and does not count towards the mean.
+			float mean = 0.f;
+			for (size_t i = 0; i < mRecentCount; ++i) {
+				mean += mRecentDeltas[i];
+			}
+			mean = mRecentCount ? mean / static_cast<float>(mRecentCount) : raw;
+			if (mRecentCount == mRecentDeltas.size() && raw > mean * 3.f) {
+				mDeltaTime = raw;
+			}
+			else {
+				mRecentDeltas[mRecentNext] = raw;
+				mRecentNext = (mRecentNext + 1) % mRecentDeltas.size();
+				mRecentCount = (std::min)(mRecentCount + 1, mRecentDeltas.size());
+				mDeltaTime = 0.f;
+				for (size_t i = 0; i < mRecentCount; ++i) {
+					mDeltaTime += mRecentDeltas[i];
+				}
+				mDeltaTime /= static_cast<float>(mRecentCount);
+			}
 		}
 
-		if (!mCapturingFrame) {
+		// A capture holds the pose still, unless it runs at a fixed step: then a clip plays the same way on every run.
+		if (!mCapturingFrame || mFixedDeltaTime > 0.f) {
 			mAnimationClock += mDeltaTime;
 		}
 
