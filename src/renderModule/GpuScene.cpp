@@ -208,6 +208,20 @@ namespace SFE::Render {
 			}
 			std::sort(mAdded.begin(), mAdded.end());
 		}
+		// Nearest first again once the camera is a few metres from where it was last sorted, or a tenth more has joined
+		// since: what joins sits at the end of its batch, and a wood streaming in round a camera standing still would
+		// otherwise stay in the order it arrived. About a millisecond for fifty thousand instances.
+		if (auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>()) {
+			constexpr float kResortDistance = 4.f;
+			const auto camera = renderSystem->getRenderData().mCameraPos;
+			const auto moved = camera - mSortedFrom;
+			const size_t instances = mLists[static_cast<size_t>(List::GBuffer)].liveInstances;
+			if (rebuilt || Math::dot(moved, moved) > kResortDistance * kResortDistance || instances > mSortedInstances + mSortedInstances / 10) {
+				sortNearestFirst(camera);
+				mSortedFrom = camera;
+				mSortedInstances = instances;
+			}
+		}
 		uploadList(mLists[static_cast<size_t>(List::GBuffer)], "GpuScene gbuffer");
 		uploadList(mLists[static_cast<size_t>(List::Shadow)], "GpuScene shadow");
 		uploadList(mLists[static_cast<size_t>(List::Glass)], "GpuScene glass");
@@ -215,6 +229,49 @@ namespace SFE::Render {
 
 		// After the lists: every mesh an instance refers to already exists by then.
 		uploadMeshes();
+	}
+
+	void GpuScene::sortNearestFirst(const Math::Vec3& from) {
+		auto& data = mLists[static_cast<size_t>(List::GBuffer)];
+		auto& registry = ECSHandler::registry();
+		std::vector<std::pair<float, uint32_t>> order;
+		std::vector<InstanceRecord> records;
+		std::vector<Owner> owners;
+		for (size_t b = 0; b < data.batchMirror.size() && b < data.batchStates.size(); ++b) {
+			auto& state = data.batchStates[b];
+			const auto count = static_cast<uint32_t>(state.owners.size());
+			if (count < 2) {
+				continue;
+			}
+			order.clear();
+			for (uint32_t i = 0; i < count; ++i) {
+				float distance = std::numeric_limits<float>::max();
+				if (const auto transform = registry.pinComponent<const ComponentsModule::TransformMatComp>(state.owners[i].entity)) {
+					const auto& at = transform->mTransform[3];
+					const auto offset = Math::Vec3{ at.x, at.y, at.z } - from;
+					distance = Math::dot(offset, offset);
+				}
+				order.emplace_back(distance, i);
+			}
+			if (std::is_sorted(order.begin(), order.end())) {
+				continue;
+			}
+			std::sort(order.begin(), order.end());
+			// The slots move with their owners, and every owner's reference follows its slot.
+			const uint32_t first = data.batchMirror[b].firstInstance;
+			records.resize(count);
+			owners.resize(count);
+			for (uint32_t i = 0; i < count; ++i) {
+				records[i] = data.instanceMirror[first + order[i].second];
+				owners[i] = state.owners[order[i].second];
+			}
+			for (uint32_t i = 0; i < count; ++i) {
+				data.instanceMirror[first + i] = records[i];
+				state.owners[i] = owners[i];
+				mEntityRefs[owners[i].entity][owners[i].ref].slot = i;
+			}
+			data.instanceDirty.add(first, first + count);
+		}
 	}
 
 	void GpuScene::uploadMeshes() {
@@ -418,7 +475,7 @@ namespace SFE::Render {
 				}
 			}
 
-			if (mesh.indexCount == 0) {
+			if (mesh.indexCount == 0 || material.shadowOnly) {
 				return;
 			}
 			if (transparent) {

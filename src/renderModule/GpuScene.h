@@ -84,6 +84,11 @@ namespace SFE::Render {
 		void setGlassShadowProxy(const RenderMeshData& mesh) { mGlassShadowProxy = mesh; markDirty(); }
 		// Main thread, under the world read lock, before the frame is recorded.
 		void update(GpuMaterialTable& materials);
+		// Every batch of the G-buffer list in order of distance from `from`, nearest first. The cull keeps a batch's
+		// order, so a leaf in front is drawn before the leaves behind it and the depth test turns those away before they
+		// are shaded: in a wood a tenth of the geometry pass. By distance, not depth, so turning on the spot
+		// leaves it right; update does it again once the camera has moved a few metres.
+		void sortNearestFirst(const Math::Vec3& from);
 
 		// Record the culling dispatch into `view`. Outside a render pass. False when there is nothing to draw.
 		bool cullFrustum(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum);
@@ -241,6 +246,9 @@ namespace SFE::Render {
 		std::atomic<bool> mDirty{ true };
 		std::array<ListData, static_cast<size_t>(List::Count)> mLists;
 		std::unordered_map<ecss::EntityId, std::vector<InstanceRef>> mEntityRefs;
+		// Where the G-buffer list was last put nearest first from, and how many instances it had then.
+		Math::Vec3 mSortedFrom{ 1e30f, 1e30f, 1e30f };
+		size_t mSortedInstances = 0;
 		std::vector<ecss::EntityId> mAdded;
 		ecss::EntityId mMaxEntity = 0;
 		uint64_t mCompactions = 0;
