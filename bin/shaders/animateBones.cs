@@ -73,6 +73,11 @@ struct AnimRecord {
     float fromStoppedTime;
     float blendStart;
     float blendDuration;
+    // A turn laid over the clip in the model's space (AnimationComponent::mLook), made in part by each of up to four
+    // bones about its own joint; -1 for no bone.
+    vec4 look;
+    ivec4 lookBone;
+    vec4 lookShare;
 };
 
 layout(SFE_SET(0, 25), std430) readonly buffer AnimRecords {
@@ -341,6 +346,15 @@ void main() {
 
         mat4 parent = (b.parent < 0) ? inst.armatureTransform : worlds[row + b.parent];
         precise mat4 world = parent * local;
+        float lookShare = 0.0;
+        for (int k = 0; k < 4; ++k) {
+            lookShare += bi == inst.lookBone[k] ? inst.lookShare[k] : 0.0;
+        }
+        if (lookShare > 0.0) {
+            // About the joint: the rotation turns, the joint stays where the clip put it.
+            mat4 turn = quatToMat(nlerpQuat(vec4(0.0, 0.0, 0.0, 1.0), inst.look, lookShare));
+            world = mat4(turn * world[0], turn * world[1], turn * world[2], world[3]);
+        }
         worlds[row + bi] = world;
         precise mat4 skin = world * b.offset;
         prevBones[row + b.boneId] = outBones[row + b.boneId];
