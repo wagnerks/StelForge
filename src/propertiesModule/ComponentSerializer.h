@@ -1,10 +1,12 @@
 #pragma once
 
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include <json/value.h>
 
+#include "core/LoadTrace.h"
 #include "TypeName.h"
 #include "core/ECSHandler.h"
 
@@ -80,6 +82,8 @@ namespace SFE::PropertiesModule {
 			}
 			for (const auto& entry : entries()) {
 				if (entry.loadPhase == phase && properties.isMember(entry.name.data())) {
+					// Timed by name: a slow load then points at the component that made it slow.
+					LoadTrace::Step step(std::string(entry.name));
 					entry.load(entity, properties[entry.name.data()]);
 				}
 			}

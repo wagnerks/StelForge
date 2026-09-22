@@ -14,10 +14,14 @@
 #include "assetsModule/TextureHandler.h"
 #include "componentsModule/ArmatureComponent.h"
 #include "core/FileSystem.h"
+#include "core/LoadTrace.h"
 #include "multithreading/ThreadPool.h"
 #include "mathModule/VectorOperations.h"
 
 #include <algorithm>
+#include <unordered_map>
+#include <functional>
+#include <set>
 #include <execution>
 #include <memory>
 #include <numeric>
@@ -213,6 +217,7 @@ namespace {
 }
 
 AssetsModule::Model* ModelLoader::load(const std::string& path) {
+	SFE::LoadTrace::Step step("models");
 	auto asset = AssetsManager::instance()->getAsset<Model>(path);
 	if (asset) {
 		return asset;
@@ -237,6 +242,7 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 }
 
 void ModelLoader::loadAll(const std::vector<std::string>& paths) {
+	SFE::LoadTrace::Step step("models");
 	std::vector<std::string> pending;
 	{
 		std::lock_guard lock(mtx);
@@ -288,7 +294,11 @@ void ModelLoader::loadAll(const std::vector<std::string>& paths) {
 			}
 		}
 	}
-	TextureHandler::predecode(textures);
+	{
+		SFE::LoadTrace::Step decoding("textures");
+		SFE::LoadTrace::count("texture files", static_cast<long long>(textures.size()));
+		TextureHandler::predecode(textures);
+	}
 
 	std::vector<Loaded> loaded(pending.size());
 	for (size_t i = 0; i < pending.size(); ++i) {
@@ -376,6 +386,23 @@ std::tuple<SFE::Tree<SFE::MeshObject3D>, Armature> ModelLoader::loadModel(const 
 
 void ModelLoader::processNode(aiNode* node, const aiScene* scene, const std::string& directory, const std::string& atlasStem, SFE::Tree<SFE::MeshObject3D>& meshes, Armature& armature) {
 	meshes.value.nodeName = node->mName.C_Str();
+	if (const aiMetadata* meta = node->mMetaData) {
+		for (unsigned int i = 0; i < meta->mNumProperties; i++) {
+			const aiMetadataEntry& entry = meta->mValues[i];
+			std::string value;
+			switch (entry.mType) {
+			case AI_AISTRING: value = static_cast<const aiString*>(entry.mData)->C_Str(); break;
+			case AI_BOOL: value = *static_cast<const bool*>(entry.mData) ? "1" : "0"; break;
+			case AI_INT32: value = std::to_string(*static_cast<const int32_t*>(entry.mData)); break;
+			case AI_UINT64: value = std::to_string(*static_cast<const uint64_t*>(entry.mData)); break;
+			case AI_INT64: value = std::to_string(*static_cast<const int64_t*>(entry.mData)); break;
+			case AI_FLOAT: value = std::to_string(*static_cast<const float*>(entry.mData)); break;
+			case AI_DOUBLE: value = std::to_string(*static_cast<const double*>(entry.mData)); break;
+			default: continue;
+			}
+			meshes.value.extras[meta->mKeys[i].C_Str()] = std::move(value);
+		}
+	}
 	{
 		const auto local = assimpMatToMat4(node->mTransformation);
 		if (meshes.parent) {
@@ -707,7 +734,7 @@ void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMa
 	}
 
 	float cc = 0.f;
-	if (assimpMaterial->Get(AI_MATKEY_CLEARCOAT_FACTOR, cc) == AI_SUCCESS && cc > 0.01f) {
+	if (assimpMaterial->Get(AI_MATKEY_CLEARCOAT_FACTOR, cc) == AI_SUCCESS && cc > 0.f) {
 		material.clearcoat = (std::max)(0.f, (std::min)(1.f, cc));
 		float ccRough = 0.04f;
 		assimpMaterial->Get(AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR, ccRough);
@@ -723,11 +750,12 @@ void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMa
 		material.alphaCutout = am == "MASK";
 		material.alphaFromMaps = false;
 		material.alphaDither = false;
-		float cutoff = 0.5f;
-		if (assimpMaterial->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff) == AI_SUCCESS) {
+		// A cutoff means something to a MASK material alone. Assimp reports glTF's default of 0.5 for every material, and
+		// an opaque one taken at its word was drawn as a cut-out: no early depth test, and no metal -- cut-outs are matte.
+		if (material.alphaCutout) {
+			float cutoff = 0.5f;
+			assimpMaterial->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff);
 			material.alphaCutoff = cutoff;
-		} else if (material.alphaCutout) {
-			material.alphaCutoff = 0.5f;
 		}
 		// Deferred has no general alpha blend. BLEND foliage/decals/windows would
 		// otherwise go through the glass IOR pass and lose their albedo.

@@ -21,6 +21,7 @@
 #include "componentsModule/TransformComponent.h"
 #include "componentsModule/Hierarchy.h"
 #include "core/ECSHandler.h"
+#include "core/LoadTrace.h"
 #include "core/Engine.h"
 #include "rhi/GraphicsBackend.h"
 #include "multithreading/ThreadPool.h"
@@ -336,13 +337,23 @@ namespace SFE::PropertiesModule {
 		}
 
 		auto scene = ECSHandler::registry().takeEntity();
-		fillTree(scene, FileSystem::readJson(path));
+		Json::Value read;
+		{
+			LoadTrace::Step step("scene file");
+			read = FileSystem::readJson(path);
+		}
+		{
+			LoadTrace::Step step("entities and components");
+			fillTree(scene, read);
+		}
 
 		// The same as spawnModelEntity: a scene loaded before RenderSystem exists never reaches it through the
 		// transform notify, so the render copy of every transform is seeded here, parents before children.
 		std::unordered_map<ecss::EntityId, Math::Mat4> world;
 		auto nodes = Hierarchy::descendants(scene);
 		nodes.insert(nodes.begin(), scene);
+		{
+		LoadTrace::Step seeding("world transforms");
 		for (const auto id : nodes) {
 			const auto transform = ECSHandler::registry().pinComponent<const TransformComponent>(id);
 			if (!transform) {
@@ -358,6 +369,8 @@ namespace SFE::PropertiesModule {
 				ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(id, matrix);
 			}
 		}
+		}
+		LoadTrace::count("entities", static_cast<long long>(nodes.size()));
 		return scene;
 	}
 

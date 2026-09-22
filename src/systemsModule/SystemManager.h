@@ -1,4 +1,7 @@
 ﻿#pragma once
+#include <typeinfo>
+
+#include "core/LoadTrace.h"
 
 #include <memory>
 
@@ -31,6 +34,8 @@ namespace ecss {
 				return static_cast<T*>(mSystemsMap[index]);
 			}
 
+			// Timed by type name: a start that grew slower then points at the system that made it slow.
+			SFE::LoadTrace::Step step(SFE::LoadTrace::plainName(typeid(T).name()));
 			auto system = new T(std::forward<ARGS>(systemArgs)...);
 			system->bindWorkers();
 
