@@ -73,8 +73,8 @@ struct GroundSample {
 
 // One material at `p`, twice: the second sample turned and scaled against the first and faded in by a slow noise, so
 // the tiles do not line up into a grid across a meadow. Gradients are given: only some materials are sampled, and
-// the implicit ones are undefined inside that branch. Drawn, it is the colour alone: those materials are flat paint,
-// their normal maps level, and nothing is left for the second sample or the normal map to add.
+// the implicit ones are undefined inside that branch. Drawn, it is one sample of each: the painted materials repeat
+// nothing a second sample would hide, and their relief is broad enough to need no parallax.
 GroundSample sampleGround(int layer, vec2 p, vec2 dpdx, vec2 dpdy, float variation, vec3 viewTangent, float parallax, bool drawn) {
     const mat2 turn = mat2(0.6, 0.8, -0.8, 0.6);
     const float scale2 = 0.71;
@@ -99,6 +99,7 @@ GroundSample sampleGround(int layer, vec2 p, vec2 dpdx, vec2 dpdy, float variati
     vec4 n2 = vec4(0.5, 0.5, 1.0, 1.0);
     if (drawn) {
         a1 = textureGrad(groundAlbedo, at, dx, dy);
+        n1 = textureGrad(groundNormal, at, dx, dy);
         variation = 0.0;
     }
     else if (variation < 0.999) {
@@ -137,8 +138,8 @@ void main() {
     vec3 toEye = normalize(camera - FragPos);
     vec3 viewTangent = vec3(dot(toEye, T), dot(toEye, B), dot(toEye, N));
     float footprint = length(fwidth(p));
-    // The drawn look paints the ground flat: no relief, no hummocks, no ruts in the normal. Those were most of what
-    // this shader cost.
+    // The drawn look shades the ground by its painted relief alone: no parallax, no hummocks, no ruts in the normal.
+    // Those were most of what this shader cost.
     bool drawn = matrices.style.x > 0.5;
     // Parallax only up close, where a height map's centimetres still cover a few pixels.
     float parallax = drawn ? 0.0 : 1.0 - smoothstep(0.01, 0.04, footprint);
@@ -164,8 +165,11 @@ void main() {
     weight[kGrass] = land * (1.0 - layers.earth) * (1.0 - layers.litter);
     weight[kLitter] = land * (1.0 - layers.earth) * layers.litter;
     weight[kMoss] = land * layers.earth;
-    weight[kMud] = open * layers.mud + underwater * (1.0 - stony);
+    // The lake bottom: silt, with mats of algae over it in patches, and stones where it is stony.
+    float algae = smoothstep(0.4, 0.62, sfeFbm(p * 0.09 + 41.0, 3)) * (1.0 - smoothstep(-1.2, -0.5, height));
+    weight[kMud] = open * layers.mud + underwater * (1.0 - stony) * (1.0 - algae);
     weight[kSand] = open * layers.sand;
+    weight[kMoss] += underwater * (1.0 - stony) * algae;
     weight[kRocks] = steep + underwater * stony;
     weight[kTrack] = 0.0;
     // The road: packed dirt, two wheel ruts, and a clovered strip down the middle between them.
@@ -178,8 +182,10 @@ void main() {
     for (int i = 0; i < kLayers; ++i) {
         weight[i] *= 1.0 - road;
     }
-    weight[kMoss] += road * (1.0 - roadStrip);
-    weight[kTrack] += road * roadStrip;
+    // A country track: grass down the strip between the wheels, the ruts churned to mud, trodden earth either side.
+    weight[kGrass] += road * roadStrip;
+    weight[kMud] += road * (1.0 - roadStrip) * rut;
+    weight[kTrack] += road * (1.0 - roadStrip) * (1.0 - rut);
 
     // Over each material's own colour: a lighter and a darker tone in blotches, the bank darkening as it gets wet, and
     // the road darker down its ruts.
@@ -189,7 +195,10 @@ void main() {
     }
     tint[kMud] *= mix(1.0, 0.55, layers.wet);
     tint[kSand] *= mix(1.0, 0.55, layers.wet);
-    tint[kMoss] *= mix(1.0, 0.6, rut * 0.8 * road);
+    // Under the water the silt is grey-green and the algae an olive slime.
+    tint[kMud] *= mix(vec3(1.0), vec3(0.75, 0.85, 0.65), underwater);
+    tint[kMoss] *= mix(vec3(1.0), vec3(0.8, 0.85, 0.45), underwater);
+    tint[kMud] *= mix(1.0, 0.6, rut * 0.8 * road);
 
     GroundSample samples[kLayers];
     float blend[kLayers];

@@ -8,8 +8,9 @@ struct SfeTerrainLayers {
     float patches;    // mid-scale variation, 0..1
     float underwater; // weights, 0..1, bottom up
     float wet;
-    float sand;       // the bank where it is sandy: a few coves
-    float mud;        // the rest of the bank: dark silt and mud
+    float sand;       // the bank where it is sandy: most of it
+    float mud;        // the rest of the bank: patches of wet silt
+    float beach;      // the open sandy coves among the sand, where no reed grows
     float rock;
     float earth;      // moss among the grass, and in patches on the forest floor
     float forest;     // how deep in the forest, 0..1, from the forest map
@@ -51,9 +52,10 @@ SfeTerrainLayers sfeTerrainLayers(vec2 p, float height, float slope, float fores
     layers.underwater = 1.0 - smoothstep(-0.7, -0.15, height);
     layers.wet = 1.0 - smoothstep(-0.15, 0.3, height);
     float bank = 1.0 - smoothstep(shoreLine - 0.6, shoreLine + 0.15, height);
-    float sandy = smoothstep(0.5, 0.72, noise.g);
+    float sandy = smoothstep(0.3, 0.45, noise.g);
     layers.sand = bank * sandy;
     layers.mud = bank * (1.0 - sandy);
+    layers.beach = bank * smoothstep(0.5, 0.72, noise.g);
     layers.rock = smoothstep(0.33, 0.6, slope + 0.12 * (layers.patches - 0.5));
     layers.forest = forest;
     // Under the trees the grass gives way to roots, broken by the odd patch of bare earth; ragged where the forest thins.

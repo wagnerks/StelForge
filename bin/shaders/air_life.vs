@@ -66,7 +66,7 @@ void hide() {
 }
 
 void main() {
-    uint id = uint(gl_InstanceIndex);
+    uint id = uint(SFE_INSTANCE_ID);
     float seconds = air.life.y;
     vec3 camera = air.cameraPos.xyz;
     vec3 world;
