@@ -102,6 +102,10 @@ namespace SFE::SystemsModule {
 
 	void CameraSystem::refreshMouseLook() {
 		GLFWwindow* glfwWindow = Engine::instance()->getMainWindow();
+		// Only the free camera's: while something else (a game's character) has the camera, the cursor is its.
+		if (!userControl()) {
+			return;
+		}
 		const bool want = mmbLook.load(std::memory_order_relaxed) || altLook.load(std::memory_order_relaxed);
 		if (want == processMouse) {
 			return;

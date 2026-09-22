@@ -135,18 +135,38 @@ namespace SFE::SystemsModule {
 		// only opens its file; miniaudio shares decoded data between sounds of the same file.
 		const ma_uint32 flags = stream ? MA_SOUND_FLAG_STREAM : MA_SOUND_FLAG_DECODE;
 		const auto file = FileSystem::resolve(path);
-		Sound sound(new ma_sound);
+		const auto open = [&]() -> Sound {
+			Sound sound(new ma_sound);
 #ifdef _WIN32
-		const auto result = ma_sound_init_from_file_w(mEngine.get(), file.c_str(), flags, nullptr, nullptr, sound.get());
+			const auto result = ma_sound_init_from_file_w(mEngine.get(), file.c_str(), flags, nullptr, nullptr, sound.get());
 #else
-		const auto result = ma_sound_init_from_file(mEngine.get(), file.c_str(), flags, nullptr, nullptr, sound.get());
+			const auto result = ma_sound_init_from_file(mEngine.get(), file.c_str(), flags, nullptr, nullptr, sound.get());
 #endif
-		if (result != MA_SUCCESS) {
-			// Never initialised, so the deleter must not uninit it.
-			delete sound.release();
-			LogsModule::Logger::LOG_ERROR("AudioSystem: cannot open %s (%s)", file.string().c_str(), ma_result_description(result));
+			if (result != MA_SUCCESS) {
+				// Never initialised, so the deleter must not uninit it.
+				delete sound.release();
+				LogsModule::Logger::LOG_ERROR("AudioSystem: cannot open %s (%s)", file.string().c_str(), ma_result_description(result));
+			}
+			return sound;
+		};
+		// Decoded once: the resident holds the data, every sound after it only shares it.
+		if (!stream) {
+			auto& resident = mResident[file.string()];
+			if (!resident) {
+				resident = open();
+			}
+			if (!resident) {
+				mResident.erase(file.string());
+				return {};
+			}
 		}
-		return sound;
+		return open();
+	}
+
+	void AudioSystem::preload(const std::string_view path) {
+		if (mEngine) {
+			loadSound(path, false);
+		}
 	}
 
 	void AudioSystem::update(float dt) {

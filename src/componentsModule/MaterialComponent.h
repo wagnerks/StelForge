@@ -55,6 +55,8 @@ namespace SFE::ComponentsModule {
 		Sway sway = Sway::None;
 		// Not drawn at all: a part of a model switched off, such as a hairstyle nobody wears.
 		bool hidden = false;
+		// Not drawn, but its shadow is: a head the first person camera is inside.
+		bool shadowOnly = false;
 		// Where the texture coordinates fall inside `uv` (u min, v min, u max, v max), the surface takes the
 		// TRIPLANAR_ALBEDO and TRIPLANAR_NORMALS textures instead (the second: TRIPLANAR2_*), projected along the
 		// model's axes, a repeat every `metres`: bark on a trunk, or stone and moss on a rock, whose coordinates only

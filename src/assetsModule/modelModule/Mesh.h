@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,8 @@ namespace SFE {
 		Math::Mat4 transform;
 		FrustumModule::AABB aabb;
 		std::string nodeName;
+		// The node's own data from the file (glTF extras), numbers written as text.
+		std::map<std::string, std::string> extras;
 	};
 
 	using MeshObject3D = MeshObject<Vertex3D>;

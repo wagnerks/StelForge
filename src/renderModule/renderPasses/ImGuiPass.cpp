@@ -69,7 +69,10 @@ namespace SFE::Render::RenderPasses {
 		Debug::applyDefaultImGuiStyle();
 		ImGui_ImplGlfw_InitForOther(window, true);
 		mGlfw = true;
-		ImGui::SetCurrentContext(restore);
+		// The backend's window hook finds its data through the current context, from the first message the window gets:
+		// with no other context current, this one stays so. A frame drawn leaves it current too, but a window drawn off
+		// screen (a background run) draws none.
+		ImGui::SetCurrentContext(restore ? restore : mContext);
 	}
 
 	void ImGuiPass::render(SystemsModule::RenderData& renderDataHandle, CommandListHandle cmd) {

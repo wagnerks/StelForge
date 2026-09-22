@@ -16,8 +16,13 @@ namespace SFE::BinaryCache {
 	std::string path(const std::string_view name, const uint64_t key) {
 		char hex[17];
 		std::snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(key));
-		FileSystem::createDirectories("cache");
-		return FileSystem::resolve("cache/" + std::string(name) + "_" + hex + ".bin").string();
+		// The folder the file resolves to, not "cache" on its own: with a game's content in front of the engine's, that
+		// resolved to the engine's folder while a new file went to the game's, which was never made -- and nothing was
+		// cached at all.
+		const auto file = FileSystem::resolve("cache/" + std::string(name) + "_" + hex + ".bin");
+		std::error_code ec;
+		std::filesystem::create_directories(file.parent_path(), ec);
+		return file.string();
 	}
 
 	Writer::Writer(std::string path) : mPath(std::move(path)), mOut(mPath + ".tmp", std::ios::binary | std::ios::trunc) {}

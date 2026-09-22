@@ -221,6 +221,42 @@ namespace SFE::EngineTests {
 		scene.trackUploads(false);
 	}
 
+	// An entity destroyed a frame or two after it was spawned, the way spawnModel builds one, leaves no instance
+	// behind, whether it is destroyed through ECSHandler or straight on the registry.
+	TEST(EngineTest, EntityDestroyedRightAfterSpawnLeavesNoInstance) {
+		auto& registry = ECSHandler::registry();
+		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
+		ASSERT_NE(renderSystem, nullptr);
+		auto& scene = renderSystem->scene();
+
+		constexpr uint32_t kMesh = (1u << 21) + 11;
+		const auto spawn = [&] {
+			const auto id = registry.takeEntity();
+			auto transform = registry.addComponent<TransformComponent>(id, id);
+			transform->setPos({ 1.f, 2.f, 3.f });
+			registry.addComponent<TransformMatComp>(id, Math::Mat4{ 1.f });
+			registry.addComponent<MeshComponent>(id)->meshGraph.root().value = { kMesh, 0, 0, 3, 3 };
+			SystemsModule::TasksManager::instance()->notify({ id, SystemsModule::MESH_UPDATED });
+			return id;
+		};
+		for (const bool raw : { false, true }) {
+			for (int framesAlive = 0; framesAlive <= 3; ++framesAlive) {
+				const auto id = spawn();
+				step(framesAlive);
+				if (raw) {
+					registry.destroyEntity(id);
+				}
+				else {
+					ECSHandler::destroyEntity(id);
+				}
+				step(2);
+				EXPECT_TRUE(scene.validate());
+				EXPECT_EQ(scene.batchesOfMesh(Render::GpuScene::List::GBuffer, kMesh), 0u)
+					<< (raw ? "registry" : "ECSHandler") << " destroy after " << framesAlive << " frames left a ghost";
+			}
+		}
+	}
+
 	// Bone matrices are pooled by armature: ranges never overlap, a destroyed entity's range is reused instead of
 	// the pool growing, an id taken again in the same frame gets a range of its own, and an armature past the old
 	// 256-bone limit gets all of its bones.

@@ -45,6 +45,8 @@ namespace SFE::SystemsModule {
 			bool spatial = true;
 		};
 		uint32_t startVoice(std::string_view path, bool loop, bool stream);
+		// Decodes a sound now rather than the first time it plays: a few milliseconds on the calling thread.
+		void preload(std::string_view path);
 		void setVoice(uint32_t voice, const VoiceParams& params);
 		// A voice that does not loop has played to its end, or is gone.
 		bool voiceEnded(uint32_t voice) const;
@@ -69,6 +71,10 @@ namespace SFE::SystemsModule {
 
 		// Declared first so it is destroyed last: every sound is uninitialised against it.
 		std::unique_ptr<ma_engine, EngineDeleter> mEngine;
+		// One idle sound of every file played decoded. miniaudio shares a file's decoded data between its sounds but
+		// frees it with the last of them, so a bird that sang, stopped and sang again decoded its song again each time:
+		// a few milliseconds on the main thread, a stall every few seconds in a wood.
+		std::unordered_map<std::string, Sound> mResident;
 		std::unordered_map<ecss::EntityId, Source> mSources;
 		std::vector<Sound> mOneShots;
 		struct Voice;
