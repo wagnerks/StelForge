@@ -1,5 +1,7 @@
 #include "WaterPass.h"
 
+#include <cmath>
+
 #include <algorithm>
 
 #include "assetsModule/modelModule/Vertex.h"
@@ -22,22 +24,70 @@ namespace {
 		float surface[4]{}; // xz centre, y level, w half size
 		float look[4]{};    // x clarity, yz 1 / render size, w 1 when the water looks for reflections on screen
 	};
+
+	// The scene's first water surface under its sky, as the shaders take it: false with no sky or no water.
+	bool waterParams(const SFE::SystemsModule::RenderData& renderData, WaterParams& params) {
+		if (!SFE::Render::Atmosphere::skyParams(renderData, params.sky)) {
+			return false;
+		}
+		for (const auto& [id, water, transform] : ECSHandler::registry().view<const SFE::ComponentsModule::WaterComponent, const SFE::ComponentsModule::TransformComponent>()) {
+			if (!water || !transform) {
+				continue;
+			}
+			const auto pos = transform->getPos(true);
+			params.surface[0] = pos.x;
+			params.surface[1] = pos.y;
+			params.surface[2] = pos.z;
+			params.surface[3] = water->size * 0.5f;
+			params.look[0] = (std::max)(water->clarity, 0.1f);
+			const auto& screen = SFE::Engine::instance()->getWindow()->getScreenData();
+			params.look[1] = 1.f / static_cast<float>((std::max)(1, screen.renderW));
+			params.look[2] = 1.f / static_cast<float>((std::max)(1, screen.renderH));
+			// The same switch as the rest of the scene's screen-space reflections: without it the water shows only the sky.
+			params.look[3] = renderData.graphics.ssr ? 1.f : 0.f;
+			return true;
+		}
+		return false;
+	}
+
+	// A copy of the lit picture at render size, for a pass that draws over what it reads.
+	void makeSceneCopy(SFE::Render::TextureHandle& texture, SFE::Render::FramebufferHandle& framebuffer) {
+		using namespace SFE::Render;
+		auto* rhi = SFE::Engine::instance()->rhi();
+		const auto& screen = SFE::Engine::instance()->getWindow()->getScreenData();
+		TextureDesc copyDesc;
+		copyDesc.width = screen.renderW;
+		copyDesc.height = screen.renderH;
+		copyDesc.format = TextureFormat::RGBA16F;
+		copyDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
+		texture = rhi->createTexture(copyDesc);
+		FramebufferDesc copyFb;
+		copyFb.width = screen.renderW;
+		copyFb.height = screen.renderH;
+		copyFb.colorAttachments = { { texture } };
+		framebuffer = rhi->createFramebuffer(copyFb);
+	}
+
+	void makeSamplers(SFE::Render::SamplerHandle& nearest, SFE::Render::SamplerHandle& linear) {
+		using namespace SFE::Render;
+		auto* rhi = SFE::Engine::instance()->rhi();
+		SamplerDesc desc;
+		desc.minFilter = FilterMode::Nearest;
+		desc.magFilter = FilterMode::Nearest;
+		desc.addressU = AddressMode::ClampToEdge;
+		desc.addressV = AddressMode::ClampToEdge;
+		nearest = rhi->createSampler(desc);
+		desc.minFilter = FilterMode::Linear;
+		desc.magFilter = FilterMode::Linear;
+		linear = rhi->createSampler(desc);
+	}
 }
 
 void WaterPass::init(SystemsModule::RenderData&) {
 	auto* rhi = Engine::instance()->rhi();
 	const auto& screen = Engine::instance()->getWindow()->getScreenData();
 
-	SamplerDesc nearest;
-	nearest.minFilter = FilterMode::Nearest;
-	nearest.magFilter = FilterMode::Nearest;
-	nearest.addressU = AddressMode::ClampToEdge;
-	nearest.addressV = AddressMode::ClampToEdge;
-	mNearest = rhi->createSampler(nearest);
-	SamplerDesc linear = nearest;
-	linear.minFilter = FilterMode::Linear;
-	linear.magFilter = FilterMode::Linear;
-	mLinear = rhi->createSampler(linear);
+	makeSamplers(mNearest, mLinear);
 	SamplerDesc ripple;
 	ripple.minFilter = FilterMode::LinearMipmapLinear;
 	ripple.magFilter = FilterMode::Linear;
@@ -46,17 +96,7 @@ void WaterPass::init(SystemsModule::RenderData&) {
 	ripple.maxAnisotropy = 1.f;
 	mRipple = rhi->createSampler(ripple);
 
-	TextureDesc copyDesc;
-	copyDesc.width = screen.renderW;
-	copyDesc.height = screen.renderH;
-	copyDesc.format = TextureFormat::RGBA16F;
-	copyDesc.usage = TextureUsage::ColorAttachment | TextureUsage::Sampled;
-	mSceneCopy = rhi->createTexture(copyDesc);
-	FramebufferDesc copyFb;
-	copyFb.width = screen.renderW;
-	copyFb.height = screen.renderH;
-	copyFb.colorAttachments = { { mSceneCopy } };
-	mSceneCopyFbo = rhi->createFramebuffer(copyFb);
+	makeSceneCopy(mSceneCopy, mSceneCopyFbo);
 
 	mSurfacePass = createFinalDepthRenderPass();
 
@@ -93,7 +133,7 @@ void WaterPass::init(SystemsModule::RenderData&) {
 void WaterPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
 	FUNCTION_BENCHMARK;
 	WaterParams params;
-	if (!mSurfacePipeline || !Atmosphere::skyParams(renderDataHandle, params.sky)) {
+	if (!mSurfacePipeline || !waterParams(renderDataHandle, params)) {
 		return;
 	}
 	const auto finalFbo = renderDataHandle.frame.framebuffer(FrameId::Final);
@@ -103,29 +143,7 @@ void WaterPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		return;
 	}
 
-	// One surface: the first.
-	bool found = false;
-	for (const auto& [id, water, transform] : ECSHandler::registry().view<const ComponentsModule::WaterComponent, const ComponentsModule::TransformComponent>()) {
-		if (!water || !transform) {
-			continue;
-		}
-		const auto pos = transform->getPos(true);
-		params.surface[0] = pos.x;
-		params.surface[1] = pos.y;
-		params.surface[2] = pos.z;
-		params.surface[3] = water->size * 0.5f;
-		params.look[0] = (std::max)(water->clarity, 0.1f);
-		found = true;
-		break;
-	}
-	if (!found) {
-		return;
-	}
 	const auto& screen = Engine::instance()->getWindow()->getScreenData();
-	params.look[1] = 1.f / static_cast<float>((std::max)(1, screen.renderW));
-	params.look[2] = 1.f / static_cast<float>((std::max)(1, screen.renderH));
-	// The same switch as the rest of the scene's screen-space reflections: without it the water shows only the sky.
-	params.look[3] = renderDataHandle.graphics.ssr ? 1.f : 0.f;
 
 	auto* rhi = Engine::instance()->rhi();
 	const auto set = mSurfaceSets[rhi->frameInFlight() % mSurfaceSets.size()];
@@ -154,6 +172,82 @@ void WaterPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	rhi->cmdBeginRenderPass(cmd, begin);
 	rhi->cmdBindPipeline(cmd, mSurfacePipeline);
 	rhi->cmdBindDescriptorSets(cmd, mSurfacePipeline, 0, &set, 1, &block.offset, 1);
+	Utils::renderQuad(cmd);
+	rhi->cmdEndRenderPass(cmd);
+}
+
+void UnderwaterPass::init(SystemsModule::RenderData&) {
+	auto* rhi = Engine::instance()->rhi();
+	makeSamplers(mNearest, mLinear);
+	makeSceneCopy(mSceneCopy, mSceneCopyFbo);
+	mPass = createFinalDepthRenderPass();
+
+	DescriptorSetLayoutDesc layoutDesc;
+	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(6, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(7, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Vertex | ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(20, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
+	mSets.resize((std::max)(1u, rhi->framesInFlight()));
+	for (auto& set : mSets) {
+		set = rhi->allocateDescriptorSet(mLayout);
+	}
+
+	GraphicsPipelineDesc desc;
+	desc.layout.bindings.emplace_back(0, static_cast<uint32_t>(sizeof(Vertex2D)), VertexInputRate::PerVertex);
+	desc.layout.attributes.emplace_back(0, 0, VertexFormat::Float2, static_cast<uint32_t>(offsetof(Vertex2D, position)), false);
+	desc.layout.attributes.emplace_back(1, 0, VertexFormat::Float2, static_cast<uint32_t>(offsetof(Vertex2D, texCoords)), false);
+	desc.topology = PrimitiveTopology::Triangles;
+	desc.cullMode = CullMode::None;
+	desc.depthStencilState.depthTest = false;
+	desc.depthStencilState.depthWrite = false;
+	desc.renderPass = mPass;
+	desc.descriptorSetLayouts = { mLayout };
+	desc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/ssao.vs");
+	desc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/water_under.fs");
+	mPipeline = rhi->createGraphicsPipeline(desc);
+}
+
+void UnderwaterPass::render(SystemsModule::RenderData& renderDataHandle, Render::CommandListHandle cmd) {
+	FUNCTION_BENCHMARK;
+	WaterParams params;
+	if (!mPipeline || !waterParams(renderDataHandle, params)) {
+		return;
+	}
+	const float* eye = params.sky.cameraPos;
+	if (eye[1] >= params.surface[1] || std::fabs(eye[0] - params.surface[0]) >= params.surface[3]
+		|| std::fabs(eye[2] - params.surface[2]) >= params.surface[3]) {
+		return;
+	}
+	const auto finalFbo = renderDataHandle.frame.framebuffer(FrameId::Final);
+	const auto fbo = mTargets.get(renderDataHandle, mPass);
+	const auto sceneDepth = renderDataHandle.frame.texture(FrameId::SceneDepth);
+	if (!finalFbo || !fbo || !sceneDepth) {
+		return;
+	}
+	auto* rhi = Engine::instance()->rhi();
+	const auto set = mSets[rhi->frameInFlight() % mSets.size()];
+	const auto block = rhi->allocTransient(params);
+	const auto skyLut = Render::Atmosphere::skyTexture();
+	rhi->updateDescriptorSets({
+		{ .set = set, .binding = 5, .buffers{ { renderDataHandle.cameraMatricesUBO } } },
+		{ .set = set, .binding = 6, .images{ { mSceneCopy, mLinear } } },
+		{ .set = set, .binding = 7, .images{ { sceneDepth, mNearest } } },
+		{ .set = set, .binding = 15, .buffers{ { block.buffer, 0, sizeof(params) } } },
+		{ .set = set, .binding = 20, .images{ { skyLut.texture, skyLut.sampler } } },
+	});
+	rhi->cmdBlit(cmd, finalFbo, mSceneCopyFbo, BlitMask::Color, BlitFilter::Nearest);
+
+	const auto& screen = Engine::instance()->getWindow()->getScreenData();
+	RenderPassBeginInfo begin;
+	begin.renderPass = mPass;
+	begin.framebuffer = fbo;
+	begin.width = static_cast<uint32_t>(screen.renderW);
+	begin.height = static_cast<uint32_t>(screen.renderH);
+	rhi->cmdBeginRenderPass(cmd, begin);
+	rhi->cmdBindPipeline(cmd, mPipeline);
+	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &set, 1, &block.offset, 1);
 	Utils::renderQuad(cmd);
 	rhi->cmdEndRenderPass(cmd);
 }

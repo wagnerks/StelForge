@@ -122,17 +122,6 @@ vec2 waveSlope(vec2 p, float seconds, float footprint, vec2 stepX, vec2 stepY, v
     return slope;
 }
 
-float causticLayer(vec2 p, float t) {
-    vec2 warp = vec2(sfeValueNoise(p * 0.6 + vec2(t * 0.25, 0.0)), sfeValueNoise(p * 0.6 + vec2(3.7, -t * 0.21))) * 1.8;
-    float n = sfeValueNoise(p * 1.9 + warp + vec2(t * 0.15));
-    return pow(1.0 - abs(n * 2.0 - 1.0), 8.0);
-}
-
-// Two layers of thin ridges in warped noise, drifting against each other: where they cross, the light gathers.
-float caustics(vec2 p, float t) {
-    return causticLayer(p, t) * 0.6 + causticLayer(p * 1.37 + 11.0, t * 1.3) * 0.6;
-}
-
 // The view distance along -z of an NDC depth, from the camera's projection (OpenGL convention).
 float viewDistance(float ndcDepth) {
     return matrices.projection[3][2] / ((ndcDepth * 2.0 - 1.0) + matrices.projection[2][2]);
@@ -273,6 +262,21 @@ void main() {
     float cartoon = water.wind.w;
     slope *= mix(1.0, 0.22, cartoon);
     vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
+    vec3 skyLight = sfeSkyRadiance(skyLut, vec3(0.0, 1.0, 0.0)) * brightness * PI;
+    vec3 waterBody = sfeWaterBody(sun, toSun, skyLight);
+
+    // Seen from under the water: out through the surface only inside the circle overhead the light bends into (about
+    // 49 degrees from straight up), and past it the surface is a mirror of the dim water below. The water between the
+    // eye and here is the underwater pass's.
+    if (water.cameraPos.y < level) {
+        vec3 T = refract(-V, -N, 1.33);
+        vec3 through = textureLod(sceneDepth, uv, 0.0).r >= 1.0
+            ? sfeSky(skyLut, cloudLayer, T, toSun, sun, brightness, water.toSun.w, sfeCloudDrift(water.wind, seconds), true, water.wind.w)
+            : texture(sceneColor, uv + T.xz * 0.02).rgb;
+        float mirror = dot(T, T) < 1e-6 ? 1.0 : 0.02 + 0.98 * pow(1.0 - max(T.y, 0.0), 5.0);
+        FragColor = vec4(mix(through, waterBody * 1.5, mirror), 1.0);
+        return;
+    }
 
 
     // Refraction: the image under the surface displaced by the waves, less where it is shallow, and not onto
@@ -285,25 +289,14 @@ void main() {
         refractBottom = bottom;
     }
     vec3 under = texture(sceneColor, refractUv).rgb;
-    // Caustics: the waves focus sunlight into a drifting net of bright lines on the bottom, strongest just under the
-    // surface and gone a few metres down. Found where the sun's ray through the bottom point crossed the surface.
-    if (dot(refractBottom, refractBottom) > 1e-6 && toSun.y > 0.0) {
-        float bottomDepth = max(level - refractBottom.y, 0.0);
-        vec2 at = refractBottom.xz + toSun.xz / max(toSun.y, 0.2) * bottomDepth;
-        float reach = (1.0 - smoothstep(0.3, 3.5, bottomDepth)) * smoothstep(0.02, 0.2, bottomDepth);
-        if (reach > 0.0) {
-            under *= 1.0 + caustics(at, seconds) * reach * 2.2 * clamp(toSun.y * 3.0, 0.0, 1.0);
-        }
+    // Caustics: the waves focus sunlight into a drifting net of bright lines on the bottom.
+    if (dot(refractBottom, refractBottom) > 1e-6) {
+        under *= sfeCausticLight(refractBottom, level, toSun, seconds, 3.5);
     }
     float path = dot(refractBottom, refractBottom) < 1e-6 ? 50.0 : distance(refractBottom, vWorld);
 
     // Light that survives the path through the water, and what the water itself scatters back in its place.
-    // A forest lake is stained by what the trees drop into it: blue goes first, then green, and a metre or two down
-    // only a dark brown-green is left.
-    vec3 extinction = vec3(0.55, 0.45, 0.85) * (4.0 / water.look.x);
-    vec3 transmitted = exp(-extinction * path);
-    vec3 skyLight = sfeSkyRadiance(skyLut, vec3(0.0, 1.0, 0.0)) * brightness * PI;
-    vec3 waterBody = vec3(0.0025, 0.005, 0.004) * (sun * max(toSun.y, 0.0) + skyLight) / PI;
+    vec3 transmitted = exp(-sfeWaterExtinction(water.look.x) * path);
     vec3 refracted = under * transmitted + waterBody * (1.0 - transmitted);
 
     // Reflection: whatever on screen the reflected ray runs into, faded out towards the screen's edge, and the sky

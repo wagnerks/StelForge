@@ -395,6 +395,10 @@ void main() {
     float metallic = pbr.x;
     float specFactor = pbr.y;
     float clearcoat = pbr.z;
+    const bool glint = abs(clearcoat - kSfeGlint) < 0.5 / 255.0;
+    if (glint) {
+        clearcoat = 0.0;
+    }
     float ccRough = max(pbr.w, 0.04);
     const float AmbientOcclusion = texture(ssao, TexCoords).r;
 
@@ -412,6 +416,11 @@ void main() {
         Normal, V, Lsun,
         albedo, F0, roughness, metallic,
         cascadedShadow.color_and_misc.xyz * PI, f90);
+    // A glint mirrors the sun whole, over a spot a few pixels across (a sharper one falls between pixels and TAA takes
+    // it for a firefly); the glare in bloom_extract.fs turns it into a star.
+    if (glint) {
+        Lo += cookTorrance(Normal, V, Lsun, vec3(0.0), vec3(1.0), 0.3, 0.0, cascadedShadow.color_and_misc.xyz * PI, 1.0);
+    }
 
     // Leaves and blades let the sun through (see sfeGBufferMaterial): lit from behind they glow, most where the eye
     // looks towards the sun through them. In shadow like the rest of the direct light.
