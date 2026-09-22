@@ -43,6 +43,51 @@ namespace SFE::SystemsModule {
 				JPH::RegisterTypes();
 			});
 		}
+
+		// Jolt's scratch memory for a step: a stack of kTempBytes, and past that the heap. Jolt's own stack stops the
+		// program when a step needs more than it has, which a heap of many bodies in contact can.
+		class StackThenHeap final : public JPH::TempAllocator {
+		public:
+			explicit StackThenHeap(JPH::uint size) : mBase(static_cast<JPH::uint8*>(JPH::AlignedAllocate(size, JPH_RVECTOR_ALIGNMENT))), mSize(size) {}
+			~StackThenHeap() override { JPH::AlignedFree(mBase); }
+
+			void* Allocate(JPH::uint size) override {
+				if (size == 0) {
+					return nullptr;
+				}
+				const JPH::uint top = mTop + JPH::AlignUp(size, JPH_RVECTOR_ALIGNMENT);
+				if (top > mSize) {
+					return JPH::AlignedAllocate(size, JPH_RVECTOR_ALIGNMENT);
+				}
+				void* address = mBase + mTop;
+				mTop = top;
+				return address;
+			}
+
+			void Free(void* address, JPH::uint size) override {
+				if (!address) {
+					return;
+				}
+				const auto* at = static_cast<JPH::uint8*>(address);
+				if (at < mBase || at >= mBase + mSize) {
+					JPH::AlignedFree(address);
+					return;
+				}
+				mTop -= JPH::AlignUp(size, JPH_RVECTOR_ALIGNMENT);
+			}
+
+		private:
+			JPH::uint8* mBase = nullptr;
+			JPH::uint mSize = 0;
+			JPH::uint mTop = 0;
+		};
+		constexpr JPH::uint kTempBytes = 16 * 1024 * 1024;
+		// What a world holds at most: bodies, pairs of them the broad phase finds close, and contacts. A heap of
+		// litter has many more contacts than bodies, and a contact over the limit is dropped: what it held up falls
+		// through.
+		constexpr JPH::uint kMaxBodies = 65536;
+		constexpr JPH::uint kMaxBodyPairs = 65536;
+		constexpr JPH::uint kMaxContacts = 65536;
 	}
 
 	struct PhysicsSystem::Layers {
@@ -60,14 +105,14 @@ namespace SFE::SystemsModule {
 
 		struct ObjectVsBroadPhase final : JPH::ObjectVsBroadPhaseLayerFilter {
 			bool ShouldCollide(JPH::ObjectLayer layer, JPH::BroadPhaseLayer broadPhaseLayer) const override {
-				// Static against static is never tested.
-				return layer != kStatic || broadPhaseLayer == BroadPhaseLayers::kMoving;
+				// Static against static is never tested, and what is held against nothing.
+				return layer != kHeld && (layer != kStatic || broadPhaseLayer == BroadPhaseLayers::kMoving);
 			}
 		} objectVsBroadPhase;
 
 		struct ObjectPairs final : JPH::ObjectLayerPairFilter {
 			bool ShouldCollide(JPH::ObjectLayer a, JPH::ObjectLayer b) const override {
-				return a != kStatic || b != kStatic;
+				return a != kHeld && b != kHeld && (a != kStatic || b != kStatic);
 			}
 		} objectPairs;
 	};
@@ -75,12 +120,11 @@ namespace SFE::SystemsModule {
 	PhysicsSystem::PhysicsSystem() {
 		initJolt();
 		mLayers = std::make_unique<Layers>();
-		mTempAllocator = std::make_unique<JPH::TempAllocatorImpl>(16 * 1024 * 1024);
+		mTempAllocator = std::make_unique<StackThenHeap>(kTempBytes);
 		const int threads = (std::max)(1, static_cast<int>(std::thread::hardware_concurrency()) / 2 - 1);
 		mJobs = std::make_unique<JPH::JobSystemThreadPool>(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, threads);
 		mWorld = std::make_unique<JPH::PhysicsSystem>();
-		// Bodies: the terrain and vegetation compounds, and every loose piece of litter.
-		mWorld->Init(16384, 0, 16384, 16384, mLayers->broadPhase, mLayers->objectVsBroadPhase, mLayers->objectPairs);
+		mWorld->Init(kMaxBodies, 0, kMaxBodyPairs, kMaxContacts, mLayers->broadPhase, mLayers->objectVsBroadPhase, mLayers->objectPairs);
 		mWorld->SetGravity({ 0.f, -9.81f, 0.f });
 		addStaticColliders();
 		mWorld->OptimizeBroadPhase();
@@ -103,11 +147,16 @@ namespace SFE::SystemsModule {
 		while (mAccumulated >= kStep) {
 			// What is left over after this step is time the world has not reached yet.
 			mStepTime = now - (mAccumulated - kStep);
+			const double started = Engine::clockSeconds();
 			for (const auto& callback : mStepCallbacks) {
 				callback(kStep);
 			}
 			mWorld->Update(kStep, 1, mTempAllocator.get(), mJobs.get());
 			mAccumulated -= kStep;
+			const float ms = static_cast<float>((Engine::clockSeconds() - started) * 1000.0);
+			mStepMs.store(mStepMs.load(std::memory_order_relaxed) * 0.95f + ms * 0.05f, std::memory_order_relaxed);
+			mBodyCount.store(mWorld->GetNumBodies(), std::memory_order_relaxed);
+			mActiveCount.store(mWorld->GetNumActiveBodies(JPH::EBodyType::RigidBody), std::memory_order_relaxed);
 		}
 	}
 
@@ -215,6 +264,10 @@ namespace SFE::SystemsModule {
 			}
 		}
 
+	}
+
+	void PhysicsSystem::addStaticCapsuleBodies() {
+		auto& bodies = mWorld->GetBodyInterface();
 		// Whatever else stands in the world: a game reports upright capsules -- tree trunks, boulders -- and they are
 		// batched into static compounds here. A body each would be far more than a world takes.
 		std::vector<StaticCapsule> capsules;
@@ -263,5 +316,6 @@ namespace SFE::SystemsModule {
 				}
 			}
 		}
+		mWorld->OptimizeBroadPhase();
 	}
 }
