@@ -221,7 +221,7 @@ namespace SFE::SystemsModule {
 		if (Engine::instance()->capturingFrame()) {
 			ThreadPool::instance()->waitIdle();
 		}
-		rhi->beginFrame();
+		// The frame slot was waited for in Engine::update, before the frame's time was taken.
 		bindGpuFrame();
 		auto frameLock = tryLockWorldRead();
 
@@ -596,7 +596,8 @@ namespace SFE::SystemsModule {
 			// playing or stopped, writes the bones straight into the buffer in AnimationComputePass, after this upload.
 			const bool animated = [&] {
 				const auto anim = registry.pinComponent<const ComponentsModule::AnimationComponent>(id);
-				return anim && anim->mCurrentAnimation;
+				// Posed by hand, the clip is not what is drawn: the bones written into the component are.
+				return anim && anim->mCurrentAnimation && !anim->mPosedByHand;
 			}();
 			std::vector<Math::Mat4> slots(range.bounds + (animated ? 0 : boneCount));
 			for (uint32_t i = 0; i < range.bounds; ++i) {

@@ -21,7 +21,7 @@ namespace {
 	static_assert(sizeof(AnimationComputePass::GpuBoneDesc) == 192);
 	static_assert(sizeof(AnimationComputePass::GpuVec3Key) == 16);
 	static_assert(sizeof(AnimationComputePass::GpuQuatKey) == 32);
-	static_assert(sizeof(AnimationComputePass::GpuRecord) == 128);
+	static_assert(sizeof(AnimationComputePass::GpuRecord) == 176);
 
 	constexpr uint32_t kPlaying = 1u;
 	constexpr uint32_t kLoop = 2u;
@@ -188,7 +188,9 @@ void AnimationComputePass::writeRecord(const ecss::EntityId entity) {
 	const auto bones = clip ? ECSHandler::getSystem<SystemsModule::RenderSystem>()->boneRange(entity) : SystemsModule::RenderSystem::BoneRange{};
 	// The clip's bones must fit the range: its worlds rows are the range's, and a longer clip would run into the
 	// next entity's while both are written in parallel.
-	if (!clip || clip->boneCount == 0 || clip->boneCount > bones.count) {
+	// Posed by hand, the skeleton is written straight into the component and uploaded there (RenderSystem::uploadBones);
+	// the clip is only what that pose was built on, so this pass must not write over it.
+	if (!clip || clip->boneCount == 0 || clip->boneCount > bones.count || animation->mPosedByHand) {
 		removeRecord(entity);
 		return;
 	}
@@ -225,6 +227,17 @@ void AnimationComputePass::writeRecord(const ecss::EntityId entity) {
 			record.blendStart = static_cast<float>(animation->mBlendStart - mEpoch);
 			record.blendDuration = animation->mBlendDuration;
 		}
+	}
+	record.look[0] = animation->mLook.x;
+	record.look[1] = animation->mLook.y;
+	record.look[2] = animation->mLook.z;
+	record.look[3] = animation->mLook.w;
+	for (size_t k = 0; k < animation->mLookBones.size(); ++k) {
+		const auto& look = animation->mLookBones[k];
+		const auto& bones = armature->armature.bones;
+		const auto found = !look.name ? bones.end() : std::find_if(bones.begin(), bones.end(), [&](const auto& bone) { return bone.name == std::string_view(look.name); });
+		record.lookBone[k] = found == bones.end() ? -1 : static_cast<int32_t>(found - bones.begin());
+		record.lookShare[k] = look.share;
 	}
 	markRecord(it->second);
 	mWorldsRows = (std::max)(mWorldsRows, static_cast<size_t>(bones.offset) + clip->boneCount);

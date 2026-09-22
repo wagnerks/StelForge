@@ -108,3 +108,52 @@ namespace AssetsModule {
 	}
 }
 
+size_t AssetsModule::Model::keepOwnBones(const Armature& played) {
+	// A bone may sit a hair off between two exports of the same rig; this is about bones that were truly moved.
+	constexpr float kSameSpot = 1e-4f;
+	const auto sits = [](const Bone& bone) {
+		// Where the bone sits on its parent is the last column of its rest; Bone::pos is not filled by the loader.
+		return SFE::Math::Vec3{ bone.transform[3].x, bone.transform[3].y, bone.transform[3].z };
+	};
+	// A clip is entitled to move a bone off its parent -- the hips carry the whole body through a run -- so one frame
+	// proves nothing. A bone belongs to another rig only when every clip holds it still, and holds it somewhere the
+	// model does not: that is a length the clips were built on, not a movement they perform.
+	std::vector<char> foreign(played.bones.size(), 1);
+	std::vector<char> keyed(played.bones.size(), 0);
+	for (const auto& clip : mAnimations) {
+		for (size_t i = 0; i < played.bones.size(); ++i) {
+			const auto& bone = played.bones[i];
+			if (bone.parentBoneIdx >= played.bones.size()) {
+				foreign[i] = 0;   // the root's place is the clip's to give: it is how the body is carried about
+				continue;
+			}
+			const auto* keys = clip.getBoneAnimationInfo(bone.name);
+			if (!keys || keys->positions.empty()) {
+				continue;
+			}
+			keyed[i] = 1;
+			const auto& first = keys->positions.front().position;
+			bool still = true;
+			for (const auto& key : keys->positions) {
+				if (SFE::Math::length(key.position - first) > kSameSpot) {
+					still = false;
+					break;
+				}
+			}
+			if (!still || SFE::Math::length(first - sits(bone)) <= kSameSpot) {
+				foreign[i] = 0;
+			}
+		}
+	}
+	std::vector<std::string> wrong;
+	for (size_t i = 0; i < played.bones.size(); ++i) {
+		if (foreign[i] && keyed[i]) {
+			wrong.push_back(played.bones[i].name);
+		}
+	}
+	size_t freed = 0;
+	for (auto& clip : mAnimations) {
+		freed += clip.forgetBones(wrong);
+	}
+	return freed;
+}

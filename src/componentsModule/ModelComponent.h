@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 #include <algorithm>
+#include <array>
+#include <string_view>
 #include <cmath>
 #include <limits>
 #include <shared_mutex>
@@ -139,6 +141,24 @@ namespace SFE::ComponentsModule {
 			mPlay = play;
 			setTime(t, clock);
 		}
+
+		// A turn laid over the clip, as a head follows where the eyes look: mLook in the model's space, shared out
+		// along mLookBones, each a bone's name and how much of the turn it makes about its own joint (a child's share
+		// adds to what its parent has made). No bone named, no turn. The names are kept as pointers, so they must
+		// outlive the component: string literals.
+		struct LookBone {
+			const char* name = nullptr;
+			float share = 0.f;
+		};
+		Math::Quaternion<float> mLook;
+		std::array<LookBone, 4> mLookBones{};
+
+		// Set while something poses this skeleton itself, bone by bone, into ArmatureBonesComponent: an arm reaching
+		// for what it takes hold of, fingers closing on it. The clip is then only what that pose is built on -- it is
+		// read where the poser samples it and not on the device, so AnimationComputePass leaves the entity alone and
+		// the bones written by hand are the ones drawn. Costs the pose bounds (the cull falls back to the bind pose)
+		// and the motion vectors of the bones, so it is for the few skeletons that need it, not for a crowd.
+		bool mPosedByHand = false;
 
 		// The clip being faded out while a crossfade lasts: its own start, loop and play state, frozen at the switch.
 		const AssetsModule::Animation* mFromAnimation = nullptr;
