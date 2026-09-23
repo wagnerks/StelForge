@@ -487,6 +487,7 @@ namespace SFE::SystemsModule {
 	}
 
 	void RenderSystem::releaseBones(const ecss::EntityId entity) {
+		mLastBones.erase(entity);
 		const auto it = mBoneRanges.find(entity);
 		if (it == mBoneRanges.end()) {
 			return;
@@ -610,9 +611,21 @@ namespace SFE::SystemsModule {
 			if (!slots.empty()) {
 				const auto offset = static_cast<size_t>(range.offset - range.bounds) * sizeof(Math::Mat4);
 				rhi->updateBuffer(bones, offset, slots.size() * sizeof(Math::Mat4), slots.data());
-				// It does not move, so last frame's pose is this one; without it the first frames of a static pose
-				// would have motion vectors pointing at whatever the buffer held.
-				rhi->updateBuffer(prevBones, offset, slots.size() * sizeof(Math::Mat4), slots.data());
+				// What the bones were last frame, for the motion vectors. A pose written here and left alone does not
+				// move, so last frame's is this one -- without that, the first frames of a static pose would have
+				// motion vectors pointing at whatever the buffer held. A pose written afresh every frame does move,
+				// though, and handing it its own bones as the last frame's tells the temporal pass the skin stood
+				// still while it swept across the screen, which smears it. So that one is remembered.
+				auto& was = mLastBones[id];
+				const bool moving = !animated && was.size() == slots.size();
+				rhi->updateBuffer(prevBones, offset, slots.size() * sizeof(Math::Mat4),
+					moving ? was.data() : slots.data());
+				if (animated) {
+					mLastBones.erase(id);   // the device writes this one's bones; nothing to remember here
+				}
+				else {
+					was = slots;
+				}
 			}
 		}
 	}

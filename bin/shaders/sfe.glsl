@@ -77,6 +77,9 @@ const float kSfeTranslucentFoliage = 0.7;
 // A clearcoat of exactly this is no coat but a glint: the surface is shaded as it is, and where it mirrors the sun into
 // the eye it flashes, blinding (a bald crown). Too thin for any coat to use.
 const float kSfeGlint = 1.0 / 255.0;
+// A clearcoat of exactly this is no coat either: the surface is a drawing, and in the drawn look it is lit in two
+// flat tones with a line where the light ends, as a cartoon character is -- where the world only softens the edge.
+const float kSfeCel = 2.0 / 255.0;
 
 // The world position of what the scene shows at `uv`, from SceneDepthPass's copy of the depth buffer and the
 // camera's inverse matrices (the jittered ones the G-buffer was drawn with); zero where nothing was drawn. The

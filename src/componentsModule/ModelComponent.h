@@ -172,16 +172,30 @@ namespace SFE::ComponentsModule {
 
 		// Switches to `next` from its first tick, blending out of the current clip over `seconds`. Main thread: it
 		// reads the clock. Nothing happens when `next` is already playing.
-		void crossfade(const AssetsModule::Animation* next, bool loop, float seconds, double clock) {
+		// With `keepPhase` the new clip starts as far through its own cycle as the old one was through its: that is
+		// how a walk becomes a run without the legs snapping back to the clip's first frame, which they do every time
+		// two strides are swapped at their beginnings. Wrong for a clip that plays once -- a jump, a landing, a pick
+		// up all start where they start -- so it is asked for, not assumed.
+		void crossfade(const AssetsModule::Animation* next, bool loop, float seconds, double clock, bool keepPhase = false) {
 			if (next == mCurrentAnimation) {
 				return;
 			}
 			mBlendDuration = 0.f;
 			mFromAnimation = nullptr;
-			if (mCurrentAnimation && seconds > 0.f) {
+			if (mCurrentAnimation && (seconds > 0.f || keepPhase)) {
 				if (mPlay && std::isnan(mStart)) {
 					setTime(mStoppedTime, clock);
 				}
+			}
+			float at = 0.f;
+			if (keepPhase && mCurrentAnimation && next) {
+				const float was = mCurrentAnimation->getDuration();
+				const float becomes = next->getDuration();
+				if (was > 0.f && becomes > 0.f) {
+					at = time(clock) / was * becomes;
+				}
+			}
+			if (mCurrentAnimation && seconds > 0.f) {
 				mFromAnimation = mCurrentAnimation;
 				mFromStart = mStart;
 				mFromStoppedTime = mStoppedTime;
@@ -193,7 +207,7 @@ namespace SFE::ComponentsModule {
 			mCurrentAnimation = next;
 			mLoop = loop;
 			mPlay = true;
-			setTime(0.f, clock);
+			setTime(at, clock);
 		}
 	};
 }

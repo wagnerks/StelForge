@@ -112,7 +112,8 @@ namespace SFE::SystemsModule {
 
 		struct ObjectPairs final : JPH::ObjectLayerPairFilter {
 			bool ShouldCollide(JPH::ObjectLayer a, JPH::ObjectLayer b) const override {
-				return a != kHeld && b != kHeld && (a != kStatic || b != kStatic);
+				return a != kHeld && b != kHeld && (a != kStatic || b != kStatic)
+					&& !((a == kCharacter && b == kHair) || (a == kHair && b == kCharacter));
 			}
 		} objectPairs;
 	};

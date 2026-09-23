@@ -98,6 +98,11 @@ void main() {
     if ((uvBits & 1u) == 0u && (uvBits & 6u) != 0u) {
         mask = min(mask, texture(texture_diffuse1, TexCoords1).a);
     }
+#ifdef SFE_GBUFFER_STYLE_MASK
+    // A game's own look over what is cut out: sfeStyleMask, declared before this file is included and defined after,
+    // gets the texture and the mask as read, and returns the mask to cut by.
+    mask = sfeStyleMask(texture_diffuse1, uvDiff, diffLod, mask);
+#endif
 #ifdef SFE_GBUFFER_CUTOUT
     float cutoutFade = sfeCutoutFade(texture_diffuse1, diffLod);
     if (pc.alphaCutoff > 1.0) {
@@ -146,6 +151,12 @@ void main() {
         triplanar = true;
     }
 
+#ifdef SFE_GBUFFER_STYLE
+    // A game's own look over the surface: a shader that defines SFE_GBUFFER_STYLE declares sfeStyleSurface before
+    // including this file and defines it after. It gets the colour as read and the normal, and turns them into its
+    // look before anything below is worked out from them.
+    sfeStyleSurface(texture_diffuse1, uvDiff, diffLod, diff.rgb, Nw);
+#endif
     vec3 linAlb = pow(diff.rgb, vec3(2.2)) * pc.tint;
     const bool cutout = pc.alphaCutoff > 0.0;
     // Cut-out surfaces (leaves, grass cards) scatter nothing under the skin: their subsurface map is not even read.

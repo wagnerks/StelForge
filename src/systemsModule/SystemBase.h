@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <shared_mutex>
+#include <thread>
 
 #include "ecss/Types.h"
 #include <vector>
@@ -77,7 +78,7 @@ namespace ecss {
 			// pick the entity up, and one was silently never processed -- a random object missing from
 			// the octree for the rest of the run.
 			std::unique_lock lock(mMutex);
-			if (mIsWorking) {
+			if (mIsWorking || mAsyncStopped) {
 				return;
 			}
 			sync();
@@ -87,17 +88,37 @@ namespace ecss {
 			mIsWorking = true;
 			lock.unlock();
 
-			SFE::ThreadPool::instance()->addTask([this] {
+			const auto started = SFE::ThreadPool::instance()->addTask([this] {
 				for (;;) {
 					updateAsync(mEntitiesToProcess);
 					std::unique_lock workerLock(mMutex);
 					sync();
-					if (mEntitiesToProcess.empty()) {
+					if (mEntitiesToProcess.empty() || mAsyncStopped) {
 						mIsWorking = false;
 						return;
 					}
 				}
 			});
+			// A pool that is shutting down takes no task; nothing would ever clear the flag and stopAsync would wait forever.
+			if (!started.valid()) {
+				std::unique_lock failLock(mMutex);
+				mIsWorking = false;
+			}
+		}
+
+		// The pool task above calls back into this system, so the system must not be deleted while one is queued or
+		// running. Turns away new async work and waits for the current worker to finish its batch.
+		void stopAsync() {
+			for (;;) {
+				{
+					std::unique_lock lock(mMutex);
+					mAsyncStopped = true;
+					if (!mIsWorking) {
+						return;
+					}
+				}
+				std::this_thread::yield();
+			}
 		}
 
 		void notify(SFE::SystemsModule::Task task) override {
@@ -140,6 +161,7 @@ namespace ecss {
 
 	private:
 		std::atomic_bool mIsWorking = false;
+		bool mAsyncStopped = false; // under mMutex
 		std::shared_mutex mMutex;
 	};
 }

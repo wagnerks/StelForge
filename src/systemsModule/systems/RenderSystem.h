@@ -408,6 +408,9 @@ namespace SFE::SystemsModule {
 		Render::BufferHandle bones;
 		// Written by AnimationComputePass, which copies a bone's matrix here before overwriting it.
 		Render::BufferHandle prevBones;
+		// The bones each hand-posed skeleton was uploaded with last frame, so the motion vectors of one that is
+		// written afresh every frame say where its skin actually came from.
+		std::unordered_map<ecss::EntityId, std::vector<Math::Mat4>> mLastBones;
 		std::unordered_map<ecss::EntityId, BoneRange> mBoneRanges;
 		std::vector<BoneRange> mFreeBoneRanges; // sorted by offset, neighbours merged
 		size_t mBonesUsed = 0;

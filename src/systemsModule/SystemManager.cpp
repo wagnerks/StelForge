@@ -172,6 +172,14 @@ namespace ecss {
 	SystemManager::~SystemManager() {
 		mTickScheduler.reset();
 
+		// Every system's async work must be over before the first one is deleted: a pool task still running
+		// updateAsync on a deleted system crashed on exit, and a destructor may still notify the other systems.
+		for (const auto system : mSystemsMap) {
+			if (system) {
+				system->stopAsync();
+			}
+		}
+
 		for (const auto system : mSystemsMap) {
 			delete system;
 		}

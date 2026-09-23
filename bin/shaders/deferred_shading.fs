@@ -396,7 +396,8 @@ void main() {
     float specFactor = pbr.y;
     float clearcoat = pbr.z;
     const bool glint = abs(clearcoat - kSfeGlint) < 0.5 / 255.0;
-    if (glint) {
+    const bool cel = abs(clearcoat - kSfeCel) < 0.5 / 255.0;
+    if (glint || cel) {
         clearcoat = 0.0;
     }
     float ccRough = max(pbr.w, 0.04);
@@ -459,8 +460,10 @@ void main() {
     // Cartoon light: a surface is either in the sun or turned from it, with a soft edge between the two rather than
     // the long falloff real light has -- two tones, the way an animated film paints a round shape. Taken on the light,
     // so a cloud's shadow or a tree's shade still falls where it did.
+    // A drawing (kSfeCel) has no soft edge at all: flat in the light, a line, flat in the shade.
+    const float litSide = cel ? smoothstep(0.02, 0.08, nDotLSun) : smoothstep(0.0, 0.32, nDotLSun);
     if (pc.stylise > 0.0) {
-        const float toon = smoothstep(0.0, 0.32, nDotLSun) * 0.85 + nDotLSun * 0.15;
+        const float toon = cel ? litSide : litSide * 0.85 + nDotLSun * 0.15;
         Lo *= mix(1.0, nDotLSun > 0.0001 ? toon / max(nDotLSun, 1e-3) : 1.0, pc.stylise);
     }
 
@@ -470,7 +473,8 @@ void main() {
     // hard black blotches into a sunlit trunk.
     // A side turned away from the sun is as much out of it as one under a cast shadow: the ambient and sheen below
     // dim alike, or the back of a trunk stays brighter than the ground in its shadow. Not where light comes through.
-    const float turnedAway = translucency > 0.0 ? 0.0 : 1.0 - smoothstep(-0.35, 0.3, dot(Normal, Lsun));
+    const float turnedAway = translucency > 0.0 ? 0.0
+        : 1.0 - mix(smoothstep(-0.35, 0.3, dot(Normal, Lsun)), litSide, cel ? pc.stylise : 0.0);
     const float sunVisible = min(shadowFactor, 1.0 - pc.shadowIntensity * turnedAway);
 
     vec3 F = fresnelSchlickRoughness(max(dot(Normal, V), 0.0), F0, roughness);
@@ -605,7 +609,7 @@ void main() {
         fogFactor = max(fogFactor, smoothstep(40.0, 320.0, Depth) * 0.58 * pc.stylise);
         // Shade is coloured, not dark: the sky fills it with its own blue, and at night the moon lights everything
         // plainly rather than leaving it black. Most where the sun does not reach.
-        float inShade = 1.0 - sunVisible * smoothstep(0.0, 0.32, nDotLSun);
+        float inShade = 1.0 - sunVisible * litSide;
         lighting += albedo * texture(irradianceMap, Normal).rgb * pc.iblStrength * (0.8 + 1.8 * inShade) * pc.stylise * ao;
         // A bright rim where a shape turns away from the eye: what outlines it against what is behind in a cartoon.
         float rim = pow(1.0 - max(dot(Normal, V), 0.0), 3.0);

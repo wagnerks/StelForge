@@ -27,6 +27,11 @@ namespace SFE::SystemsModule {
 		static constexpr JPH::ObjectLayer kStatic = 0;
 		static constexpr JPH::ObjectLayer kMoving = 1;
 		static constexpr JPH::ObjectLayer kHeld = 2;
+		// A character's own standing capsule, and hair hung off a character: both move like kMoving and meet everything
+		// it meets, except each other. Hair lies on a body and on the ground, but a capsule is only the room a
+		// character takes up, and hair hanging inside that room would be shoved out of it to hang in the air.
+		static constexpr JPH::ObjectLayer kCharacter = 3;
+		static constexpr JPH::ObjectLayer kHair = 4;
 
 		PhysicsSystem();
 		~PhysicsSystem() override;
