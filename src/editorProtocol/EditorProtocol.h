@@ -21,6 +21,10 @@ namespace SFE::EditorProtocol {
 		GetWorldSnapshot = 8,
 		WorldSnapshot = 9,
 		SetGraphics = 10,
+		// {"command": name, "args": {...}}: one of RuntimeBridge's commands run in the game, between frames; answered
+		// with a CommandResult {"command", "ok", "result"}. From this machine only.
+		Command = 11,
+		CommandResult = 12,
 		Error = 255,
 	};
 

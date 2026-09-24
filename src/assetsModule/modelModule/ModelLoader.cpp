@@ -236,7 +236,18 @@ AssetsModule::Model* ModelLoader::load(const std::string& path) {
 	mtx.unlock();
 
 	Assimp::Importer import;
-	auto loaded = read(path, readScene(import, path));
+	const aiScene* scene = readScene(import, path);
+	// Its textures decoded side by side first, as loadAll does: a character's are several large ones, and one after
+	// another they were most of its load.
+	Loaded loaded;
+	{
+		TextureHandler::Predecoded ahead;
+		if (scene) {
+			SFE::LoadTrace::Step decoding("textures");
+			ahead = TextureHandler::predecode(textureFiles(scene, path));
+		}
+		loaded = read(path, scene);
+	}
 	finishMeshes(loaded);
 	return publish(path, std::move(loaded));
 }
@@ -271,41 +282,24 @@ void ModelLoader::loadAll(const std::vector<std::string>& paths) {
 
 	std::vector<std::string> textures;
 	for (size_t i = 0; i < pending.size(); ++i) {
-		if (!scenes[i]) {
-			continue;
-		}
-		const auto directory = SFE::FileSystem::resolve(pending[i]).parent_path().string();
-		for (unsigned m = 0; m < scenes[i]->mNumMaterials; ++m) {
-			const auto* material = scenes[i]->mMaterials[m];
-			for (int type = aiTextureType_NONE; type <= AI_TEXTURE_TYPE_MAX; ++type) {
-				for (unsigned t = 0; t < material->GetTextureCount(static_cast<aiTextureType>(type)); ++t) {
-					aiString raw;
-					material->GetTexture(static_cast<aiTextureType>(type), t, &raw);
-					if (raw.length == 0 || raw.C_Str()[0] == '*') {
-						continue;
-					}
-					for (const auto& candidate : textureFileCandidates(raw.C_Str(), directory)) {
-						if (SFE::FileSystem::isFileExists(candidate)) {
-							textures.push_back(candidate);
-							break;
-						}
-					}
-				}
-			}
+		if (scenes[i]) {
+			auto files = textureFiles(scenes[i], pending[i]);
+			textures.insert(textures.end(), files.begin(), files.end());
 		}
 	}
-	{
-		SFE::LoadTrace::Step decoding("textures");
-		SFE::LoadTrace::count("texture files", static_cast<long long>(textures.size()));
-		TextureHandler::predecode(textures);
-	}
-
 	std::vector<Loaded> loaded(pending.size());
-	for (size_t i = 0; i < pending.size(); ++i) {
-		loaded[i] = read(pending[i], scenes[i]);
-		importers[i].reset();
+	{
+		TextureHandler::Predecoded ahead;
+		{
+			SFE::LoadTrace::Step decoding("textures");
+			SFE::LoadTrace::count("texture files", static_cast<long long>(textures.size()));
+			ahead = TextureHandler::predecode(textures);
+		}
+		for (size_t i = 0; i < pending.size(); ++i) {
+			loaded[i] = read(pending[i], scenes[i]);
+			importers[i].reset();
+		}
 	}
-	TextureHandler::dropPredecoded();
 	std::for_each(std::execution::par, order.begin(), order.end(), [&](const size_t i) {
 		finishMeshes(loaded[i]);
 	});
@@ -330,12 +324,40 @@ ModelLoader::Loaded ModelLoader::read(const std::string& path, const aiScene* sc
 	return loaded;
 }
 
-void ModelLoader::finishMeshes(Loaded& loaded) {
-	for (auto& meshNode : loaded.meshes) {
-		auto& mesh = meshNode.value;
-		if (mesh.mesh.vertices.empty()) {
-			continue;
+std::vector<std::string> ModelLoader::textureFiles(const aiScene* scene, const std::string& path) {
+	std::vector<std::string> textures;
+	const auto directory = SFE::FileSystem::resolve(path).parent_path().string();
+	for (unsigned m = 0; m < scene->mNumMaterials; ++m) {
+		const auto* material = scene->mMaterials[m];
+		for (int type = aiTextureType_NONE; type <= AI_TEXTURE_TYPE_MAX; ++type) {
+			for (unsigned t = 0; t < material->GetTextureCount(static_cast<aiTextureType>(type)); ++t) {
+				aiString raw;
+				material->GetTexture(static_cast<aiTextureType>(type), t, &raw);
+				if (raw.length == 0 || raw.C_Str()[0] == '*') {
+					continue;
+				}
+				for (const auto& candidate : textureFileCandidates(raw.C_Str(), directory)) {
+					if (SFE::FileSystem::isFileExists(candidate)) {
+						textures.push_back(candidate);
+						break;
+					}
+				}
+			}
 		}
+	}
+	return textures;
+}
+
+// Mesh by mesh side by side: a character is two dozen parts, each welded and given its levels of detail on its own.
+void ModelLoader::finishMeshes(Loaded& loaded) {
+	std::vector<SFE::MeshObject3D*> parts;
+	for (auto& meshNode : loaded.meshes) {
+		if (!meshNode.value.mesh.vertices.empty()) {
+			parts.push_back(&meshNode.value);
+		}
+	}
+	std::for_each(std::execution::par, parts.begin(), parts.end(), [](SFE::MeshObject3D* part) {
+		auto& mesh = *part;
 		int tangentUv = 0;
 		if (const auto* normals = mesh.material.tryGetTexture(SFE::NORMALS)) {
 			tangentUv = normals->uvSet;
@@ -357,7 +379,24 @@ void ModelLoader::finishMeshes(Loaded& loaded) {
 		// Model::bindMeshes keeps levels a mesh already has.
 		SFE::weldMesh(mesh.mesh);
 		SFE::buildMeshLods(mesh.mesh);
+	});
+}
+
+AssetsModule::Model* ModelLoader::reload(const std::string& path) {
+	Assimp::Importer import;
+	const aiScene* scene = readScene(import, path);
+	if (!scene) {
+		return nullptr;
 	}
+	auto loaded = read(path, scene);
+	finishMeshes(loaded);
+	if (!loaded.ok) {
+		return nullptr;
+	}
+	auto* model = new Model(std::move(loaded.meshes), std::move(loaded.armature), std::move(loaded.animations));
+	std::lock_guard lock(mtx);
+	AssetsManager::instance()->replaceAsset(path, model);
+	return model;
 }
 
 AssetsModule::Model* ModelLoader::publish(const std::string& path, Loaded&& loaded) {

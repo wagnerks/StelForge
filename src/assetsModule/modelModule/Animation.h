@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <set>
+#include <string>
 #include <vector>
 #include <unordered_map>
 
@@ -14,6 +15,8 @@ namespace AssetsModule {
         Animation() = default;
 
         Animation(const aiAnimation* animation);
+        // An empty clip, to be keyed bone by bone (keysOf): `duration` in ticks, `ticksPerSecond` of them a second.
+        Animation(std::string name, float duration, float ticksPerSecond);
         // A clip `weight` of the way from `a` to `b`, key by key: for two clips made alike (the same keys at the same
         // times), as a pose made for a small thing and one for a big one. A bone keyed differently in them keeps a's.
         static Animation between(const Animation& a, const Animation& b, float weight);
@@ -27,6 +30,9 @@ namespace AssetsModule {
         inline float getTicksPerSecond() const { return mTicksPerSecond; }
         inline float getDuration() const { return mDuration; }
         inline const std::string& getName() const { return mName; }
+        void rename(std::string name) { mName = std::move(name); }
+        // A bone's keys to change -- a clip edited while the engine runs -- made empty when the clip has none for it.
+        BoneAnimationKeys& keysOf(const std::string& boneName) { return mBoneAnimationInfos[boneName]; }
 
     private:
         static void readKeys(const aiAnimation* animation, std::unordered_map<std::string, BoneAnimationKeys>& keys);

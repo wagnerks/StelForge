@@ -24,6 +24,8 @@ namespace SFE::EditorProtocol {
 		void close();
 
 		bool isConnected() const { return mConnected; }
+		// An accepted client on this same machine.
+		bool isLoopback() const { return mLoopback; }
 		bool sendAll(const uint8_t* data, size_t size);
 		bool recvSome(std::vector<uint8_t>& buffer, size_t maxBytes, size_t& received);
 		void setReceiveBufferSize(int bytes);
@@ -34,6 +36,7 @@ namespace SFE::EditorProtocol {
 		uintptr_t mSocket = static_cast<uintptr_t>(-1);
 		uintptr_t mListenSocket = static_cast<uintptr_t>(-1);
 		bool mConnected = false;
+		bool mLoopback = false;
 		std::mutex mSendMutex;
 	};
 

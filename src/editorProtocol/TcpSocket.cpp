@@ -138,6 +138,7 @@ namespace SFE::EditorProtocol {
 		client.close();
 		client.mSocket = static_cast<uintptr_t>(clientSock);
 		client.mConnected = true;
+		client.mLoopback = (ntohl(addr.sin_addr.s_addr) >> 24) == 127;
 		tuneSocketBuffers(clientSock);
 #ifdef _WIN32
 		{

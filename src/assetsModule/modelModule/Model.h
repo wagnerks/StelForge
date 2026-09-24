@@ -31,6 +31,9 @@ namespace AssetsModule {
 
 		std::vector<LOD>* getLODs();
 		const std::vector<Animation>& getAnimations() const { return mAnimations; }
+		// The clips to change in place: a clip edited while the engine runs. Their number stays as it is, so pointers to
+		// them stay good.
+		std::vector<Animation>& editAnimations() { return mAnimations; }
 		// The clips here were made on their own skeleton; the one they are played on is `played`. Where the two put a
 		// bone in different places, the clip was plainly not made for that bone, and everything it says about it --
 		// place, turn and size alike -- is thrown away, leaving the bone where the model rests it. A bone the two

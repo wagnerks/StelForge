@@ -316,9 +316,76 @@ namespace SFE::RuntimeBridge {
 		case MessageType::Input:
 			processInput(msg.json);
 			break;
+		case MessageType::Command: {
+			Json::Value request;
+			Json::CharReaderBuilder reader;
+			std::string errors;
+			std::istringstream stream(msg.json);
+			Json::Value reply;
+			if (!mClientSocket.isLoopback()) {
+				reply["ok"] = false;
+				reply["result"] = "commands are taken from this machine only";
+			}
+			else if (!Json::parseFromStream(reader, stream, &request, &errors) || !request.isObject()) {
+				reply["ok"] = false;
+				reply["result"] = "not a command: " + errors;
+			}
+			else {
+				// Answered once it has run, at the start of the next frame.
+				mQueued.push_back({ request.get("command", "").asString(), request.get("args", Json::Value()), true });
+				break;
+			}
+			Json::StreamWriterBuilder writer;
+			writer["indentation"] = "";
+			sendPacket(MessageType::CommandResult, Json::writeString(writer, reply));
+			break;
+		}
 		default:
 			sendPacket(MessageType::Error, R"({"error":"unsupported"})");
 			break;
+		}
+	}
+
+	void RuntimeBridge::addCommand(const std::string& name, std::string help, Command run)
+	{
+		mCommands[name] = { std::move(help), std::move(run) };
+	}
+
+	std::string RuntimeBridge::runCommand(const std::string& name, const Json::Value& args)
+	{
+		const auto found = mCommands.find(name);
+		if (found == mCommands.end()) {
+			std::string known;
+			for (const auto& [each, entry] : mCommands) {
+				known += (known.empty() ? "" : ", ") + each;
+			}
+			return "no command " + name + " (there are: " + known + ")";
+		}
+		mLastResult = name + ": " + found->second.run(args);
+		return mLastResult;
+	}
+
+	void RuntimeBridge::queueCommand(const std::string& name, const Json::Value& args)
+	{
+		mQueued.push_back({ name, args, false });
+	}
+
+	void RuntimeBridge::runQueued()
+	{
+		auto queued = std::move(mQueued);
+		mQueued.clear();
+		for (const auto& command : queued) {
+			const bool known = mCommands.contains(command.name);
+			const auto said = runCommand(command.name, command.args);
+			if (command.answer) {
+				Json::Value reply;
+				reply["command"] = command.name;
+				reply["ok"] = known;
+				reply["result"] = said;
+				Json::StreamWriterBuilder writer;
+				writer["indentation"] = "";
+				sendPacket(EditorProtocol::MessageType::CommandResult, Json::writeString(writer, reply));
+			}
 		}
 	}
 

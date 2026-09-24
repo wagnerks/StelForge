@@ -1,5 +1,5 @@
-﻿#pragma once
-#include <limits>
+#pragma once
+#include <filesystem>
 #include <string>
 
 namespace AssetsModule {
@@ -8,7 +8,10 @@ namespace AssetsModule {
 		virtual ~Asset() {}
 		Asset() = default;
 
-		size_t assetId = std::numeric_limits<size_t>::max();
 		std::string assetPath;
+		// Whether assetPath names a file, and when that file was written as the asset was read from it
+		// (AssetsManager::stamp).
+		bool onDisk = false;
+		std::filesystem::file_time_type written{};
 	};
 }

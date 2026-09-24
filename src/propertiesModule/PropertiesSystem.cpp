@@ -1,4 +1,5 @@
-#include "propertiesModule/PropertiesSystem.h"
+﻿#include "propertiesModule/PropertiesSystem.h"
+#include "propertiesModule/ModelBinding.h"
 #include "core/FileSystem.h"
 
 #include <algorithm>
@@ -17,6 +18,7 @@
 #include "componentsModule/MaterialComponent.h"
 #include "componentsModule/MeshComponent.h"
 #include "componentsModule/ModelComponent.h"
+#include "systemsModule/systems/RenderSystem.h"
 #include "componentsModule/OcTreeComponent.h"
 #include "componentsModule/TransformComponent.h"
 #include "componentsModule/Hierarchy.h"
@@ -180,7 +182,7 @@ namespace SFE::PropertiesModule {
 			ECSHandler::registry().addComponent<ComponentsModule::TransformMatComp>(entity, seed);
 			ECSHandler::addComponent<IsDrawableComponent>(entity);
 
-			PropertiesSystem::bindRenderable(entity);
+			ModelBinding::bind(entity);
 			if (glass) {
 				markGlass(entity, 0.22f, 1.52f, { 1.f, 1.f, 1.f });
 			}
@@ -189,49 +191,6 @@ namespace SFE::PropertiesModule {
 
 		void spawnModelEntity(const char* path, const Math::Vec3& pos, const Math::Vec3& scale, bool glass) {
 			spawnModelEntity(AssetsModule::ModelLoader::instance()->load(path), path, pos, scale, glass);
-		}
-
-		const AssetsModule::Animation* pickPlaybackClip(const AssetsModule::Model* model) {
-			if (!model) {
-				return nullptr;
-			}
-			const auto& anims = model->getAnimations();
-			if (anims.empty()) {
-				return nullptr;
-			}
-
-			auto findSub = [&](const char* sub) -> const AssetsModule::Animation* {
-				for (const auto& anim : anims) {
-					if (anim.getName().find(sub) != std::string::npos) {
-						return &anim;
-					}
-				}
-				return nullptr;
-			};
-
-			if (const auto* clip = findSub("dance")) {
-				return clip;
-			}
-			if (const auto* clip = findSub("Dance")) {
-				return clip;
-			}
-			if (const auto* clip = findSub("walk")) {
-				return clip;
-			}
-			if (const auto* clip = findSub("idle")) {
-				return clip;
-			}
-			if (const auto* clip = findSub("run")) {
-				return clip;
-			}
-
-			for (const auto& anim : anims) {
-				const auto& name = anim.getName();
-				if (name.find("Static") == std::string::npos && name.find("static") == std::string::npos) {
-					return &anim;
-				}
-			}
-			return &anims.front();
 		}
 
 		ecss::EntityId spawnDancingVampire(const Math::Vec3& pos, float yawDegrees, float animPhase = 0.f) {
@@ -246,7 +205,7 @@ namespace SFE::PropertiesModule {
 				return {};
 			}
 
-			if (const auto* clip = pickPlaybackClip(model)) {
+			if (const auto* clip = ModelBinding::playbackClip(model)) {
 				auto* anim = ECSHandler::registry().addComponent<ComponentsModule::AnimationComponent>(id);
 				anim->mCurrentAnimation = clip;
 				anim->mLoop = true;
@@ -382,91 +341,6 @@ namespace SFE::PropertiesModule {
 		ComponentRegistry::load(entity, properties["Properties"], LoadPhase::Direct);
 	}
 
-	void PropertiesSystem::bindRenderable(ecss::EntityId entity) {
-		auto modelComp = ECSHandler::registry().pinComponent<ModelComponent>(entity);
-		if (!modelComp) {
-			return;
-		}
-		if (modelComp->getModel().meshes.empty() && !modelComp->mPath.empty()) {
-			if (auto* model = AssetsModule::ModelLoader::instance()->load(modelComp->mPath)) {
-				modelComp->boneMatrices = model->getDefaultBoneMatrices();
-				modelComp->armature = model->getArmature();
-				modelComp->setModel(model->getLODs());
-			}
-		}
-		if (modelComp->getModel().meshes.empty()) {
-			return;
-		}
-
-		AssetsModule::Model* model = nullptr;
-		if (!modelComp->mPath.empty()) {
-			model = AssetsModule::ModelLoader::instance()->load(modelComp->mPath);
-		}
-
-		auto meshComp = ECSHandler::registry().addComponent<MeshComponent>(entity);
-		auto materialComp = ECSHandler::addComponent<MaterialComponent>(entity);
-		const SFE::Material* srcMat = nullptr;
-		bool allGlass = true;
-		bool anyMesh = false;
-		if (model) {
-			meshComp->meshMaterials.clear();
-			SFE::Graph<SFE::RenderMeshData> meshData;
-			meshData.fill<SFE::MeshObject3D>(model->getMeshTree(), [&](const SFE::MeshObject3D& meshObj) {
-				meshComp->meshMaterials.push_back(SFE::ComponentsModule::fromAssetMaterial(meshObj.material));
-				if (!meshObj.mesh.vertices.empty()) {
-					anyMesh = true;
-					if (!meshObj.material.transparent) {
-						allGlass = false;
-					}
-				}
-				if (!srcMat && !meshObj.material.materialTextures.empty()) {
-					srcMat = &meshObj.material;
-				}
-				return std::move(SFE::MeshVaoRegistry::instance()->get(const_cast<SFE::Mesh3D*>(&meshObj.mesh)));
-			});
-			meshComp->meshGraph = meshData;
-			meshComp->meshModel = model;
-			if (anyMesh && allGlass) {
-				materialComp->transparent = true;
-			}
-		}
-		else {
-			meshComp->meshGraph.root().value = SFE::MeshVaoRegistry::instance()->get(&modelComp->getModel().meshes[0]->mesh);
-			if (!modelComp->getModel().meshes.empty() && modelComp->getModel().meshes[0]) {
-				meshComp->meshMaterials.push_back(
-					SFE::ComponentsModule::fromAssetMaterial(modelComp->getModel().meshes[0]->material));
-			}
-		}
-		SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MESH_UPDATED });
-		if (srcMat) {
-			materialComp->materials.clearMaterials();
-			for (auto& mat : srcMat->materialTextures) {
-				materialComp->materials.addMaterial({ mat.second.uniformSlot, mat.second.texture });
-			}
-		}
-		SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::MATERIAL_UPDATED });
-
-		if (modelComp->armature.bones.size()) {
-			auto armatureComp = ECSHandler::addComponent<SFE::ComponentsModule::ArmatureComponent>(entity);
-			armatureComp->armature = modelComp->armature;
-		}
-
-		if (!modelComp->boneMatrices.empty()) {
-			auto armatureBonesComp = ECSHandler::registry().addComponent<SFE::ComponentsModule::ArmatureBonesComponent>(entity);
-			armatureBonesComp->boneMatrices = modelComp->boneMatrices;
-			SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ARMATURE_UPDATED });
-		}
-
-		if (model && !model->getAnimations().empty()
-			&& !ECSHandler::registry().pinComponent<const ComponentsModule::AnimationComponent>(entity)) {
-			auto* anim = ECSHandler::registry().addComponent<ComponentsModule::AnimationComponent>(entity);
-			anim->mCurrentAnimation = pickPlaybackClip(model);
-			anim->mLoop = true;
-			anim->play(0.f);
-			SFE::SystemsModule::TasksManager::instance()->notify({ entity, SFE::SystemsModule::TaskType::ANIMATION_UPDATED });
-		}
-	}
-
 	void PropertiesSystem::fillTree(ecss::EntityId entity, const Json::Value& properties) {
 		if (!properties.isObject()) {
 			return;
@@ -481,7 +355,7 @@ namespace SFE::PropertiesModule {
 		ECSHandler::registry().addComponent<OcTreeComponent>(entity);
 		applyProperties(entity, properties);
 		ECSHandler::registry().addComponent<IsDrawableComponent>(entity);
-		bindRenderable(entity);
+		ModelBinding::bind(entity);
 		if (properties.isMember("Properties")) {
 			ComponentRegistry::load(entity, properties["Properties"], LoadPhase::AfterBind);
 		}
@@ -643,7 +517,7 @@ namespace SFE::PropertiesModule {
 		if (!sampleModel) {
 			return;
 		}
-		const AssetsModule::Animation* sampleClip = pickPlaybackClip(sampleModel);
+		const AssetsModule::Animation* sampleClip = ModelBinding::playbackClip(sampleModel);
 		const float clipDuration = sampleClip ? sampleClip->getDuration() : 0.f;
 
 		const float originX = static_cast<float>(chunkX) * chunkSize;
@@ -680,7 +554,7 @@ namespace SFE::PropertiesModule {
 			return;
 		}
 		auto* sampleModel = AssetsModule::ModelLoader::instance()->load("models/vampire.fbx");
-		const AssetsModule::Animation* sampleClip = pickPlaybackClip(sampleModel);
+		const AssetsModule::Animation* sampleClip = ModelBinding::playbackClip(sampleModel);
 		const float clipDuration = sampleClip ? sampleClip->getDuration() : 0.f;
 
 		const int rooms = (std::max)(1, static_cast<int>(chunkSize / roomSize));

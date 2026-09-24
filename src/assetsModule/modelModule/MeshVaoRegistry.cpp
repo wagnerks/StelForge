@@ -244,12 +244,62 @@ namespace SFE {
 		mVertexCapacity = vertexCapacity;
 		mIndexCapacity = indexCapacity;
 
-		// Offsets stay where they were, so every copy of a RenderMeshData stays valid.
+		// Offsets stay where they were, so every copy of a RenderMeshData stays valid. The meshes go up in the order they
+		// lie, a chunk at a time: one by one, the terrain's thousand chunks and everything else made a grow late in a run --
+		// a model read again while the game runs -- take half a minute.
+		std::vector<std::pair<const Mesh<Vertex3D>*, const RenderMeshData*>> placed;
+		placed.reserve(mMeshVAO.size());
 		for (const auto& [mesh, data] : mMeshVAO) {
 			if (data.meshId != 0) {
-				upload(mesh, data);
+				placed.emplace_back(mesh, &data);
 			}
 		}
+		constexpr size_t kChunkBytes = size_t{ 64 } << 20;
+		const auto copyUp = [rhi](const Render::BufferHandle buffer, auto& chunk, size_t& start) {
+			using Element = typename std::decay_t<decltype(chunk)>::value_type;
+			if (!chunk.empty()) {
+				rhi->updateBuffer(buffer, start * sizeof(Element), chunk.size() * sizeof(Element), chunk.data());
+				chunk.clear();
+			}
+		};
+		std::sort(placed.begin(), placed.end(), [](const auto& a, const auto& b) { return a.second->firstVertex < b.second->firstVertex; });
+		std::vector<Vertex3D> vertices;
+		size_t vertexStart = 0;
+		for (const auto& [mesh, data] : placed) {
+			if (mesh->vertices.empty()) {
+				continue;
+			}
+			if (vertices.empty() || data->firstVertex != vertexStart + vertices.size()
+				|| (vertices.size() + mesh->vertices.size()) * sizeof(Vertex3D) > kChunkBytes) {
+				copyUp(mVertexBuffer, vertices, vertexStart);
+				vertexStart = data->firstVertex;
+			}
+			vertices.insert(vertices.end(), mesh->vertices.begin(), mesh->vertices.end());
+		}
+		copyUp(mVertexBuffer, vertices, vertexStart);
+		// Each mesh's indices, and its levels of detail after them.
+		std::sort(placed.begin(), placed.end(), [](const auto& a, const auto& b) { return a.second->firstIndex < b.second->firstIndex; });
+		std::vector<unsigned int> indices;
+		size_t indexStart = 0;
+		for (const auto& [mesh, data] : placed) {
+			size_t count = mesh->indices.size();
+			for (const auto& level : mesh->lodIndices) {
+				count += level.size();
+			}
+			if (count == 0) {
+				continue;
+			}
+			if (indices.empty() || data->firstIndex != indexStart + indices.size()
+				|| (indices.size() + count) * sizeof(unsigned int) > kChunkBytes) {
+				copyUp(mIndexBuffer, indices, indexStart);
+				indexStart = data->firstIndex;
+			}
+			indices.insert(indices.end(), mesh->indices.begin(), mesh->indices.end());
+			for (const auto& level : mesh->lodIndices) {
+				indices.insert(indices.end(), level.begin(), level.end());
+			}
+		}
+		copyUp(mIndexBuffer, indices, indexStart);
 	}
 
 	void MeshVaoRegistry::upload(const Mesh<Vertex3D>* mesh, const RenderMeshData& data) const {

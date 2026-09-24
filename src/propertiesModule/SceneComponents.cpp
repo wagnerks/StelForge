@@ -1,3 +1,4 @@
+﻿#include "propertiesModule/ModelBinding.h"
 #include "propertiesModule/SceneComponents.h"
 
 #include <utility>
@@ -281,7 +282,7 @@ namespace SFE::PropertiesModule {
 		}
 
 		// The mesh carries its own copy of the material values, built from the asset by
-		// bindRenderable(); the scene's overrides have to reach it too.
+		// ModelBinding::bind(); the scene's overrides have to reach it too.
 		if (auto mesh = ECSHandler::registry().pinComponent<MeshComponent>(entity)) {
 			for (auto& meshMaterial : mesh->meshMaterials) {
 				if (data.isMember("transparent") && material->transparent) {
@@ -369,7 +370,7 @@ namespace SFE::PropertiesModule {
 		}
 		modelComp->mPath = model->assetPath;
 		modelComp->setModel(model->getLODs());
-		PropertiesSystem::bindRenderable(entity);
+		ModelBinding::bind(entity);
 
 		// Painted by its own shader from world position and height, with the ground materials as texture arrays.
 		if (auto mesh = ECSHandler::registry().pinComponent<MeshComponent>(entity)) {
@@ -505,7 +506,7 @@ namespace SFE::PropertiesModule {
 			// are split against, which a scene load does not have yet. CascadedShadowPass
 			// restores it from its own file, through deserializeProperty().
 			entryFor<CascadeShadowComponent>(LoadPhase::Never),
-			// After bindRenderable(): the values are written through into the mesh materials
+			// After ModelBinding::bind(): the values are written through into the mesh materials
 			// it just built.
 			entryFor<MaterialComponent>(LoadPhase::AfterBind),
 			entryFor<SkyComponent>(LoadPhase::Direct),

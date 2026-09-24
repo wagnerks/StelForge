@@ -916,6 +916,16 @@ void main() {
 	}
 
 	PipelineHandle VulkanRHI::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
+		VkGraphicsPipelineResource resource{};
+		if (!buildGraphicsPipeline(desc, resource)) {
+			return {};
+		}
+		PipelineHandle handle{};
+		handle.id = storeResource(m_pipelines, m_freePipelines, std::move(resource));
+		return handle;
+	}
+
+	bool VulkanRHI::buildGraphicsPipeline(const GraphicsPipelineDesc& desc, VkGraphicsPipelineResource& out) {
 		const auto* vert = getLive(m_shaders, desc.shaders.vertex.id);
 		const auto* frag = getLive(m_shaders, desc.shaders.fragment.id);
 		const auto* geom = desc.shaders.geometry.id != UINT32_MAX ? getLive(m_shaders, desc.shaders.geometry.id) : nullptr;
@@ -923,7 +933,7 @@ void main() {
 		const auto* tessEval = desc.shaders.tessEval.id != UINT32_MAX ? getLive(m_shaders, desc.shaders.tessEval.id) : nullptr;
 		if (!vert || !frag) {
 			RhiLog::fatal("VulkanRHI: createGraphicsPipeline requires vertex/fragment shaders");
-			return {};
+			return false;
 		}
 
 		GraphicsPipelineDesc local = desc;
@@ -936,7 +946,7 @@ void main() {
 		}
 		if (!renderPass) {
 			RhiLog::fatal("VulkanRHI: createGraphicsPipeline requires renderPass");
-			return {};
+			return false;
 		}
 
 		std::vector<VkDescriptorSetLayout> setLayouts;
@@ -962,7 +972,7 @@ void main() {
 					destroyRenderPass(ownedRp);
 				}
 				RhiLog::fatal("VulkanRHI: pipeline layout creation failed");
-				return {};
+				return false;
 			}
 		}
 
@@ -1113,30 +1123,37 @@ void main() {
 		pipelineInfo.renderPass = renderPass->renderPass;
 		pipelineInfo.subpass = desc.subpassIndex;
 
-		VkGraphicsPipelineResource resource{};
-		resource.desc = local;
-		resource.ownedRenderPass = ownedRp;
-		resource.layout = pipelineLayout;
-		resource.live = true;
-		if (vkCreateGraphicsPipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &resource.pipeline) != VK_SUCCESS) {
+		out = {};
+		out.desc = local;
+		out.ownedRenderPass = ownedRp;
+		out.layout = pipelineLayout;
+		out.live = true;
+		if (vkCreateGraphicsPipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &out.pipeline) != VK_SUCCESS) {
 			vkDestroyPipelineLayout(m_device, pipelineLayout, nullptr);
 			if (ownedRp) {
 				destroyRenderPass(ownedRp);
 			}
 			RhiLog::fatal("VulkanRHI: vkCreateGraphicsPipelines failed for %s", vert->desc.name.c_str());
+			return false;
+		}
+		return true;
+	}
+
+	PipelineHandle VulkanRHI::createComputePipeline(const ComputePipelineDesc& desc) {
+		VkGraphicsPipelineResource resource{};
+		if (!buildComputePipeline(desc, resource)) {
 			return {};
 		}
-
 		PipelineHandle handle{};
 		handle.id = storeResource(m_pipelines, m_freePipelines, std::move(resource));
 		return handle;
 	}
 
-	PipelineHandle VulkanRHI::createComputePipeline(const ComputePipelineDesc& desc) {
+	bool VulkanRHI::buildComputePipeline(const ComputePipelineDesc& desc, VkGraphicsPipelineResource& out) {
 		const auto* compute = getLive(m_shaders, desc.compute.id);
 		if (!compute) {
 			RhiLog::fatal("VulkanRHI: createComputePipeline requires compute shader");
-			return {};
+			return false;
 		}
 
 		std::vector<VkDescriptorSetLayout> setLayouts;
@@ -1153,7 +1170,7 @@ void main() {
 			layoutInfo.pPushConstantRanges = desc.pushConstantSize > 0 ? &pushRange : nullptr;
 			if (vkCreatePipelineLayout(m_device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
 				RhiLog::fatal("VulkanRHI: compute pipeline layout creation failed");
-				return {};
+				return false;
 			}
 		}
 
@@ -1168,20 +1185,78 @@ void main() {
 		pipelineInfo.stage = stage;
 		pipelineInfo.layout = pipelineLayout;
 
-		VkGraphicsPipelineResource resource{};
-		resource.computeDesc = desc;
-		resource.layout = pipelineLayout;
-		resource.isCompute = true;
-		resource.live = true;
-		if (vkCreateComputePipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &resource.pipeline) != VK_SUCCESS) {
+		out = {};
+		out.computeDesc = desc;
+		out.layout = pipelineLayout;
+		out.isCompute = true;
+		out.live = true;
+		if (vkCreateComputePipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &out.pipeline) != VK_SUCCESS) {
 			vkDestroyPipelineLayout(m_device, pipelineLayout, nullptr);
 			RhiLog::fatal("VulkanRHI: vkCreateComputePipelines failed");
-			return {};
+			return false;
 		}
+		return true;
+	}
 
-		PipelineHandle handle{};
-		handle.id = storeResource(m_pipelines, m_freePipelines, std::move(resource));
-		return handle;
+	size_t VulkanRHI::reloadShaders() {
+		const RhiHost* h = host();
+		if (!h) {
+			return 0;
+		}
+		// The modules whose text has moved on, compiled again; one that fails keeps what it had.
+		std::vector<std::pair<uint32_t, VkShaderModule>> fresh;
+		for (uint32_t id = 0; id < m_shaders.size(); ++id) {
+			auto& shader = m_shaders[id];
+			if (!shader.live || shader.desc.name.empty()) {
+				continue;
+			}
+			auto source = h->loadShaderSource(shader.desc.name);
+			if (source.empty() || source == shader.desc.source) {
+				continue;
+			}
+			const auto code = compileShader(shader.desc.stage, shader.desc.name, source);
+			if (code.empty()) {
+				RhiLog::error("VulkanRHI: %s does not compile; the old one stays", shader.desc.name.c_str());
+				continue;
+			}
+			fresh.emplace_back(id, createVkShaderModule(m_device, code));
+			shader.desc.source = std::move(source);
+		}
+		if (fresh.empty()) {
+			return 0;
+		}
+		vkDeviceWaitIdle(m_device);
+		std::vector<uint32_t> remade;
+		for (const auto& [id, module] : fresh) {
+			vkDestroyShaderModule(m_device, m_shaders[id].module, nullptr);
+			m_shaders[id].module = module;
+			remade.push_back(id);
+		}
+		const auto uses = [&](const ShaderModuleHandle handle) {
+			return handle.id != UINT32_MAX && std::find(remade.begin(), remade.end(), handle.id) != remade.end();
+		};
+		// Every pipeline made with one of them, made again from its own desc; its render pass (its own, if it made one)
+		// is the one it had.
+		for (auto& pipeline : m_pipelines) {
+			if (!pipeline.live) {
+				continue;
+			}
+			const auto& shaders = pipeline.desc.shaders;
+			const bool affected = pipeline.isCompute ? uses(pipeline.computeDesc.compute)
+				: uses(shaders.vertex) || uses(shaders.fragment) || uses(shaders.geometry) || uses(shaders.tessControl) || uses(shaders.tessEval);
+			if (!affected) {
+				continue;
+			}
+			VkGraphicsPipelineResource rebuilt{};
+			if (!(pipeline.isCompute ? buildComputePipeline(pipeline.computeDesc, rebuilt) : buildGraphicsPipeline(pipeline.desc, rebuilt))) {
+				continue;
+			}
+			vkDestroyPipeline(m_device, pipeline.pipeline, nullptr);
+			vkDestroyPipelineLayout(m_device, pipeline.layout, nullptr);
+			pipeline.pipeline = rebuilt.pipeline;
+			pipeline.layout = rebuilt.layout;
+		}
+		return remade.size();
 	}
 
 	void VulkanRHI::destroyGraphicsPipeline(const PipelineHandle pipeline) {

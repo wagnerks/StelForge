@@ -148,6 +148,7 @@ namespace SFE::Render
 
 		PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
 		PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override;
+		size_t reloadShaders() override;
 		void destroyGraphicsPipeline(PipelineHandle pipeline) override;
 		TextureHandle createTexture(const TextureDesc& desc, const void* data = nullptr) override;
 		bool preparesTextures() const override { return true; }
@@ -466,6 +467,9 @@ namespace SFE::Render
 		void finishPendingScene();
 		bool swapchainOutOfDate() const;
 		std::vector<uint32_t> compileShader(ShaderStage stage, const std::string& name, const std::string& source);
+		// A pipeline's device objects from its desc, stored nowhere: what create and reloadShaders both make.
+		bool buildGraphicsPipeline(const GraphicsPipelineDesc& desc, VkGraphicsPipelineResource& out);
+		bool buildComputePipeline(const ComputePipelineDesc& desc, VkGraphicsPipelineResource& out);
 		bool boundInUnfinishedList(VkDescriptorSet set) const;
 		void detachBoundSet(VkDescriptorSetResource& set, const VkDescriptorSetLayoutResource& layout);
 		std::vector<uint32_t> m_freeCommandLists;

@@ -12,6 +12,9 @@ AssetsModule::Animation::Animation(const aiAnimation* animation) {
 	readKeys(animation, mBoneAnimationInfos);
 }
 
+AssetsModule::Animation::Animation(std::string name, const float duration, const float ticksPerSecond)
+    : mName(std::move(name)), mDuration(duration), mTicksPerSecond(ticksPerSecond) {}
+
 size_t AssetsModule::Animation::forgetBones(const std::vector<std::string>& bones) {
     size_t freed = 0;
     for (const auto& bone : bones) {

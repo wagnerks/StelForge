@@ -234,6 +234,8 @@ namespace SFE::SystemsModule {
 		void uploadDirtyGpuData();
 		Render::GpuMaterialTable& materials() { return mMaterials; }
 		Render::GpuScene& scene() { return mScene; }
+		// Its place in the bone buffer let go, to be found again at the size its skeleton is now (a model read again).
+		void forgetBones(ecss::EntityId entity) { releaseBones(entity); }
 		Render::BufferHandle transformsBuffer() const { return transforms; }
 		Render::BufferHandle bonesBuffer() const { return bones; }
 		Render::BufferHandle prevBonesBuffer() const { return prevBones; }

@@ -22,6 +22,12 @@
 
 #include <deque>
 
+#include <functional>
+
+#include <map>
+
+#include <json/value.h>
+
 #include <mutex>
 
 #include <string>
@@ -70,6 +76,26 @@ namespace SFE::RuntimeBridge {
 
 		void streamPresentedFrame();
 
+		// Things to do in the running game, by name: from a panel's button, or sent from outside (a Command message --
+		// a script, the editor) when the bridge is serving. Each takes its arguments as JSON and says what it did. Run on
+		// the main thread, between frames. The engine adds its own; a game adds its own the same way.
+		using Command = std::function<std::string(const Json::Value& args)>;
+		struct CommandEntry {
+			std::string help;
+			Command run;
+		};
+		void addCommand(const std::string& name, std::string help, Command run);
+		// What it did, or why it could not.
+		std::string runCommand(const std::string& name, const Json::Value& args = Json::Value());
+		const std::map<std::string, CommandEntry>& commands() const { return mCommands; }
+		// Every command, whether from a panel's button or sent from outside, waits for the start of the next frame
+		// (runQueued, from the engine, once the frame has begun and before anything is recorded): there what it changes
+		// is not in use, and what it uploads goes with the frame's own uploads rather than each on its own. What the last
+		// command run said.
+		void queueCommand(const std::string& name, const Json::Value& args = Json::Value());
+		void runQueued();
+		const std::string& lastResult() const { return mLastResult; }
+
 	private:
 
 		void networkThreadMain();
@@ -95,6 +121,15 @@ namespace SFE::RuntimeBridge {
 		void applyEmbedHost();
 
 
+
+		std::map<std::string, CommandEntry> mCommands;
+		struct Queued {
+			std::string name;
+			Json::Value args;
+			bool answer = false; // sent from outside: what it did is sent back
+		};
+		std::vector<Queued> mQueued; // main thread only
+		std::string mLastResult;
 
 		std::thread mNetworkThread;
 

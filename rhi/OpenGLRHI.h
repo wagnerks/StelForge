@@ -59,6 +59,7 @@ namespace SFE::Render
 
 		GraphicsPipelineDesc desc; // опционально — для дебага / реконфига
 		bool isCompute = false;
+		ShaderModuleHandle computeShader{}; // what a compute pipeline was linked from, to link it again
 
 		std::unordered_map<std::string, GLint> uniformLocations;
 		bool live = false;
@@ -177,6 +178,9 @@ namespace SFE::Render
 
 		PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
 		PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override;
+		size_t reloadShaders() override;
+		// A program linked from modules, its uniform blocks bound where the engine puts them; 0 when it does not link.
+		GLuint linkProgram(const std::vector<ShaderModuleHandle>& modules, bool compute);
 		void destroyGraphicsPipeline(PipelineHandle pipeline) override;
 	private:
 		template<typename T>

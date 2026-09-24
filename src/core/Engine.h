@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 #include <array>
+#include <atomic>
+#include <memory>
 #include <cstdio>
 #include <string>
 #include <thread>
@@ -40,6 +42,7 @@ namespace SFE {
 		Render::Window* getWindow() const;
 		static bool isMainThread();
 		static double clockSeconds();
+
 
 		static void reproTrace(const char* msg) {
 			const auto path = FileSystem::resolve("hang.trace").string();
@@ -105,6 +108,7 @@ namespace SFE {
 		void fpsSync(int fps) const;
 		void updateDelta();
 		bool checkNeedClose();
+		void addRuntimeCommands();
 
 		// Seconds, as a double: a float clock an hour in steps a quarter of a millisecond, and the frame times with it.
 		double mLastFrame = 0.0;

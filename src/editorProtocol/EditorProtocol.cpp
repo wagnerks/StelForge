@@ -54,6 +54,8 @@ namespace SFE::EditorProtocol {
 		case MessageType::GetWorldSnapshot: return "GetWorldSnapshot";
 		case MessageType::WorldSnapshot: return "WorldSnapshot";
 		case MessageType::SetGraphics: return "SetGraphics";
+		case MessageType::Command: return "Command";
+		case MessageType::CommandResult: return "CommandResult";
 		case MessageType::Error: return "Error";
 		default: return "Unknown";
 		}

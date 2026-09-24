@@ -11,11 +11,16 @@
 #include "InputHandler.h"
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "logsModule/logger.h"
+#include "runtimeBridge/RuntimeBridge.h"
+#include "assetsModule/TextureHandler.h"
+#include "assetsModule/modelModule/ModelLoader.h"
+#include "propertiesModule/ModelBinding.h"
 #include "multithreading/ThreadPool.h"
 #include "rhi/GraphicsBackend.h"
 #include "rhi/RhiLog.h"
 #include "rhi/RhiFactory.h"
 #include "renderModule/TextRenderer.h"
+#include "renderModule/FrameCapture.h"
 
 namespace SFE {
 	using Render::activeGraphicsBackend;
@@ -81,6 +86,7 @@ namespace SFE {
 	}
 
 	void Engine::initRender() {
+		addRuntimeCommands();
 		if (activeGraphicsBackend() == GraphicsBackend::OpenGL) {
 			glfwSwapInterval(0);
 		}
@@ -107,6 +113,53 @@ namespace SFE {
 		mWindow = nullptr;
 	}
 
+	// The engine's commands (RuntimeBridge): files edited while it runs taken up when asked -- by a panel's button, or a
+	// command sent from outside -- rather than on a restart, and the picture as it is. Each runs at the start of a frame
+	// (RuntimeBridge::runQueued).
+	void Engine::addRuntimeCommands() {
+		auto* bridge = RuntimeBridge::RuntimeBridge::instance();
+		bridge->addCommand("screenshot", "The last frame as a PNG: {\"path\": ...}, under the content root unless absolute.",
+			[](const Json::Value& args) {
+				const auto path = args.isObject() ? args.get("path", "screenshot.png").asString() : std::string("screenshot.png");
+				return Render::captureFrameToPng(path) ? "written to " + path : "not written: " + path;
+			});
+		bridge->addCommand("reloadShaders",
+			"Every shader read again from its file, and what changed compiled again. One that does not compile keeps the "
+			"old one, and the log says why.",
+			[this](const Json::Value&) {
+				const size_t made = mRHI ? mRHI->reloadShaders() : 0;
+				return std::to_string(made) + " shaders compiled again";
+			});
+		bridge->addCommand("reloadModels",
+			"Every model whose file was written since it was read, read again, and what was made from it bound to it again. "
+			"{\"path\": ...} for one model, changed or not.",
+			[](const Json::Value& args) {
+				std::vector<std::string> paths;
+				if (args.isObject() && args.isMember("path")) {
+					paths.push_back(args["path"].asString());
+				}
+				else {
+					for (const auto* model : AssetsModule::AssetsManager::instance()->changedOnDisk<AssetsModule::Model>()) {
+						paths.push_back(model->assetPath);
+					}
+				}
+				std::string said;
+				for (const auto& path : paths) {
+					const int entities = PropertiesModule::ModelBinding::reload(path);
+					said += (said.empty() ? "" : "; ") + path + (entities < 0 ? " did not read" : ": " + std::to_string(entities) + " entities");
+				}
+				return paths.empty() ? std::string("no model has changed") : said;
+			});
+		bridge->addCommand("reloadTextures",
+			"Every texture whose file was written since it was read, read again into the same texture. One whose size "
+			"changed needs a restart.",
+			[](const Json::Value&) {
+				std::string unchanged;
+				const size_t made = AssetsModule::TextureHandler::reloadChanged(unchanged);
+				return std::to_string(made) + " textures read again" + (unchanged.empty() ? "" : "; a new size, left as they were: " + unchanged);
+			});
+	}
+
 	void Engine::update() {
 		if (!checkNeedClose()) {
 			return;
@@ -116,6 +169,11 @@ namespace SFE {
 		// the GPU's, and what is read from the input is as fresh as it can be for the picture it goes into.
 		if (mRHI) {
 			mRHI->beginFrame();
+		}
+		// The commands asked for since the last frame, now that it has begun and nothing of it is recorded yet: what they
+		// upload goes with the frame's own uploads.
+		if (RuntimeBridge::RuntimeBridge::isAlive()) {
+			RuntimeBridge::RuntimeBridge::instance()->runQueued();
 		}
 		updateDelta();
 

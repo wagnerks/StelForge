@@ -1576,75 +1576,11 @@ namespace SFE::Render
 			return {};
 		}
 
-		GLuint program = glCreateProgram();
+		const GLuint program = linkProgram({ desc.shaders.vertex, desc.shaders.fragment, desc.shaders.geometry,
+			desc.shaders.tessControl, desc.shaders.tessEval }, false);
 		if (program == 0) {
-			RhiLog::fatal("OpenGLRHI::createGraphicsPipeline: glCreateProgram failed");
 			return {};
 		}
-
-		auto attachIfValid = [&](ShaderModuleHandle h)
-		{
-			const GLShaderModule* mod = getLive(m_shaders, h.id);
-			if (!mod || mod->id == 0)
-				return;
-			glAttachShader(program, mod->id);
-		};
-
-		attachIfValid(desc.shaders.vertex);
-		attachIfValid(desc.shaders.fragment);
-		attachIfValid(desc.shaders.geometry);
-		attachIfValid(desc.shaders.tessControl);
-		attachIfValid(desc.shaders.tessEval);
-
-		glLinkProgram(program);
-
-		// проверка линковки
-		GLint linkStatus = 0;
-		glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
-		if (!linkStatus) {
-			GLint logLen = 0;
-			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLen);
-
-			std::string log;
-			log.resize(static_cast<size_t>(logLen));
-			glGetProgramInfoLog(program, logLen, nullptr, log.data());
-
-			RhiLog::fatal("OpenGLRHI::createGraphicsPipeline: link failed:\n%s", log.c_str());
-
-			glDeleteProgram(program);
-			return {};
-		}
-
-		auto bindUniformBlock = [program](const char* name, GLuint binding) {
-			const GLuint index = glGetUniformBlockIndex(program, name);
-			if (index != GL_INVALID_INDEX) {
-				glUniformBlockBinding(program, index, binding);
-			}
-		};
-		bindUniformBlock("LightSpaceMatrices", 11);
-		bindUniformBlock("CurrentCascade", 4);
-		bindUniformBlock("PointLightMatrices", 3);
-		bindUniformBlock("cascadedShadowBlock", 9);
-		bindUniformBlock("pointLightsBlock", 10);
-		bindUniformBlock("SharedMatrices", 5);
-		bindUniformBlock("DrawData", 1);
-		bindUniformBlock("PushConstants", 15);
-
-
-		// можно сразу отвязать шейдеры
-		auto detachIfValid = [&](ShaderModuleHandle h)
-		{
-			const GLShaderModule* mod = getLive(m_shaders, h.id);
-			if (!mod || mod->id == 0)
-				return;
-			glDetachShader(program, mod->id);
-		};
-
-		detachIfValid(desc.shaders.vertex);
-		detachIfValid(desc.shaders.fragment);
-		detachIfValid(desc.shaders.geometry);
-		detachIfValid(desc.shaders.tessControl);
-		detachIfValid(desc.shaders.tessEval);
 
 		// Заполняем GLGraphicsPipeline
 		GLGraphicsPipeline gp{};
@@ -1740,51 +1676,142 @@ namespace SFE::Render
 			return {};
 		}
 
-		GLuint program = glCreateProgram();
-		if (program == 0) {
-			RhiLog::fatal("OpenGLRHI::createComputePipeline: glCreateProgram failed");
-			return {};
-		}
-
 		const GLShaderModule* mod = getLive(m_shaders, desc.compute.id);
 		if (!mod || mod->id == 0) {
 			RhiLog::fatal("OpenGLRHI::createComputePipeline: invalid compute shader");
-			glDeleteProgram(program);
 			return {};
 		}
-		glAttachShader(program, mod->id);
-		glLinkProgram(program);
-
-		GLint linkStatus = 0;
-		glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
-		if (!linkStatus) {
-			GLint logLen = 0;
-			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLen);
-
-			std::string log;
-			log.resize(static_cast<size_t>(logLen));
-			glGetProgramInfoLog(program, logLen, nullptr, log.data());
-
-			RhiLog::fatal("OpenGLRHI::createComputePipeline: link failed:\n%s", log.c_str());
-			glDeleteProgram(program);
+		const GLuint program = linkProgram({ desc.compute }, true);
+		if (program == 0) {
 			return {};
 		}
-
-		const GLuint pushIndex = glGetUniformBlockIndex(program, "PushConstants");
-		if (pushIndex != GL_INVALID_INDEX) {
-			glUniformBlockBinding(program, pushIndex, 15);
-		}
-
-		glDetachShader(program, mod->id);
 
 		GLGraphicsPipeline gp{};
 		gp.programId = program;
 		gp.isCompute = true;
+		gp.computeShader = desc.compute;
 		gp.live = true;
 
 		PipelineHandle handle;
 		handle.id = storeResource(m_pipelines, m_freePipelines, std::move(gp));
 		return handle;
+	}
+
+	GLuint OpenGLRHI::linkProgram(const std::vector<ShaderModuleHandle>& modules, const bool compute)
+	{
+		const GLuint program = glCreateProgram();
+		if (program == 0) {
+			RhiLog::fatal("OpenGLRHI: glCreateProgram failed");
+			return 0;
+		}
+		std::vector<GLuint> attached;
+		for (const auto handle : modules) {
+			const GLShaderModule* mod = handle.id != UINT32_MAX ? getLive(m_shaders, handle.id) : nullptr;
+			if (mod && mod->id != 0) {
+				glAttachShader(program, mod->id);
+				attached.push_back(mod->id);
+			}
+		}
+		glLinkProgram(program);
+		GLint linkStatus = 0;
+		glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
+		if (!linkStatus) {
+			GLint logLen = 0;
+			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLen);
+			std::string log;
+			log.resize(static_cast<size_t>(logLen));
+			glGetProgramInfoLog(program, logLen, nullptr, log.data());
+			RhiLog::fatal("OpenGLRHI: link failed:\n%s", log.c_str());
+			glDeleteProgram(program);
+			return 0;
+		}
+		auto bindUniformBlock = [program](const char* name, GLuint binding) {
+			const GLuint index = glGetUniformBlockIndex(program, name);
+			if (index != GL_INVALID_INDEX) {
+				glUniformBlockBinding(program, index, binding);
+			}
+		};
+		if (!compute) {
+			bindUniformBlock("LightSpaceMatrices", 11);
+			bindUniformBlock("CurrentCascade", 4);
+			bindUniformBlock("PointLightMatrices", 3);
+			bindUniformBlock("cascadedShadowBlock", 9);
+			bindUniformBlock("pointLightsBlock", 10);
+			bindUniformBlock("SharedMatrices", 5);
+			bindUniformBlock("DrawData", 1);
+		}
+		bindUniformBlock("PushConstants", 15);
+		for (const GLuint shader : attached) {
+			glDetachShader(program, shader);
+		}
+		return program;
+	}
+
+	size_t OpenGLRHI::reloadShaders()
+	{
+		const RhiHost* h = host();
+		if (!h) {
+			return 0;
+		}
+		std::vector<uint32_t> remade;
+		for (uint32_t id = 0; id < m_shaders.size(); ++id) {
+			auto& shader = m_shaders[id];
+			if (!shader.live || shader.desc.name.empty()) {
+				continue;
+			}
+			auto source = h->loadShaderSource(shader.desc.name);
+			if (source.empty() || source == shader.desc.source) {
+				continue;
+			}
+			const GLuint fresh = glCreateShader(toGLShaderStage(shader.desc.stage));
+			const char* text = source.c_str();
+			glShaderSource(fresh, 1, &text, nullptr);
+			glCompileShader(fresh);
+			GLint success = 0;
+			glGetShaderiv(fresh, GL_COMPILE_STATUS, &success);
+			if (!success) {
+				GLint logLength = 0;
+				glGetShaderiv(fresh, GL_INFO_LOG_LENGTH, &logLength);
+				std::string log(static_cast<size_t>((std::max)(logLength, 1)), '\0');
+				glGetShaderInfoLog(fresh, logLength, nullptr, log.data());
+				RhiLog::error("OpenGLRHI: %s does not compile; the old one stays:\n%s", shader.desc.name.c_str(), log.c_str());
+				glDeleteShader(fresh);
+				continue;
+			}
+			glDeleteShader(shader.id);
+			shader.id = fresh;
+			shader.desc.source = std::move(source);
+			remade.push_back(id);
+		}
+		if (remade.empty()) {
+			return 0;
+		}
+		const auto uses = [&](const ShaderModuleHandle handle) {
+			return handle.id != UINT32_MAX && std::find(remade.begin(), remade.end(), handle.id) != remade.end();
+		};
+		for (auto& pipeline : m_pipelines) {
+			if (!pipeline.live) {
+				continue;
+			}
+			const auto& shaders = pipeline.desc.shaders;
+			const bool affected = pipeline.isCompute ? uses(pipeline.computeShader)
+				: uses(shaders.vertex) || uses(shaders.fragment) || uses(shaders.geometry) || uses(shaders.tessControl) || uses(shaders.tessEval);
+			if (!affected) {
+				continue;
+			}
+			const GLuint program = pipeline.isCompute ? linkProgram({ pipeline.computeShader }, true)
+				: linkProgram({ shaders.vertex, shaders.fragment, shaders.geometry, shaders.tessControl, shaders.tessEval }, false);
+			if (program == 0) {
+				continue;
+			}
+			glDeleteProgram(pipeline.programId);
+			pipeline.programId = program;
+			pipeline.uniformLocations.clear();
+		}
+		// Whatever was bound is bound again by name at the next draw.
+		m_currentPipeline = {};
+		glUseProgram(0);
+		return remade.size();
 	}
 
 	void OpenGLRHI::destroyGraphicsPipeline(PipelineHandle pipeline)

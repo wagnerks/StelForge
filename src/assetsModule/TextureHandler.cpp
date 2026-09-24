@@ -3,9 +3,10 @@
 #include <stb_image.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
-#include <atomic>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -25,9 +26,13 @@ bool Texture::isValid() const {
 }
 
 namespace {
+	struct StbFree {
+		void operator()(unsigned char* data) const { stbi_image_free(data); }
+	};
+
 	// An image read from its file, with what the loaders learn from its pixels.
 	struct DecodedImage {
-		unsigned char* data = nullptr; // RGBA8, stbi_image_free
+		std::unique_ptr<unsigned char, StbFree> data; // RGBA8
 		int width = 0;
 		int height = 0;
 		bool hasAlpha = false;
@@ -35,6 +40,8 @@ namespace {
 		float fgMean = 0.f;
 		// Where the RHI prepares textures on any thread, the texture itself, and no pixels any more.
 		std::unique_ptr<SFE::Render::PreparedTexture> prepared;
+
+		bool read() const { return data || prepared; }
 	};
 
 	// A texture loaded from a file: RGBA8 unless asked otherwise, with a full mip chain. Without the levels a
@@ -66,21 +73,29 @@ namespace {
 		return samplerDesc;
 	}
 
-	// The texture with its whole chain uploaded at once, on whatever thread calls it; see RenderHardwareInterface::prepareTexture.
-	std::unique_ptr<SFE::Render::PreparedTexture> prepareWithMips(const SFE::Render::TextureDesc& desc, const unsigned char* data) {
-		const auto chain = AssetsModule::TextureHandler::buildMipChain(data, static_cast<int>(desc.width), static_cast<int>(desc.height));
-		std::vector<const void*> levels{ data };
+	// Where the RHI can, the texture with its whole chain uploaded right here, on whatever thread this is (see
+	// RenderHardwareInterface::prepareTexture), and the pixels let go; otherwise nothing changes.
+	void prepare(DecodedImage& image, const SFE::Render::TextureDesc& desc) {
+		auto* rhi = SFE::Engine::instance()->rhi();
+		if (image.prepared || !image.data || !rhi->preparesTextures()) {
+			return;
+		}
+		const auto chain = AssetsModule::TextureHandler::buildMipChain(image.data.get(), image.width, image.height);
+		std::vector<const void*> levels{ image.data.get() };
 		for (const auto& level : chain) {
 			levels.push_back(level.data());
 		}
-		return SFE::Engine::instance()->rhi()->prepareTexture(desc, levels);
+		if ((image.prepared = rhi->prepareTexture(desc, levels))) {
+			image.data.reset();
+		}
 	}
 
-	// Whether it is flipped is stb's flag for the calling thread.
-	DecodedImage decodeImage(const std::string& path) {
+	DecodedImage decodeImage(const std::string& path, const bool flip) {
 		DecodedImage image;
 		int channels = 0;
-		image.data = stbi_load(SFE::FileSystem::resolve(path).string().c_str(), &image.width, &image.height, &channels, 4);
+		// stb's flag for this thread only: loads run on several at once.
+		stbi_set_flip_vertically_on_load_thread(flip);
+		image.data.reset(stbi_load(SFE::FileSystem::resolve(path).string().c_str(), &image.width, &image.height, &channels, 4));
 		if (!image.data) {
 			return image;
 		}
@@ -89,7 +104,7 @@ namespace {
 		int fgCount = 0;
 		int partialAlpha = 0;
 		for (int i = 0; i < n; ++i) {
-			const unsigned char* px = image.data + i * 4;
+			const unsigned char* px = image.data.get() + i * 4;
 			if (px[3] < 250) {
 				image.hasAlpha = true;
 			}
@@ -107,121 +122,49 @@ namespace {
 		return image;
 	}
 
-	// Unflipped images predecode read ahead, waiting for loadTexture to take them.
+	// Unflipped RGBA8 images predecode read ahead, waiting for loadTexture to take them.
 	std::mutex gPredecodedMutex;
 	std::unordered_map<std::string, DecodedImage> gPredecoded;
-}
 
-namespace {
-	// Runs fn(i) for i in [0, count) on threads of their own. stb's flip flag is per thread from the first image
-	// on, and these never read a flipped one; the calling thread's flag is left as it was.
+	// Runs fn(i) for i in [0, count) on threads of their own.
 	void forEachOnWorkers(const size_t count, const std::function<void(size_t)>& fn) {
 		std::atomic<size_t> next{ 0 };
 		std::vector<std::jthread> workers((std::min)(count, static_cast<size_t>((std::max)(1u, std::thread::hardware_concurrency()))));
 		for (auto& worker : workers) {
 			worker = std::jthread([&] {
-				stbi_set_flip_vertically_on_load_thread(0);
 				for (size_t i = next++; i < count; i = next++) {
 					fn(i);
 				}
 			});
 		}
 	}
-}
 
-void TextureHandler::predecode(const std::vector<std::string>& paths) {
-	std::vector<std::string> pending;
-	{
-		std::lock_guard lock(gPredecodedMutex);
-		for (const auto& path : paths) {
-			if (!AssetsManager::instance()->getAsset<Texture>(path) && !gPredecoded.contains(path)
-				&& std::find(pending.begin(), pending.end(), path) == pending.end()) {
-				pending.push_back(path);
-			}
-		}
-	}
-	forEachOnWorkers(pending.size(), [&](const size_t i) {
-		auto image = decodeImage(pending[i]);
-		if (!image.data) {
+	// Runs `work` where the device may be used, and waits for it: right here on the device (main) thread; from any
+	// other, on the main thread between frames -- or, on OpenGL, on the loading worker's shared context. At shutdown
+	// it may never run, so `work` owns whatever it needs.
+	void onDevice(std::function<void()> work) {
+		if (SFE::Engine::isMainThread()) {
+			work();
 			return;
 		}
-		if (SFE::Engine::instance()->rhi()->preparesTextures()) {
-			image.prepared = prepareWithMips(fileTextureDesc(image.width, image.height, SFE::Render::TextureFormat::RGBA8), image.data);
-			if (image.prepared) {
-				stbi_image_free(image.data);
-				image.data = nullptr;
+		auto* pool = SFE::ThreadPool::instance();
+		const auto done = SFE::Render::activeGraphicsBackend() == SFE::Render::GraphicsBackend::OpenGL
+			? pool->addTask<SFE::WorkerType::RESOURCE_LOADING>([work] { SFE::Engine::instance()->rhi()->runOnWorkerThread(work); })
+			: pool->addTask<SFE::WorkerType::SYNC>(std::move(work));
+		if (!done.valid()) {
+			return;
+		}
+		while (done.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+			if (!SFE::ThreadPool::isAlive() || pool->isShuttingDown()) {
+				return;
 			}
 		}
-		std::lock_guard lock(gPredecodedMutex);
-		gPredecoded.emplace(pending[i], std::move(image));
-	});
-}
-
-Texture* TextureHandler::loadTextureArray(const std::string& name, const std::vector<std::string>& paths) {
-	if (auto* texture = AssetsManager::instance()->getAsset<Texture>(name)) {
-		return texture;
-	}
-	std::vector<DecodedImage> images(paths.size());
-	std::vector<std::vector<std::vector<unsigned char>>> chains(paths.size());
-	forEachOnWorkers(paths.size(), [&](const size_t i) {
-		images[i] = decodeImage(paths[i]);
-		chains[i] = buildMipChain(images[i].data, images[i].width, images[i].height);
-	});
-	const auto releasePixels = [&] {
-		for (auto& image : images) {
-			if (image.data) {
-				stbi_image_free(image.data);
-			}
-		}
-	};
-	for (size_t i = 0; i < images.size(); ++i) {
-		if (!images[i].data || images[i].width != images.front().width || images[i].height != images.front().height) {
-			SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::texture array %s: %s is missing or not the size of the first layer", name.c_str(), paths[i].c_str());
-			releasePixels();
-			return &TextureHandler::instance()->mDefaultTex;
-		}
 	}
 
-	auto desc = fileTextureDesc(images.front().width, images.front().height, SFE::Render::TextureFormat::RGBA8);
-	desc.dimension = SFE::Render::TextureDimension::Array;
-	desc.depth = static_cast<uint32_t>(images.size());
-	desc.arrayLayers = desc.depth;
-	auto* rhi = SFE::Engine::instance()->rhi();
-	auto* texture = AssetsManager::instance()->createAsset<Texture>(name);
-	texture->texture = rhi->createTexture(desc, nullptr);
-	for (uint32_t layer = 0; layer < desc.depth; ++layer) {
-		rhi->updateTexture(texture->texture, 0, 0, desc.width, desc.height, desc.format, images[layer].data, 0, layer);
-		for (uint32_t level = 1; level < desc.mipLevels && level <= chains[layer].size(); ++level) {
-			rhi->updateTexture(texture->texture, 0, 0, (std::max)(1u, desc.width >> level), (std::max)(1u, desc.height >> level), desc.format,
-				chains[layer][level - 1].data(), level, layer);
-		}
-	}
-	releasePixels();
-	texture->sampler = rhi->createSampler(fileSamplerDesc());
-	return texture;
-}
-
-void TextureHandler::dropPredecoded() {
-	std::lock_guard lock(gPredecodedMutex);
-	for (auto& [path, image] : gPredecoded) {
-		if (image.data) {
-			stbi_image_free(image.data);
-		}
-	}
-	gPredecoded.clear();
-}
-
-namespace {
 	// The whole chain, ours rather than the driver's. createTexture is given no pixels on purpose: with data it
 	// would build the levels itself, and that is the part the two backends disagree on.
 	SFE::Render::TextureHandle createWithMips(const SFE::Render::TextureDesc& desc, const unsigned char* data) {
 		auto* rhi = SFE::Engine::instance()->rhi();
-		// One upload for every level, where the RHI can: a texture and then each level after it is a wait apiece.
-		if (data && rhi->preparesTextures()) {
-			if (auto prepared = prepareWithMips(desc, data)) {
-				return rhi->adoptTexture(std::move(prepared));
-			}
-		}
 		const auto tex = rhi->createTexture(desc, nullptr);
 		if (!tex || !data) {
 			return tex;
@@ -235,6 +178,111 @@ namespace {
 		}
 		return tex;
 	}
+}
+
+TextureHandler::Predecoded::~Predecoded() {
+	std::lock_guard lock(gPredecodedMutex);
+	for (const auto& path : mPaths) {
+		gPredecoded.erase(path);
+	}
+}
+
+TextureHandler::Predecoded TextureHandler::predecode(const std::vector<std::string>& paths) {
+	Predecoded ahead;
+	{
+		std::lock_guard lock(gPredecodedMutex);
+		for (const auto& path : paths) {
+			if (!AssetsManager::instance()->getAsset<Texture>(path) && !gPredecoded.contains(path)
+				&& std::find(ahead.mPaths.begin(), ahead.mPaths.end(), path) == ahead.mPaths.end()) {
+				ahead.mPaths.push_back(path);
+			}
+		}
+	}
+	forEachOnWorkers(ahead.mPaths.size(), [&](const size_t i) {
+		auto image = decodeImage(ahead.mPaths[i], false);
+		if (!image.data) {
+			return;
+		}
+		prepare(image, fileTextureDesc(image.width, image.height, SFE::Render::TextureFormat::RGBA8));
+		std::lock_guard lock(gPredecodedMutex);
+		gPredecoded.emplace(ahead.mPaths[i], std::move(image));
+	});
+	return ahead;
+}
+
+Texture* TextureHandler::loadTextureArray(const std::string& name, const std::vector<std::string>& paths) {
+	if (auto* texture = AssetsManager::instance()->getAsset<Texture>(name)) {
+		return texture;
+	}
+	std::vector<DecodedImage> images(paths.size());
+	std::vector<std::vector<std::vector<unsigned char>>> chains(paths.size());
+	forEachOnWorkers(paths.size(), [&](const size_t i) {
+		images[i] = decodeImage(paths[i], false);
+		chains[i] = buildMipChain(images[i].data.get(), images[i].width, images[i].height);
+	});
+	for (size_t i = 0; i < images.size(); ++i) {
+		if (!images[i].data || images[i].width != images.front().width || images[i].height != images.front().height) {
+			SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::texture array %s: %s is missing or not the size of the first layer", name.c_str(), paths[i].c_str());
+			return &TextureHandler::instance()->mDefaultTex;
+		}
+	}
+
+	auto desc = fileTextureDesc(images.front().width, images.front().height, SFE::Render::TextureFormat::RGBA8);
+	desc.dimension = SFE::Render::TextureDimension::Array;
+	desc.depth = static_cast<uint32_t>(images.size());
+	desc.arrayLayers = desc.depth;
+	auto* texture = AssetsManager::instance()->createAsset<Texture>(name);
+	onDevice([texture, desc, images = std::make_shared<std::vector<DecodedImage>>(std::move(images)),
+		chains = std::make_shared<std::vector<std::vector<std::vector<unsigned char>>>>(std::move(chains))] {
+		auto* rhi = SFE::Engine::instance()->rhi();
+		texture->texture = rhi->createTexture(desc, nullptr);
+		for (uint32_t layer = 0; layer < desc.depth; ++layer) {
+			rhi->updateTexture(texture->texture, 0, 0, desc.width, desc.height, desc.format, (*images)[layer].data.get(), 0, layer);
+			for (uint32_t level = 1; level < desc.mipLevels && level <= (*chains)[layer].size(); ++level) {
+				rhi->updateTexture(texture->texture, 0, 0, (std::max)(1u, desc.width >> level), (std::max)(1u, desc.height >> level), desc.format,
+					(*chains)[layer][level - 1].data(), level, layer);
+			}
+		}
+		texture->sampler = rhi->createSampler(fileSamplerDesc());
+	});
+	return texture;
+}
+
+size_t TextureHandler::reloadChanged(std::string& unchanged) {
+	auto* rhi = SFE::Engine::instance()->rhi();
+	size_t made = 0;
+	bool waited = false;
+	for (auto* texture : AssetsManager::instance()->changedOnDisk<Texture>()) {
+		// Only one read from a single image file (loadTexture) is read again.
+		if (!texture->texture || !texture->width) {
+			continue;
+		}
+		AssetsManager::stamp(*texture);
+		auto image = decodeImage(texture->assetPath, texture->flip);
+		if (!image.data) {
+			continue;
+		}
+		if (image.width != texture->width || image.height != texture->height || texture->format != SFE::Render::TextureFormat::RGBA8) {
+			unchanged += (unchanged.empty() ? "" : ", ") + texture->assetPath;
+			continue;
+		}
+		if (!waited) {
+			rhi->waitIdle();
+			waited = true;
+		}
+		const auto chain = buildMipChain(image.data.get(), image.width, image.height);
+		const auto levels = SFE::Render::mipLevelsFor(static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height));
+		rhi->updateTexture(texture->texture, 0, 0, image.width, image.height, texture->format, image.data.get(), 0);
+		for (uint32_t level = 1; level < levels && level <= chain.size(); ++level) {
+			rhi->updateTexture(texture->texture, 0, 0, (std::max)(1, image.width >> level), (std::max)(1, image.height >> level),
+				texture->format, chain[level - 1].data(), level);
+		}
+		texture->hasAlpha = image.hasAlpha;
+		texture->hasCutoutAlpha = image.hasCutoutAlpha;
+		texture->fgMean = image.fgMean;
+		++made;
+	}
+	return made;
 }
 
 std::vector<std::vector<unsigned char>> TextureHandler::buildMipChain(const unsigned char* rgba, int width, int height) {
@@ -324,168 +372,40 @@ std::vector<std::vector<unsigned char>> TextureHandler::buildMipChain(const unsi
 }
 
 Texture* TextureHandler::loadTexture(const std::string& path, bool flip, SFE::Render::TextureFormat format) {
-	auto texture = AssetsManager::instance()->getAsset<Texture>(path);
-	if (texture) {
+	if (auto* texture = AssetsManager::instance()->getAsset<Texture>(path)) {
 		return texture;
 	}
 
 	DecodedImage image;
-	bool predecoded = false;
-	// Predecoded images are unflipped RGBA8, and a prepared texture is adopted on the device thread only.
-	if (!flip && format == SFE::Render::TextureFormat::RGBA8 && SFE::Engine::isMainThread()) {
+	if (!flip && format == SFE::Render::TextureFormat::RGBA8) {
 		std::lock_guard lock(gPredecodedMutex);
 		if (const auto it = gPredecoded.find(path); it != gPredecoded.end()) {
 			image = std::move(it->second);
 			gPredecoded.erase(it);
-			predecoded = true;
 		}
 	}
-	if (!predecoded) {
-		stbi_set_flip_vertically_on_load(flip);
-		image = decodeImage(path);
+	if (!image.read()) {
+		image = decodeImage(path, flip);
 	}
-	const auto texWidth = image.width;
-	const auto texHeight = image.height;
-	const auto data = image.data;
-	if (!data && !image.prepared) {
+	if (!image.read()) {
 		SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", path.c_str());
 		return &TextureHandler::instance()->mDefaultTex;
 	}
+	const auto desc = fileTextureDesc(image.width, image.height, format);
+	prepare(image, desc);
 
-	texture = AssetsManager::instance()->createAsset<Texture>(path);
+	auto* texture = AssetsManager::instance()->createAsset<Texture>(path);
 	texture->hasAlpha = image.hasAlpha;
 	texture->hasCutoutAlpha = image.hasCutoutAlpha;
 	texture->fgMean = image.fgMean;
-	const auto desc = fileTextureDesc(texWidth, texHeight, format);
-
-	const auto samplerDesc = fileSamplerDesc();
-
-
-	if (image.prepared) {
-		texture->texture = SFE::Engine::instance()->rhi()->adoptTexture(std::move(image.prepared));
-		texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
-	}
-	else if (SFE::Engine::isMainThread()) {
-		texture->texture = createWithMips(desc, data);
-		texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
-		stbi_image_free(data);
-	}
-	else if (SFE::Render::activeGraphicsBackend() != SFE::Render::GraphicsBackend::OpenGL) {
-		// The texture is made and uploaded right here; only turning it into a handle, which touches the resource
-		// tables the frame reads, waits for the main thread.
-		// Where the RHI cannot, all of it happens there. The task owns the pixels or the prepared texture, so leaving
-		// the wait at shutdown cannot free them under it.
-		auto* prepared = SFE::Engine::instance()->rhi()->preparesTextures() ? prepareWithMips(desc, data).release() : nullptr;
-		if (prepared) {
-			stbi_image_free(data);
-		}
-		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::SYNC>([texture, desc, data, prepared, samplerDesc]() {
-			auto* rhi = SFE::Engine::instance()->rhi();
-			if (prepared) {
-				texture->texture = rhi->adoptTexture(std::unique_ptr<SFE::Render::PreparedTexture>(prepared));
-			}
-			else {
-				texture->texture = createWithMips(desc, data);
-				stbi_image_free(data);
-			}
-			texture->sampler = rhi->createSampler(samplerDesc);
-		});
-		if (fut.valid()) {
-			while (fut.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
-				if (!SFE::ThreadPool::isAlive() || SFE::ThreadPool::instance()->isShuttingDown()) {
-					break;
-				}
-			}
-		}
-		else if (prepared) {
-			delete prepared;
-		}
-		else {
-			stbi_image_free(data);
-		}
-	}
-	else {
-		auto fut = SFE::ThreadPool::instance()->addTask<SFE::WorkerType::RESOURCE_LOADING>([id = texture->assetId, desc, data, samplerDesc]()mutable {
-			auto tex = AssetsManager::instance()->getAsset<Texture>(id);
-
-			auto* rhi = SFE::Engine::instance()->rhi();
-			rhi->runOnWorkerThread([&] {
-				tex->texture = createWithMips(desc, data);
-				tex->sampler = rhi->createSampler(samplerDesc);
-			});
-
-			stbi_image_free(data);
-		});
-		if (fut.valid()) {
-			fut.wait();
-		}
-		else {
-			stbi_image_free(data);
-		}
-	}
-
-	return texture;
-}
-
-Texture* TextureHandler::loadCubemapTexture(const std::string& path, bool flip) {
-	auto texture = AssetsManager::instance()->getAsset<Texture>(path);
-	if (texture) {
-		return texture;
-	}
-	//todo
-	stbi_set_flip_vertically_on_load(flip);
-
-	texture = AssetsManager::instance()->createAsset<Texture>(path);
-
-	SFE::Render::TextureDesc desc;
-	desc.dimension = SFE::Render::TextureDimension::Cube;
-
-	SFE::Render::SamplerDesc samplerDesc;
-	samplerDesc.minFilter = SFE::Render::FilterMode::Linear;
-	samplerDesc.magFilter = SFE::Render::FilterMode::Linear;
-	samplerDesc.addressU = SFE::Render::AddressMode::ClampToEdge;
-	samplerDesc.addressV = SFE::Render::AddressMode::ClampToEdge;
-	samplerDesc.addressW = SFE::Render::AddressMode::ClampToEdge;
-
-
-	texture->texture = SFE::Engine::instance()->rhi()->createTexture(desc);
-	texture->sampler = SFE::Engine::instance()->rhi()->createSampler(samplerDesc);
-
-
-	std::vector<std::string> faces{
-		path + "right.jpg",
-		path + "left.jpg",
-		path + "top.jpg",
-		path + "bottom.jpg",
-		path + "front.jpg",
-		path + "back.jpg"
-	};
-	std::vector<stbi_uc*> data;
-	int w, h;
-	int width, height, nrChannels;
-	for (unsigned int i = 0; i < faces.size(); i++) {
-		const auto resolved = SFE::FileSystem::resolve(faces[i]).string();
-		data.push_back(stbi_load(resolved.c_str(), &width, &height, &nrChannels, 0));
-		w = std::max(w, width);
-		h = std::max(h, height);
-	}
-
-	desc.width = static_cast<uint32_t>(w);
-	desc.height = static_cast<uint32_t>(h);
-
-	for (unsigned int i = 0; i < faces.size(); i++) {
-		const auto resolved = SFE::FileSystem::resolve(faces[i]).string();
-		auto data = stbi_load(resolved.c_str(), &width, &height, &nrChannels, 0);
-		if (!data) {
-			SFE::LogsModule::Logger::LOG_ERROR("TextureHandler::can't load texture %s", resolved.c_str());
-			stbi_image_free(data);
-			continue;
-		}
-		
-		//texture->texture.image2D(static_cast<int>(CubeMapFaces::POSITIVE_X) + i, width, height,RGB8, data); //todo
-		stbi_image_free(data);
-	}
-
-	
+	texture->width = image.width;
+	texture->height = image.height;
+	texture->flip = flip;
+	texture->format = format;
+	onDevice([texture, desc, image = std::make_shared<DecodedImage>(std::move(image))] {
+		auto* rhi = SFE::Engine::instance()->rhi();
+		texture->texture = image->prepared ? rhi->adoptTexture(std::move(image->prepared)) : createWithMips(desc, image->data.get());
+		texture->sampler = rhi->createSampler(fileSamplerDesc());
+	});
 	return texture;
 }

@@ -644,6 +644,11 @@ namespace SFE::Render
 		virtual void destroyShaderModule(ShaderModuleHandle handle) = 0;
 		// Reads the source through the host and creates a module from it; the same text on both backends.
 		ShaderModuleHandle loadShader(ShaderStage stage, std::string_view path);
+		// Between frames: every module whose source, read again through the host with its includes, is not the text it
+		// was made from is made again, and every pipeline made with it remade as it was, under the same handle -- a
+		// shader edited while the engine runs is drawn with at once. One that no longer compiles keeps the old one,
+		// and says why. How many modules were remade.
+		virtual size_t reloadShaders() { return 0; }
 
 		virtual FramebufferHandle createFramebuffer(const FramebufferDesc& desc) = 0;
 		virtual void destroyFramebuffer(FramebufferHandle framebuffer) = 0;

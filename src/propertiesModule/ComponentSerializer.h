@@ -32,7 +32,7 @@ namespace SFE::PropertiesModule {
 	enum class LoadPhase {
 		Never,     ///< Written for inspection only; restored by whoever owns that state.
 		Direct,    ///< As soon as the entity exists.
-		AfterBind  ///< After bindRenderable(), for components that write into the built mesh.
+		AfterBind  ///< After ModelBinding::bind(), for components that write into the built mesh.
 	};
 
 	/**

@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <filesystem>
+#include <map>
 #include <mutex>
 #include <unordered_map>
 #include <assimp/material.h>
@@ -25,6 +27,10 @@ namespace AssetsModule {
 		// Loads every model not loaded yet, reading the files and decoding their textures in parallel. From the
 		// thread the device is used from, like load.
 		void loadAll(const std::vector<std::string>& paths);
+		// A model read from its file again, made the asset its path names (AssetsManager::replaceAsset); nullptr when
+		// the file does not read. Nothing made from the old one is touched here: PropertiesModule::ModelBinding::reload does that.
+		// From the device thread, between frames.
+		AssetsModule::Model* reload(const std::string& path);
 		std::map<std::string, std::condition_variable> loading;
 		std::mutex mtx;
 	private:
@@ -40,6 +46,8 @@ namespace AssetsModule {
 		static Loaded read(const std::string& path, const aiScene* scene);
 		static void finishMeshes(Loaded& loaded);
 		AssetsModule::Model* publish(const std::string& path, Loaded&& loaded);
+		// Every texture file a scene's materials name that is there on disk, to decode ahead, side by side.
+		static std::vector<std::string> textureFiles(const aiScene* scene, const std::string& path);
 		// The files a texture a material names may be, in the order they are tried.
 		static std::vector<std::string> textureFileCandidates(const std::string& raw, const std::string& directory);
 		static std::tuple<SFE::Tree<SFE::MeshObject3D>, Armature> loadModel(const aiScene* scene, const std::string& path);
