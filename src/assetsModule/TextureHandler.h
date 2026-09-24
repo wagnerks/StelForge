@@ -61,6 +61,8 @@ namespace AssetsModule {
 		// A texture array, one layer per image in order, every image the same size; unflipped RGBA8 with mips.
 		// Kept under `name`.
 		static Texture* loadTextureArray(const std::string& name, const std::vector<std::string>& paths);
+		// An image file's pixels on the CPU: RGBA8, rows from the top, unflipped; empty when it does not read. Any thread.
+		static std::vector<unsigned char> readPixels(const std::string& path, int& width, int& height);
 		// Every texture read from a file that has been written since, read again into the same texture: whatever draws
 		// with it shows the new picture. One whose size or format changed is left as it was, and named in `unchanged`.
 		// From the device thread, between frames. How many were read again.

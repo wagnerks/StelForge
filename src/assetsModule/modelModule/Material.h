@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <string>
 #include <unordered_map>
 #include "mathModule/Forward.h"
 #include "rhi/RenderHardwareInterface.h"
@@ -25,6 +26,8 @@ namespace SFE {
 		int uniformSlot = 0;
 		MaterialType type = MaterialType::CUSTOM;
 		int uvSet = 0;
+		// The file it was read from; empty for one made in memory.
+		std::string path;
 	};
 
 	struct Material {

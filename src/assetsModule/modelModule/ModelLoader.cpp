@@ -616,6 +616,7 @@ void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMa
 		int uv = 0;
 		assimpMaterial->Get(AI_MATKEY_UVWSRC(uvType, 0), uv);
 		material[type] = SFE::MaterialTexture{ maps.front()->texture, type, type, uv };
+		material[type].path = maps.front()->assetPath;
 		if (type == SFE::DIFFUSE) {
 			onDiffuse(maps.front());
 		}
@@ -639,6 +640,7 @@ void ModelLoader::readMaterialData(SFE::Material& material, aiMaterial* assimpMa
 					continue;
 				}
 				material[type] = SFE::MaterialTexture{ tex->texture, type, type };
+				material[type].path = tex->assetPath;
 				if (type == SFE::DIFFUSE) {
 					onDiffuse(tex);
 				}

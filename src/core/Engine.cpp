@@ -1,7 +1,9 @@
 ﻿#include "Engine.h"
 #include "core/LoadTrace.h"
 
+#include <algorithm>
 #include <chrono>
+#include <functional>
 #include <cstdio>
 #include <thread>
 
@@ -12,8 +14,13 @@
 #include "assetsModule/shaderModule/ShaderBase.h"
 #include "logsModule/logger.h"
 #include "runtimeBridge/RuntimeBridge.h"
+#include "core/ECSHandler.h"
+#include "componentsModule/DebugDataComponent.h"
+#include "componentsModule/TransformComponent.h"
 #include "assetsModule/TextureHandler.h"
 #include "assetsModule/modelModule/ModelLoader.h"
+#include "assetsModule/modelModule/SurfaceBake.h"
+#include "core/FileSystem.h"
 #include "propertiesModule/ModelBinding.h"
 #include "multithreading/ThreadPool.h"
 #include "rhi/GraphicsBackend.h"
@@ -157,6 +164,117 @@ namespace SFE {
 				std::string unchanged;
 				const size_t made = AssetsModule::TextureHandler::reloadChanged(unchanged);
 				return std::to_string(made) + " textures read again" + (unchanged.empty() ? "" : "; a new size, left as they were: " + unchanged);
+			});
+		bridge->addCommand("bakeSurface",
+			"A model's meshes unrolled round a sphere and drawn flat, on the CPU (AssetsModule::bakeSurface): {\"model\": path, "
+			"\"nodes\": [names, all if none], \"centre\": [x,y,z] (else the sphere fitted to them, or to the nodes of "
+			"\"fitTo\"), \"up\", \"front\", "
+			"\"azimuth\": [from, to], \"polar\": [from, to] degrees, \"size\": [w, h], \"normals\": \"height\" or \"mesh\", "
+			"\"colour\": png, \"normal\": png (its alpha the height)}.",
+			[](const Json::Value& args) -> std::string {
+				if (!args.isObject() || !args.isMember("model")) {
+					return "give {\"model\": path, ...}";
+				}
+				auto* model = AssetsModule::ModelLoader::instance()->load(args["model"].asString());
+				if (!model) {
+					return "no model " + args["model"].asString();
+				}
+				// The meshes of the nodes a list names; all of them for none.
+				const auto meshesOf = [&](const Json::Value& list) {
+					std::vector<std::string> names;
+					for (const auto& name : list) {
+						names.push_back(name.asString());
+					}
+					std::vector<const MeshObject3D*> found;
+					std::function<void(const Tree<MeshObject3D>&)> gather = [&](const Tree<MeshObject3D>& node) {
+						if (!node.value.mesh.indices.empty()
+							&& (names.empty() || std::find(names.begin(), names.end(), node.value.nodeName) != names.end())) {
+							found.push_back(&node.value);
+						}
+						for (const auto& child : node.children) {
+							gather(child);
+						}
+					};
+					gather(model->getMeshTree());
+					return found;
+				};
+				const auto meshes = meshesOf(args["nodes"]);
+				if (meshes.empty()) {
+					return "none of those meshes in " + args["model"].asString();
+				}
+				const auto vec3 = [&](const char* key, const Math::Vec3& otherwise) {
+					const auto& value = args[key];
+					return value.isArray() ? Math::Vec3{ value[0].asFloat(), value[1].asFloat(), value[2].asFloat() } : otherwise;
+				};
+				const auto sphere = AssetsModule::fitSphere(args.isMember("fitTo") ? meshesOf(args["fitTo"]) : meshes);
+				AssetsModule::SphereUnwrap unwrap;
+				unwrap.centre = vec3("centre", { sphere.x, sphere.y, sphere.z });
+				unwrap.up = vec3("up", unwrap.up);
+				unwrap.front = vec3("front", unwrap.front);
+				for (int i = 0; i < 2; ++i) {
+					unwrap.azimuth[i] = args["azimuth"].get(static_cast<Json::ArrayIndex>(i), unwrap.azimuth[i]).asFloat();
+					unwrap.polar[i] = args["polar"].get(static_cast<Json::ArrayIndex>(i), unwrap.polar[i]).asFloat();
+				}
+				const int width = args["size"].get(0u, 1024).asInt();
+				const int height = args["size"].get(1u, 512).asInt();
+				const auto baked = AssetsModule::bakeSurface(meshes, unwrap, width, height, args.get("normals", "height").asString() != "mesh");
+				std::string written;
+				for (const auto& [key, pixels] : { std::pair{ "colour", &baked.colour }, std::pair{ "normal", &baked.normal } }) {
+					if (args.isMember(key)) {
+						const auto path = args[key].asString();
+						written += (Render::writePng(FileSystem::resolve(path).string(), *pixels, baked.width, baked.height) ? " " : " NOT ") + path;
+					}
+				}
+				char said[256];
+				std::snprintf(said, sizeof(said), "%zu meshes round [%.4f, %.4f, %.4f] (fitted radius %.4f): %.1f%% drawn, radius %.4f..%.4f;",
+					meshes.size(), unwrap.centre.x, unwrap.centre.y, unwrap.centre.z, sphere.w, baked.covered * 100.f, baked.radiusMin, baked.radiusMax);
+				return said + written;
+			});
+		bridge->addCommand("setTransform",
+			"An entity's transform, by the scene's {\"id\": ...} or {\"entity\": n}: \"pos\" [x,y,z], \"rotate\" [x,y,z] degrees, "
+			"\"scale\" [x,y,z] or one number -- whichever are given; then where it is. One a system places every frame "
+			"(the player, say) goes back there.",
+			[](const Json::Value& args) -> std::string {
+				auto& registry = ECSHandler::registry();
+				auto entity = ecss::INVALID_ID;
+				if (args.isObject() && args.isMember("entity")) {
+					entity = static_cast<ecss::EntityId>(args["entity"].asUInt());
+				}
+				else if (args.isObject() && args.isMember("id")) {
+					const auto id = args["id"].asString();
+					for (const auto& [candidate, debug] : registry.view<const DebugDataComponent>()) {
+						if (debug && debug->stringId == id) {
+							entity = candidate;
+							break;
+						}
+					}
+				}
+				if (entity == ecss::INVALID_ID) {
+					return "no entity by that id; give {\"id\": ...} or {\"entity\": n}";
+				}
+				auto transform = registry.pinComponent<ComponentsModule::TransformComponent>(entity);
+				if (!transform) {
+					return "entity " + std::to_string(entity) + " has no transform";
+				}
+				const auto vec3 = [](const Json::Value& value) {
+					return value.isArray() ? Math::Vec3{ value[0].asFloat(), value[1].asFloat(), value[2].asFloat() } : Math::Vec3{ value.asFloat() };
+				};
+				if (args.isMember("pos")) {
+					transform->setPos(vec3(args["pos"]));
+				}
+				if (args.isMember("rotate")) {
+					transform->setRotate(vec3(args["rotate"]));
+				}
+				if (args.isMember("scale")) {
+					transform->setScale(vec3(args["scale"]));
+				}
+				const auto text = [](const Math::Vec3& v) {
+					char out[96];
+					std::snprintf(out, sizeof(out), "[%.3f, %.3f, %.3f]", v.x, v.y, v.z);
+					return std::string(out);
+				};
+				return "entity " + std::to_string(entity) + ": pos " + text(transform->getPos()) + ", rotate "
+					+ text(transform->getRotate()) + ", scale " + text(transform->getScale());
 			});
 	}
 

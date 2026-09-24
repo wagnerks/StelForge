@@ -248,6 +248,17 @@ Texture* TextureHandler::loadTextureArray(const std::string& name, const std::ve
 	return texture;
 }
 
+std::vector<unsigned char> TextureHandler::readPixels(const std::string& path, int& width, int& height) {
+	const auto image = decodeImage(path, false);
+	if (!image.data) {
+		width = height = 0;
+		return {};
+	}
+	width = image.width;
+	height = image.height;
+	return { image.data.get(), image.data.get() + static_cast<size_t>(width) * height * 4 };
+}
+
 size_t TextureHandler::reloadChanged(std::string& unchanged) {
 	auto* rhi = SFE::Engine::instance()->rhi();
 	size_t made = 0;
