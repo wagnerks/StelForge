@@ -4,7 +4,8 @@
 // Mist on the water and haze in the distance, over the finished image. Along the view ray up to whatever the pixel
 // shows -- the sky counts as far away, and a ray into the lake stops at its surface -- the mist's density falls off
 // exponentially with height above the water, so its thickness is exact rather than marched. The mist drifts in
-// patches with the wind; both are lit by the sky around the horizon and by the sun scattered forwards.
+// patches with the wind; both are lit by the sky around the horizon and by the sun scattered forwards. Over foul
+// water fumes rise as well, a low mist of their own colour.
 layout(location = 0) in vec2 vNdc;
 layout(location = 0) out vec4 FragColor; // rgb the light added, a what is left of the image behind
 
@@ -13,11 +14,15 @@ layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     SFE_SHARED_MATRICES
 } matrices;
 layout(SFE_SET(0, 20)) uniform sampler2D skyLut;
+layout(SFE_SET(0, 23)) uniform sampler2D areaTintMap;
 
 layout(SFE_SET(0, 15), std140) uniform MistBlock {
     SFE_SKY_PARAMS
     vec4 mist; // x density at the water line per metre, y metres up over which it thins to 1/e, z haze per metre, w water level
     vec4 view; // x the view distance: the far plane
+    vec4 tintArea;    // the area tint map's place, see sfeAreaTint
+    vec4 fumes;       // x the map's water value they rise from, y metres up over which they thin to 1/e
+    vec4 fumesColour; // rgb what the light in them is multiplied by, a density per metre at the water line at worst
 } fog;
 
 const float PI = 3.14159265;
@@ -25,6 +30,11 @@ const float PI = 3.14159265;
 const float kSkyDistance = 4000.0;
 // Metres up over which the haze thins to 1/e.
 const float kHazeHeight = 150.0;
+// Points the fumes are taken at along a ray, and the longest stretch of it they are spread over.
+const int kFumesSamples = 8;
+const float kFumesReach = 300.0;
+// How many times their height the fumes swell up to in their mounds.
+const float kFumesSwell = 2.5;
 
 // The thickness of a layer whose density falls off as exp(-height / scale), along a ray between two heights over its
 // base: the integral in closed form, written so neither end can overflow.
@@ -77,6 +87,36 @@ void main() {
         float patches = mix(0.3, 1.7, sfeFbm(patchAt * 0.008, 3));
         opticalDepth = fog.mist.x * patches * mistDepth + opticalDepth;
     }
+    // The fumes are only where the water under them is foul, so not the same everywhere as the mist: taken at points
+    // along the stretch of the ray low enough to be in them, from a different place along it for each pixel.
+    float fumesDepth = 0.0;
+    if (fog.fumesColour.a > 0.0) {
+        float top = fog.fumes.y * kFumesSwell * 4.0; // past it under 2% of their density at the water line
+        float near = startHeight < top ? 0.0 : (dir.y < -1e-4 ? (startHeight - top) / -dir.y : rayLength);
+        float far = dir.y > 1e-4 ? min(rayLength, (top - startHeight) / dir.y) : rayLength;
+        far = min(far, near + kFumesReach);
+        if (far > near) {
+            float jitter = sfeInterleavedGradientNoise(gl_FragCoord.xy, 0u);
+            float stride = (far - near) / float(kFumesSamples);
+            vec2 drift = fog.wind.xz * fog.sunColor.w * (0.3 + 0.9 * fog.wind.y);
+            for (int i = 0; i < kFumesSamples; ++i) {
+                float t = near + (float(i) + jitter) * stride;
+                vec3 at = camera + dir * t;
+                float foul = smoothstep(fog.fumes.x, 1.0, sfeAreaTint(areaTintMap, fog.tintArea, at.xz).g);
+                if (foul > 0.0) {
+                    // Lying on the water in mounds a few metres across, some swelling up well over the rest, with
+                    // wisps through them, all drifting with the wind: a flat sheet would read as the water's own
+                    // colour, not as something over it.
+                    float swell = fog.fumes.y * mix(0.3, kFumesSwell, sfeFbm((at.xz - drift) * 0.12, 2));
+                    float wisps = mix(0.05, 2.2, smoothstep(0.3, 0.75, sfeFbm((at.xz - drift * 1.6) * 0.35, 2)));
+                    fumesDepth += foul * wisps * exp(-max(at.y - level, 0.0) / swell);
+                }
+            }
+            fumesDepth *= fog.fumesColour.a * stride;
+        }
+    }
+    float fumesShare = fumesDepth / max(opticalDepth + fumesDepth, 1e-5);
+    opticalDepth += fumesDepth;
     float transmittance = exp(-opticalDepth);
     // The last stretch before the far plane fades into the haze entirely, so the scene has no edge where it ends.
     if (!isSky) {
@@ -92,7 +132,10 @@ void main() {
     float g = 0.55;
     float mu = dot(dir, toSun);
     float phase = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
-    vec3 inScatter = mix(horizon, overhead, 0.35) * 1.1 + fog.sunColor.rgb * phase * 0.35 * max(toSun.y + 0.1, 0.0);
+    vec3 skyPart = mix(horizon, overhead, 0.35) * 1.1;
+    vec3 sunPart = fog.sunColor.rgb * phase * 0.35 * max(toSun.y + 0.1, 0.0);
+    // The fumes are a murk rather than a haze of fine droplets: they glow far less towards the sun.
+    vec3 inScatter = mix(skyPart + sunPart, (skyPart + sunPart * 0.2) * fog.fumesColour.rgb, fumesShare);
 
     FragColor = vec4(inScatter * (1.0 - transmittance), transmittance);
 }

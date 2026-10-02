@@ -25,6 +25,10 @@ layout(SFE_SET(1, 2)) uniform sampler2DArray groundNormal;
 layout(SFE_SET(1, 3)) uniform sampler2D forestMap;
 // terrainNoiseTexture, in the ROUGHNESS slot.
 layout(SFE_SET(1, 4)) uniform sampler2D terrainNoise;
+// terrainRoadFrameTexture, in the METALLIC slot.
+layout(SFE_SET(1, 5)) uniform sampler2D roadFrame;
+// The area tint map (AreaTintFrame), in the frame set: the bank goes to mud where it or the water by it is dirty.
+layout(SFE_SET(0, 22)) uniform sampler2D areaTintMap;
 
 layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
     SFE_SHARED_MATRICES
@@ -36,18 +40,19 @@ const int kMud = 2;
 const int kSand = 3;
 const int kRocks = 4;
 const int kLitter = 5;
-const int kTrack = 6; // between the road's ruts
-const int kLayers = 7;
+const int kTrack = 6; // the road and its clearings: wheel marks, laid along the road
+const int kPebbles = 7; // the lake's bank while it is clean
+const int kLayers = 8;
 // Metres one tile covers.
-const float kTile[kLayers] = float[](2.5, 3.5, 3.0, 4.0, 3.0, 2.5, 3.0);
+const float kTile[kLayers] = float[](2.5, 3.5, 3.0, 4.0, 3.0, 2.5, 2.0, 2.0);
 // The materials are painted bright; this brings them down to the light the rest of the scene is lit for.
 const float kBrightness = 0.75;
 // Metres the height map's full range stands for, for parallax: stones and clumps look raised, not painted on.
-const float kRelief[kLayers] = float[](0.05, 0.06, 0.07, 0.05, 0.1, 0.05, 0.05);
+const float kRelief[kLayers] = float[](0.05, 0.06, 0.07, 0.05, 0.1, 0.05, 0.05, 0.05);
 // The painted maps are gentle; lit by a low sun they read as flat without some help.
 const float kNormalStrength = 0.9;
 // Hummocks, ruts and dips a metre or two across: the ground's own unevenness between the mesh's vertices.
-const float kBumps[kLayers] = float[](0.35, 0.45, 0.3, 0.12, 0.5, 0.4, 0.3);
+const float kBumps[kLayers] = float[](0.35, 0.45, 0.3, 0.12, 0.5, 0.4, 0.3, 0.15);
 
 // How much of a noise of this frequency survives the pixel footprint: fades detail out before it aliases.
 float detail(float frequency, float footprint) {
@@ -71,18 +76,40 @@ struct GroundSample {
     float height;
 };
 
+// Where the eye's ray meets material `layer`'s relief, `relief` metres deep with the ground's mesh halfway down it:
+// marched down from the top in steps, so a stone stands up and hides the ground behind it. `view` is towards the eye,
+// in the ground's frame; the gradients are the tile's.
+vec2 groundParallax(int layer, vec2 p, vec3 view, float relief, vec2 dx, vec2 dy) {
+    float tile = kTile[layer];
+    // Metres the ray crosses going down the whole relief; more steps the flatter it comes in.
+    vec2 across = view.xy / max(view.z, 0.35) * relief;
+    float steps = mix(4.0, 12.0, 1.0 - clamp(view.z, 0.0, 1.0));
+    vec2 shift = -across / steps;
+    vec2 at = p + across * 0.5;
+    float ray = 0.0;
+    float under = 1.0 - textureGrad(groundAlbedo, vec3(at / tile, layer), dx, dy).a;
+    float above = under;  // how far the ray was above the relief a step before
+    for (int i = 0; i < 12 && ray < under; ++i) {
+        above = under - ray;
+        at += shift;
+        ray += 1.0 / steps;
+        under = 1.0 - textureGrad(groundAlbedo, vec3(at / tile, layer), dx, dy).a;
+    }
+    // Between the last two steps, where the ray went under.
+    float below = ray - under;
+    return at - shift * (below / max(above + below, 1e-4));
+}
+
 // One material at `p`, twice: the second sample turned and scaled against the first and faded in by a slow noise, so
 // the tiles do not line up into a grid across a meadow. Gradients are given: only some materials are sampled, and
 // the implicit ones are undefined inside that branch. Drawn, it is one sample of each: the painted materials repeat
-// nothing a second sample would hide, and their relief is broad enough to need no parallax.
+// nothing a second sample would hide.
 GroundSample sampleGround(int layer, vec2 p, vec2 dpdx, vec2 dpdy, float variation, vec3 viewTangent, float parallax, bool drawn) {
     const mat2 turn = mat2(0.6, 0.8, -0.8, 0.6);
     const float scale2 = 0.71;
     float tile = kTile[layer];
-    // Parallax: one step along the view by the height under the pixel, so what stands up shifts towards the eye.
     if (parallax > 0.001) {
-        float h = textureGrad(groundAlbedo, vec3(p / tile, layer), dpdx / tile, dpdy / tile).a;
-        p += viewTangent.xy / max(viewTangent.z, 0.35) * (h - 0.5) * kRelief[layer] * parallax;
+        p = groundParallax(layer, p, viewTangent, kRelief[layer] * parallax, dpdx / tile, dpdy / tile);
     }
     vec2 uv = p / tile;
     vec2 uv2 = turn * uv * scale2 + vec2(0.37, 0.81);
@@ -123,7 +150,24 @@ GroundSample sampleGround(int layer, vec2 p, vec2 dpdx, vec2 dpdy, float variati
     return s;
 }
 
+// The track, laid down the road by its frame (u across it, v along it), so its wheel marks follow the road round its
+// bends and run on across a clearing at its end. One sample: a second, turned one would turn the marks off the road.
+GroundSample sampleTrack(vec2 p, vec2 dpdx, vec2 dpdy, vec3 viewTangent, float parallax, bool drawn) {
+    mat2 frameOf;
+    vec2 frame = sfeRoadFrame(roadFrame, p, frameOf);
+    GroundSample s = sampleGround(kTrack, frame, frameOf * dpdx, frameOf * dpdy, 0.0,
+        vec3(frameOf * viewTangent.xy, viewTangent.z), parallax, drawn);
+    // The normal from the road's frame back to the ground's, u along x and v along z.
+    vec2 across = normalize(vec2(frameOf[0].x, frameOf[1].x));
+    vec2 along = normalize(vec2(frameOf[0].y, frameOf[1].y));
+    s.normal.xy = vec2(across.x * s.normal.x - along.x * s.normal.y, along.y * s.normal.y - across.y * s.normal.x);
+    return s;
+}
+
 void main() {
+    if (sfeNearFaded(gl_FragCoord)) {
+        discard;
+    }
     vec2 p = TexCoords;
     vec2 dpdx = dFdx(p);
     vec2 dpdy = dFdy(p);
@@ -138,11 +182,11 @@ void main() {
     vec3 toEye = normalize(camera - FragPos);
     vec3 viewTangent = vec3(dot(toEye, T), dot(toEye, B), dot(toEye, N));
     float footprint = length(fwidth(p));
-    // The drawn look shades the ground by its painted relief alone: no parallax, no hummocks, no ruts in the normal.
-    // Those were most of what this shader cost.
+    // The drawn look shades the ground by its painted relief and its parallax alone: no hummocks, no ruts in the normal.
+    // Those were much of what this shader cost.
     bool drawn = matrices.style.x > 0.5;
     // Parallax only up close, where a height map's centimetres still cover a few pixels.
-    float parallax = drawn ? 0.0 : 1.0 - smoothstep(0.01, 0.04, footprint);
+    float parallax = 1.0 - smoothstep(0.006, 0.02, footprint);
 
     vec4 noise = sfeTerrainNoise(terrainNoise, p);
     SfeTerrainLayers layers = sfeTerrainLayers(p, height, slope, sfeForest(forestMap, p), noise);
@@ -167,25 +211,35 @@ void main() {
     weight[kMoss] = land * layers.earth;
     // The lake bottom: silt, with mats of algae over it in patches, and stones where it is stony.
     float algae = smoothstep(0.4, 0.62, sfeFbm(p * 0.09 + 41.0, 3)) * (1.0 - smoothstep(-1.2, -0.5, height));
-    weight[kMud] = open * layers.mud + underwater * (1.0 - stony) * (1.0 - algae);
-    weight[kSand] = open * layers.sand;
+    weight[kMud] = underwater * (1.0 - stony) * (1.0 - algae);
     weight[kMoss] += underwater * (1.0 - stony) * algae;
     weight[kRocks] = steep + underwater * stony;
     weight[kTrack] = 0.0;
-    // The road: packed dirt, two wheel ruts, and a clovered strip down the middle between them.
+    // The bank by how dirty it and the water by it are: clean, pebbles with sand in its coves; dirty, mud down by the
+    // water and bare earth above it.
+    vec3 areaTint = sfeAreaTint(areaTintMap, matrices.tintArea, FragPos.xz);
+    float dirty = clamp((max(areaTint.r, areaTint.g) - matrices.tintShore.x)
+        / max(matrices.tintShore.y - matrices.tintShore.x, 1e-3), 0.0, 1.0);
+    float shore = open * bank;
+    float cove = open * layers.beach;
+    float byWater = 1.0 - smoothstep(0.25, 0.6, height + 0.4 * (fine - 0.5));
+    weight[kSand] = cove * (1.0 - dirty);
+    weight[kPebbles] = (shore - cove) * (1.0 - dirty);
+    weight[kMud] += shore * dirty * byWater;
+    weight[kMoss] += shore * dirty * (1.0 - byWater);
+    // The road: packed dirt, two wheel ruts, and a strip of earth with a little green down the middle between them.
     float roadAbs = abs(layers.roadDistance);
     float road = layers.road * (1.0 - underwater);
-    float roadStrip = 1.0 - smoothstep(0.35, 0.65, roadAbs + 0.12 * (fine - 0.5));
+    float roadStrip = 1.0 - smoothstep(0.15, 0.7, roadAbs + 0.25 * (fine - 0.5));
     // Squared by hand: pow() of a negative base is undefined, and came out NaN on the inner side of each rut.
     float rutOffset = (roadAbs - 0.8) / 0.28;
     float rut = exp(-rutOffset * rutOffset);
     for (int i = 0; i < kLayers; ++i) {
         weight[i] *= 1.0 - road;
     }
-    // A country track: grass down the strip between the wheels, the ruts churned to mud, trodden earth either side.
-    weight[kGrass] += road * roadStrip;
-    weight[kMud] += road * (1.0 - roadStrip) * rut;
-    weight[kTrack] += road * (1.0 - roadStrip) * (1.0 - rut);
+    // A country track: a little green down the strip between the wheels, wheel marks either side of it.
+    weight[kMoss] += road * roadStrip;
+    weight[kTrack] += road * (1.0 - roadStrip);
 
     // Over each material's own colour: a lighter and a darker tone in blotches, the bank darkening as it gets wet, and
     // the road darker down its ruts.
@@ -195,10 +249,11 @@ void main() {
     }
     tint[kMud] *= mix(1.0, 0.55, layers.wet);
     tint[kSand] *= mix(1.0, 0.55, layers.wet);
+    tint[kPebbles] *= mix(1.0, 0.55, layers.wet);
     // Under the water the silt is grey-green and the algae an olive slime.
     tint[kMud] *= mix(vec3(1.0), vec3(0.75, 0.85, 0.65), underwater);
     tint[kMoss] *= mix(vec3(1.0), vec3(0.8, 0.85, 0.45), underwater);
-    tint[kMud] *= mix(1.0, 0.6, rut * 0.8 * road);
+    tint[kTrack] *= mix(1.0, 0.6, rut * 0.8 * road);
 
     GroundSample samples[kLayers];
     float blend[kLayers];
@@ -208,10 +263,20 @@ void main() {
         if (weight[i] < 0.01) {
             continue;
         }
-        samples[i] = sampleGround(i, p, dpdx, dpdy, variation, viewTangent, parallax, drawn);
+        samples[i] = i == kTrack ? sampleTrack(p, dpdx, dpdy, viewTangent, parallax, drawn)
+                                 : sampleGround(i, p, dpdx, dpdy, variation, viewTangent, parallax, drawn);
         // Stones stand out of the mud, grass tufts out of the sand.
         blend[i] = weight[i] + samples[i].height * 0.3;
         highest = max(highest, blend[i]);
+    }
+    // The forest floor's roots and earth, whatever in it is not a plant's colour, grey with the trees' bark where the
+    // land is foul: the curve the trees go bare along (tintShore: VegetationSystem::wither's), the grey their bark takes
+    // (sfe_gbuffer_surface). Its green is the lighting's to tint, as all green is (deferred_shading).
+    if (weight[kLitter] >= 0.01) {
+        float foul = clamp((areaTint.r - matrices.tintShore.x) / max(matrices.tintShore.y - matrices.tintShore.x, 1e-3),
+                           0.0, 1.0);
+        float dead = foul * foul * (3.0 - 2.0 * foul) * (1.0 - sfePlantColour(samples[kLitter].colour));
+        samples[kLitter].colour = mix(samples[kLitter].colour, vec3(sfeLuma(samples[kLitter].colour)), dead * 0.7);
     }
 
     vec3 albedo = vec3(0.0);
@@ -276,6 +341,6 @@ void main() {
     gNormal.a = gl_FragCoord.z / gl_FragCoord.w;
     gAlbedoSpec.rgb = albedo;
     gAlbedoSpec.a = clamp(sfeFilteredRoughness(N, roughness, 1.0), 0.04, 1.0);
-    gMaterial = sfeGBufferMaterial(0.0, specFactor, 0.0, 0.04);
+    gMaterial = sfeGBufferMaterial(0.0, specFactor, kSfeGround, 0.04);
     gVelocity = sfeVelocity(vClip, vPrevClip);
 }

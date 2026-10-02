@@ -51,6 +51,10 @@ namespace SFE::SystemsModule {
 		Math::Mat4 invView = {};
 		// x GraphicsSettings::stylise: a shader drawing in that look can leave out what it would not show.
 		Math::Vec4 style = {};
+		// The area tint (AreaTintFrame): its map's place and the bank's turn to mud, as the frame's passes left them;
+		// the map itself is binding 22 of the frame set. A zero area, no map.
+		Math::Vec4 tintArea = {};
+		Math::Vec4 tintShore = {};
 	};
 
 	struct GraphicsSettings {
@@ -359,6 +363,8 @@ namespace SFE::SystemsModule {
 		bool shouldRunPass(size_t passIndex) const;
 		void ensureGpuCapacity(ecss::EntityId id);
 		void bindGpuFrame();
+		// The area tint the passes' prepare left on the blackboard, into this frame's camera block and frame set.
+		void updateAreaTint();
 		void createGpuFrameResources(uint32_t slot);
 		void createSceneBuffers(size_t capacity);
 		// `previousToo` also as last frame's, for an entity that has no last frame: no motion on its first one.
@@ -387,6 +393,7 @@ namespace SFE::SystemsModule {
 		uint32_t mGpuFrames = 1;
 		std::vector<Render::BufferHandle> mCameraUbo;
 		std::vector<Render::DescriptorSetHandle> mFrameSet;
+		std::unordered_map<uint32_t, uint32_t> mFrameSetTint; // frame set id -> the tint map written to it
 
 		// Scene data lives on the GPU in one buffer each, indexed by entity id. Only entities that changed
 		// since the last frame are uploaded, through the backend's queued upload path.

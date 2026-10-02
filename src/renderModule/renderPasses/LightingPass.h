@@ -53,6 +53,11 @@ namespace SFE::Render::RenderPasses {
 			// See deferred_shading.fs: 0 leaves the lighting as it is, 1 paints it.
 			float stylise = 0.f;
 			float pad0 = 0.f, pad1 = 0.f, pad2 = 0.f;
+			// The area tint (AreaTintFrame); a zero area, no tint.
+			Math::Vec4 tintArea{};
+			Math::Vec4 tintFoliage{};
+			Math::Vec4 tintAir{};
+			Math::Vec4 tintGround{};
 		};
 
 		struct CascadData {
@@ -139,6 +144,7 @@ namespace SFE::Render::RenderPasses {
 			BoundImage pointShadow{};
 			BoundImage outlines{};
 			BoundImage clouds{};
+			BoundImage areaTint{};
 			BoundImage csm{};
 			BoundImage csmDepth{};
 			BoundImage iblIrr{};

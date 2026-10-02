@@ -19,6 +19,7 @@ layout(SFE_SET(0, 12)) uniform samplerCube irradianceMap;
 layout(SFE_SET(0, 13)) uniform samplerCube prefilterMap;
 layout(SFE_SET(0, 14)) uniform sampler2D brdfLUT;
 layout(SFE_SET(0, 21)) uniform sampler2D cloudLayer;
+layout(SFE_SET(0, 22)) uniform sampler2D areaTintMap;
 
 layout(SFE_SET(1, 15), std140) uniform PushConstants {
     vec3 viewPos;
@@ -46,6 +47,11 @@ layout(SFE_SET(1, 15), std140) uniform PushConstants {
     // rather than a gradient, no highlight to speak of, and the colour flattened.
     float stylise;
     float pad0, pad1, pad2;
+    // The area tint (AreaTintFrame): the map's place, and the foliage's and the air's colour and strength.
+    vec4 tintArea;
+    vec4 tintFoliage;
+    vec4 tintAir; // a the haze per metre where the map is full
+    vec4 tintGround;
 } pc;
 
 
@@ -395,10 +401,26 @@ void main() {
     float metallic = pbr.x;
     float specFactor = pbr.y;
     float clearcoat = pbr.z;
-    const bool glint = abs(clearcoat - kSfeGlint) < 0.5 / 255.0;
-    const bool cel = abs(clearcoat - kSfeCel) < 0.5 / 255.0;
-    if (glint || cel) {
+    const bool celGlint = abs(clearcoat - kSfeCelGlint) < 0.5 / 255.0;
+    const bool glint = celGlint || abs(clearcoat - kSfeGlint) < 0.5 / 255.0;
+    const bool cel = celGlint || abs(clearcoat - kSfeCel) < 0.5 / 255.0;
+    const bool ground = abs(clearcoat - kSfeGround) < 0.5 / 255.0;
+    if (glint || cel || ground) {
         clearcoat = 0.0;
+    }
+    // Leaves and blades let the sun through (see sfeGBufferMaterial).
+    const float translucency = clearcoat < 0.01 && !celGlint ? smoothstep(0.1, 1.0, pbr.w) : 0.0;
+    // The area tint: whatever is a plant's colour (by its colour: hair is cut out as leaves are, and is not to wither)
+    // goes where the map says towards its grey times the tint's colour, which keeps its pattern and can darken it.
+    const vec3 areaTint = sfeAreaTint(areaTintMap, pc.tintArea, FragPos.xz);
+    const float green = (1.0 - metallic) * sfePlantColour(albedo);
+    if (green > 0.0 && areaTint.r > 0.0) {
+        vec3 tinted = pc.tintFoliage.rgb * dot(albedo, vec3(0.2126, 0.7152, 0.0722));
+        albedo = mix(albedo, tinted, clamp(areaTint.r * pc.tintFoliage.a, 0.0, 1.0) * green);
+    }
+    // And the ground goes grimy.
+    if (ground && areaTint.r > 0.0) {
+        albedo *= mix(vec3(1.0), pc.tintGround.rgb, clamp(areaTint.r * pc.tintGround.a, 0.0, 1.0));
     }
     float ccRough = max(pbr.w, 0.04);
     const float AmbientOcclusion = texture(ssao, TexCoords).r;
@@ -418,14 +440,17 @@ void main() {
         albedo, F0, roughness, metallic,
         cascadedShadow.color_and_misc.xyz * PI, f90);
     // A glint mirrors the sun whole, over a spot a few pixels across (a sharper one falls between pixels and TAA takes
-    // it for a firefly); the glare in bloom_extract.fs turns it into a star.
+    // it for a firefly); the glare in bloom_extract.fs turns it into a star. As strongly as a drawing that glints says
+    // (kSfeCelGlint, its last channel), and added to the light once the drawn look has flattened that: it would swell
+    // the glint towards the line where the light ends.
+    vec3 flash = vec3(0.0);
     if (glint) {
-        Lo += cookTorrance(Normal, V, Lsun, vec3(0.0), vec3(1.0), 0.3, 0.0, cascadedShadow.color_and_misc.xyz * PI, 1.0);
+        flash = cookTorrance(Normal, V, Lsun, vec3(0.0), vec3(1.0), 0.3, 0.0, cascadedShadow.color_and_misc.xyz * PI, 1.0)
+            * (celGlint ? pbr.w : 1.0);
     }
 
-    // Leaves and blades let the sun through (see sfeGBufferMaterial): lit from behind they glow, most where the eye
-    // looks towards the sun through them. In shadow like the rest of the direct light.
-    const float translucency = clearcoat < 0.01 ? smoothstep(0.1, 1.0, pbr.w) : 0.0;
+    // Leaves and blades let the sun through: lit from behind they glow, most where the eye looks towards the sun
+    // through them. In shadow like the rest of the direct light.
     if (translucency > 0.0) {
         const float behind = max(dot(-Normal, Lsun), 0.0);
         const float intoSun = pow(max(dot(-V, Lsun), 0.0), 6.0);
@@ -466,6 +491,7 @@ void main() {
         const float toon = cel ? litSide : litSide * 0.85 + nDotLSun * 0.15;
         Lo *= mix(1.0, nDotLSun > 0.0001 ? toon / max(nDotLSun, 1e-3) : 1.0, pc.stylise);
     }
+    Lo += flash;
 
     const float shadowFactor = 1.0 - pc.shadowIntensity * shadow;
     Lo *= shadowFactor;
@@ -616,6 +642,13 @@ void main() {
         lighting += texture(irradianceMap, -V).rgb * pc.iblStrength * rim * 0.9 * pc.stylise * albedo;
     }
     vec3 color = mix(lighting, fogColor, fogFactor);
+    // The area tint's air: a haze of its colour in the sky's light low towards the horizon, as thick as the air
+    // between the eye and here, taken as the mean of the two ends.
+    const float airDensity = (areaTint.b + sfeAreaTint(areaTintMap, pc.tintArea, pc.viewPos.xz).b) * 0.5 * pc.tintAir.a;
+    if (airDensity > 0.0) {
+        vec3 skyLow = texture(irradianceMap, normalize(vec3(-V.x, 0.08, -V.z))).rgb * pc.iblStrength;
+        color = mix(color, pc.tintAir.rgb * skyLow, 1.0 - exp(-airDensity * Depth));
+    }
     if (pc.stylise > 0.0) {
         // A cartoon's colours are fuller than the world's.
         float grey = dot(color, vec3(0.2126, 0.7152, 0.0722));

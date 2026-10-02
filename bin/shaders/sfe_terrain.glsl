@@ -35,6 +35,23 @@ vec4 sfeTerrainNoise(sampler2D noiseMap, vec2 p) {
     return textureLod(noiseMap, p / (side * kSfeTerrainNoiseTexelMetres) + 0.5, 0.0);
 }
 
+// Where along the road `p` is, from terrainRoadFrameTexture: x metres across it, y metres along it. `jacobian` gets
+// how those change along world x (its first column) and z (its second). Filtered here in full precision: the texture
+// unit blends texels with a few bits of weight, which would step a texture laid by it a centimetre or two at a time.
+vec2 sfeRoadFrame(sampler2D frameMap, vec2 p, out mat2 jacobian) {
+    ivec2 side = textureSize(frameMap, 0);
+    vec2 texel = p / kSfeTerrainNoiseTexelMetres + vec2(side) * 0.5 - 0.5;
+    ivec2 i = ivec2(floor(texel));
+    vec2 f = texel - vec2(i);
+    ivec2 last = side - 1;
+    vec2 a = texelFetch(frameMap, clamp(i, ivec2(0), last), 0).rg;
+    vec2 b = texelFetch(frameMap, clamp(i + ivec2(1, 0), ivec2(0), last), 0).rg;
+    vec2 c = texelFetch(frameMap, clamp(i + ivec2(0, 1), ivec2(0), last), 0).rg;
+    vec2 d = texelFetch(frameMap, clamp(i + ivec2(1, 1), ivec2(0), last), 0).rg;
+    jacobian = mat2(mix(b - a, d - c, f.y), mix(c - a, d - b, f.x)) / kSfeTerrainNoiseTexelMetres;
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 // How deep in the forest `p` (the terrain's own x/z) is, from VegetationPlacementsComponent::forestMap: centred on
 // the terrain, one texel every kSfeForestTexelMetres.
 float sfeForest(sampler2D forestMap, vec2 p) {

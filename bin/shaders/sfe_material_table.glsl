@@ -24,7 +24,8 @@ struct SfeMaterial {
     float triplanarRepeat; // repeats a metre, 0 for none
     float triplanarRepeat2;
     float triplanarRotated; // bit 1 the first layer's u and v swapped, bit 2 the second's
-    float pad1;
+    float wetBelow;         // metres over the model's origin it is soaked below; see MaterialComponent::wetBelow
+    float bare;             // 0..1, how far a cut-out surface has gone bare; see MaterialComponent::bare
 };
 
 layout(SFE_SET(0, 7), std430) readonly buffer SfeMaterials {

@@ -1,5 +1,6 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_skin.glsl"
 layout(location = 0) in vec3 aPos;
 layout(location = 5) in ivec4 aBoneIds;
 layout(location = 6) in vec4 aWeights;
@@ -25,19 +26,15 @@ void main() {
     SfeInstance instance = sfeInstances[SFE_INSTANCE_ID];
     uint index = instance.entity;
 
-    mat4 BoneTransform = mat4(0.0);
-    bool withBones = false;
+    SfeSkin skin = sfeSkinNone();
     for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
         int boneIdx = aBoneIds[i];
         if (boneIdx < 0) {
             continue;
         }
-        withBones = true;
-        BoneTransform += bones[instance.boneOffset + uint(boneIdx)] * aWeights[i];
+        sfeSkinAdd(skin, bones[instance.boneOffset + uint(boneIdx)], aWeights[i]);
     }
-    if (!withBones) {
-        BoneTransform = mat4(1.0);
-    }
+    mat4 BoneTransform = sfeSkinMatrix(skin);
 
     vec4 totalPosition = BoneTransform * vec4(aPos.xyz, 1.0);
     totalPosition /= totalPosition.w;

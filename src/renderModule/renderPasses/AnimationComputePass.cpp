@@ -21,7 +21,7 @@ namespace {
 	static_assert(sizeof(AnimationComputePass::GpuBoneDesc) == 192);
 	static_assert(sizeof(AnimationComputePass::GpuVec3Key) == 16);
 	static_assert(sizeof(AnimationComputePass::GpuQuatKey) == 32);
-	static_assert(sizeof(AnimationComputePass::GpuRecord) == 176);
+	static_assert(sizeof(AnimationComputePass::GpuRecord) == 224);
 
 	constexpr uint32_t kPlaying = 1u;
 	constexpr uint32_t kLoop = 2u;
@@ -228,17 +228,21 @@ void AnimationComputePass::writeRecord(const ecss::EntityId entity) {
 			record.blendDuration = animation->mBlendDuration;
 		}
 	}
-	record.look[0] = animation->mLook.x;
-	record.look[1] = animation->mLook.y;
-	record.look[2] = animation->mLook.z;
-	record.look[3] = animation->mLook.w;
-	for (size_t k = 0; k < animation->mLookBones.size(); ++k) {
-		const auto& look = animation->mLookBones[k];
-		const auto& bones = armature->armature.bones;
-		const auto found = !look.name ? bones.end() : std::find_if(bones.begin(), bones.end(), [&](const auto& bone) { return bone.name == std::string_view(look.name); });
-		record.lookBone[k] = found == bones.end() ? -1 : static_cast<int32_t>(found - bones.begin());
-		record.lookShare[k] = look.share;
-	}
+	const auto turn = [&](const Math::Quaternion<float>& by, const auto& shared, float* q, int32_t* bone, float* share) {
+		q[0] = by.x;
+		q[1] = by.y;
+		q[2] = by.z;
+		q[3] = by.w;
+		for (size_t k = 0; k < shared.size(); ++k) {
+			const auto& look = shared[k];
+			const auto& bones = armature->armature.bones;
+			const auto found = !look.name ? bones.end() : std::find_if(bones.begin(), bones.end(), [&](const auto& b) { return b.name == std::string_view(look.name); });
+			bone[k] = found == bones.end() ? -1 : static_cast<int32_t>(found - bones.begin());
+			share[k] = look.share;
+		}
+	};
+	turn(animation->mLook, animation->mLookBones, record.look, record.lookBone, record.lookShare);
+	turn(animation->mTwist, animation->mTwistBones, record.twist, record.twistBone, record.twistShare);
 	markRecord(it->second);
 	mWorldsRows = (std::max)(mWorldsRows, static_cast<size_t>(bones.offset) + clip->boneCount);
 }

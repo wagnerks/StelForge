@@ -1,4 +1,7 @@
 ﻿#pragma once
+#include <string>
+#include <unordered_map>
+
 #include "renderModule/renderPasses/RenderPass.h"
 #include "renderModule/GpuScene.h"
 #include "rhi/RenderHardwareInterface.h"
@@ -32,6 +35,9 @@ namespace SFE::Render::RenderPasses {
 		};
 
 		void ensureTargets(SystemsModule::RenderData& renderDataHandle);
+		// The pipeline drawing with `fragmentShader`, made the first time it is asked for.
+		// `depthOnly`: a solid group's (MaterialComponent::solidGlass) depth, laid before its colour, the colour kept.
+		PipelineHandle pipelineFor(const std::string& fragmentShader, bool depthOnly = false);
 
 		Params mParams;
 		TextureHandle mSceneCopy{};
@@ -45,10 +51,15 @@ namespace SFE::Render::RenderPasses {
 		};
 		std::vector<GlassTarget> mGlassTargets;
 		FramebufferHandle mGlassFbo{};
-		PipelineHandle mPipeline{};
+		GraphicsPipelineDesc mPipelineDesc; // all but the fragment shader
+		std::unordered_map<std::string, PipelineHandle> mPipelines;
 		RenderPassHandle mRenderPass{};
 		DescriptorSetLayoutHandle mLayout{};
-		std::vector<DescriptorSetHandle> mSets; // one per frame slot
-		GpuScene::View mView;
+		// One a glass group (a fragment shader), sorted and drawn apart from the others.
+		struct Group {
+			GpuScene::View view;
+			std::vector<DescriptorSetHandle> sets; // one per frame slot
+		};
+		std::vector<Group> mGroups;
 	};
 }

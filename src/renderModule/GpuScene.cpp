@@ -453,11 +453,13 @@ namespace SFE::Render {
 		meshComp->forEachDrawMesh(matComp.get(), [&](const RenderMeshData& mesh, const MaterialComponent* mat) {
 			const auto& material = mat ? *mat : kNoMaterial;
 			const bool transparent = mat && mat->transparent;
+			const auto glassShader = transparent ? MaterialRules::glassShader(material) : std::string{};
 			// One reference per instance, released when that instance is removed.
 			const auto materialIndex = [&] { return materials.acquire(material); };
 
-			// Shadow casters: a transparent one casts through the glass proxy when there is one.
-			const auto& caster = transparent && mGlassShadowProxy ? mGlassShadowProxy : mesh;
+			// Shadow casters: glass casts through the glass proxy when there is one; a transparent surface of a shader of
+			// its own, its own shape.
+			const auto& caster = glassShader == ComponentsModule::DefaultGlassFS && mGlassShadowProxy ? mGlassShadowProxy : mesh;
 			if (caster.indexCount != 0) {
 				const bool dithered = material.opacity > 0.f && material.opacity < 0.999f;
 				const float cutoff = MaterialRules::cutoutCutoff(material.alphaCutoff, material.alphaFromMaps, material.fragmentShader);
@@ -479,8 +481,12 @@ namespace SFE::Render {
 				return;
 			}
 			if (transparent) {
-				// Glass is one batch whatever the mesh: sortGlass orders every instance by depth.
-				const auto index = groupFor(List::Glass, "glass", DrawGroup{});
+				// A group and one batch a shader whatever the mesh, and another for it solid: sortGlass orders each one's
+				// instances by depth.
+				DrawGroup group;
+				group.fragmentShader = glassShader;
+				group.solid = material.solidGlass;
+				const auto index = groupFor(List::Glass, material.solidGlass ? glassShader + "|solid" : glassShader, std::move(group));
 				addInstance(refs, entity, List::Glass, index, 0, { entity, mesh.meshId, materialIndex(), boneOffset });
 				return;
 			}
@@ -965,11 +971,12 @@ namespace SFE::Render {
 		return true;
 	}
 
-	bool GpuScene::sortGlass(const CommandListHandle cmd, View& view, const FrustumModule::Frustum& frustum, const Math::Vec3& cameraPos, const Math::Vec3& viewDir) {
+	bool GpuScene::sortGlass(const CommandListHandle cmd, View& view, const uint32_t group, const FrustumModule::Frustum& frustum,
+		const Math::Vec3& cameraPos, const Math::Vec3& viewDir) {
 		const auto& data = mLists[static_cast<size_t>(List::Glass)];
 		auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 		const auto transforms = renderSystem ? renderSystem->transformsBuffer() : BufferHandle{};
-		const auto [base, count] = glassRange();
+		const auto [base, count] = glassRange(group);
 		if (count == 0 || !mGlassPipeline || !mMeshes || !transforms) {
 			return false;
 		}
@@ -1059,17 +1066,17 @@ namespace SFE::Render {
 		return true;
 	}
 
-	std::pair<uint32_t, uint32_t> GpuScene::glassRange() const {
+	std::pair<uint32_t, uint32_t> GpuScene::glassRange(const uint32_t group) const {
 		const auto& data = mLists[static_cast<size_t>(List::Glass)];
-		if (data.groups.empty() || data.groups[0].batchCount == 0) {
+		if (group >= data.groups.size() || data.groups[group].batchCount == 0) {
 			return { 0, 0 };
 		}
-		const auto& batch = data.batchMirror[data.groups[0].firstBatch];
+		const auto& batch = data.batchMirror[data.groups[group].firstBatch];
 		return { batch.firstInstance, batch.instanceCount };
 	}
 
-	void GpuScene::drawSorted(const CommandListHandle cmd, const View& view) const {
-		const auto count = glassRange().second;
+	void GpuScene::drawSorted(const CommandListHandle cmd, const View& view, const uint32_t group) const {
+		const auto count = glassRange(group).second;
 		if (count == 0) {
 			return;
 		}

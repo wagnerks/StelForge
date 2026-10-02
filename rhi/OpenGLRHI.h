@@ -56,6 +56,8 @@ namespace SFE::Render
 		bool  blendEnabled = false;
 		GLenum blendSrcGL;
 		GLenum blendDstGL;
+		GLenum blendSrcAlphaGL;
+		GLenum blendDstAlphaGL;
 
 		GraphicsPipelineDesc desc; // опционально — для дебага / реконфига
 		bool isCompute = false;

@@ -37,9 +37,15 @@ namespace AssetsModule {
 	// The terrain's material and the grass map read it.
 	constexpr float kRoadTextureRange = 16.f;
 	SFE::Render::TextureHandle terrainNoiseTexture(const SFE::ComponentsModule::TerrainComponent& terrain);
+	// Where along the road each place is, to lay a texture down it: r metres across it (signed as terrainRoadDistance,
+	// clearings aside) and g metres along it from its first point, by the nearest point of it going on straight past its
+	// ends, so a clearing at an end has them too. RG32F, texels as terrainNoiseTexture's. The terrain's material reads it.
+	SFE::Render::TextureHandle terrainRoadFrameTexture(const SFE::ComponentsModule::TerrainComponent& terrain);
 
 	// Metres from the terrain's road's centreline, x/z in the terrain's own space, signed by the side of it; far from
-	// any road (or with none) kRoadFar. The road itself is kRoadHalfWidth either side of the line.
+	// any road (or with none) kRoadFar. The road itself is kRoadHalfWidth either side of the line. A clearing is
+	// trodden ground as the road's sides are: in it kClearingDistance, past its edge that and how far past.
+	constexpr float kClearingDistance = 1.6f;
 	constexpr float kRoadFar = 1000.f;
 	constexpr float kRoadHalfWidth = 1.9f;
 	float terrainRoadDistance(const SFE::ComponentsModule::TerrainComponent& terrain, float x, float z);

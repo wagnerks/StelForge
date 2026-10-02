@@ -73,10 +73,14 @@ namespace SFE::Render::RenderPasses {
 			float fromStoppedTime = 0.f;
 			float blendStart = 0.f; // seconds, relative to mEpoch
 			float blendDuration = 0.f;
-			// AnimationComponent's look: the turn (x, y, z, w) and the bones sharing it, -1 for none.
+			// AnimationComponent's look: the turn (x, y, z, w) and the bones sharing it, -1 for none; and its twist, the
+			// same way.
 			float look[4] = { 0.f, 0.f, 0.f, 1.f };
 			int32_t lookBone[4] = { -1, -1, -1, -1 };
 			float lookShare[4] = { 0.f, 0.f, 0.f, 0.f };
+			float twist[4] = { 0.f, 0.f, 0.f, 1.f };
+			int32_t twistBone[4] = { -1, -1, -1, -1 };
+			float twistShare[4] = { 0.f, 0.f, 0.f, 0.f };
 		};
 
 	private:

@@ -37,6 +37,8 @@ namespace SFE::Render {
 				m.triplanarRepeat[i] = src.triplanar[i].metres > 0.f ? 1.f / src.triplanar[i].metres : 0.f;
 				m.triplanarRotated += src.triplanar[i].rotated ? static_cast<float>(1u << i) : 0.f;
 			}
+			m.wetBelow = src.wetBelow;
+			m.bare = src.bare;
 			return m;
 		}
 	}

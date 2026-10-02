@@ -11,19 +11,7 @@ layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
 };
 
-struct GpuMesh {
-    uint firstIndex;
-    uint indexCount;
-    uint firstVertex;
-    uint vertexCount;
-    vec3 boundsMin;
-    uint skinned;
-    vec3 boundsMax;
-    float _pad;
-};
-layout(SFE_SET(0, 26), std430) readonly buffer Meshes {
-    GpuMesh meshes[];
-};
+#include "sfe_gpu_meshes.glsl"
 
 struct SceneInstance {
     uint entity;
@@ -117,6 +105,9 @@ void main() {
         vec3 localExtents = (mesh.boundsMax - mesh.boundsMin) * 0.5;
         vec3 center = (m * vec4(localCenter, 1.0)).xyz;
         vec3 extents = abs(m[0].xyz) * localExtents.x + abs(m[1].xyz) * localExtents.y + abs(m[2].xyz) * localExtents.z;
+        if (mesh.skinned != 0u) {
+            extents = sfeSkinnedInflated(extents);
+        }
         // The bounds' centre, not the entity origin: submeshes of one entity, and imported glass whose pivot
         // sits at the origin, would all share one depth and fall back to slot order.
         float depth = dot(center - view.shapes[6].xyz, view.shapes[7].xyz);

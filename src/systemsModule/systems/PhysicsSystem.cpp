@@ -173,9 +173,9 @@ namespace SFE::SystemsModule {
 	void PhysicsSystem::addStaticColliders() {
 		auto& registry = ECSHandler::registry();
 		auto& bodies = mWorld->GetBodyInterface();
-		for (const auto& [id, terrain, model, matrix] : registry.view<const ComponentsModule::TerrainComponent, const ModelComponent,
-			const ComponentsModule::TransformMatComp>()) {
-			if (!terrain || !model || !matrix) {
+		// The terrain, and the props set in the scene with a collider.
+		for (const auto& [id, model, matrix] : registry.view<const ModelComponent, const ComponentsModule::TransformMatComp>()) {
+			if (!model || !matrix || !(model->collider || registry.hasComponent<ComponentsModule::TerrainComponent>(id))) {
 				continue;
 			}
 			const auto& world = matrix->mTransform;
@@ -251,7 +251,7 @@ namespace SFE::SystemsModule {
 				JPH::MeshShapeSettings shape(std::move(pieceVertices), std::move(pieces[p]));
 				const auto result = shape.Create();
 				if (result.HasError()) {
-					LogsModule::Logger::LOG_ERROR("terrain collider: %s", result.GetError().c_str());
+					LogsModule::Logger::LOG_ERROR("mesh collider: %s", result.GetError().c_str());
 					return;
 				}
 				shapes[p] = result.Get();

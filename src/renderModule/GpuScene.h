@@ -25,7 +25,7 @@ namespace SFE::Render {
 			GBuffer, // opaque surfaces, grouped by pipeline and textures
 			Shadow,  // every caster, grouped by cutout and mask texture
 			Outline, // entities with OutlineComponent, one group
-			Glass,   // transparent surfaces, one batch, drawn sorted by sortGlass
+			Glass,   // transparent surfaces, a group and one batch a fragment shader, each drawn sorted by sortGlass
 			Count
 		};
 
@@ -39,6 +39,8 @@ namespace SFE::Render {
 			TextureHandle maskTexture; // empty: no mask, bind the default
 			bool cutout = false;       // needs the fragment shader: alpha cutout, mask or dithered opacity
 			bool transparent = false;  // drawn as the glass shadow proxy; point lights skip it
+			// Glass
+			bool solid = false;        // its nearest surface alone (MaterialComponent::solidGlass)
 
 			uint32_t firstBatch = 0;
 			uint32_t batchCount = 0;
@@ -113,10 +115,11 @@ namespace SFE::Render {
 			uint32_t layer = UINT32_MAX);
 		bool cullOccluded(CommandListHandle cmd, List list, View& view, const FrustumModule::Frustum& frustum, const Math::Mat4& viewProj);
 
-		// Culls the glass list and sorts what is left far to near into `view`: command i draws the i-th farthest
-		// instance, culled ones trail with no instances. Draw with drawSorted. Outside a render pass.
-		bool sortGlass(CommandListHandle cmd, View& view, const FrustumModule::Frustum& frustum, const Math::Vec3& cameraPos, const Math::Vec3& viewDir);
-		void drawSorted(CommandListHandle cmd, const View& view) const;
+		// Culls one group of the glass list and sorts what is left far to near into `view`: command i draws the i-th
+		// farthest instance, culled ones trail with no instances. Draw with drawSorted. Outside a render pass.
+		bool sortGlass(CommandListHandle cmd, View& view, uint32_t group, const FrustumModule::Frustum& frustum, const Math::Vec3& cameraPos,
+			const Math::Vec3& viewDir);
+		void drawSorted(CommandListHandle cmd, const View& view, uint32_t group) const;
 
 		const std::vector<DrawGroup>& groups(List list) const { return mLists[static_cast<size_t>(list)].groups; }
 		// The largest entity id any instance has referred to: the culls read its transform.
@@ -233,8 +236,8 @@ namespace SFE::Render {
 		void compact(ListData& data);
 		void uploadList(ListData& data, const char* name);
 		void uploadMeshes();
-		// First slot and count of the one glass batch.
-		std::pair<uint32_t, uint32_t> glassRange() const;
+		// First slot and count of a glass group's one batch.
+		std::pair<uint32_t, uint32_t> glassRange(uint32_t group) const;
 		struct CullParams;
 		CullParams frustumParams(const FrustumModule::Frustum& frustum) const;
 		bool cull(CommandListHandle cmd, List list, View& view, CullParams& params);

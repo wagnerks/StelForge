@@ -1,36 +1,7 @@
 #version 450 core
 #include "sfe.glsl"
 #include "sfe_material.glsl"
-layout(location = 0) in vec3 FragPos;
-layout(location = 1) in vec2 TexCoords;
-layout(location = 2) in mat3 TBN;
-layout(location = 5) in vec2 TexCoords1;
-layout(location = 6) flat in uint vMaterial;
-
-layout(location = 0) out vec4 FragColor;
-
-layout(SFE_SET(0, 6)) uniform sampler2D sceneCopy;
-layout(SFE_SET(0, 13)) uniform samplerCube prefilterMap;
-// Every glass albedo in one array; each glass draw holds one instance, so the index is constant per draw.
-layout(SFE_SET(0, 16)) uniform sampler2D albedoMaps[8];
-
-layout(SFE_SET(0, 5), std140) uniform SharedMatrices {
-    SFE_SHARED_MATRICES
-} matrices;
-
-layout(SFE_SET(0, 15), std140) uniform PushConstants {
-    vec3 viewPos;
-    float _pad2;
-    vec2 resolution;
-    float _pad3;
-    float roughness;
-    vec3 lightDir;
-    float _pad0;
-    vec3 lightColor;
-    float _pad1;
-    vec3 _pad4;
-    float sphereSpacing;
-} params;
+#include "sfe_glass.glsl"
 
 uint hashGridTint(vec3 worldPos, float spacing) {
     int gx = int(floor(worldPos.x / spacing - 0.5));
@@ -133,6 +104,9 @@ vec3 screenReflect(vec3 origin, vec3 dir, vec3 fallback) {
 }
 
 void main() {
+    if (sfeNearFaded(gl_FragCoord)) {
+        discard;
+    }
     vec3 Ns = cross(dFdx(FragPos), dFdy(FragPos));
     vec3 Nv = TBN[2];
     vec3 N = (dot(Nv, Nv) > 1e-4) ? normalize(Nv) : vec3(0.0);

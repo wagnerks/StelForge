@@ -21,6 +21,14 @@ namespace SFE::Render::MaterialRules {
 		return 0.f;
 	}
 
+	// The fragment shader a transparent material is drawn with: its own, or glass when it keeps a G-buffer default.
+	inline std::string glassShader(const ComponentsModule::MaterialComponent& material) {
+		const auto& own = material.fragmentShader;
+		const bool gBuffer = own.empty() || own == ComponentsModule::DefaultGBufferFS || own == ComponentsModule::DefaultGBufferMaskedFS
+			|| own == ComponentsModule::DefaultGBufferSolidFS;
+		return gBuffer ? ComponentsModule::DefaultGlassFS : own;
+	}
+
 	inline TextureHandle diffuseTexture(const ComponentsModule::Materials& materials) {
 		for (uint8_t i = 0; i < materials.materialsCount; ++i) {
 			if (materials.material[i].slot == SFE::DIFFUSE) {
@@ -131,6 +139,8 @@ namespace SFE::Render::MaterialRules {
 		mix(static_cast<uint64_t>(material.tint.y * 4096.f));
 		mix(static_cast<uint64_t>(material.tint.z * 4096.f));
 		mix(static_cast<uint64_t>(material.sway));
+		mix(static_cast<uint64_t>(static_cast<int64_t>(material.wetBelow * 4096.f)));
+		mix(static_cast<uint64_t>(material.bare * 4096.f));
 		for (const auto& layer : material.triplanar) {
 			for (const float bound : layer.uv) {
 				mix(static_cast<uint64_t>(bound * 4096.f));

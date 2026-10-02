@@ -8,6 +8,7 @@ layout(location = 5) in vec2 TexCoords1;
 layout(location = 6) flat in uint vMaterial;
 layout(location = 7) in vec4 vClip;
 layout(location = 8) in vec4 vPrevClip;
+layout(location = 12) flat in float vPiece;
 
 layout(location = 0) out vec4 gMaterial;
 layout(location = 1) out vec4 gNormal;
@@ -28,6 +29,9 @@ vec2 uvOf(uint bit) {
 }
 
 void main() {
+    if (sfeNearFaded(gl_FragCoord)) {
+        discard;
+    }
     uint maps = uint(pc.mapMask + 0.5);
     vec2 uvDiff = uvOf(1u);
     vec2 uvNrm = uvOf(2u);
@@ -69,7 +73,15 @@ void main() {
     float sss = 0.0;
     gNormal.xyz = geomN;
 
-    gAlbedoSpec.rgb = pow(diff.rgb, vec3(2.2)) * pc.tint;
+    vec3 linAlb = pow(diff.rgb, vec3(2.2)) * pc.tint;
+    // A plant going bare (sfe_gbuffer_surface.glsl).
+    if (vPiece < pc.bare) {
+        if (!sfeBareKeeps(linAlb)) {
+            discard;
+        }
+        linAlb = mix(linAlb, vec3(sfeLuma(linAlb)), 0.7);
+    }
+    gAlbedoSpec.rgb = linAlb;
 
     float roughness = pc.matRoughness;
     if ((maps & 1u) != 0u) {

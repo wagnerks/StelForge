@@ -481,6 +481,8 @@ SFE::Render::PipelineHandle GeometryPass::getGBufferPipeline(const std::string& 
 	const auto frag = rhi->loadShader(ShaderStage::Fragment, fs);
 	if (!vert || !frag) {
 		LogsModule::Logger::LOG_WARNING("GBuffer shader missing: %s / %s", vs.c_str(), fs.c_str());
+		// Remember the failure: otherwise the broken shader is recompiled every draw group, every frame.
+		mGBufferPipelines.emplace(key, geometryPipeline);
 		return geometryPipeline;
 	}
 

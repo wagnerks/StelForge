@@ -442,6 +442,9 @@ namespace SFE::Render
 		bool       enabled = false;
 		BlendFactor srcColor = BlendFactor::SrcAlpha;
 		BlendFactor dstColor = BlendFactor::OneMinusSrcAlpha;
+		// The alpha's own factors; unset, it is blended as the colour is.
+		std::optional<BlendFactor> srcAlpha;
+		std::optional<BlendFactor> dstAlpha;
 	};
 
 	struct PipelineShaders {

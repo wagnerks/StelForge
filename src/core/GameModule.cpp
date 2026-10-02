@@ -47,9 +47,9 @@ namespace SFE {
 		return passList();
 	}
 
-	void GameModule::addPanel(std::string title, std::function<void()> draw) {
+	void GameModule::addPanel(std::string title, std::function<void()> draw, Math::Vec2 size) {
 		if (draw) {
-			panelList().push_back({ std::move(title), std::move(draw) });
+			panelList().push_back({ std::move(title), std::move(draw), size });
 		}
 	}
 

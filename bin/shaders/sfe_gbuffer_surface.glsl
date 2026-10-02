@@ -13,6 +13,7 @@ layout(location = 6) flat in uint vMaterial;
 layout(location = 7) in vec4 vClip;
 layout(location = 8) in vec4 vPrevClip;
 layout(location = 9) in vec3 vSurface;
+layout(location = 12) flat in float vPiece;
 
 layout(location = 0) out vec4 gMaterial;
 layout(location = 1) out vec4 gNormal;
@@ -76,6 +77,15 @@ vec2 uvOf(uint bit) {
 }
 
 void main() {
+    if (sfeNearFaded(gl_FragCoord)) {
+        discard;
+    }
+#ifdef SFE_GBUFFER_DEPTH
+    // A game's own depth for the surface: a shader that defines SFE_GBUFFER_DEPTH declares sfeSurfaceDepth before
+    // including this file and defines it after. It returns the depth to keep for the pixel -- for a surface its vertex
+    // shader moved, worked out exactly per pixel rather than between moved vertices.
+    gl_FragDepth = sfeSurfaceDepth();
+#endif
     uint maps = uint(pc.mapMask + 0.5);
     vec2 uvDiff = uvOf(1u);
     vec2 uvNrm = uvOf(2u);
@@ -153,11 +163,32 @@ void main() {
 
 #ifdef SFE_GBUFFER_STYLE
     // A game's own look over the surface: a shader that defines SFE_GBUFFER_STYLE declares sfeStyleSurface before
-    // including this file and defines it after. It gets the colour as read and the normal, and turns them into its
-    // look before anything below is worked out from them.
-    sfeStyleSurface(texture_diffuse1, uvDiff, diffLod, diff.rgb, Nw);
+    // including this file and defines it after. It gets the colour as read, the normal, and the coat written below with
+    // its last channel (one of sfe.glsl's markers, kSfeCel..., and what that channel says there: sfeGBufferMaterial),
+    // and turns them into its look before anything below is worked out from them.
+    float coat = pc.clearcoat;
+    float coatRough = pc.clearcoatRough;
+    sfeStyleSurface(texture_diffuse1, uvDiff, diffLod, diff.rgb, Nw, coat, coatRough);
+#else
+    const float coat = pc.clearcoat;
+    const float coatRough = pc.clearcoatRough;
 #endif
     vec3 linAlb = pow(diff.rgb, vec3(2.2)) * pc.tint;
+    // Soaked below a line up the model (MaterialComponent::wetBelow): with water filling the weave, much darker and a
+    // little deeper in colour.
+    float soaked = 1.0 - smoothstep(pc.wetBelow - 0.03, pc.wetBelow + 0.03, vSurface.y);
+    linAlb = mix(linAlb, pow(linAlb, vec3(1.15)) * 0.4, soaked);
+    // A plant going bare (SfeMaterial::bare): its bark greys with it, and a leaf past its point is gone (sfeBareKeeps).
+    float dead = pc.alphaCutoff > 0.0 ? 0.0 : pc.bare;
+#ifdef SFE_GBUFFER_CUTOUT
+    if (pc.alphaCutoff > 0.0 && vPiece < pc.bare) {
+        if (!sfeBareKeeps(linAlb)) {
+            discard;
+        }
+        dead = 1.0;
+    }
+#endif
+    linAlb = mix(linAlb, vec3(sfeLuma(linAlb)), dead * 0.7);
     const bool cutout = pc.alphaCutoff > 0.0;
     // Cut-out surfaces (leaves, grass cards) scatter nothing under the skin: their subsurface map is not even read.
     float sss = 0.0;
@@ -209,8 +240,8 @@ void main() {
 
     gAlbedoSpec.a = clamp(sfeFilteredRoughness(Nw, roughness, normalLen), 0.04, 1.0);
     // Cut-out surfaces are leaves, needles and grass: they let the sun through.
-    float lastChannel = cutout && pc.clearcoat < 0.01 ? kSfeTranslucentFoliage : clamp(pc.clearcoatRough, 0.04, 1.0);
-    gMaterial = sfeGBufferMaterial(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(pc.clearcoat, 0.0, 1.0), lastChannel);
+    float lastChannel = cutout && pc.clearcoat < 0.01 ? kSfeTranslucentFoliage : clamp(coatRough, 0.04, 1.0);
+    gMaterial = sfeGBufferMaterial(clamp(metallic, 0.0, 1.0), clamp(specF, 0.0, 1.0), clamp(coat, 0.0, 1.0), lastChannel);
     gVelocity = sfeVelocity(vClip, vPrevClip);
 }
 

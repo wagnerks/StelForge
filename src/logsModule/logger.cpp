@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "CrashReport.h"
 
 #include <cassert>
 #ifdef __APPLE__
@@ -68,6 +69,7 @@ void Logger::logMessage(const eLogLevel level, const char* msg) {
 		oss << "FATAL:  ";
 	}
 	oss << msg << "\n";
+	CrashReport::remember(oss.str().c_str());
 #ifdef __APPLE__
 	os_log_with_type(OS_LOG_DEFAULT, os_log_type_t(logType), "%s", oss.str().c_str());
 #else

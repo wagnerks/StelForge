@@ -29,9 +29,11 @@ namespace SFE::Render {
 		float triplanarUv2[4]{};
 		float triplanarRepeat[2]{}; // repeats a metre, per layer; 0 for none
 		float triplanarRotated = 0.f; // bit 1 the first layer's u and v swapped, bit 2 the second's
-		float pad = 0.f;
+		float wetBelow = ComponentsModule::MaterialComponent::kDry;
+		float bare = 0.f;
+		float pad[3]{}; // std430 rounds the struct up to its vec4 alignment
 	};
-	static_assert(sizeof(GpuMaterial) == 112, "must match the std430 SfeMaterial");
+	static_assert(sizeof(GpuMaterial) == 128, "must match the std430 SfeMaterial");
 
 	// One entry per distinct material, keyed by MaterialRules::materialHash and counted by the instances using it.
 	// An index stays valid while it is held; a released one is reused, so editing a material (a slider drag gives

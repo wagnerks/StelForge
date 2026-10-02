@@ -16,6 +16,7 @@
 #include "core/ECSHandler.h"
 #include "core/Engine.h"
 #include "debugModule/Benchmark.h"
+#include "logsModule/logger.h"
 #include "ecss/Registry.h"
 #include "mathModule/VectorOperations.h"
 #include "mathModule/MatrixOperators.h"
@@ -80,14 +81,8 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	layoutDesc.bindings.emplace_back(5, DescriptorType::UniformBuffer, ShaderStage::Vertex | ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
-	// One set per frame slot: its inputs (the scene copy's transient parameters, the visible list) differ per
-	// frame, and writing a set the previous frame still binds costs a copy of it.
-	mSets.resize((std::max)(1u, rhi->framesInFlight()));
-	for (auto& set : mSets) {
-		set = rhi->allocateDescriptorSet(mLayout);
-	}
 
-	GraphicsPipelineDesc pipelineDesc;
+	auto& pipelineDesc = mPipelineDesc;
 	Render::VertexLayoutDesc& layout = pipelineDesc.layout;
 	layout.bindings.push_back({ 0, sizeof(Vertex3D), Render::VertexInputRate::PerVertex });
 	layout.attributes.push_back({ 0, 0, Render::VertexFormat::Float3, static_cast<std::uint32_t>(offsetof(Vertex3D, position)), true });
@@ -110,8 +105,29 @@ void GlassPass::init(SystemsModule::RenderData& renderDataHandle) {
 	pipelineDesc.renderPass = mRenderPass;
 	pipelineDesc.descriptorSetLayouts = { mLayout };
 	pipelineDesc.shaders.vertex = rhi->loadShader(ShaderStage::Vertex, "shaders/g_buffer.vs");
-	pipelineDesc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, "shaders/glass.fs");
-	mPipeline = rhi->createGraphicsPipeline(pipelineDesc);
+}
+
+SFE::Render::PipelineHandle GlassPass::pipelineFor(const std::string& fragmentShader, bool depthOnly) {
+	const auto key = depthOnly ? fragmentShader + "|depth" : fragmentShader;
+	if (const auto it = mPipelines.find(key); it != mPipelines.end()) {
+		return it->second;
+	}
+	auto* rhi = Engine::instance()->rhi();
+	auto desc = mPipelineDesc;
+	desc.shaders.fragment = rhi->loadShader(ShaderStage::Fragment, fragmentShader);
+	// Only where it is, through the shader's own discards: the colour under it is kept as it is.
+	if (depthOnly) {
+		desc.depthStencilState.depthWrite = true;
+		desc.blend.srcColor = BlendFactor::Zero;
+		desc.blend.dstColor = BlendFactor::One;
+	}
+	// A missing shader is remembered too, as nothing drawn: otherwise it is compiled again every frame.
+	const auto pipeline = desc.shaders.fragment ? rhi->createGraphicsPipeline(desc) : PipelineHandle{};
+	if (!pipeline) {
+		LogsModule::Logger::LOG_WARNING("Glass shader missing: %s", fragmentShader.c_str());
+	}
+	mPipelines.emplace(key, pipeline);
+	return pipeline;
 }
 
 void GlassPass::ensureTargets(SystemsModule::RenderData& renderDataHandle) {
@@ -148,15 +164,35 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	auto* rhi = Engine::instance()->rhi();
 	ensureTargets(renderDataHandle);
 	const auto srcFbo = renderDataHandle.frame.framebuffer(FrameId::Final);
-	if (!mGlassFbo || !srcFbo || !mPipeline) {
+	if (!mGlassFbo || !srcFbo) {
 		return;
 	}
 
-	// Culled and sorted far to near on the GPU; outside the render pass, since it is compute.
+	// Each group culled and sorted far to near on the GPU; outside the render pass, since it is compute. The groups
+	// are drawn one after another: a shader's surfaces are in order among themselves, not among another's.
 	auto* renderSystem = ECSHandler::getSystem<SystemsModule::RenderSystem>();
 	auto& scene = renderSystem->scene();
 	const auto materials = renderSystem->materials().upload();
-	if (!scene.sortGlass(cmd, mView, renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos, renderDataHandle.mViewDir)) {
+	const auto& groups = scene.groups(GpuScene::List::Glass);
+	if (mGroups.size() < groups.size()) {
+		mGroups.resize(groups.size());
+	}
+	// A solid group's depth first, then its colour only where that left its nearest surface: none of it seen through
+	// the rest of it.
+	struct Drawn {
+		uint32_t group;
+		PipelineHandle pipeline;
+		PipelineHandle depthFirst;
+	};
+	std::vector<Drawn> drawn;
+	for (uint32_t group = 0; group < groups.size(); ++group) {
+		const auto pipeline = pipelineFor(groups[group].fragmentShader);
+		if (pipeline && scene.sortGlass(cmd, mGroups[group].view, group, renderDataHandle.mCamFrustum, renderDataHandle.mCameraPos,
+			renderDataHandle.mViewDir)) {
+			drawn.push_back({ group, pipeline, groups[group].solid ? pipelineFor(groups[group].fragmentShader, true) : PipelineHandle{} });
+		}
+	}
+	if (drawn.empty()) {
 		return;
 	}
 
@@ -188,7 +224,8 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	// Per-material ior, opacity and tint come from the material table; the rest is the same for every draw.
 	const auto params = rhi->allocTransient(mParams);
 
-	const auto glassSet = mSets[rhi->frameInFlight() % mSets.size()];
+	// The inputs every group's set has; each also has its own visible list.
+	const DescriptorSetHandle glassSet{};
 	std::vector<WriteDescriptor> writes;
 	{
 		WriteDescriptor w{};
@@ -259,9 +296,24 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		}
 		writes.push_back(std::move(albedo));
 	}
-	writes.push_back({ .set = glassSet, .binding = 3, .buffers{ { mView.visible } } });
 	writes.push_back({ .set = glassSet, .binding = 7, .buffers{ { materials } } });
-	rhi->updateDescriptorSets(writes);
+	// One set per frame slot: its inputs (the scene copy's transient parameters, the visible list) differ per
+	// frame, and writing a set the previous frame still binds costs a copy of it.
+	const auto slot = rhi->frameInFlight() % (std::max)(1u, rhi->framesInFlight());
+	std::vector<WriteDescriptor> all;
+	for (const auto& [group, pipeline, depthFirst] : drawn) {
+		auto& sets = mGroups[group].sets;
+		sets.resize((std::max)(1u, rhi->framesInFlight()));
+		if (!sets[slot]) {
+			sets[slot] = rhi->allocateDescriptorSet(mLayout);
+		}
+		for (auto write : writes) {
+			write.set = sets[slot];
+			all.push_back(std::move(write));
+		}
+		all.push_back({ .set = sets[slot], .binding = 3, .buffers{ { mGroups[group].view.visible } } });
+	}
+	rhi->updateDescriptorSets(all);
 
 	const int w = Engine::instance()->getWindow()->getScreenData().renderW;
 	const int h = Engine::instance()->getWindow()->getScreenData().renderH;
@@ -274,10 +326,17 @@ void GlassPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	rhi->cmdBlit(cmd, srcFbo, mSceneCopyFbo, BlitMask::Color, BlitFilter::Nearest);
 	rhi->cmdBeginRenderPass(cmd, beginInfo);
 	const auto* meshes = SFE::MeshVaoRegistry::instance();
-	rhi->cmdBindPipeline(cmd, mPipeline);
-	rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
-	rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
-	rhi->cmdBindDescriptorSets(cmd, mPipeline, 0, &glassSet, 1, &params.offset, 1);
-	scene.drawSorted(cmd, mView);
+	for (const auto& [group, pipeline, depthFirst] : drawn) {
+		for (const auto& one : { depthFirst, pipeline }) {
+			if (!one) {
+				continue;
+			}
+			rhi->cmdBindPipeline(cmd, one);
+			rhi->cmdBindVertexBuffer(cmd, 0, meshes->vertexBuffer(), 0);
+			rhi->cmdBindIndexBuffer(cmd, meshes->indexBuffer(), IndexType::Uint32, 0);
+			rhi->cmdBindDescriptorSets(cmd, one, 0, &mGroups[group].sets[slot], 1, &params.offset, 1);
+			scene.drawSorted(cmd, mGroups[group].view, group);
+		}
+	}
 	rhi->cmdEndRenderPass(cmd);
 }

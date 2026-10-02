@@ -107,7 +107,7 @@ namespace SFE::Render::RenderPasses {
 		ImGui::End();
 		// Whatever windows the game brought: the engine has none of its own past the graphics settings.
 		for (const auto& panel : GameModule::panels()) {
-			ImGui::SetNextWindowSize(ImVec2(340.f, 170.f), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowSize(ImVec2(panel.size.x, panel.size.y), ImGuiCond_FirstUseEver);
 			if (ImGui::Begin(panel.title.c_str())) {
 				panel.draw();
 			}

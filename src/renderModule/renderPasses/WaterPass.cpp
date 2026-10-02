@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include <algorithm>
+#include <utility>
 
 #include "assetsModule/modelModule/Vertex.h"
 #include "componentsModule/TransformComponent.h"
@@ -23,6 +24,9 @@ namespace {
 		SFE::Render::Atmosphere::SkyParams sky;
 		float surface[4]{}; // xz centre, y level, w half size
 		float look[4]{};    // x clarity, yz 1 / render size, w 1 when the water looks for reflections on screen
+		SFE::Math::Vec4 tintArea{}; // the area tint (AreaTintFrame); a zero area, no tint
+		SFE::Math::Vec4 tintWater{};
+		SFE::Math::Vec4 current{}; // xy the surface current (WaterComponent::current) on world x/z, metres a second
 	};
 
 	// The scene's first water surface under its sky, as the shaders take it: false with no sky or no water.
@@ -45,6 +49,15 @@ namespace {
 			params.look[2] = 1.f / static_cast<float>((std::max)(1, screen.renderH));
 			// The same switch as the rest of the scene's screen-space reflections: without it the water shows only the sky.
 			params.look[3] = renderData.graphics.ssr ? 1.f : 0.f;
+			// The scene's own wind, not the settings' look of it: what floats is carried by this one too.
+			if (const auto wind = SFE::Render::Atmosphere::sceneWind(false)) {
+				const auto current = water->current(*wind);
+				params.current = { current.x, current.y, 0.f, 0.f };
+			}
+			if (const auto* tint = renderData.frame.data<SFE::Render::AreaTintFrame>(SFE::Render::FrameId::AreaTint)) {
+				params.tintArea = tint->area;
+				params.tintWater = tint->water;
+			}
 			return true;
 		}
 		return false;
@@ -108,6 +121,7 @@ void WaterPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(20, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(21, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(22, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(23, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	mSurfaceLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSurfaceSets.resize((std::max)(1u, rhi->framesInFlight()));
 	for (auto& set : mSurfaceSets) {
@@ -152,6 +166,7 @@ void WaterPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 	const auto clouds = Render::Atmosphere::cloudTexture();
 	// The fine ripple map; without it the water keeps the sum of waves alone, which is what it had before.
 	const auto* ripple = AssetsModule::TextureHandler::instance()->loadTexture("textures/water/ripple.png");
+	const auto tint = Utils::areaTintMap(renderDataHandle.frame);
 	rhi->updateDescriptorSets({
 		{ .set = set, .binding = 5, .buffers{ { renderDataHandle.cameraMatricesUBO } } },
 		{ .set = set, .binding = 6, .images{ { mSceneCopy, mLinear } } },
@@ -160,6 +175,7 @@ void WaterPass::render(SystemsModule::RenderData& renderDataHandle, Render::Comm
 		{ .set = set, .binding = 20, .images{ { skyLut.texture, skyLut.sampler } } },
 		{ .set = set, .binding = 21, .images{ { clouds.texture ? clouds.texture : skyLut.texture, clouds.sampler ? clouds.sampler : skyLut.sampler } } },
 		{ .set = set, .binding = 22, .images{ { ripple ? ripple->texture : skyLut.texture, ripple ? mRipple : skyLut.sampler } } },
+		{ .set = set, .binding = 23, .images{ { tint.first, tint.second } } },
 	});
 	// The lit scene under and around the water, for the refraction and for what the reflected rays run into.
 	rhi->cmdBlit(cmd, finalFbo, mSceneCopyFbo, BlitMask::Color, BlitFilter::Nearest);
@@ -188,6 +204,7 @@ void UnderwaterPass::init(SystemsModule::RenderData&) {
 	layoutDesc.bindings.emplace_back(7, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(15, DescriptorType::UniformBufferDynamic, ShaderStage::Vertex | ShaderStage::Fragment);
 	layoutDesc.bindings.emplace_back(20, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
+	layoutDesc.bindings.emplace_back(23, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 	mLayout = rhi->createDescriptorSetLayout(layoutDesc);
 	mSets.resize((std::max)(1u, rhi->framesInFlight()));
 	for (auto& set : mSets) {
@@ -230,12 +247,14 @@ void UnderwaterPass::render(SystemsModule::RenderData& renderDataHandle, Render:
 	const auto set = mSets[rhi->frameInFlight() % mSets.size()];
 	const auto block = rhi->allocTransient(params);
 	const auto skyLut = Render::Atmosphere::skyTexture();
+	const auto tint = Utils::areaTintMap(renderDataHandle.frame);
 	rhi->updateDescriptorSets({
 		{ .set = set, .binding = 5, .buffers{ { renderDataHandle.cameraMatricesUBO } } },
 		{ .set = set, .binding = 6, .images{ { mSceneCopy, mLinear } } },
 		{ .set = set, .binding = 7, .images{ { sceneDepth, mNearest } } },
 		{ .set = set, .binding = 15, .buffers{ { block.buffer, 0, sizeof(params) } } },
 		{ .set = set, .binding = 20, .images{ { skyLut.texture, skyLut.sampler } } },
+		{ .set = set, .binding = 23, .images{ { tint.first, tint.second } } },
 	});
 	rhi->cmdBlit(cmd, finalFbo, mSceneCopyFbo, BlitMask::Color, BlitFilter::Nearest);
 

@@ -94,6 +94,8 @@ namespace SFE {
 						continue;
 					}
 
+					// On the stack too: left on the one before, the next step would come to this one again.
+					mPosition.back() = next;
 					mCurrentNode = &*(next);
 					return *this;
 				}
@@ -156,6 +158,8 @@ namespace SFE {
 						continue;
 					}
 
+					// On the stack too: left on the one before, the next step would come to this one again.
+					mPosition.back() = next;
 					mCurrentNode = &*(next);
 					return *this;
 				}

@@ -1,5 +1,6 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_skin.glsl"
 #include "sfe_scene.glsl"
 #include "sfe_material_table.glsl"
 #include "sfe_wind.glsl"
@@ -15,6 +16,7 @@ layout(location = 7) in vec2 aTexCoords1;
 layout(location = 1) out vec2 TexCoords;
 layout(location = 2) out vec2 TexCoords1;
 layout(location = 3) flat out uint vMaterial;
+layout(location = 4) flat out float vPiece; // see g_buffer.vs
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
@@ -44,19 +46,15 @@ void main() {
     uint index = instance.entity;
     vMaterial = instance.material;
 
-    mat4 BoneTransform = mat4(0.0);
-    bool withBones = false;
+    SfeSkin skin = sfeSkinNone();
     for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
         int boneIdx = aBoneIds[i];
         if (boneIdx < 0) {
             continue;
         }
-        withBones = true;
-        BoneTransform += bones[instance.boneOffset + uint(boneIdx)] * aWeights[i];
+        sfeSkinAdd(skin, bones[instance.boneOffset + uint(boneIdx)], aWeights[i]);
     }
-    if (!withBones) {
-        BoneTransform = mat4(1.0);
-    }
+    mat4 BoneTransform = sfeSkinMatrix(skin);
 
     vec4 newPos = BoneTransform * vec4(aPos, 1.0);
     newPos /= newPos.w;
@@ -71,4 +69,5 @@ void main() {
     gl_Position.z = max(gl_Position.z, -gl_Position.w);
     TexCoords = aTexCoords;
     TexCoords1 = aTexCoords1;
+    vPiece = sfePieceKey(uint(SFE_VERTEX_ID), model[index][3].xyz);
 }

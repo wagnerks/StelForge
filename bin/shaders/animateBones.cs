@@ -78,6 +78,10 @@ struct AnimRecord {
     vec4 look;
     ivec4 lookBone;
     vec4 lookShare;
+    // And AnimationComponent::mTwist the same way, laid on before the look.
+    vec4 twist;
+    ivec4 twistBone;
+    vec4 twistShare;
 };
 
 layout(SFE_SET(0, 25), std430) readonly buffer AnimRecords {
@@ -219,6 +223,20 @@ vec4 nlerpQuat(vec4 q0, vec4 q1, float inFraction) {
     return q;
 }
 
+// A bone's world turned by its share of `turn` (the shares of up to four bones, -1 for none): about the joint, the
+// rotation turns, the joint stays where the clip put it.
+mat4 turnedBy(mat4 world, int bi, vec4 turn, ivec4 bones, vec4 shares) {
+    float share = 0.0;
+    for (int k = 0; k < 4; ++k) {
+        share += bi == bones[k] ? shares[k] : 0.0;
+    }
+    if (share <= 0.0) {
+        return world;
+    }
+    mat4 by = quatToMat(nlerpQuat(vec4(0.0, 0.0, 0.0, 1.0), turn, share));
+    return mat4(by * world[0], by * world[1], by * world[2], world[3]);
+}
+
 vec4 lerpQuatKeys(int off, int cnt, float t, float step) {
     if (cnt <= 0) {
         return vec4(0.0, 0.0, 0.0, 1.0);
@@ -346,15 +364,8 @@ void main() {
 
         mat4 parent = (b.parent < 0) ? inst.armatureTransform : worlds[row + b.parent];
         precise mat4 world = parent * local;
-        float lookShare = 0.0;
-        for (int k = 0; k < 4; ++k) {
-            lookShare += bi == inst.lookBone[k] ? inst.lookShare[k] : 0.0;
-        }
-        if (lookShare > 0.0) {
-            // About the joint: the rotation turns, the joint stays where the clip put it.
-            mat4 turn = quatToMat(nlerpQuat(vec4(0.0, 0.0, 0.0, 1.0), inst.look, lookShare));
-            world = mat4(turn * world[0], turn * world[1], turn * world[2], world[3]);
-        }
+        world = turnedBy(world, bi, inst.twist, inst.twistBone, inst.twistShare);
+        world = turnedBy(world, bi, inst.look, inst.lookBone, inst.lookShare);
         worlds[row + bi] = world;
         precise mat4 skin = world * b.offset;
         prevBones[row + b.boneId] = outBones[row + b.boneId];

@@ -2,6 +2,7 @@
 #include "renderModule/Utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -158,6 +159,8 @@ namespace SFE::SystemsModule {
 				{ 9, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Compute },
 				// Vertex too: the G-buffer vertex shader reads how a material sways in the wind.
 				{ 7, Render::DescriptorType::StorageBuffer, Render::ShaderStage::Vertex | Render::ShaderStage::Fragment },
+				// The area tint map (AreaTintFrame): the terrain's bank goes by it.
+				{ 22, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment },
 			};
 			frameSetLayout = rhi->createDescriptorSetLayout(frameLayout);
 			mRenderData.frameSetLayout = frameSetLayout;
@@ -351,6 +354,20 @@ namespace SFE::SystemsModule {
 		mRenderData.prevTransformsSSBO = prevTransforms;
 		mRenderData.prevBonesSSBO = prevBones;
 		mRenderData.cameraMatricesUBO = cameraMatricesUBO;
+	}
+
+	void RenderSystem::updateAreaTint() {
+		auto* rhi = Engine::instance()->rhi();
+		const auto* tint = mRenderData.frame.data<Render::AreaTintFrame>(Render::FrameId::AreaTint);
+		const Math::Vec4 place[] = { tint ? tint->area : Math::Vec4{}, tint ? tint->shore : Math::Vec4{} };
+		rhi->updateBuffer(cameraMatricesUBO, offsetof(RenderMatrices, tintArea), sizeof(place), place);
+		// Rewritten only when the game makes a new map, which it does as the litter's bounds change.
+		const auto map = Render::Utils::areaTintMap(mRenderData.frame);
+		const auto [written, fresh] = mFrameSetTint.try_emplace(frameSet.id, map.first.id);
+		if (fresh || written->second != map.first.id) {
+			written->second = map.first.id;
+			rhi->updateDescriptorSets({ { .set = frameSet, .binding = 22, .images{ { map.first, map.second } } } });
+		}
 	}
 
 	void RenderSystem::createGpuFrameResources(const uint32_t slot) {
@@ -810,6 +827,8 @@ namespace SFE::SystemsModule {
 				mRenderPasses[i]->prepare(mRenderData);
 			}
 		}
+		// After prepare: the game makes the area tint's map in its own, and may have just replaced it.
+		updateAreaTint();
 		const auto tBegin = std::chrono::high_resolution_clock::now();
 		info->prepareMs = std::chrono::duration<float, std::milli>(tBegin - tFrame).count();
 		auto cmd = rhi->beginCommandList(Render::CommandListType::Graphics);

@@ -6,7 +6,9 @@
 #define SFE_WATER_PARAMS \
     SFE_SKY_PARAMS       \
     vec4 surface;        /* xz centre, y level, w half size */ \
-    vec4 look;           /* x clarity in metres, yz 1 / render size */
+    vec4 look;           /* x clarity in metres, yz 1 / render size */ \
+    vec4 tintArea;       /* the area tint map's place, see sfeAreaTint */ \
+    vec4 tintWater;      /* rgb the murky water's colour (as kSfeWaterAlbedo), a how murky where the map is full */     vec4 current;        /* xy the surface current on world x/z, metres a second: what floats drifts with it */
 
 float sfeCausticLayer(vec2 p, float t) {
     vec2 warp = vec2(sfeValueNoise(p * 0.6 + vec2(t * 0.25, 0.0)), sfeValueNoise(p * 0.6 + vec2(3.7, -t * 0.21))) * 1.8;
@@ -41,9 +43,20 @@ vec3 sfeWaterExtinction(float clarity) {
     return vec3(0.55, 0.45, 0.85) * (4.0 / clarity);
 }
 
-// What the water itself scatters back towards the eye in place of the light it took away.
-vec3 sfeWaterBody(vec3 sun, vec3 toSun, vec3 skyLight) {
-    return vec3(0.0025, 0.005, 0.004) * (sun * max(toSun.y, 0.0) + skyLight) / 3.14159265;
+// The area tint's murk at a place of the water: 0 clear, 1 as murky as it gets.
+float sfeWaterMurk(sampler2D tintMap, vec4 tintArea, vec4 tintWater, vec2 xz) {
+    return clamp(sfeAreaTint(tintMap, tintArea, xz).g * tintWater.a, 0.0, 1.0);
+}
+
+// The clarity (metres) murk leaves: a fiftieth at its worst, next to opaque, and clearing evenly as it goes.
+float sfeMurkyClarity(float clarity, float murk) {
+    return clarity * pow(0.02, murk);
+}
+
+// What the water itself scatters back towards the eye in place of the light it took away: this much of it.
+const vec3 kSfeWaterAlbedo = vec3(0.0025, 0.005, 0.004);
+vec3 sfeWaterBody(vec3 sun, vec3 toSun, vec3 skyLight, vec3 albedo) {
+    return albedo * (sun * max(toSun.y, 0.0) + skyLight) / 3.14159265;
 }
 
 #endif

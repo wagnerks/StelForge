@@ -89,6 +89,9 @@ namespace SFE::PropertiesModule {
 
 	void ComponentSerializer<ModelComponent>::save(const ModelComponent& component, Json::Value& data) {
 		data["ModelPath"] = component.mPath;
+		if (component.collider) {
+			data["Collider"] = true;
+		}
 	}
 
 	void ComponentSerializer<ModelComponent>::load(ecss::EntityId entity, const Json::Value& data) {
@@ -102,6 +105,7 @@ namespace SFE::PropertiesModule {
 			component->mPath = data["ModelPath"].asString();
 			model = AssetsModule::ModelLoader::instance()->load(component->mPath);
 		}
+		component->collider = data.get("Collider", false).asBool();
 
 		if (model) {
 			component->boneMatrices = model->getDefaultBoneMatrices();
@@ -344,6 +348,14 @@ namespace SFE::PropertiesModule {
 			item.append(point.y);
 			data["road"].append(item);
 		}
+		data["clearings"] = Json::arrayValue;
+		for (const auto& clearing : component.clearings) {
+			Json::Value item = Json::arrayValue;
+			item.append(clearing.x);
+			item.append(clearing.y);
+			item.append(clearing.z);
+			data["clearings"].append(item);
+		}
 	}
 
 	void ComponentSerializer<TerrainComponent>::load(ecss::EntityId entity, const Json::Value& data) {
@@ -361,6 +373,10 @@ namespace SFE::PropertiesModule {
 		component->road.clear();
 		for (const auto& point : data["road"]) {
 			component->road.push_back({ point[0].asFloat(), point[1].asFloat() });
+		}
+		component->clearings.clear();
+		for (const auto& clearing : data["clearings"]) {
+			component->clearings.push_back({ clearing[0].asFloat(), clearing[1].asFloat(), clearing[2].asFloat() });
 		}
 
 		auto* model = AssetsModule::getOrCreateTerrain(*component);
@@ -386,6 +402,7 @@ namespace SFE::PropertiesModule {
 	void ComponentSerializer<WaterComponent>::save(const WaterComponent& component, Json::Value& data) {
 		data["size"] = component.size;
 		data["clarity"] = component.clarity;
+		data["drift"] = component.drift;
 	}
 
 	void ComponentSerializer<WaterComponent>::load(ecss::EntityId entity, const Json::Value& data) {
@@ -395,6 +412,7 @@ namespace SFE::PropertiesModule {
 		}
 		component->size = data.get("size", component->size).asFloat();
 		component->clarity = data.get("clarity", component->clarity).asFloat();
+		component->drift = data.get("drift", component->drift).asFloat();
 	}
 
 	// ===== CharacterComponent =================================================

@@ -40,6 +40,26 @@ namespace SFE::Render {
 		std::vector<Math::Mat4> matrices;
 	};
 
+	// A world map (x, z) of how far each place has gone towards a tint: r its foliage, g its water, b its air. Put by
+	// the game (under FrameId::AreaTint); without it nothing is tinted.
+	struct AreaTintFrame {
+		TextureHandle map;
+		SamplerHandle sampler;
+		Math::Vec4 area;    // min x, min z, 1 / size along x and z
+		Math::Vec4 foliage; // rgb what the foliage's grey is multiplied by, a how far a full map value takes it
+		Math::Vec4 water;
+		Math::Vec4 air;
+		Math::Vec4 ground; // rgb what the ground's colour is multiplied by
+		// The lake's bank by the larger of its land and water map values: clean it is pebbles, with sand in its coves;
+		// from x it turns to mud by the water and bare earth above, all of it by y.
+		Math::Vec4 shore;
+		// Fumes off the water: a low mist over it where its map value is past fumes.x, thickest at 1, thinning to 1/e
+		// fumes.y metres up; fumesColour.rgb what the light in it is multiplied by, .a its density per metre at the
+		// water line over the foulest water. A zero density, none.
+		Math::Vec4 fumes;
+		Math::Vec4 fumesColour;
+	};
+
 	class FrameBlackboard {
 	public:
 		void set(const char* name, FrameResource resource) {
@@ -129,6 +149,7 @@ namespace SFE::Render {
 		constexpr const char* Csm = "csm";
 		constexpr const char* PointShadow = "pointShadow";
 		constexpr const char* ShadowPoint = "shadow.point";
+		constexpr const char* AreaTint = "areaTint";
 	}
 
 }

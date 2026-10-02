@@ -43,12 +43,13 @@ namespace SFE {
 		/// @brief The engine's passes in draw order, with the game's inserted. The engine walks this.
 		static const std::vector<Render::RenderPassEntry>& passes();
 
-		/// @brief A window of the game's in the debug UI, drawn beside the engine's own.
+		/// @brief A window of the game's in the debug UI, drawn beside the engine's own; it first opens at @p size.
 		struct Panel {
 			std::string title;
 			std::function<void()> draw;
+			Math::Vec2 size;
 		};
-		static void addPanel(std::string title, std::function<void()> draw);
+		static void addPanel(std::string title, std::function<void()> draw, Math::Vec2 size = { 340.f, 170.f });
 		static const std::vector<Panel>& panels();
 	};
 }

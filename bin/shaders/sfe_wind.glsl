@@ -15,10 +15,11 @@ float sfeWindPhase(vec2 root) {
     return float(sfeCellHash(ivec2(floor(root * 4.0))) >> 8u) / 16777216.0 * 6.2831853;
 }
 
-// A tree in the wind: a stiff trunk and a supple crown. `wind` is the shared block's: xz the unit direction it blows
-// along, y its strength (0..1), w seconds. `root` is where the trunk stands. Impostors sway by this too, so a tree
-// far away leans like the one that replaces it up close.
-vec3 sfeWindSwayTree(vec3 worldPos, vec3 root, vec4 wind) {
+// A tree in the wind: a stiff trunk that hardly leans, and boughs that swing, each out of step with the others, the
+// further out from the trunk the more. `wind` is the shared block's: xz the unit direction it blows along, y its
+// strength (0..1), w seconds. `root` is where the trunk stands. `boughs` 1 for the tree itself, 0 for its impostor: a
+// tree far away leans like the one that replaces it up close, too far off for its boughs to be seen to swing.
+vec3 sfeWindSwayTree(vec3 worldPos, vec3 root, vec4 wind, float boughs) {
     float strength = wind.y;
     if (strength <= 0.0) {
         return vec3(0.0);
@@ -30,17 +31,25 @@ vec3 sfeWindSwayTree(vec3 worldPos, vec3 root, vec4 wind) {
     float gust = sfeWindGust(root.xz, wind);
     float phase = sfeWindPhase(root.xz);
 
-    // The bend grows with the square of the height, and past 12 metres, where a tall trunk stiffens, only with it.
-    float bend = min(height * height * 0.0045, height * 0.054) * strength;
+    // The trunk's bend grows with the square of the height, and past 12 metres, where a tall trunk stiffens, only with it.
+    float bend = min(height * height * 0.0012, height * 0.015) * strength;
     vec2 push = along * bend * gust + across * bend * 0.3 * sin(seconds * 0.9 + phase);
     push += along * bend * 0.25 * sin(seconds * 1.7 + phase);
+    // A bough swings with the gusts and on its own beat, and bobs as it swings: by how far it reaches out from the trunk,
+    // and none low down, where a trunk starts or a log lies.
+    vec2 off = worldPos.xz - root.xz;
+    float reach = length(off);
+    float bough = boughs * reach * 0.08 * strength * smoothstep(0.3, 2.0, reach) * smoothstep(0.5, 2.5, height);
+    float beat = phase + dot(off, vec2(0.9, 0.7)) + height * 0.35;
+    push += along * bough * (0.5 * gust + 0.5 * sin(seconds * 1.9 + beat)) + across * bough * 0.4 * sin(seconds * 1.3 + beat * 1.3);
+    float bob = bough * 0.3 * sin(seconds * 2.3 + beat);
     // The leaves shiver on their own, faster and smaller.
     float leaves = min(height * 0.12, 1.0) * 0.03 * strength;
     vec3 flutter = vec3(sin(seconds * 4.3 + worldPos.x * 0.9 + phase),
                         sin(seconds * 5.1 + worldPos.z * 1.1) * 0.5,
                         cos(seconds * 3.7 + worldPos.y * 0.7 + phase)) * leaves;
     float lift = dot(push, push) / max(2.0 * height, 0.5);
-    return vec3(push.x, -lift, push.y) + flutter;
+    return vec3(push.x, bob - lift, push.y) + flutter;
 }
 
 #ifndef SFE_WIND_TREES_ONLY
@@ -54,7 +63,7 @@ vec3 sfeWindSway(vec3 worldPos, vec3 root, uint material, vec4 wind) {
         return vec3(0.0);
     }
     if (tree) {
-        return sfeWindSwayTree(worldPos, root, wind);
+        return sfeWindSwayTree(worldPos, root, wind, 1.0);
     }
     // Grass and bushes lean with the wind from the ground up and spring back quickly.
     vec2 along = wind.xz;

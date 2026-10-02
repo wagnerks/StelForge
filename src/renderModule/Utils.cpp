@@ -5,8 +5,18 @@
 #include "assetsModule/modelModule/Vertex.h"
 #include "mathModule/Quaternion.h"
 #include "systemsModule/SystemManager.h"
+#include "assetsModule/TextureHandler.h"
+#include "renderModule/FrameBlackboard.h"
 
 using namespace SFE::Render;
+
+std::pair<TextureHandle, SamplerHandle> Utils::areaTintMap(const FrameBlackboard& frame) {
+	if (const auto* tint = frame.data<AreaTintFrame>(FrameId::AreaTint)) {
+		return { tint->map, tint->sampler };
+	}
+	const auto* white = AssetsModule::TextureHandler::instance()->loadTexture("white.png");
+	return { white->texture, white->sampler };
+}
 
 // A LineStrip batch is never merged with an existing one: appending vertices to a strip joins the
 // last vertex of the old run to the first of the new, drawing a segment nobody asked for.

@@ -152,6 +152,7 @@ namespace AssetsModule {
 		struct RoadLine {
 			static constexpr float kCell = 16.f;
 			std::vector<SFE::Math::Vec2> points;
+			std::vector<float> along; // metres along the line to each point
 			float originX = 0.f;
 			float originZ = 0.f;
 			int cellsX = 0;
@@ -191,6 +192,44 @@ namespace AssetsModule {
 				}
 				return best * bestSign;
 			}
+
+			// Metres across the line (signed as `distance`) and along it from its first point, by the nearest point of
+			// the line going on straight past both its ends: a clearing at an end lies in its frame too.
+			SFE::Math::Vec2 frame(float x, float z) const {
+				SFE::Math::Vec2 best{ kRoadFar, 0.f };
+				if (points.size() < 2) {
+					return best;
+				}
+				float bestDistance = kRoadFar;
+				const uint32_t last = static_cast<uint32_t>(points.size()) - 2;
+				const auto consider = [&](const uint32_t i) {
+					const auto& a = points[i];
+					const auto& b = points[i + 1];
+					const float abx = b.x - a.x;
+					const float abz = b.y - a.y;
+					const float length = std::sqrt(abx * abx + abz * abz);
+					if (length < 1e-4f) {
+						return;
+					}
+					const float u = std::clamp(((x - a.x) * abx + (z - a.y) * abz) / (length * length), i == 0 ? -kRoadFar : 0.f,
+						i == last ? kRoadFar : 1.f);
+					const float d = std::hypot(x - (a.x + abx * u), z - (a.y + abz * u));
+					if (d < bestDistance) {
+						bestDistance = d;
+						best = { abx * (z - a.y) - abz * (x - a.x) >= 0.f ? d : -d, along[i] + u * length };
+					}
+				};
+				consider(0);
+				consider(last);
+				const int cx = static_cast<int>(std::floor((x - originX) / kCell));
+				const int cz = static_cast<int>(std::floor((z - originZ) / kCell));
+				if (cx >= 0 && cz >= 0 && cx < cellsX && cz < cellsZ) {
+					for (const uint32_t i : cells[static_cast<size_t>(cz) * cellsX + cx]) {
+						consider(i);
+					}
+				}
+				return best;
+			}
 		};
 
 		// How far from the line a segment is still bucketed: past it the distance does not matter.
@@ -219,6 +258,12 @@ namespace AssetsModule {
 				}
 			}
 			line.points.push_back(control.back());
+			line.along.assign(line.points.size(), 0.f);
+			for (size_t i = 1; i < line.points.size(); ++i) {
+				const auto& a = line.points[i - 1];
+				const auto& b = line.points[i];
+				line.along[i] = line.along[i - 1] + std::hypot(b.x - a.x, b.y - a.y);
+			}
 
 			const float half = t.size * 0.5f;
 			line.originX = -half - kRoadReach;
@@ -241,10 +286,14 @@ namespace AssetsModule {
 			return line;
 		}
 
+		// The road and the clearings, for the keys of what is built from them.
 		std::string roadText(const SFE::ComponentsModule::TerrainComponent& t) {
 			std::string text;
 			for (const auto& point : t.road) {
 				text += std::to_string(point.x) + "," + std::to_string(point.y) + ";";
+			}
+			for (const auto& clearing : t.clearings) {
+				text += "o" + std::to_string(clearing.x) + "," + std::to_string(clearing.y) + "," + std::to_string(clearing.z) + ";";
 			}
 			return text;
 		}
@@ -263,21 +312,38 @@ namespace AssetsModule {
 		}
 
 		// The natural height with the road levelled in: across the road the ground takes the height of the line
-		// under its middle, a few centimetres down, and blends back into the slope beside it.
+		// under its middle, a few centimetres down, and blends back into the slope beside it. A clearing is flat at the
+		// height its middle had, and blends back over kClearingBlend past its edge.
+		constexpr float kClearingBlend = 6.f;
 		float heightAt(const SFE::ComponentsModule::TerrainComponent& t, const RoadLine& road, float x, float z) {
-			const float natural = naturalHeightAt(t, x, z);
+			float height = naturalHeightAt(t, x, z);
 			SFE::Math::Vec2 nearest;
 			const float distance = std::fabs(road.distance(x, z, &nearest));
-			if (distance >= kRoadHalfWidth + 4.f) {
-				return natural;
+			if (distance < kRoadHalfWidth + 4.f) {
+				const float bed = naturalHeightAt(t, nearest.x, nearest.y) - 0.08f;
+				height += (bed - height) * (1.f - smoothstep(kRoadHalfWidth + 0.5f, kRoadHalfWidth + 4.f, distance));
 			}
-			const float bed = naturalHeightAt(t, nearest.x, nearest.y) - 0.08f;
-			return natural + (bed - natural) * (1.f - smoothstep(kRoadHalfWidth + 0.5f, kRoadHalfWidth + 4.f, distance));
+			for (const auto& clearing : t.clearings) {
+				const float fromMiddle = std::sqrt((x - clearing.x) * (x - clearing.x) + (z - clearing.y) * (z - clearing.y));
+				if (fromMiddle < clearing.z + kClearingBlend) {
+					const float flat = naturalHeightAt(t, clearing.x, clearing.y) - 0.05f;
+					height += (flat - height) * (1.f - smoothstep(clearing.z, clearing.z + kClearingBlend, fromMiddle));
+				}
+			}
+			return height;
 		}
 	}
 
 	float terrainRoadDistance(const SFE::ComponentsModule::TerrainComponent& t, float x, float z) {
-		return roadOf(t).distance(x, z);
+		float distance = roadOf(t).distance(x, z);
+		for (const auto& clearing : t.clearings) {
+			const float fromMiddle = std::sqrt((x - clearing.x) * (x - clearing.x) + (z - clearing.y) * (z - clearing.y));
+			const float trodden = (std::max)(fromMiddle - clearing.z, 0.f) + kClearingDistance;
+			if (trodden < std::fabs(distance)) {
+				distance = trodden;
+			}
+		}
+		return distance;
 	}
 
 	namespace {
@@ -362,6 +428,35 @@ namespace AssetsModule {
 		desc.width = static_cast<uint32_t>(side);
 		desc.height = desc.width;
 		desc.format = SFE::Render::TextureFormat::RGBA8;
+		auto* texture = AssetsManager::instance()->createAsset<Texture>(name);
+		texture->texture = SFE::Engine::instance()->rhi()->createTexture(desc, texels.data());
+		return texture->texture;
+	}
+
+	SFE::Render::TextureHandle terrainRoadFrameTexture(const SFE::ComponentsModule::TerrainComponent& t) {
+		const std::string name = "builtin:terrain:road:" + std::to_string(cacheKey(t));
+		if (auto* texture = AssetsManager::instance()->getAsset<Texture>(name)) {
+			return texture->texture;
+		}
+		const int side = (std::max)(2, static_cast<int>(std::ceil(t.size / kTerrainNoiseTexelMetres)));
+		std::vector<float> texels(static_cast<size_t>(side) * side * 2);
+		const auto& road = roadOf(t);
+		std::vector<int> rows(side);
+		std::iota(rows.begin(), rows.end(), 0);
+		std::for_each(std::execution::par, rows.begin(), rows.end(), [&](const int j) {
+			const float z = (static_cast<float>(j) + 0.5f - side * 0.5f) * kTerrainNoiseTexelMetres;
+			for (int i = 0; i < side; ++i) {
+				const float x = (static_cast<float>(i) + 0.5f - side * 0.5f) * kTerrainNoiseTexelMetres;
+				const auto frame = road.frame(x, z);
+				const size_t at = (static_cast<size_t>(j) * side + i) * 2;
+				texels[at] = frame.x;
+				texels[at + 1] = frame.y;
+			}
+		});
+		SFE::Render::TextureDesc desc;
+		desc.width = static_cast<uint32_t>(side);
+		desc.height = desc.width;
+		desc.format = SFE::Render::TextureFormat::RG32F;
 		auto* texture = AssetsManager::instance()->createAsset<Texture>(name);
 		texture->texture = SFE::Engine::instance()->rhi()->createTexture(desc, texels.data());
 		return texture->texture;
@@ -508,7 +603,7 @@ namespace AssetsModule {
 		// The ground materials, one layer each in the order g_buffer_terrain.fs names them.
 		std::vector<std::string> albedo;
 		std::vector<std::string> normal;
-		for (const char* name : { "grass", "moss", "mud", "sand", "rocks", "litter", "track" }) {
+		for (const char* name : { "grass", "moss", "mud", "sand", "rocks", "litter", "track", "pebbles" }) {
 			albedo.push_back(std::string("textures/ground/") + name + "_albedo_height.png");
 			normal.push_back(std::string("textures/ground/") + name + "_normal_rough_ao.png");
 		}
@@ -519,6 +614,7 @@ namespace AssetsModule {
 			meshObj.material[SFE::NORMALS] = SFE::MaterialTexture{ texture->texture, SFE::NORMALS, SFE::NORMALS };
 		}
 		meshObj.material[SFE::ROUGHNESS] = SFE::MaterialTexture{ terrainNoiseTexture(t), SFE::ROUGHNESS, SFE::ROUGHNESS };
+		meshObj.material[SFE::METALLIC] = SFE::MaterialTexture{ terrainRoadFrameTexture(t), SFE::METALLIC, SFE::METALLIC };
 
 		// The root holds nothing; every chunk is a child with the ground's material and its own bounds.
 		SFE::Tree<SFE::MeshObject3D> tree;

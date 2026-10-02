@@ -16,6 +16,8 @@ namespace SFE::ComponentsModule {
 	inline constexpr const char* DefaultGBufferMaskedFS = "shaders/g_buffer_masked.fs";
 	// DefaultGBufferFS without its cut-out path, for a material with nothing to discard; GpuScene picks it.
 	inline constexpr const char* DefaultGBufferSolidFS = "shaders/g_buffer_solid.fs";
+	// A transparent material's, unless it names one of its own (GlassPass).
+	inline constexpr const char* DefaultGlassFS = "shaders/glass.fs";
 
 	struct MaterialData {
 		int slot = 0;
@@ -39,7 +41,12 @@ namespace SFE::ComponentsModule {
 		Materials materials;
 		std::string vertexShader = DefaultGBufferVS;
 		std::string fragmentShader = DefaultGBufferFS;
+		// Drawn over the lit scene, blended (GlassPass): as glass, or by a fragment shader of its own when it names one
+		// (with sfe_glass.glsl's inputs, not the G-buffer's).
 		bool transparent = false;
+		// Transparent, and seen as one surface: its nearest only, none of it through the rest of it -- a hand's fingers
+		// not through its palm (GlassPass lays its depth first).
+		bool solidGlass = false;
 		bool alphaFromMaps = false;
 		bool alphaDither = false;
 		float opacity = 1.f;
@@ -57,6 +64,13 @@ namespace SFE::ComponentsModule {
 		bool hidden = false;
 		// Not drawn, but its shadow is: a head the first person camera is inside.
 		bool shadowOnly = false;
+		// Soaked below this many metres over the model's origin, straight up: darker, cloth and skin with water in
+		// them. kDry, far below any model, when dry.
+		static constexpr float kDry = -1000.f;
+		float wetBelow = kDry;
+		// How far a plant has gone bare, 0 not at all to 1 dead: each triangle of a cut-out surface (a leaf) is gone
+		// from its own point on the way (sfePieceKey), and the rest of it, the bark, greys.
+		float bare = 0.f;
 		// Where the texture coordinates fall inside `uv` (u min, v min, u max, v max), the surface takes the
 		// TRIPLANAR_ALBEDO and TRIPLANAR_NORMALS textures instead (the second: TRIPLANAR2_*), projected along the
 		// model's axes, a repeat every `metres`: bark on a trunk, or stone and moss on a rock, whose coordinates only

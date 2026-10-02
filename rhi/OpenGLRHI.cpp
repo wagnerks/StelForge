@@ -618,7 +618,7 @@ namespace SFE::Render
 		// blend
 		if (gp.blendEnabled) {
 			glEnable(GL_BLEND);
-			glBlendFunc(gp.blendSrcGL, gp.blendDstGL);
+			glBlendFuncSeparate(gp.blendSrcGL, gp.blendDstGL, gp.blendSrcAlphaGL, gp.blendDstAlphaGL);
 		}
 		else {
 			glDisable(GL_BLEND);
@@ -1603,6 +1603,8 @@ namespace SFE::Render
 		gp.blendEnabled = desc.blend.enabled;
 		gp.blendSrcGL = ToGLBlendFactor(desc.blend.srcColor);
 		gp.blendDstGL = ToGLBlendFactor(desc.blend.dstColor);
+		gp.blendSrcAlphaGL = ToGLBlendFactor(desc.blend.srcAlpha.value_or(desc.blend.srcColor));
+		gp.blendDstAlphaGL = ToGLBlendFactor(desc.blend.dstAlpha.value_or(desc.blend.dstColor));
 
 
 		// ------------ НОВОЕ: создаём VAO и настраиваем layout ------------

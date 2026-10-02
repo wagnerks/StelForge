@@ -20,6 +20,9 @@ namespace SFE::ComponentsModule {
 		// A dirt road's course, x/z in the terrain's own space: a smooth curve through these points, levelled into
 		// the ground, drawn as a track and kept clear of vegetation. Empty for none.
 		std::vector<Math::Vec2> road;
+		// Round clearings: x/z of the middle and the radius. Levelled to the height the middle had, trodden bare as
+		// the road's sides are and kept clear of vegetation.
+		std::vector<Math::Vec3> clearings;
 	};
 }
 

@@ -10,8 +10,13 @@
 #include "rhi/RenderHardwareInterface.h"
 
 namespace SFE::Render {
+	class FrameBlackboard;
+
 	class Utils {
 	public:
+		// The area tint map (AreaTintFrame); without one white, under the zero area the shaders read as no tint.
+		static std::pair<TextureHandle, SamplerHandle> areaTintMap(const FrameBlackboard& frame);
+
 		struct LineData {
 			Math::Vec4 color;
 			float thickness = 1.f;

@@ -8,23 +8,7 @@ layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
 };
 
-struct GpuMesh {
-    uint firstIndex;
-    uint indexCount;
-    uint firstVertex;
-    uint vertexCount;
-    vec3 boundsMin;
-    uint skinned;
-    vec3 boundsMax;
-    uint lodIndex;
-    uint lodCount;
-    uint _pad0;
-    uint _pad1;
-    uint _pad2;
-};
-layout(SFE_SET(0, 26), std430) readonly buffer Meshes {
-    GpuMesh meshes[];
-};
+#include "sfe_gpu_meshes.glsl"
 
 struct SceneInstance {
     uint entity;
@@ -120,9 +104,7 @@ layout(SFE_SET(0, 2), std430) readonly buffer bonesMatrices {
     mat4 bones[];
 };
 
-// Without pose bounds, animation can move vertices past the bind pose, so skinned bounds get this much of their
-// largest half-extent added on every axis.
-const float kSkinnedInflate = 0.5;
+// Without pose bounds, skinned bounds are inflated (sfeSkinnedInflated).
 
 bool visibleInView(vec3 center, vec3 extents) {
     if (view.mode == 0u) {
@@ -222,7 +204,7 @@ void main() {
         vec3 center = (m * vec4(localCenter, 1.0)).xyz;
         vec3 extents = abs(m[0].xyz) * localExtents.x + abs(m[1].xyz) * localExtents.y + abs(m[2].xyz) * localExtents.z;
         if (inflate) {
-            extents += vec3(max(extents.x, max(extents.y, extents.z)) * kSkinnedInflate);
+            extents = sfeSkinnedInflated(extents);
         }
         // The mesh table holds one entry per level and the scene registers the instance once under each, so
         // every batch is asked whether this instance belongs to it at this distance and exactly one says yes.

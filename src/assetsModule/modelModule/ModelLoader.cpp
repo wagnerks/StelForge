@@ -36,6 +36,22 @@
 using namespace AssetsModule;
 
 namespace {
+	// A glTF names its files as URIs: a space in the name as "%20", "(" as "%28".
+	std::string uriDecoded(const std::string& uri) {
+		std::string text;
+		for (size_t i = 0; i < uri.size(); ++i) {
+			if (uri[i] == '%' && i + 2 < uri.size() && std::isxdigit(static_cast<unsigned char>(uri[i + 1]))
+				&& std::isxdigit(static_cast<unsigned char>(uri[i + 2]))) {
+				text += static_cast<char>(std::stoi(uri.substr(i + 1, 2), nullptr, 16));
+				i += 2;
+			}
+			else {
+				text += uri[i];
+			}
+		}
+		return text;
+	}
+
 	bool meshHasSkin(const SFE::MeshObject3D& mesh) {
 		for (const auto& v : mesh.mesh.vertices) {
 			if (v.boneIDs[0] >= 0) {
@@ -959,13 +975,17 @@ void ModelLoader::processMesh(aiMesh* assimpMesh, const aiScene* scene, const st
 }
 
 std::vector<std::string> ModelLoader::textureFileCandidates(const std::string& raw, const std::string& directory) {
-	std::string filename = raw;
-	if (const auto pos = raw.find_last_of("/\\"); pos != std::string::npos) {
-		filename = raw.substr(pos + 1);
+	std::vector<std::string> candidates;
+	for (const auto& name : { raw, uriDecoded(raw) }) {
+		std::string filename = name;
+		if (const auto pos = name.find_last_of("/\\"); pos != std::string::npos) {
+			filename = name.substr(pos + 1);
+		}
+		std::string relative = name;
+		std::replace(relative.begin(), relative.end(), '\\', '/');
+		candidates.insert(candidates.end(), { name, directory + "/" + filename, directory + "/" + relative, directory + "/textures/" + filename });
 	}
-	std::string relative = raw;
-	std::replace(relative.begin(), relative.end(), '\\', '/');
-	return { raw, directory + "/" + filename, directory + "/" + relative, directory + "/textures/" + filename };
+	return candidates;
 }
 
 std::vector<Texture*> ModelLoader::loadMaterialTextures(aiMaterial* mat, aiTextureType type, const std::string& directory) {

@@ -4,6 +4,7 @@
 layout(location = 1) in vec2 TexCoords;
 layout(location = 2) in vec2 TexCoords1;
 layout(location = 3) flat in uint vMaterial;
+layout(location = 4) flat in float vPiece;
 
 layout(SFE_SET(1, 4)) uniform sampler2D texture_diffuse1;
 
@@ -17,7 +18,8 @@ void main() {
     float cutoff = abs(material.shadowCutoff);
     float a = material.shadowCutoff < 0.0 ? max(t.r, t.g) : t.a;
     a = min(a, textureLod(texture_diffuse1, TexCoords1, 0.0).a);
-    if (cutoff > 0.0 && a < cutoff) {
+    // A leaf of a plant gone that far bare (sfe_gbuffer_surface.glsl) casts no shadow either.
+    if (cutoff > 0.0 && (a < cutoff || (vPiece < material.bare && !sfeBareKeeps(pow(t.rgb, vec3(2.2)) * material.tint)))) {
         discard;
     }
     float opacity = clamp(material.casterOpacity, 0.0, 1.0);

@@ -78,6 +78,8 @@ namespace SFE::ComponentsModule {
 		LODData mLOD;
 
 		std::string mPath = "";
+		// Stands in the physics worlds too, as a static collider of its model's triangles: a prop set in a scene.
+		bool collider = false;
 
 		AssetsModule::Armature armature;
 		std::vector<SFE::Math::Mat4> boneMatrices;
@@ -152,6 +154,10 @@ namespace SFE::ComponentsModule {
 		};
 		Math::Quaternion<float> mLook;
 		std::array<LookBone, 4> mLookBones{};
+		// And a second such turn, laid on before it: mTwist along mTwistBones -- a body whose hips stay as its legs
+		// stand while what is above them turns, as a character turning on the spot turns its chest before its feet.
+		Math::Quaternion<float> mTwist;
+		std::array<LookBone, 4> mTwistBones{};
 
 		// Set while something poses this skeleton itself, bone by bone, into ArmatureBonesComponent: an arm reaching
 		// for what it takes hold of, fingers closing on it. The clip is then only what that pose is built on -- it is

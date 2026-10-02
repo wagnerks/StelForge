@@ -1,5 +1,6 @@
 #version 450 core
 #include "sfe.glsl"
+#include "sfe_skin.glsl"
 #include "sfe_scene.glsl"
 #include "sfe_material_table.glsl"
 #include "sfe_wind.glsl"
@@ -27,6 +28,8 @@ layout(location = 8) out vec4 vPrevClip;
 // Where on the model this is, in world metres from its origin and before the wind: what a triplanar texture is laid
 // by, so it neither slides as the model moves nor swims as it sways.
 layout(location = 9) out vec3 vSurface;
+// When this triangle of a cut-out surface is gone as the plant goes bare (sfePieceKey).
+layout(location = 12) flat out float vPiece;
 
 layout(SFE_SET(0, 1), std430) readonly buffer modelMatrices {
     mat4 model[];
@@ -56,28 +59,25 @@ void main() {
     uint index = instance.entity;
     vMaterial = instance.material;
 
-    precise mat4 BoneTransform = mat4(0.0);
-    mat4 prevBoneTransform = mat4(0.0);
-    bool withBones = false;
+    SfeSkin skin = sfeSkinNone();
+    SfeSkin prevSkin = sfeSkinNone();
     for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
         int boneIdx = aBoneIds[i];
         if (boneIdx < 0) {
             continue;
         }
-        withBones = true;
-        BoneTransform += bones[instance.boneOffset + uint(boneIdx)] * aWeights[i];
-        prevBoneTransform += prevBones[instance.boneOffset + uint(boneIdx)] * aWeights[i];
+        sfeSkinAdd(skin, bones[instance.boneOffset + uint(boneIdx)], aWeights[i]);
+        sfeSkinAdd(prevSkin, prevBones[instance.boneOffset + uint(boneIdx)], aWeights[i]);
     }
-    if (!withBones) {
-        BoneTransform = mat4(1.0);
-        prevBoneTransform = mat4(1.0);
-    }
+    precise mat4 BoneTransform = sfeSkinMatrix(skin);
+    mat4 prevBoneTransform = sfeSkinMatrix(prevSkin);
 
     precise mat3 normalMatrix = mat3(model[index]) * mat3(BoneTransform);
     precise vec4 newPos = BoneTransform * vec4(aPos.xyz, 1.0);
     newPos /= newPos.w;
     precise vec4 worldPos = model[index] * newPos;
     vSurface = worldPos.xyz - model[index][3].xyz;
+    vPiece = sfePieceKey(uint(SFE_VERTEX_ID), model[index][3].xyz);
     worldPos.xyz += sfeWindSway(worldPos.xyz, model[index][3].xyz, instance.material, matrices.wind);
 
     FragPos = worldPos.xyz;

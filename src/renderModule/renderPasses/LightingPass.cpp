@@ -45,6 +45,7 @@ void LightingPass::init(SystemsModule::RenderData& renderDataHandle)
 	texLayoutDesc.bindings.emplace_back(13, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(14, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 	texLayoutDesc.bindings.emplace_back(21, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
+	texLayoutDesc.bindings.emplace_back(22, Render::DescriptorType::CombinedImageSampler, Render::ShaderStage::Fragment);
 
 	mTexSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
 
@@ -321,6 +322,15 @@ void LightingPass::render(SystemsModule::RenderData& renderDataHandle, Render::C
 		drawData.cloudCoverage = Atmosphere::skyParams(renderDataHandle, sky) ? sky.toSun[3] : 0.f;
 		drawData.stylise = renderDataHandle.graphics.stylise;
 	}
+	if (const auto* tint = renderDataHandle.frame.data<AreaTintFrame>(FrameId::AreaTint)) {
+		drawData.tintArea = tint->area;
+		drawData.tintFoliage = tint->foliage;
+		drawData.tintAir = tint->air;
+		drawData.tintGround = tint->ground;
+	}
+	else {
+		drawData.tintArea = {};
+	}
 
 	// Every block every frame: a dynamic binding needs this frame's offset even when its data did not change.
 	static const std::vector<Math::Mat4> noMatrices;
@@ -416,6 +426,10 @@ void LightingPass::updateTextures(SystemsModule::RenderData& renderDataHandle, R
 		// The cloud layer, for the shadows the clouds lay over the ground.
 		const auto clouds = Atmosphere::cloudTexture();
 		addImage(21, clouds.texture, clouds.sampler, slotSets.clouds);
+	}
+	{
+		const auto tint = Utils::areaTintMap(frame);
+		addImage(22, tint.first, tint.second, slotSets.areaTint);
 	}
 	addBuffer(3, blocks.pointMatrices.buffer, slotSets.pointMat, sizeof(Math::Mat4) * PointShadowFrame::kMaxShadowFaces);
 	addImage(7, frame.texture(FrameId::ShadowPoint), frame.sampler(FrameId::ShadowPoint), slotSets.pointShadow);

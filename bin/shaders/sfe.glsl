@@ -31,6 +31,21 @@ float sfeHash12(vec2 p) {
     return float(v.x >> 8u) / 16777216.0;
 }
 
+// 0..1 for a vertex of a model standing at `origin`, passed on flat so each triangle takes its first (or, on OpenGL,
+// last) vertex's: the point on the way to bare (SfeMaterial::bare) at which that triangle of a cut-out surface, a leaf,
+// is gone. Where the model stands tells two trees of one model apart, so they do not lose the same leaves.
+float sfePieceKey(uint vertex, vec3 origin) {
+    uvec3 v = uvec3(vertex, uvec2(ivec2(floor(origin.xz * 4.0))));
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    return float(v.y >> 8u) / 16777216.0;
+}
+
 // Jimenez's interleaved gradient noise, fract(52.9829189 * fract(dot(p + 5.588238 * frame, vec2(0.06711056,
 // 0.00583715)))), in fixed point. The float form came out different on OpenGL and Vulkan for the same pixel --
 // the two shader compilers evaluate it differently even marked precise -- so everything it rotates differed
@@ -42,6 +57,17 @@ float sfeInterleavedGradientNoise(vec2 p, uint frame) {
     uint inner = (pixel.x * 4398u + pixel.y * 383u + frame * 26716u) & 0xFFFFu; // fract(dot(p, k)) * 2^16
     uint outer = inner * 3472289u;                                              // fract(52.9829189 * inner / 2^16) * 2^32
     return float(outer >> 8u) / 16777216.0;
+}
+
+// What is right at the camera fades out towards the near plane rather than being cut off by it: over the first
+// SFE_NEAR_FADE of the near distance past it, more of its pixels dropped in a dither the nearer it is. Measured off
+// the depth buffer's own value: with the far plane far off, a depth z is near / (1 - z) away, so (distance - near) /
+// near is z / (1 - z) -- whatever the near plane is, and with no matrices. Every surface drawn into the view asks it
+// first thing.
+const float SFE_NEAR_FADE = 0.2;
+bool sfeNearFaded(vec4 fragCoord) {
+    float past = fragCoord.z / max(1.0 - fragCoord.z, 1e-6);
+    return past < SFE_NEAR_FADE * sfeInterleavedGradientNoise(fragCoord.xy, 0u);
 }
 
 // vec2(cos(a), sin(a)) without the built-ins, which differ in their low bits between the OpenGL driver's
@@ -69,7 +95,8 @@ vec2 sfeCosSin(float a) {
 
 // The G-buffer's first target, RGBA8: metallic, specular factor, clearcoat, clearcoat roughness. A surface with no
 // clearcoat has no use for its roughness: there that channel says how much sunlight it lets through, as leaves and
-// blades of grass do (0.04, what everything else writes, is none).
+// blades of grass do (0.04, what everything else writes, is none) -- and on a drawing that glints (kSfeCelGlint), how
+// strongly it does.
 vec4 sfeGBufferMaterial(float metallic, float specFactor, float clearcoat, float clearcoatRough) {
     return clamp(vec4(metallic, specFactor, clearcoat, clearcoatRough), 0.0, 1.0);
 }
@@ -80,6 +107,11 @@ const float kSfeGlint = 1.0 / 255.0;
 // A clearcoat of exactly this is no coat either: the surface is a drawing, and in the drawn look it is lit in two
 // flat tones with a line where the light ends, as a cartoon character is -- where the world only softens the edge.
 const float kSfeCel = 2.0 / 255.0;
+// And this, the ground: shaded as it is, and known for what stains it (the area tint).
+const float kSfeGround = 3.0 / 255.0;
+// And this, a drawing that glints: lit in two flat tones as kSfeCel is, flashing as kSfeGlint does where it mirrors the
+// sun into the eye -- a cartoon character's bald crown.
+const float kSfeCelGlint = 4.0 / 255.0;
 
 // The world position of what the scene shows at `uv`, from SceneDepthPass's copy of the depth buffer and the
 // camera's inverse matrices (the jittered ones the G-buffer was drawn with); zero where nothing was drawn. The
@@ -153,6 +185,25 @@ float sfeLuma(vec3 color) {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
+// How much a colour is a plant's: its hue from a yellow green through green (about 50 to 180 degrees; straw, blond
+// hair and skin are below it), and not near grey.
+float sfePlantColour(vec3 c) {
+    const float hi = max(c.r, max(c.g, c.b));
+    const float chroma = hi - min(c.r, min(c.g, c.b));
+    if (chroma <= 1e-5) {
+        return 0.0;
+    }
+    float hue = hi == c.r ? (c.g - c.b) / chroma : (hi == c.g ? 2.0 + (c.b - c.r) / chroma : 4.0 + (c.r - c.g) / chroma);
+    hue *= 60.0;
+    return smoothstep(45.0, 58.0, hue) * (1.0 - smoothstep(170.0, 190.0, hue)) * smoothstep(0.15, 0.3, chroma / hi);
+}
+
+// A plant going bare (SfeMaterial::bare) at a texel of a triangle of its cut-out surface whose point on the way
+// (sfePieceKey) it has passed: false where that is a leaf, gone; the twigs painted between the leaves stay, dead.
+bool sfeBareKeeps(vec3 linearColour) {
+    return sfePlantColour(linearColour) < 0.5;
+}
+
 float sfeSkinSss(vec3 albedo, float metallic) {
     float luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
     float warm = clamp((albedo.r - albedo.g) * 3.5, 0.0, 1.0);
@@ -172,6 +223,17 @@ vec2 sfeVelocity(vec4 clipNow, vec4 clipBefore) {
     return (now - before) * 0.5;
 }
 
+// The area tint map (AreaTintFrame) at a world place: how far its foliage (r), water (g) and air (b) have gone towards
+// their tint colours. `area` is the map's min x, min z and 1 / size along each; outside it, or with no map (a zero
+// size), nothing.
+vec3 sfeAreaTint(sampler2D map, vec4 area, vec2 xz) {
+    vec2 uv = (xz - area.xy) * area.zw;
+    if (area.z <= 0.0 || any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+        return vec3(0.0);
+    }
+    return textureLod(map, uv, 0.0).rgb;
+}
+
 #endif
 
 // One definition of the per-frame matrices block. OpenGL links every shader of a program together and
@@ -187,4 +249,6 @@ vec2 sfeVelocity(vec4 clipNow, vec4 clipBefore) {
     vec4 windBefore; /* the same, last frame */ \
     mat4 invProjection; /* of the jittered projection */ \
     mat4 invView; \
-    vec4 style;      /* x the drawn look, GraphicsSettings::stylise */
+    vec4 style;      /* x the drawn look, GraphicsSettings::stylise */ \
+    vec4 tintArea;   /* the area tint map's place, for sfeAreaTint; the map is SFE_SET(0, 22) */ \
+    vec4 tintShore;  /* xy: the map value where the lake's bank starts to turn to mud, and where it is all mud */

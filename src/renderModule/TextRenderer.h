@@ -324,7 +324,10 @@ namespace SFE::Render {
 
             int rowH = 0;
             float curX = x;
-            int glyphCount = 0;
+            // Each text's glyphs in a buffer of its own for this frame: every text drawn in one command list shared one
+            // before, and the last written was what all of them drew.
+            std::vector<float> glyphs;
+            glyphs.reserve(text.size() * 24);
             for (int i = 0; i < text.size(); i++) {
                 const auto& ch = font->getGlyphData(text[i]);
                 if (text[i] == '\n') {
@@ -358,16 +361,25 @@ namespace SFE::Render {
 
                 };
 
-                Engine::instance()->rhi()->updateBuffer(VBO, glyphCount * sizeof(vertices), sizeof(vertices), vertices);
-                ++glyphCount;
+                glyphs.insert(glyphs.end(), std::begin(vertices), std::end(vertices));
 
                 curX += (ch.advance >> 6) * scale;
             }
-            if (glyphCount == 0) {
+            if (glyphs.empty()) {
                 return;
             }
 
 			auto* rhi = Engine::instance()->rhi();
+			const auto vbo = rhi->allocTransient(glyphs.size() * sizeof(float));
+			if (!vbo) {
+				return;
+			}
+			std::memcpy(vbo.data, glyphs.data(), glyphs.size() * sizeof(float));
+			// And its font's atlas in a set of that font's own, for the same reason.
+			auto& texSet = texSets[font];
+			if (!texSet) {
+				texSet = rhi->allocateDescriptorSet(texSetLayout);
+			}
 			rhi->updateDescriptorSets({ {
 				.set = texSet,
 				.binding = 24,
@@ -376,9 +388,9 @@ namespace SFE::Render {
 			} });
 			rhi->cmdBindPipeline(cmd, textRenderPipeline);
 			rhi->cmdBindDescriptorSets(cmd, textRenderPipeline, 0, &texSet, 1);
-			rhi->cmdBindVertexBuffer(cmd, 0, VBO, 0);
+			rhi->cmdBindVertexBuffer(cmd, 0, vbo.buffer, vbo.offset);
 			rhi->cmdPushConstants(cmd, textRenderPipeline, ShaderStage::Fragment, &color, sizeof(Math::Vec3));
-			rhi->cmdDraw(cmd, glyphCount * 6);
+			rhi->cmdDraw(cmd, static_cast<uint32_t>(glyphs.size() / 4));
         }
 
 		void bindRenderPass(RenderPassHandle rp) {
@@ -388,17 +400,9 @@ namespace SFE::Render {
         void init() override {
 			auto* rhi = Engine::instance()->rhi();
 
-			BufferDesc vboDesc;
-			vboDesc.size = sizeof(float) * 6 * 4 * 1000; // max 1000 chars per draw call
-			vboDesc.usage = BufferUsage::Vertex;
-			vboDesc.cpuAccess = CpuAccess::Write;
-			vboDesc.debugName = "TextRenderer VBO";
-			VBO = rhi->createBuffer(vboDesc, nullptr);
-
 			DescriptorSetLayoutDesc texLayoutDesc;
 			texLayoutDesc.bindings.emplace_back(24, DescriptorType::CombinedImageSampler, ShaderStage::Fragment);
 			texSetLayout = rhi->createDescriptorSetLayout(texLayoutDesc);
-			texSet = rhi->allocateDescriptorSet(texSetLayout);
 			createTextPipeline({});
         }
         inline static char msgBuf[2048];
@@ -440,9 +444,8 @@ namespace SFE::Render {
 		}
 
 		PipelineHandle textRenderPipeline;
-        BufferHandle VBO;
 		DescriptorSetLayoutHandle texSetLayout;
-		mutable DescriptorSetHandle texSet;
+		mutable std::map<Font*, DescriptorSetHandle> texSets;   // a font's atlas, bound for its texts
 	};
 }
 
