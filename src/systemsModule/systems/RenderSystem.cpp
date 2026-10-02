@@ -597,6 +597,42 @@ namespace SFE::SystemsModule {
 		flush();
 	}
 
+	namespace {
+		// The pose boxes of a skeleton posed by hand (`skins`, the bone matrices as the component has them), grown as
+		// animateBones.cs grows a played one's: every posed joint by the farthest its bone's vertices lie from it, into the
+		// boxes of the meshes it moves -- `slots`' first `bounds`, the last box first. Left empty, the cull would keep to
+		// the bind pose, and a part posed far from it, a tool in the hands, would be culled where it is drawn.
+		void growPoseBounds(ecss::EntityId entity, const std::vector<Math::Mat4>& skins, size_t count, uint32_t bounds, std::vector<Math::Mat4>& slots) {
+			const auto skeleton = ECSHandler::registry().pinComponent<const ComponentsModule::ArmatureComponent>(entity);
+			if (!skeleton || bounds == 0) {
+				return;
+			}
+			const auto& rig = skeleton->armature;
+			for (uint32_t j = 0; j < bounds; ++j) {
+				slots[j][0] = Math::Vec4(Math::Vec3(3.0e38f), 1.f);
+				slots[j][1] = Math::Vec4(Math::Vec3(-3.0e38f), 1.f);
+			}
+			for (const auto& bone : rig.bones) {
+				if (bone.id >= count || bone.id >= rig.boneBoundsMask.size() || rig.boneBoundsMask[bone.id] == 0u) {
+					continue;
+				}
+				const auto posed = skins[bone.id] * Math::inverse(bone.offset);
+				const auto length = [&](int axis) { return Math::length(Math::Vec3(posed[axis])); };
+				const Math::Vec3 reach(rig.boneRadius[bone.id] * (std::max)({ length(0), length(1), length(2) }));
+				const Math::Vec3 at(posed[3]);
+				for (uint32_t j = 0; j < bounds; ++j) {
+					if ((rig.boneBoundsMask[bone.id] & (1u << j)) != 0u) {
+						auto& box = slots[bounds - 1 - j];
+						for (int k = 0; k < 3; ++k) {
+							box[0][k] = (std::min)(box[0][k], at[k] - reach[k]);
+							box[1][k] = (std::max)(box[1][k], at[k] + reach[k]);
+						}
+					}
+				}
+			}
+		}
+	}
+
 	void RenderSystem::uploadBones(const std::vector<ecss::EntityId>& sortedIds) {
 		auto* rhi = Engine::instance()->rhi();
 		auto& registry = ECSHandler::registry();
@@ -624,6 +660,7 @@ namespace SFE::SystemsModule {
 			}
 			if (!animated) {
 				std::copy_n(armature->boneMatrices.begin(), boneCount, slots.begin() + range.bounds);
+				growPoseBounds(id, armature->boneMatrices, boneCount, range.bounds, slots);
 			}
 			if (!slots.empty()) {
 				const auto offset = static_cast<size_t>(range.offset - range.bounds) * sizeof(Math::Mat4);
